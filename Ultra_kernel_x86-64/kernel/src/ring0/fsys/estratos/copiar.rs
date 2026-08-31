@@ -1,5 +1,7 @@
 //! **TRAER UN FICHERO DE FUERA** y dejarlo escrito en ESTRATOS.
 //!
+//! [carril]  ROJO      trae un fichero de fuera y lo ESCRIBE
+//!
 //! === Por que esto existe, y no es "mandar mas bytes" ===
 //!
 //! El techo de un fichero eran 96 bytes, y resulto ser DOS techos con el mismo

@@ -1,5 +1,7 @@
 //! Teclado: scancodes Set 1 -> caracteres, con distribucion ESPANOLA.
 //!
+//! [carril]  AMARILLO  scancodes a caracteres, con distribucion espanola
+//!
 //! Dos productores entran por aqui: el i8042 (PS/2, muerto post-EBS en esta
 //! placa) y el puente USB HID (`dev::usb`), que traduce sus reportes a los
 //! mismos scancodes Set 1. Un solo sitio decide que letra es cada tecla.

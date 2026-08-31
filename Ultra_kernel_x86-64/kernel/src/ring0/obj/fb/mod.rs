@@ -1,5 +1,7 @@
 //! `KIND_FRAMEBUFFER` -- la pantalla como capability.
 //!
+//! [carril]  ROJO      el reparto, y hereda el color del carril que manda
+//!
 //! generacion: nieto -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
 //! cuanto SABE esta pieza, no quien importa a quien, y por eso el
 //! guardian de L7 no la juzga (ver L7c en `META-KERNEL_HARD.md`).

@@ -1,5 +1,7 @@
 //! **Preguntarle al silicio y contar lo que contesta.**
 //!
+//! [carril]  AMARILLO  preguntar al silicio y contarlo; el informe cambia siempre
+//!
 //! Las once ordenes del shell de Ring 0 que hablan con el hardware: el CPU y lo
 //! que gasta, la memoria, la red, el audio, el disco y los nucleos.
 //!

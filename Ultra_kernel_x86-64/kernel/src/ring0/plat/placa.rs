@@ -1,5 +1,7 @@
 //! **EL CENSO DE LA PLACA: que tablas ofrece el firmware, y cual se cree.**
 //!
+//! [carril]  AMARILLO  que tablas ofrece el firmware y cual se cree
+//!
 //! ## Por que esto existe, y por que es LEER y nada mas
 //!
 //! Hasta hoy BMO-X le hacia al firmware **una sola pregunta**: *"cuantos nucleos

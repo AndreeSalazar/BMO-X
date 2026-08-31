@@ -1,5 +1,7 @@
 //! **EL TEXTO** -- la fuente de 8x16 y las cadenas.
 //!
+//! [carril]  VERDE     la fuente y las cadenas
+//!
 //! ## Que hace aqui y no en el lienzo
 //!
 //! Porque una letra no es un rectangulo. El lienzo contesta *donde caen los

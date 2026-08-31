@@ -1,5 +1,7 @@
 //! `syscall::meter` -- how many cycles the kernel spends inside a door.
 //!
+//! [carril]  AMARILLO  cuantos ciclos gasta el kernel dentro de una puerta
+//!
 //! generacion: ninguna -- es el INSTRUMENTO que mide la puerta, no un escalon
 //! de la herencia. Aparece en el censo de ejes porque casi todo lo que
 //! cuesta `dispatch` es el propio metro --69-107 ciclos de sus 87-104--

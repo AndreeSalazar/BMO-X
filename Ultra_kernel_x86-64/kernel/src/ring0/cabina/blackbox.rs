@@ -1,5 +1,7 @@
 //! **THE BLACK BOX** -- the ring, on the disk.
 //!
+//! [carril]  AMARILLO  que se guarda del anillo, y eso cambia con lo que hace falta saber
+//!
 //! === Why this is a file of its own ===
 //!
 //! Because it is the only part of CABINA that survives the machine being

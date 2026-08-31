@@ -1,5 +1,7 @@
 //! **Los contadores de energia de este Zen 3, y solo de este.**
 //!
+//! [carril]  VERDE     los contadores de energia de este Zen 3
+//!
 //! Escalon 2 de la seccion 9 de `docs/maestro/AXION_MAESTRO.md`.
 //!
 //! # Por que esto vive en el PERFIL y no en `ring0/cpu/`

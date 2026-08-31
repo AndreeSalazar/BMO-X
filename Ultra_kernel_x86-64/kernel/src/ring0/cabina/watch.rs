@@ -1,5 +1,7 @@
 //! **THE WATCHES** -- and yes, this is polling, with a reason.
 //!
+//! [carril]  AMARILLO  las vigilancias, y son sondeo con motivo escrito
+//!
 //! === Why this is a file of its own ===
 //!
 //! Because everything else in CABINA is passive: somebody calls `info` and an

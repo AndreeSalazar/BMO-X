@@ -1,5 +1,7 @@
 //! `cpu_vendor/` -- CPU-specific knowledge for the Ryzen 5 5600X (Vermeer, Zen 3).
 //!
+//! [carril]  VERDE     el reparto del vendor
+//!
 //! Everything in this directory is **specific to the AMD Ryzen 5 5600X**
 //! (Family 19h, Model 01h). On a different CPU, the corresponding
 //! `vendor/<arch>/<cpu>/` directory would be selected at compile time

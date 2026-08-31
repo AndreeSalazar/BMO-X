@@ -1,5 +1,7 @@
 //! **`placa` -- lo que el firmware le cuenta a BMO-X.**
 //!
+//! [carril]  VERDE     cuenta lo que el firmware declara
+//!
 //! ## Por que es un fichero y no un trozo de `hardware.rs` (L6a, L6b)
 //!
 //! Por las dos razones, y las dos cuentan:

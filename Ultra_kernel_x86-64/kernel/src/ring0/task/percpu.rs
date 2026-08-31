@@ -1,5 +1,7 @@
 //! Per-CPU storage, addressed through GS after `swapgs`.
 //!
+//! [carril]  ROJO      el almacen por nucleo, direccionado por GS tras swapgs
+//!
 //! Ring 0 runs with `GS_BASE = &PerCpu` and `KERNEL_GS_BASE = 0` (the user
 //! GS). Trap entries from Ring 3 execute `swapgs` first; entries that
 //! interrupted Ring 0 skip it (they check the saved CS). After `init_bsp`,

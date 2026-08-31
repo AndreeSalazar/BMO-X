@@ -1,4 +1,6 @@
 //! **El reparto de trabajo.** Lo unico que separa doce nucleos encendidos de
+//!
+//! [carril]  ROJO      el reparto de trabajo entre nucleos
 //! doce nucleos que sirven para algo.
 //!
 //! === El hueco que tapa ===

@@ -1,4 +1,6 @@
 //! **TRIM: devolverle sectores al disco.** El unico camino por el que BMO-X le
+//!
+//! [carril]  ROJO      devolver sectores. Equivocarse aqui BORRA
 //! dice al aparato que algo dejo de importar.
 //!
 //! [eje]     CORRECCION -- lo pide una persona, no un demonio

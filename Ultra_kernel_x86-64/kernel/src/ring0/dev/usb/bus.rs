@@ -1,5 +1,7 @@
 //! **El hilo de kernel que mantiene vivo el bus USB.**
 //!
+//! [carril]  ROJO      el hilo que mantiene vivo el bus
+//!
 //! Salio de `dev/usb/mod.rs` el 2026-08-12 por la regla modular. Se puede sacar
 //! solo porque **no toca ni una tecla**: bombea el bus y mira el rescate. Todo
 //! lo que sabe de teclado y raton se lo pregunta al modulo padre.

@@ -1,4 +1,6 @@
 //! **La interrupcion del DISCO.** Que el aparato avise en vez de que se le
+//!
+//! [carril]  ROJO      el cableado de la interrupcion del disco
 //! pregunte.
 //!
 //! ## Que cambia, dicho en una frase

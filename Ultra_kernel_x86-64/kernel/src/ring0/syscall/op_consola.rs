@@ -1,5 +1,7 @@
 //! **LA CONSOLA**: escribir en ella y leer de ella.
 //!
+//! [carril]  VERDE     escribir en la consola y leer de ella
+//!
 //! ## Por que sale del despachador (L6b)
 //!
 //! Porque es la unica pareja del `match` que habla con una PANTALLA, y porque

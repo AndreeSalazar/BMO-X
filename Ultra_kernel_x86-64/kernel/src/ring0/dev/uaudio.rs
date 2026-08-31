@@ -1,5 +1,7 @@
 //! **El VOLUMEN del audifono USB**, por control transfer.
 //!
+//! [carril]  AMARILLO  el volumen del audifono por control transfer
+//!
 //! ## Por que esto llega antes que oir nada
 //!
 //! Reproducir muestras por USB pide transferencias **isocronas**, que

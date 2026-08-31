@@ -1,5 +1,7 @@
 //! **CARRIL AMARILLO** -- cambia cada vez que una pantalla azul ensena algo.
 //!
+//! [carril]  AMARILLO  el nombre del fichero ya lo decia; la etiqueta lo hace comprobable
+//!
 //! [cuesta]  MAQUINA -- por herencia: corre con la maquina ya rota y no
 //!           puede tomar un cerrojo ni asignar memoria. Colgarse aqui cambia
 //!           un volcado legible por una maquina muda.

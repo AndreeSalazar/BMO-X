@@ -1,5 +1,7 @@
 //! **El trampolin**: de 16 bits a 64, y donde aterriza el AP.
 //!
+//! [carril]  ROJO      el trampolin de 16 bits a 64. Un byte mal y el AP no aterriza
+//!
 //! === [!] El fallo que hundia a la version vieja ===
 //!
 //! Estaba ensamblada como codigo de **64 bits** (`mov rax, ...`, `retfq`) para un

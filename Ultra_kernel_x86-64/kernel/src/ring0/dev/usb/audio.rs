@@ -1,5 +1,7 @@
 //! **Asking the USB audio device how it wants its samples.** Nothing else.
 //!
+//! [carril]  AMARILLO  el audio isocrono, EN OBRAS: el IOC por trama se arreglo el 31-08
+//!
 //! Step 0 of `docs/maestro/AUDIO_MAESTRO.md`, kernel side. The decision --reading the
 //! descriptor-- lives in `bmo_uaudio::stream`, where it is tested; here there is
 //! only what no test can cover: touching the bus and printing.

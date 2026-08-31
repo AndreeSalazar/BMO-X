@@ -1,5 +1,7 @@
 //! Bitmap physical frame allocator (4 KiB frames, physical < PHYSMAP_SIZE).
 //!
+//! [carril]  ROJO      el bitmap de marcos: dar dos veces el mismo es dos duenos de un byte
+//!
 //! [cuesta]  MAQUINA -- entregar dos veces el mismo marco no da un fallo: da
 //!           dos duenos del mismo byte, y el sintoma tres arranques despues.
 //!

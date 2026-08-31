@@ -1,5 +1,7 @@
 //! Kernel entry point -- `_start` naked asm + `kernel_main_real`.
 //!
+//! [carril]  ROJO      `_start` en ensamblador desnudo: aqui empieza la maquina
+//!
 //! Called from `s12_devices` via `jmp` with `rdi = *const BootContext`.
 //!
 //! ## Stack switch

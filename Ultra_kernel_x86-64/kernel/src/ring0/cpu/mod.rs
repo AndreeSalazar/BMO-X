@@ -1,5 +1,7 @@
 //! El CPU: lo que se le pregunta y lo que se le mide.
 //!
+//! [carril]  VERDE     lo que se le pregunta al CPU
+//!
 //! `cpuid` y compania contestan lo que la maquina ES. [`frecuencia`] mide lo que
 //! esta HACIENDO, que es otra pregunta y por eso es otro fichero -- ver la
 //! seccion 9 de `docs/maestro/AXION_MAESTRO.md`.

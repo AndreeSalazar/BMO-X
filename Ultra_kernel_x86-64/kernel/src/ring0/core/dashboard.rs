@@ -1,5 +1,7 @@
 //! **THE ROLLING LOG** -- the band of text the kernel writes on screen.
 //!
+//! [carril]  VERDE     la banda de texto; equivocarse pinta feo
+//!
 //! === Why this is a file of its own ===
 //!
 //! It was living inside `phase.rs`, a file named after the boot sequence, and

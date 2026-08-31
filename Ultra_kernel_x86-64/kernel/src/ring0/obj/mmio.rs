@@ -2,6 +2,8 @@
 //!
 //! generacion: nieto -- no sabe quien lo llamo ni por que.
 //!
+//! [carril]  ROJO      una ventana de registros de un aparato, cedida a Ring 3
+//!
 //! [cuesta]  MAQUINA -- mapea fisica en un espacio de usuario. Un rango de
 //!           mas es una ventana a la RAM del kernel, y eso no da un fault:
 //!           da acceso. Por eso el juez que decide vive fuera y con pruebas

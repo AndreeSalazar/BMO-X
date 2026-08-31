@@ -1,5 +1,7 @@
 //! `features::usage` -- what BMO TAKES. The contract, written by hand.
 //!
+//! [carril]  AMARILLO  el contrato a mano: si dice que BMO enciende algo que no, miente
+//!
 //! The other half of rule 5. `silicon.rs` asks the machine; this declares what
 //! we do with the answer, and the two are joined in `mod.rs`.
 //!

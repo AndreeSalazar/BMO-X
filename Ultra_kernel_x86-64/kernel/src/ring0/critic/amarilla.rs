@@ -1,5 +1,7 @@
 //! **CARRIL AMARILLO** -- va a cambiar, y al cambiar ARRASTRA A OTRO.
 //!
+//! [carril]  AMARILLO  el nombre del fichero ya lo decia; la etiqueta lo hace comprobable
+//!
 //! [cuesta]  MAQUINA -- las dos funciones de aqui deciden si el kernel
 //!           dereferencia una direccion fisica. Equivocarse para la maquina.
 //!

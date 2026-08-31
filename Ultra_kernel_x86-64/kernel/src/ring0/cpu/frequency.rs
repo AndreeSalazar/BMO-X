@@ -1,5 +1,7 @@
 //! **A que velocidad va este nucleo AHORA MISMO.**
 //!
+//! [carril]  VERDE     mide MHz por MPERF/APERF y contesta
+//!
 //! Escalon 1 de la seccion 9 de `docs/maestro/AXION_MAESTRO.md` -- la terminal del CPU.
 //!
 //! # Por que esto no lo contesta la topologia

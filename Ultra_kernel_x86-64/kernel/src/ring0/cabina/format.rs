@@ -1,5 +1,7 @@
 //! **FORMATTING WITHOUT `std`** -- a line built in a byte buffer.
 //!
+//! [carril]  VERDE     construir una linea en un buffer de bytes
+//!
 //! === Why this is a file of its own ===
 //!
 //! Because Ring 0 has no allocator and no `format!`, so every line CABINA

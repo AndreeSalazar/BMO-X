@@ -1,5 +1,7 @@
 //! **THE ATTEMPT** -- what turns four unrelated lines into one story.
 //!
+//! [carril]  AMARILLO  cose cuatro lineas en una historia; si cose mal, cuenta otra
+//!
 //! === Why this is a file of its own ===
 //!
 //! Because it is the only thing in CABINA that has a LIFETIME. An event is a

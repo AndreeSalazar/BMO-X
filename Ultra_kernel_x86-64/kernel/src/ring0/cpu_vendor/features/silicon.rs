@@ -1,5 +1,7 @@
 //! `features::silicon` -- what the CPU DECLARES. Facts, never opinions.
 //!
+//! [carril]  VERDE     lo que el CPU DECLARA: hechos, nunca opiniones
+//!
 //! Every bit here comes from `CPUID` or from `CR4` on the machine that is
 //! running. **Nothing is read from the profile**, and that is the whole point:
 //! `profile.rs` says what we EXPECT, this says what there IS, and a census that

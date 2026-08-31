@@ -1,5 +1,7 @@
 //! **THE SHELL SESSION** -- the loop that never returns.
 //!
+//! [carril]  AMARILLO  el bucle que no retorna y el despacho de ordenes
+//!
 //! === Why this is separate from the editor and from the commands ===
 //!
 //! Because it is the only part with a lifetime: `run_shell` is `-> !`, it owns

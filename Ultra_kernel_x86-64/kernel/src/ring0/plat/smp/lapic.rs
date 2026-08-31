@@ -1,5 +1,7 @@
 //! **El LAPIC del BSP**: mandar IPIs y esperar.
 //!
+//! [carril]  ROJO      mandar IPIs y esperar
+//!
 //! Solo lo usa el que despierta. El AP recien llegado no toca esto -- ver
 //! `tramp::apic_id`, que lo resuelve por CPUID justo por eso.
 

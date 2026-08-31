@@ -1,4 +1,6 @@
 //! **`critic/` -- LOS CARRILES.** La ley es L6g en `META-KERNEL_HARD.md` y la
+//!
+//! [carril]  VERDE     el reparto de la carpeta
 //! cobra `contrato.py`, regla R8. El por que y las cuatro reglas de dentro, en
 //! `LEEME.md`, al lado.
 //!

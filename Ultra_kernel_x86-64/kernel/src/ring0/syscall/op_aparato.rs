@@ -1,5 +1,7 @@
 //! **TOMAR Y SOLTAR UN APARATO EXCLUSIVO**: la entrada, la pantalla y el audio.
 //!
+//! [carril]  ROJO      tomar y soltar la pantalla, la entrada y el audio
+//!
 //! ## Por que estas siete van juntas (L6b)
 //!
 //! Porque son la puerta de los LIDERES, y eso ya tiene documento propio:

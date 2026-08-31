@@ -1,5 +1,7 @@
 //! **WHO HOLDS THE DISK** -- one owner at a time, and a count of the thefts.
 //!
+//! [carril]  ROJO      un dueno cada vez, y la cuenta de los robos
+//!
 //! === Why this is a file of its own ===
 //!
 //! Because it is not storage: it is a **lock with a memory**. AHCI here has one

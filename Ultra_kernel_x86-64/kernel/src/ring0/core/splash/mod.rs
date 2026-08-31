@@ -1,5 +1,7 @@
 //! El SPLASH de Ring 0 -- lo que se ve cuando UEFI termina.
 //!
+//! [carril]  VERDE     el reparto del splash
+//!
 //! ## ** ESTE FICHERO TENIA 1.503 LINEAS, Y ESO ERA EL PROBLEMA
 //!
 //! Dentro convivian cinco cosas que no se parecen en nada: como se escribe un

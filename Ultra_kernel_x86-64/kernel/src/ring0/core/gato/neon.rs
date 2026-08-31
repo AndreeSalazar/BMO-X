@@ -1,5 +1,7 @@
 //! **EL BLOOM DEL GATO** -- lo que convierte un trazo en un tubo de neon.
 //!
+//! [carril]  VERDE     el bloom; equivocarse pinta un gato raro
+//!
 //! === El fallo, visto en video ===
 //!
 //! El video del 2026-08-15 en el Ryzen: el gato es una linea blanca de un pixel

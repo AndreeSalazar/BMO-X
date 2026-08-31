@@ -1,5 +1,7 @@
 //! El informe del sistema, servido a Ring 3.
 //!
+//! [carril]  AMARILLO  lo que el kernel le cuenta a Ring 3; crece cada semana
+//!
 //! ## Por que esto baja de anillo
 //!
 //! El shell de Ring 0 tenia `info`, `cpu`, `mem` y `tasks` desde siempre, y no

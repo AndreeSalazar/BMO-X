@@ -1,5 +1,7 @@
 //! **EL CIERRE DE UNA SECCION AL ATERRIZAR.**
 //!
+//! [carril]  ROJO      el cierre de permisos de una seccion al aterrizar
+//!
 //! Cada `.bex` trae un BLAKE3 por seccion. Hasta hoy se comprobaban todos de una
 //! pasada, dentro de `bex::inspect`, sobre el bufer entero de la imagen. Esto lo
 //! parte en el momento correcto: **cada seccion se cierra con su hash cuando

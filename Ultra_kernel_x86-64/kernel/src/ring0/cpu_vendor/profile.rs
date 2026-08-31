@@ -1,4 +1,6 @@
 //! Professional CPU-profile contract: swapping the CPU (or the vendor)
+//!
+//! [carril]  AMARILLO  el contrato de perfil; cambiar de CPU pasa por aqui
 //! is a *profile swap*, never a kernel edit.
 //!
 //! A profile owns everything the kernel must know about one exact CPU:

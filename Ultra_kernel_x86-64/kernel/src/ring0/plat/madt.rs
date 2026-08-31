@@ -1,5 +1,7 @@
 //! **La MADT: el censo de nucleos que da el firmware.**
 //!
+//! [carril]  ROJO      el censo de nucleos: el bring-up de SMP cuelga de esta tabla
+//!
 //! === Por que existe este modulo ===
 //!
 //! `plat::smp` despertaba suponiendo que los APIC IDs son `0..hilos-1`. Es

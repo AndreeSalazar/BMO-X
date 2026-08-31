@@ -1,5 +1,7 @@
 //! **Las ordenes que PINTAN.** `cabina`, `fb` y `splash`.
 //!
+//! [carril]  VERDE     las ordenes que solo pintan
+//!
 //! # Por que no estan con las de hardware, si el framebuffer es hardware
 //!
 //! Porque la pregunta es otra. `hardware` contesta *"que hay y como esta"*;

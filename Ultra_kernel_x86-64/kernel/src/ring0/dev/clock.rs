@@ -1,4 +1,6 @@
 //! **El reloj de la placa**, leido del CMOS. Aqui se tocan los puertos y nada
+//!
+//! [carril]  VERDE     lee el CMOS y contesta la hora
 //! mas: lo que significan los bytes lo decide `bmo-rtc`, que se prueba entero
 //! en el anfitrion.
 //!

@@ -1,5 +1,7 @@
 //! On-screen CPU fault reporter.
 //!
+//! [carril]  VERDE     el reparto de los tres carriles de al lado
+//!
 //! The faggin `s1_cpu` stage installs exception handlers that print to COM1
 //! serial and halt. On a headless machine (no serial cable) a Ring 3 fault
 //! therefore freezes the display with no clue why. This module patches the

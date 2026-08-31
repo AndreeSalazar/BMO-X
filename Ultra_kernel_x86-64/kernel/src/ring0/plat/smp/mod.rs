@@ -1,4 +1,6 @@
 //! **Despertar los otros nucleos.** El bring-up de SMP, del lado bueno de la
+//!
+//! [carril]  ROJO      despertar los otros nucleos
 //! frontera.
 //!
 //! === Por que esto esta aqui y no en `s1_cpu` ===

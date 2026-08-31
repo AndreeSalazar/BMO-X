@@ -1,4 +1,6 @@
 //! **La foto de lo que el disco contesto, empaquetada para salir por la
+//!
+//! [carril]  VERDE     empaqueta lo que el disco contesto
 //! puerta.**
 //!
 //! [eje]     CORRECCION -- se llama una vez en el arranque

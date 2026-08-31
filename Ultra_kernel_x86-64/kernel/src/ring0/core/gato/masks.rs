@@ -1,5 +1,7 @@
 //! **EL GATO** -- el logo de BMO-X, en dos mascaras de 1 bit.
 //!
+//! [carril]  VERDE     el logo, en dos mascaras de un bit
+//!
 //! [cuesta]  NADA -- son pixeles. Un bit mal puesto se ve, y se ve enseguida.
 //!
 //! [riesgo]  -- ninguno. Ni decide, ni dereferencia, ni depende de nadie.

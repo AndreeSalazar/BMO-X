@@ -1,5 +1,7 @@
 //! **EL RENGLON DE LOS GESTOS SOBRE ESTRATOS** -- crear, borrar, renombrar.
 //!
+//! [carril]  AMARILLO  crear, borrar y renombrar sobre ESTRATOS
+//!
 //! === Por que es un fichero, y por que se llama asi ===
 //!
 //! Por L6a: `syscall/mod.rs` esta en la linea base del censo y **no puede

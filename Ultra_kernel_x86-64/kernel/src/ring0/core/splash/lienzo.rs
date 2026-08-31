@@ -1,5 +1,7 @@
 //! **EL LIENZO DE RING 0** -- donde caen los pixeles, y nada mas.
 //!
+//! [carril]  AMARILLO  escribe pixeles DIRECTOS al framebuffer: el recorte es suyo
+//!
 //! ## Que se llevo de `splash.rs`, y por que era lo primero
 //!
 //! Este fichero es el escalon de abajo del monolito: las cuatro funciones que

@@ -1,5 +1,7 @@
 //! **THE OPERATION TABLE** -- the numbers, and nothing that runs.
 //!
+//! [carril]  VERDE     la tabla de numeros, y nada que se ejecute
+//!
 //! ```text
 //!    [eje]     NINGUNO -- nothing in this file executes. Constants cost no
 //!              cycles, no cache lines and no bytes at run time

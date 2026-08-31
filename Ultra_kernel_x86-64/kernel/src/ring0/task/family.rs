@@ -1,5 +1,7 @@
 //! **QUIEN me lanzo** -- para poder ofrecerle mi superficie.
 //!
+//! [carril]  VERDE     quien me lanzo
+//!
 //! ## Que problema resuelve
 //!
 //! Una app dibuja en su memoria y **se la ofrece al DIRECTOR** (ver

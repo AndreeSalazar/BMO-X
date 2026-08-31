@@ -1,5 +1,7 @@
 //! **EL BARRIDO: lo que NO se puede escapar de ningun filtro.**
 //!
+//! [carril]  AMARILLO  los filtros; uno de mas y el evento que importaba no sale
+//!
 //! # Los dos agujeros de un anillo con filtro, y ninguno se ve
 //!
 //! CABINA graba en un anillo de **48** eventos y `cabina fallos` filtra lo que

@@ -1,5 +1,7 @@
 //! **CARRIL ROJO** -- QUIEN tiene la pantalla, y el mapeo.
 //!
+//! [carril]  ROJO      el nombre del fichero ya lo decia; la etiqueta lo hace comprobable
+//!
 //! [cuesta]  MAQUINA -- aqui se concede, se suelta, se rescata y se desmapea
 //!           el framebuffer. Equivocarse deja la maquina CIEGA: dos duenos
 //!           pintando el mismo sitio, o ninguno y sin panel al que volver.
