@@ -109,25 +109,19 @@ BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "LINEA_BASE.txt"
 CUESTAS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "CUESTAS.txt")
 RIESGOS_TXT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "RIESGOS.txt")
 
-# -- L6f nivel 3: CRITIC. Donde viven las piezas cuyo fallo no se deshace.
+# -- L6g nivel 3: LOS CARRILES ----------------------------------------------
 #
-# *** Esta carpeta no es orden: es JURISDICCION. Una etiqueta obliga al que la
-# pone; un sitio obliga al que entra. Ver `META-KERNEL_HARD.md`, L6g.
-CRITIC_DIR = "Ultra_kernel_x86-64/kernel/src/ring0/critic"
-# Un juez que no cabe en una pantalla no es un juez: es un sitio donde esconder
-# un `if`. El numero es de la casa (L6a son 1.000 para un modulo cualquiera) y
-# aqui baja a la tercera parte a proposito.
-CRITIC_TOPE = 300
-# Los CARRILES, y son el NOMBRE DEL FICHERO. La carpeta asigna: no hace falta
-# una etiqueta dentro que diga lo que la ruta ya dice, y una etiqueta que puede
-# contradecir a su fichero es una fuente de verdad de mas.
+# ** Aqui vivia `critic/`, una carpeta GLOBAL con nombre de carril, y era mi
+# primera lectura --equivocada-- de L6g. Se retiro el 2026-08-31 y el dueno lo
+# dijo por su nombre: *"no me gusta esa palabra ahi"*.
 #
-#    roja      un fallo para la maquina y no deja autopsia
-#    amarilla  va a cambiar, y al cambiar ARRASTRA a otro
+# *** Y el nombre solo era el sintoma. **Un color solo significa algo DENTRO de
+# un modulo**: `critic/amarilla.rs` era "amarilla respecto a que?". Una senal
+# ilegible justo en el sitio donde la senal ERA el objetivo.
 #
-# El verde NO esta: es todo lo demas, y un carril que contiene casi todo no
-# informa de nada. Ver `META-KERNEL_HARD.md`, L6g.
-VIAS = ("roja", "amarilla")
+# Sus dos inquilinas volvieron a casa --`mm/vmm/amarilla.rs` y
+# `mm/phys/amarilla.rs`-- y lo que las ataba viaja ahora donde tiene que viajar:
+# en su `[riesgo] ESPEJO`, no en una carpeta.
 
 # -- L6g, LA OTRA MITAD: los carriles POR MODULO. -----------------------------
 #
@@ -372,80 +366,38 @@ RE_PRUEBA = re.compile(r"^//!\s*\[prueba\]\s+([a-z0-9-]+)", re.M)
 RE_RIESGO = re.compile(r"^//!\s*\[riesgo\]\s+([A-Z ]+)", re.M)
 
 
-def r8_lo_que_vive_en_critic(ficheros):
-    """L6g -- CRITIC: dentro de esta carpeta las reglas son otras.
+def r8_el_juez_nombrado_existe(ficheros):
+    """L6g -- **si dices quien te prueba, ese crate existe**. `{ruta: texto}`.
 
-    `ficheros` es `{ruta: (texto, lineas_de_codigo)}` de todo `.rs` bajo
-    `critic/`. Se comprueban las tres cosas que una maquina puede comprobar:
+    Lo que queda de la vieja R8 cuando la carpeta desaparece, y es la mitad que
+    valia. Se aplica ahora a **todo Ring 0** en vez de a dos ficheros.
 
-      1. declara `[cuesta]` Y `[riesgo]` -- aqui no son trinquete, son peaje;
-      2. trae banco de pruebas -- L4: una pieza que guarda tiene que saber
-         decir NO, y demostrarlo;
-      3. no pasa de `CRITIC_TOPE` lineas.
+    ** El kernel NO PUEDE tener pruebas: `bmo.ps1` lo excluye del banco con su
+    motivo escrito --*"binario bare-metal: enlazado como test, `panic_impl` sale
+    dos veces"*--. Asi que una pieza de Ring 0 que quiera demostrar algo saca su
+    juez a un crate propio, sin dependencias y sin `unsafe`, que SI corre bajo
+    `cargo test`, y lo NOMBRA:
 
-    ** La cuarta regla de la ley --ningun numero suelto: todo tope sale de la
-    constante que lo define-- **no se comprueba aqui y hay que decirlo**. Un
-    juez que intentara distinguir `1 << 46` de una constante legitima acabaria
-    adivinando, y un guardian que adivina es peor que ninguno: da permiso con
-    autoridad. Esa regla la cobra la revision humana, y esta escrita para que
-    se pueda citar.
+        //! [prueba]  bmo-fisica-juicio
+
+    Y se comprueba que exista. Un nombre que no resuelve es la misma mentira que
+    un `#[cfg(test)]` que no corre nunca: **una garantia que se ve y no esta**.
+
+    [!] Declararlo NO es obligatorio, y eso es deliberado. La mayoria de Ring 0
+    no tiene juez que sacar --pintar una fuente no se prueba con un crate-- y
+    exigirlo a los 162 seria pedir un banco de pruebas por cortesia. Lo que no se
+    tolera es prometerlo y que no este.
     """
     quejas = []
     for ruta in sorted(ficheros):
-        txt, lineas = ficheros[ruta]
-        # `mod.rs` declara el modulo; no es una pieza y no lleva letrero.
-        if ruta.endswith("/mod.rs"):
-            continue
-        # *** EL NOMBRE DEL FICHERO ES EL CARRIL. Un `.rs` en critic/ que no se
-        # llame como un carril es una pieza que entro sin letrero, y el letrero
-        # es para lo que existe la carpeta: *"si un dia quiero cambiar, como
-        # podre identificar?"*.
-        tallo = ruta.rsplit("/", 1)[-1][:-3]
-        if tallo not in VIAS:
-            quejas.append(
-                "%s vive en critic/ y su nombre no es un carril. Los carriles "
-                "son: %s (L6g)" % (ruta, ", ".join(v + ".rs" for v in VIAS))
-            )
-        if not RE_CUESTA.search(txt):
-            quejas.append("%s vive en critic/ y no declara [cuesta] (L6g regla 1)" % ruta)
-        if not RE_RIESGO.search(txt):
-            quejas.append("%s vive en critic/ y no declara [riesgo] (L6g regla 1)" % ruta)
-        # *** REGLA 2, CORREGIDA POR LA REALIDAD EL MISMO DIA (2026-08-30).
-        #
-        # Decia `#[cfg(test)]` dentro del fichero, y **el kernel no puede tener
-        # pruebas**: `bmo.ps1` lo excluye del banco con su motivo escrito
-        # --*"binario bare-metal: enlazado como test, `panic_impl` sale dos
-        # veces"*--. O sea que esta regla habria aceptado un bloque de pruebas
-        # QUE NO CORRE NUNCA, que es la peor clase de garantia: la que se ve.
-        #
-        # ** La casa ya tenia la respuesta buena y lleva meses usandola:
-        # `bmo-mmio-juicio`, `bmo-disco-juicio`, `bmo-bex-gate`. **El juez sale
-        # a un crate propio, sin dependencias y sin `unsafe`, que SI corre bajo
-        # `cargo test`**, y la pieza de Ring 0 dice cual es.
-        #
-        #     //! [prueba]  bmo-fisica-juicio
-        #
-        # Y se comprueba que ese crate EXISTE. Un nombre que no resuelve es la
-        # misma mentira con otra cara.
-        m = RE_PRUEBA.search(txt)
+        m = RE_PRUEBA.search(ficheros[ruta])
         if not m:
+            continue
+        nombre = m.group(1).strip()
+        if not os.path.isdir(os.path.join(raiz(), "platform", "shared", nombre)):
             quejas.append(
-                "%s vive en critic/ y no dice quien lo prueba. Se declara "
-                "`//! [prueba]  <crate>`, y ese crate es donde vive el juez con "
-                "su banco (L6g regla 2)" % ruta
-            )
-        else:
-            nombre = m.group(1).strip()
-            d = os.path.join(raiz(), "platform", "shared", nombre)
-            if not os.path.isdir(d):
-                quejas.append(
-                    "%s declara [prueba] %s y ese crate no existe en "
-                    "platform/shared/ (L6g regla 2)" % (ruta, nombre)
-                )
-        if lineas > CRITIC_TOPE:
-            quejas.append(
-                "%s tiene %d lineas de codigo y el tope de critic/ es %d "
-                "(L6g regla 4)" % (ruta, lineas, CRITIC_TOPE)
+                "%s declara [prueba] %s y ese crate no existe en "
+                "platform/shared/ (L6g)" % (ruta, nombre)
             )
     return quejas
 
@@ -694,27 +646,15 @@ def autoprueba():
     RI = "//! [riesgo] AJENO" + chr(10)
     BA = "//! [prueba]  bmo-mmio-juicio" + chr(10)
     bueno = (CU + RI + BA, 10)
-    exige("R8(completo)", r8_lo_que_vive_en_critic({"critic/roja.rs": bueno}), False)
-    exige("R8(sin cuesta)", r8_lo_que_vive_en_critic({"critic/roja.rs": (RI + BA, 10)}))
-    exige("R8(sin riesgo)", r8_lo_que_vive_en_critic({"critic/roja.rs": (CU + BA, 10)}))
-    exige("R8(sin probador)", r8_lo_que_vive_en_critic({"critic/roja.rs": (CU + RI, 10)}))
-    # *** Y el caso que guarda la regla entera: DICE quien lo prueba, y ese
-    # crate no existe. Un nombre que no resuelve es la misma mentira con otra
-    # cara, y sin esta prueba la regla 2 se cumpliria escribiendo cualquier cosa.
-    exige("R8(probador inventado)",
-          r8_lo_que_vive_en_critic(
-              {"critic/roja.rs": (CU + RI + "//! [prueba]  bmo-no-existe" + chr(10), 10)}))
-    exige("R8(mod.rs no lleva letrero)",
-          r8_lo_que_vive_en_critic({"critic/mod.rs": ("", 5)}), False)
-    exige("R8(demasiado largo)",
-          r8_lo_que_vive_en_critic({"critic/roja.rs": (bueno[0], CRITIC_TOPE + 1)}))
-    exige("R8(vacia)", r8_lo_que_vive_en_critic({}), False)
-    # *** Y el que de verdad guarda la idea: una pieza correcta en todo lo demas
-    # pero SIN LETRERO. Sin este caso, `critic/` seria una carpeta cualquiera.
-    exige("R8(nombre que no es carril)",
-          r8_lo_que_vive_en_critic({"critic/jueces.rs": bueno}))
-    exige("R8(carril amarilla)",
-          r8_lo_que_vive_en_critic({"critic/amarilla.rs": bueno}), False)
+    # -- R8: el juez nombrado existe ----------------------------------------
+    exige("R8(juez que existe)",
+          r8_el_juez_nombrado_existe({"mm/phys/amarilla.rs": BA}), False)
+    exige("R8(juez que no existe)",
+          r8_el_juez_nombrado_existe(
+              {"mm/phys/amarilla.rs": "//! [prueba]  bmo-no-existe" + chr(10)}))
+    # No declararlo NO es un fallo: la mayoria de Ring 0 no tiene juez que sacar.
+    exige("R8(sin declarar juez)",
+          r8_el_juez_nombrado_existe({"core/gato/neon.rs": "//! un gato"}), False)
 
     # -- R9: los carriles POR MODULO ---------------------------------------
     #
@@ -915,19 +855,16 @@ def carpetas_de_carriles():
     No hay lista que mantener: **el arbol se declara solo**, que es lo que hace
     que partir un fichero manana ya venga vigilado sin tocar esto.
 
-    [!] `critic/` se salta a proposito: lo juzga R8, con reglas mas duras (tope
-    y banco de pruebas). Dos jueces sobre el mismo fichero darian dos veredictos
-    para un solo hecho.
+    [!] Ya no hay excepciones. La habia --`critic/`, que juzgaba R8 con reglas
+    mas duras-- y desaparecio con la carpeta el 2026-08-31: un color solo
+    significa algo dentro de un modulo.
     """
     d = os.path.join(raiz(), RING0_DIR.replace("/", os.sep))
     if not os.path.isdir(d):
         return {}
-    critic = os.path.join(raiz(), CRITIC_DIR.replace("/", os.sep))
     fuera = {}
     for dirpath, dirnames, filenames in os.walk(d):
         dirnames[:] = [x for x in dirnames if x not in ("target", ".git")]
-        if os.path.abspath(dirpath).startswith(os.path.abspath(critic)):
-            continue
         rs = [n for n in filenames if n.endswith(".rs")]
         if not any(n[:-3] in VIAS_MODULO for n in rs):
             continue
@@ -938,35 +875,6 @@ def carpetas_de_carriles():
                       errors="replace") as f:
                 grupo[n] = f.read()
         fuera[rel] = grupo
-    return fuera
-
-
-def ficheros_de_critic():
-    """`{ruta: (texto, lineas_de_codigo)}` de todo `.rs` bajo `critic/`.
-
-    Las lineas de CODIGO son las que no son comentario ni estan en blanco: el
-    mismo criterio del censo modular. En esta casa los comentarios pesan mas
-    que el codigo y contarlos convertiria el tope en una multa por explicarse.
-    """
-    d = os.path.join(raiz(), CRITIC_DIR.replace("/", os.sep))
-    if not os.path.isdir(d):
-        return {}
-    fuera = {}
-    for dirpath, dirnames, filenames in os.walk(d):
-        dirnames[:] = [x for x in dirnames if x not in ("target", ".git")]
-        for n in sorted(filenames):
-            if not n.endswith(".rs"):
-                continue
-            ruta = os.path.join(dirpath, n)
-            with open(ruta, "r", encoding="utf-8", errors="replace") as f:
-                txt = f.read()
-            codigo = 0
-            for l in txt.splitlines():
-                t = l.strip()
-                if t and not t.startswith("//") and not t.startswith("/*") and not t.startswith("*"):
-                    codigo += 1
-            rel = os.path.relpath(ruta, raiz()).replace(os.sep, "/")
-            fuera[rel] = (txt, codigo)
     return fuera
 
 
@@ -1030,12 +938,11 @@ def comprobar():
     quejas += [("R6 L6e el coste declarado", q) for q in r6_el_coste_declarado(decl, minimo_de_costes())]
     ries = declarantes_de_riesgo()
     quejas += [("R7 L6f el riesgo declarado", q) for q in r7_el_riesgo_declarado(ries, minimo_de_riesgos())]
-    crit = ficheros_de_critic()
-    quejas += [("R8 L6g lo que vive en critic/", q) for q in r8_lo_que_vive_en_critic(crit)]
+    r0 = ficheros_de_ring0()
+    quejas += [("R8 L6g el juez nombrado existe", q) for q in r8_el_juez_nombrado_existe(r0)]
     vias = carpetas_de_carriles()
     quejas += [("R9 L6g los carriles del modulo", q)
                for q in r9_los_carriles_del_modulo(vias)]
-    r0 = ficheros_de_ring0()
     quejas += [("R10 L6g el semaforo de Ring 0", q) for q in r10_el_semaforo(r0)]
 
     for nota in notas:
@@ -1059,14 +966,11 @@ def comprobar():
           % len(decl))
     print("clean: %d fichero(s) declaran [riesgo] (L6f) -- %d clase(s) en total"
           % (len(ries), sum(len(c) for c in ries.values())))
-    if crit:
-        print("clean: %d pieza(s) en critic/ (L6g), todas declaradas y con banco"
-              % len(crit))
-    else:
-        # ** Decirlo aunque este vacia. Una carpeta con jurisdiccion y sin
-        # inquilinos no es un fallo --las piezas entran de una en una, con su
-        # hash-- pero un silencio aqui se leeria como "no hay guardian".
-        print("clean: critic/ (L6g) esta vacia -- ninguna pieza ha mudado todavia")
+    jueces = sorted({RE_PRUEBA.search(x).group(1) for x in r0.values()
+                     if RE_PRUEBA.search(x)})
+    if jueces:
+        print("clean: %d fichero(s) nombran a su juez (L6g) -- %s"
+              % (sum(1 for x in r0.values() if RE_PRUEBA.search(x)), ", ".join(jueces)))
     if vias:
         print("clean: %d carpeta(s) de carriles (L6g), %d carril(es), todos con letrero"
               % (len(vias), sum(len([n for n in g if n != "mod.rs"]) for g in vias.values())))

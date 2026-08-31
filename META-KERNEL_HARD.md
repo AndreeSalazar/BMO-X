@@ -300,78 +300,108 @@ imposible de no ver.
   [!] Trinquete y no muro, con el mismo juez: `contrato.py`, regla R7, suelo en
   `RIESGOS.txt`.
 
-- **L6g. LOS CARRILES -- el nivel 3 (2026-08-30).** El nivel 2 **lista**; este
-  **ordena**. Las piezas de Ring 0 que importan se mudan a `ring0/critic/`, y
-  alli se reparten en **carriles**, un fichero por carril.
+- **L6g. EL SEMAFORO -- el nivel 3 (2026-08-30, cerrado el 08-31).** El nivel 2
+  **lista**; este **ordena**. Cada fichero de Ring 0 lleva su color, y los que
+  tienen dos masas se parten **por dentro de su propia carpeta**.
 
-  Peticion del dueno, y su imagen: *"algo de letrero de autopista (...) son para
-  facilitar en orden si un dia quiero cambiar, **como podre identificar?**
-  imaginate que sin eso seria dificil"*.
+  Peticion del dueno, y sus dos imagenes. La primera: *"algo de letrero de
+  autopista (...) si un dia quiero cambiar, **como podre identificar?**"*. La
+  segunda, un dia despues, y es la que fijo el trabajo: ***"es como poner
+  titulos"***.
 
-  ★★ **Y el eje NO es de que TIPO es la pieza: es QUE CUESTA CAMBIARLA.** Es la
-  correccion que hizo falta -- la primera version de esta ley repartia por
-  naturaleza (jueces, duenos, fronteras) y eso contesta *"que hace"*, que ya lo
-  contesta el nombre del fichero. La pregunta que no tenia respuesta era otra, y
-  es la unica que se hace de verdad:
+  ★★ **El eje NO es de que TIPO es la pieza: es QUE CUESTA CAMBIARLA.** Es la
+  correccion que hizo falta -- la primera version repartia por naturaleza
+  (jueces, duenos, fronteras) y eso contesta *"que hace"*, que ya lo dice el
+  nombre del fichero. La pregunta sin respuesta era otra:
 
   > **Voy a tocar esto. Que arrastro?**
 
-  ### Los carriles
+  ### Los tres colores, con las palabras del dueno
 
-  | carril | que dice | que exige antes de tocar |
+  | color | que dice | que exige antes de tocar |
   |---|---|---|
-  | **ROJA** | un fallo aqui **para la maquina y no deja autopsia**: no hay nadie debajo que la escriba | las cuatro reglas de abajo, y el hash de L6d |
-  | **AMARILLA** | **va a cambiar**, y al cambiar **arrastra a otro** | la cabecera nombra a quien arrastra, y se tocan JUNTOS |
-  | *(verde)* | se cambia sola: nadie depende de su forma | nada. **Y por eso no tiene fichero**: es todo lo demas |
+  | **ROJO** | *"critico"*: puede parar la maquina o corromperla callando | leerlo entero, y el hash de L6d si se mueve |
+  | **AMARILLO** | *"posible cambio"*: esta **en obras**, o es un instrumento que si se equivoca **no falla: CONVENCE** | mirar a quien arrastra; su cabecera lo nombra |
+  | **VERDE** | *"normal y seguro, puedes jugar lo que quieras"* | nada |
 
-  ★ **El verde no esta en la carpeta a proposito.** Un carril que contiene "casi
-  todo" no informa de nada, y llenar `critic/` con lo que no es critico haria
-  que abrirla dejara de contestar la pregunta. Se entra en la autopista, no se
-  vive en ella.
+  ★ **El verde SI tiene sitio, y esa es la diferencia con la primera version.**
+  Saber que algo es verde tambien es saber: es lo que permite cambiar algo
+  deprisa un dia que la maquina esta rota. Un semaforo con solo dos luces manda
+  a leer el fichero entero por si acaso, que es no tener semaforo.
 
-  ★★ **AMARILLA es el carril que este proyecto necesitaba y no tenia.** El
-  30-08, `phys::free_frame` y `vmm::caminable` juzgaban el mismo numero con dos
-  techos distintos --16 GiB contra 64 TiB-- y **cambiar uno sin el otro fue el
-  bug**. Eso no es una pieza critica: son DOS piezas atadas, y lo que faltaba
-  era el letrero que dijera que van juntas. Es `ESPEJO` de L6f, ascendido de
-  etiqueta a carril.
-
-  ### Las cuatro reglas de dentro de `critic/`
+  ### Como se declara
 
   ```text
-     1. DECLARAR NO ES OPCIONAL   `[cuesta]` y `[riesgo]` son obligatorios
-     2. DICE QUIEN LO PRUEBA      `//! [prueba]  <crate>`, y ese crate existe
-     3. NINGUN NUMERO SUELTO      todo tope sale de la constante que lo define
-     4. TOPE DURO DE 300 LINEAS   un juez que no cabe en una pantalla no es
-                                  un juez: es un sitio donde esconder un `if`
+     //! [carril]  ROJO      el bitmap de marcos: dar dos veces el mismo es
+     //!                     dos duenos de un byte
   ```
 
-  ★ La 3 es la que habria cazado lo del 30-08 sin arrancar la maquina:
-  `FISICA_MAX = 1 << 46` era un literal donde `PHYSMAP_SIZE` ya existia. Y la
-  forma buena de cumplirla no es vigilar el numero: es **quitarlo**. El juez que
-  nacio ese dia --`bmo-fisica-juicio`-- no tiene ni una constante de tamano: el
-  espejo se le pasa en cada llamada, asi que no puede tener un numero suelto
-  porque no tiene ningun numero.
+  **Todo `.rs` de Ring 0 lo lleva. Sin excepciones y SIN TRINQUETE**, al reves
+  que L6a: se empezo en **162 de 162**, y una regla que se cumple entera el
+  primer dia no necesita un suelo que tolere lo que ya estaba mal.
 
-  ★★ **Y la 2 se corrigio el mismo dia que se escribio, porque era hueca.**
-  Decia *"banco de pruebas propio"* -- y **el kernel no puede tener pruebas**:
-  `bmo.ps1` lo excluye del banco con su motivo escrito (*"binario bare-metal:
-  enlazado como test, `panic_impl` sale dos veces"*). O sea que la regla habria
-  aceptado un `#[cfg(test)]` **que no corre nunca**, que es la peor clase de
-  garantia: la que se ve.
+  ★★ **`[carril]` NO es `[cuesta]`, y por eso son dos etiquetas.** `[cuesta]`
+  dice **que se pierde si falla**; `[carril]` dice **que arriesgo si lo TOCO**.
+  `core/autopsy.rs` es la prueba de que no coinciden: coste `NADA` --al fallar
+  no rompe nada-- y carril `AMARILLO`, porque si miente manda la investigacion
+  al sitio que no es. Paso tres veces en una semana.
 
-  La casa ya tenia la respuesta buena y lleva meses usandola --`bmo-mmio-juicio`,
-  `bmo-disco-juicio`, `bmo-bex-gate`--: **el juez sale a un crate propio, sin
-  dependencias y sin `unsafe`, que SI corre bajo `cargo test`**, y la pieza de
-  Ring 0 dice cual es. R8 comprueba que ese crate exista: un nombre que no
-  resuelve es la misma mentira con otra cara.
+  ### Y cuando un fichero tiene DOS masas, se parte por dentro
 
-  [!] **La 3 no la comprueba la maquina, y hay que decirlo.** Un juez que
-  intentara distinguir `1 << 46` de una constante legitima acabaria adivinando,
-  y **un guardian que adivina da permiso con autoridad**. Esa la cobra la
-  revision humana; esta escrita para que se pueda citar. `contrato.py` (R8)
-  cobra las otras tres, y que el nombre del fichero sea un carril del
-  vocabulario.
+  El nombre del fichero pasa a ser el letrero: `mm/vmm/{roja,amarilla,verde}.rs`,
+  `plat/faults/`, `task/scheduler/`, `obj/fb/`, `mm/phys/`. Fuera no cambia
+  nada: `mod.rs` re-exporta.
+
+  ★ **Un modulo lleva los carriles que TIENE.** `task/scheduler` tiene DOS --lo
+  que cambia la tabla y lo que la lee-- y **tres ficheros donde solo hay dos
+  lineas de verdad es la aguja mejor escondida**. Donde no hay dos masas no se
+  parte: se declara y se dice por que.
+
+  ### [!] Lo que se retiro, y por que
+
+  Esta ley nacio con una carpeta global, `ring0/critic/`, donde se mudaban las
+  piezas criticas. **Se retiro el 2026-08-31 a peticion del dueno** --*"no me
+  gusta esa palabra ahi"*-- y el nombre solo era el sintoma:
+
+  > **Un color solo significa algo DENTRO de un modulo.** `critic/amarilla.rs`
+  > era *"amarilla respecto a que?"*: una senal ilegible justo en el sitio donde
+  > la senal ERA el objetivo.
+
+  Sus dos inquilinas volvieron a casa (`mm/vmm/amarilla.rs`, `mm/phys/amarilla.rs`)
+  y lo que las ataba viaja donde tiene que viajar: en su `[riesgo] ESPEJO`, no en
+  una carpeta. Lo que las obligaba a compartir fichero --cada una con SU techo,
+  16 GiB contra 64 TiB, dos pantallas azules el 30-08-- **ya no existe**: las dos
+  preguntan a `bmo-fisica-juicio`, que no tiene ni una constante de tamano.
+
+  ★ De sus cuatro reglas sobrevive la que valia sola, y ahora cubre **todo Ring
+  0** en vez de dos ficheros: **si dices quien te prueba, ese crate existe**. Las
+  otras tres eran de la carpeta -- el tope de 300 lineas y el `[prueba]`
+  obligatorio son de un JUEZ, y un carril de modulo no es un juez:
+  `task/scheduler/roja.rs` son 744 lineas de cambio de contexto y no puede ser
+  otra cosa.
+
+  ### Los guardianes
+
+  ```text
+     R8   si un fichero nombra su [prueba], ese crate existe
+     R9   una carpeta de carriles no MEZCLA, y cada carril declara
+          [cuesta] y [riesgo]. Las carpetas no se listan: SE DESCUBREN
+     R10  todo .rs de Ring 0 declara [carril]; el color es uno de los tres;
+          y si el fichero SE LLAMA como un carril, nombre y etiqueta coinciden
+  ```
+
+  ★ La tercera de R10 caza el **renombrado a medias**, que es como una pieza
+  cambiaria de color sin que nadie lo haya decidido. Y R10 dio su primer NO el
+  dia que se escribio: al partir `mm/phys.rs`, el `mod.rs` nuevo salio sin
+  color. *Una regla que no muerde a su autor el primer dia es decorativa.*
+
+  [!] **Lo que NINGUNA maquina comprueba, y hay que decirlo: que el color sea el
+  correcto.** Un guardian que intentara deducirlo acabaria adivinando, y **un
+  guardian que adivina da permiso con autoridad**. Los 162 se eligieron leyendo
+  la cabecera de cada uno mas una medida --quien toca metal (`asm!`,
+  `write_volatile`, puertos, MSR) y quien toca disco-- y el reparto resultante
+  (ROJO 61, AMARILLO 48, VERDE 53) es la unica prueba de que sirve: un arbol
+  de un solo color habria sido trabajo tirado.
 
   [!] **La mudanza paga L6d**: se demuestra con el compilador emitiendo los
   mismos bytes, no con los tests pasando. Una pieza entra **de una en una y con

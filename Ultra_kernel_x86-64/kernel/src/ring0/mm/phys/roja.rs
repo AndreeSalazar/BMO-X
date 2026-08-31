@@ -1,6 +1,6 @@
-//! Bitmap physical frame allocator (4 KiB frames, physical < PHYSMAP_SIZE).
+//! **CARRIL ROJO** -- EL BITMAP: quien es dueno de cada marco.
 //!
-//! [carril]  ROJO      el bitmap de marcos: dar dos veces el mismo es dos duenos de un byte
+//! [carril]  ROJO      dar dos veces el mismo marco es dos duenos de un byte
 //!
 //! [cuesta]  MAQUINA -- entregar dos veces el mismo marco no da un fallo: da
 //!           dos duenos del mismo byte, y el sintoma tres arranques despues.
@@ -10,37 +10,23 @@
 //!           misma direccion. El 30-08 los dos numeros no eran el mismo y la
 //!           maquina se paro. Si este techo cambia, ese cambia con el.
 //!
-//! ** NO SE PARTE: es ROJO de arriba abajo (L6g). `init`, `reserve_range`,
-//! `alloc_frame`, `alloc_frames_contig` y `free_frame` escriben el bitmap, y
-//! entregar dos veces el mismo marco es la clase de fallo que aparece tres
-//! arranques despues. Lo unico que solo MIRA son `tramos()` y `stats()`: dos
-//! funciones de cuatro lineas.
+//! [prueba]  bmo-mmio-juicio
 //!
-//! *** Y esa es exactamente la razon de no partirlo. Un `verde.rs` con dos
-//! lectores dentro no informa de nada, y **tres ficheros donde solo hay un
-//! carril es la aguja mejor escondida**. Un modulo lleva los carriles que
-//! TIENE; este tiene uno.
+//! ** Aqui NO SE TOCA UN SOLO BYTE DE MEMORIA. Se encienden y se apagan bits de
+//! un bitmap de 512 KiB que dice quien tiene que marco. Esa es la linea con el
+//! carril amarillo de al lado, y es exacta:
 //!
-//! Source of truth: the BootContext memory map *after* `s2_mem` already
-//! carved out its page-table pool (so the tables that built the physmap can
-//! never be handed out). On top of the map we apply the kernel's own
-//! reservations: legacy low memory, the kernel image, faggin/UEFI stage
-//! images, the BootContext page, the GOP framebuffer, the LAPIC/IOAPIC/HPET
-//! window, and the reserved Ring 3 payload/workspace ranges.
-//!
-//! The 512 KiB bitmap lives in `.bss` (identity-mapped, zeroed by `_start`).
-//! Coverage is exactly `mm::PHYSMAP_SIZE` (16 GiB): the allocator must never
-//! hand out a frame the physmap cannot reach, because `zero_frame` and every
-//! page-table access go through `phys_to_virt`. The 1 TiB path is: s2_mem
-//! sizes the physmap from the memory map (1 GiB pages), PHYSMAP_SIZE follows
-//! it, and the bitmap moves out of `.bss` into a boot-time carve.
+//! ```text
+//!    roja.rs      cambia el BITMAP    -> equivocarse reparte mal la RAM
+//!    amarilla.rs  cambia la MEMORIA   -> equivocarse borra 4 KiB de alguien
+//! ```
 
 use boot_context::BootContext;
 
-use super::{phys_to_virt, PAGE};
+use super::super::PAGE;
 use crate::ring0::plat::spin::SpinLock;
 
-const MAX_PHYS: u64 = super::PHYSMAP_SIZE; // 16 GiB -- capped by the physmap
+const MAX_PHYS: u64 = super::super::PHYSMAP_SIZE; // 16 GiB -- capped by the physmap
 const FRAME_SLOTS: usize = (MAX_PHYS / PAGE) as usize / 64; // 65536 words
 
 static mut BITMAP: [u64; FRAME_SLOTS] = [0; FRAME_SLOTS];
@@ -287,12 +273,6 @@ pub fn free_frame(phys: u64) {
         }
     }
 }
-
-/// Zero a frame through the physmap. -- MUDADA A `critic/amarilla.rs`.
-///
-/// ** Se fue al CARRIL AMARILLO (L6g) el 2026-08-30 con `vmm::caminable`. No
-/// por ser peligrosa: por **no poder tocarse sin la otra**. Ver el fichero.
-pub use crate::ring0::critic::amarilla::zero_frame;
 
 /// `(total_usable_frames, free_frames)`.
 pub fn stats() -> (u64, u64) {
