@@ -1,5 +1,12 @@
 //! **EL GATO** -- el logo de BMO-X, en dos mascaras de 1 bit.
 //!
+//! [cuesta]  NADA -- son pixeles. Un bit mal puesto se ve, y se ve enseguida.
+//!
+//! [riesgo]  -- ninguno. Ni decide, ni dereferencia, ni depende de nadie.
+//!
+//! ** NO SE PARTE: 479 lineas de UN solo carril. Es el caso que demuestra que
+//! los carriles se ponen donde hay mezcla y no por costumbre.
+//!
 //! ** GENERADO. No se edita a mano: sale de `docs/arte/gato_a_mascara.py`, que
 //! lee `docs/arte/bmo-x-gato.jpg`. Si el logo cambia, se vuelve a correr.
 //!

@@ -1,5 +1,15 @@
 //! **ADMITIR UN `.bex`**: de unos bytes a un proceso que puede correr.
 //!
+//! [cuesta]  MAQUINA -- decide que bytes se convierten en codigo ejecutable y
+//!           con que permisos. Un fallo aqui no da un `#PF`: da un programa
+//!           corriendo con mas de lo que pidio.
+//!
+//! [riesgo]  AJENO -- todo lo que lee viene de un fichero de fuera. Cada campo
+//!           de la cabecera BEF es un numero que lo escribio otro.
+//!
+//! ** NO SE PARTE: es ROJO de arriba abajo. No hay nada verde que separar, y
+//! tres ficheros donde solo hay un carril es la aguja mejor escondida.
+//!
 //! ## Por que soy un fichero (L6a, L6b)
 //!
 //! Contesto la pregunta mas larga del kernel: reservar marcos, aplicar
