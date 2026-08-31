@@ -1,6 +1,19 @@
 //! **La AUTOPSIA de un fallo de Ring 3.** Lo que el kernel guarda cuando mata
 //! una tarea, para que se pueda leer despues y mandar.
 //!
+//! [cuesta]  NADA -- **esto no mata a nadie: lo cuenta**. Corre despues de que
+//!           la tarea ya este muerta, y equivocarse aqui no cambia lo que paso.
+//!
+//! [riesgo]  SILENCIO -- y por eso vale mas de lo que parece. Aqui equivocarse
+//!           NO falla: IMPRIME. El 30-08 este fichero dijo `-> bmo_valor+0x2c`
+//!           debajo de un veredicto de PUNTERO NULO, y cortaba la ultima linea
+//!           del programa sin marcarlo. Las dos mandaban a mirar donde no era.
+//!
+//! ** NO SE PARTE EN CARRILES, y es una decision: **todo el fichero es el mismo
+//! carril**. Es el amarillo de Ring 3 entero -- se toca a menudo y sus fallos
+//! se creen. Partirlo daria un fichero lleno y dos vacios, y un letrero
+//! repetido donde no hace falta deja de significar algo (L6e).
+//!
 //! # Por que existe, y por que aqui
 //!
 //! El aislamiento de faults ya funcionaba: una tarea de Ring 3 revienta, el
