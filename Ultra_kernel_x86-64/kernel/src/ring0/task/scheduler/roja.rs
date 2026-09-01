@@ -307,7 +307,15 @@ pub(super) struct PilaMuerta {
     pub tick: u64,
 }
 
-pub(super) const MORGUE_FICHAS: usize = 8;
+// ** TREINTA Y DOS Y NO OCHO, y el motivo salio del primer arranque.
+//
+// Con ocho, "la morgue no lo reconoce" tiene DOS lecturas -- o la pila no la
+// libero `reap`, o si la libero y su ficha ya se habia ido por el anillo. Un
+// resultado con dos lecturas no cierra nada, y este es EL resultado del que
+// cuelga el plan entero (`docs/plan/PLAN_LA_PILA_HUERFANA.md`, seccion 6).
+//
+// Treinta y dos fichas son 1 KiB de `.bss`. La ambiguedad costaba un arranque.
+pub(super) const MORGUE_FICHAS: usize = 32;
 
 pub(super) static mut MORGUE: [PilaMuerta; MORGUE_FICHAS] = [PilaMuerta {
     tid: 0,
@@ -317,6 +325,13 @@ pub(super) static mut MORGUE: [PilaMuerta; MORGUE_FICHAS] = [PilaMuerta {
 }; MORGUE_FICHAS];
 
 pub(super) static mut MORGUE_N: usize = 0;
+
+/// Cuantas pilas se han liberado en total. Se dice en la pantalla azul junto al
+/// veredicto: si pasa de `MORGUE_FICHAS`, "no lo reconoce" vuelve a tener dos
+/// lecturas y hay que decirlo en vez de callarlo.
+pub fn pilas_liberadas() -> u64 {
+    unsafe { MORGUE_N as u64 }
+}
 
 fn anotar_muerta(tid: u32, base: u64, paginas: u64) {
     unsafe {
