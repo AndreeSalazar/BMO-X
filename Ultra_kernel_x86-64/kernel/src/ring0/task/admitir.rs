@@ -409,7 +409,29 @@ pub(crate) fn admit_payload_desde(
         // veinte lineas mas arriba, escrita el dia que le paso a los hashes. La
         // lei al escribirla y use la otra igual.
         let leidos = origen.traer_suelto(plan.requisitos_file_offset as usize, &mut buf[..n]);
-        if let Some(tabla) = bmo_carga_juicio::Tabla::abrir(&buf[..leidos]) {
+        // ** SI NO SE PUDO LEER LA TABLA, SE DICE. (2026-08-31)
+        //
+        // `Tabla::abrir` valida entero --magic, cuantos, y que los motivos no
+        // se salgan-- asi que una lectura CORTADA devuelve `None` y el gate se
+        // salta en silencio: el programa entra sin que nadie mirara lo que
+        // declaraba.
+        //
+        // *** Eso es "fallar abriendo", y para una regla nueva es la eleccion
+        // correcta --un `.bex` legitimo no se queda fuera por un tope mio-- pero
+        // **callarlo no lo es**. Un gate que a veces no juzga y nunca lo dice es
+        // un gate que un dia deja de juzgar del todo sin que nada cambie.
+        if plan.requisitos_file_size as usize > REQUISITOS_MAX {
+            crate::ring0::cabina::warn(
+                "carga", "la tabla de requisitos no cabe en el buffer: NO se juzga",
+                plan.requisitos_file_size);
+        }
+        let tabla = bmo_carga_juicio::Tabla::abrir(&buf[..leidos]);
+        if tabla.is_none() {
+            crate::ring0::cabina::warn(
+                "carga", "hay seccion de requisitos y NO se pudo leer: entra sin juzgar",
+                leidos as u64);
+        }
+        if let Some(tabla) = tabla {
             // Solo lo OBLIGATORIO y solo lo que se mide en BYTES. Un requisito
             // opcional no es una condicion de arranque, y una mascara de CPU no
             // se suma a una cantidad de memoria.
