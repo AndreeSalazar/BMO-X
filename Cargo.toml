@@ -30,6 +30,7 @@ members = [
     "platform/shared/bmo-mmio-juicio",
     # El juez del physmap. Nacio el 2026-08-30, de dos pantallas azules
     # seguidas por el mismo techo escrito a mano en el sitio equivocado.
+    "platform/shared/bmo-carga-juicio",
     "platform/shared/bmo-fisica-juicio",
     "platform/shared/bmo-channel",
     # La ciudad de neon del arranque: la dibuja la CPU, no se guarda.

@@ -19,6 +19,8 @@ bitflags = "2.13.0"
 # El unico BLAKE3 del sistema. Vivia dentro de esta crate; salio para que el
 # kernel pueda usarlo sin arrastrar `alloc`. Ver src/bef/blake3.rs.
 bmo-hash = { path = "../../shared/bmo-hash" }
+# El lector de la tabla de requisitos, sin `alloc`, compartido con Ring 0.
+bmo-carga-juicio = { path = "../../shared/bmo-carga-juicio" }
 
 [dev-dependencies]
 # Solo para las PRUEBAS: los offsets compartidos con el cargador del kernel.

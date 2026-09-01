@@ -14,6 +14,7 @@ version = "2.0.0"
 dependencies = [
  "bitflags",
  "bmo-bex-gate",
+ "bmo-carga-juicio",
  "bmo-hash",
 ]
 
@@ -66,6 +67,10 @@ dependencies = [
  "bmo-sem-asm",
  "bmo-verify",
 ]
+
+[[package]]
+name = "bmo-carga-juicio"
+version = "0.1.0"
 
 [[package]]
 name = "bmo-channel"
@@ -215,6 +220,7 @@ dependencies = [
  "bmo-audio",
  "bmo-bex-gate",
  "bmo-block",
+ "bmo-carga-juicio",
  "bmo-channel",
  "bmo-ciudad",
  "bmo-dibujo",
