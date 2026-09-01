@@ -156,6 +156,10 @@ pub extern "C" fn bus_thread(_arg: u64) -> ! {
         // cerrojo del planificador puesto y no puede hacer el trabajo alli.
         // Ver `core/emergencia.rs`.
         crate::ring0::core::emergencia::atender();
+        // Y la purga que haya pedido la tecla. Aqui se puede ceder el CPU:
+        // este es un hilo de KERNEL, asi que la limpieza de Ring 3 no se lo
+        // lleva por delante. Ver `core/purga.rs`.
+        crate::ring0::core::purga::atender();
         // ** Y EL RITMO DEL RADAR, en el mismo turno y por la misma razon.
         //
         // Cerrar la ventana son 40 restas UNA VEZ POR SEGUNDO -- este hilo late

@@ -70,6 +70,57 @@
 //! sobrevivan a la purga no es una fuga: es el motivo de que existan.
 
 use crate::ring0::task::scheduler;
+use core::sync::atomic::{AtomicBool, Ordering};
+
+/// **Hay una purga pedida?** La pone la tecla, la recoge el hilo del bus.
+///
+/// # *** POR QUE NO SE PURGA DONDE SE PULSA (corregido el 2026-08-31)
+///
+/// La primera version llamaba a [`purgar`] desde `segunda_llamada`, en
+/// `dev/usb/rescate.rs`. Y ese sitio se alcanza por DOS caminos:
+///
+/// ```text
+///    watch_rescue()      <- el hilo del bus. Hilo de kernel, pila propia. OK
+///    tecla_del_dueno()   <- desde `poll_ascii`, o sea DENTRO DE UN SYSCALL
+/// ```
+///
+/// ** Por el segundo, `purgar()` corre **dentro de una llamada de una tarea de
+/// Ring 3**, y entonces hace dos cosas que no puede hacer:
+///
+/// 1. marca `Exited` **a la propia tarea que llamo** --es `is_user`--, y
+/// 2. cede el CPU esperando a `reap`. Como ya esta muerta, **no vuelve nunca**.
+///
+/// El resultado es que la purga ocurre y el parte no se imprime jamas: se
+/// limpia y no se cuenta, que es exactamente el defecto que este fichero vino a
+/// arreglar, reaparecido por la puerta de atras.
+///
+/// > Un instrumento que se ejecuta en el contexto equivocado no da un dato
+/// > peor: **da el mismo silencio que habia antes de escribirlo.**
+///
+/// *** La casa ya tenia la respuesta y esta escrita en `core/emergencia.rs`:
+/// *"Solo se APUNTA... Quien lo recoge es el hilo del bus."* Esto es lo mismo,
+/// con su propia bandera para no mezclar dos motivos --la patada del kernel y
+/// la peticion del dueno-- en un solo camino.
+static PEDIDA: AtomicBool = AtomicBool::new(false);
+
+/// La tecla PIDE. No purga.
+pub fn pedir() {
+    PEDIDA.store(true, Ordering::SeqCst);
+}
+
+/// El hilo del bus RECOGE. Devuelve `true` si hubo purga.
+///
+/// [!] Aqui si se puede ceder el CPU: `bus_thread` es un hilo de kernel con su
+/// propia pila y su propio turno, y `is_user` es falso -- la purga no se lleva
+/// por delante a quien la esta ejecutando.
+pub fn atender() -> bool {
+    if !PEDIDA.swap(false, Ordering::SeqCst) {
+        return false;
+    }
+    let parte = purgar();
+    contar(&parte);
+    true
+}
 
 /// Cuantas veces se cede el CPU esperando a que `reap` recoja.
 ///

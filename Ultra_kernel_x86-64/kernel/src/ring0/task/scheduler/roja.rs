@@ -865,6 +865,28 @@ pub fn limpieza_de_ring3() -> (u32, u64) {
     let mut muertas = 0u32;
     let mut pids: [u32; MAX_TASKS] = [0; MAX_TASKS];
     let mut n = 0usize;
+    // ** TRES PASES, Y EL ORDEN NO ES DE GUSTO (corregido el 2026-08-31).
+    //
+    // La primera version marcaba `Exited` dentro del cerrojo y revocaba
+    // despues. Es el orden AL REVES del que sigue todo el kernel, y las dos
+    // rutas de muerte lo dicen con la misma frase:
+    //
+    //     "Capabilities die with the process; every outstanding handle becomes
+    //      invalid before the final switch (no SCHED/CAP lock nesting: revoke
+    //      completes first)."  -- syscall/mod.rs, EXIT
+    //     "same order as EXIT: revoke completes before the final switch"
+    //                                              -- plat/faults/roja.rs
+    //
+    // *** Y el precio de invertirlo es EXACTAMENTE lo que la purga viene a
+    // medir. Entre soltar el cerrojo y llamar a `revoke_all` cabe un tic del
+    // temporizador, y ese tic trae `schedule_locked` -> `reap` -> destruir el
+    // espacio de la tarea. Cuando `revoke_all` llegara, `loan::process_died`
+    // pediria el `cr3` de una ranura ya vacia y **lo prestado no volveria**.
+    //
+    // > Una limpieza que fuga por invertir dos pasos es peor que no limpiar:
+    // > sale con un numero, y el numero dice que fue bien.
+    //
+    // 1. Bajo el cerrojo, se APUNTA quien --sin tocar ni un estado--.
     {
         let _g = SCHED_LOCK.lock();
         let s = sched();
@@ -877,18 +899,33 @@ pub fn limpieza_de_ring3() -> (u32, u64) {
             }
             pids[n] = s.tasks[i].pid;
             n += 1;
-            s.tasks[i].state = TaskState::Exited;
-            muertas += 1;
         }
     }
-    // ** Las capabilities se sueltan FUERA del cerrojo del planificador.
-    //
-    // `revoke_all` toca la pantalla, el audio, el disco y la memoria prestada, y
-    // cada uno de esos tiene su propio cerrojo. Hacerlo con `SCHED_LOCK` en la
-    // mano es la receta del abrazo mortal, y en la ruta de una tecla de rescate
-    // colgarse es lo unico que no se puede permitir: **es el ultimo recurso**.
+    // 2. FUERA del cerrojo, se revoca. `revoke_all` toca pantalla, audio, disco
+    //    y memoria prestada, y cada uno tiene el suyo: hacerlo con `SCHED_LOCK`
+    //    en la mano es la receta del abrazo mortal.
     for pid in pids.iter().take(n) {
         crate::ring0::obj::cap::revoke_all(*pid);
+    }
+    // 3. Y AHORA se marcan. Con las capabilities ya sueltas, `reap` puede
+    //    recoger cuando quiera sin que quede nada colgando.
+    //
+    //    [!] Se vuelve a mirar el estado: entre el paso 1 y este, una tarea
+    //    pudo morirse sola. Marcar `Exited` lo que ya lo esta es inofensivo;
+    //    marcar una ranura que ya se reciclo, no -- por eso se compara el `pid`
+    //    y no el indice.
+    {
+        let _g = SCHED_LOCK.lock();
+        let s = sched();
+        for i in 1..s.tasks.len() {
+            if !s.tasks[i].is_user || s.tasks[i].state == TaskState::Empty {
+                continue;
+            }
+            if pids[..n].contains(&s.tasks[i].pid) && s.tasks[i].state != TaskState::Exited {
+                s.tasks[i].state = TaskState::Exited;
+                muertas += 1;
+            }
+        }
     }
     (muertas, libres_antes)
 }

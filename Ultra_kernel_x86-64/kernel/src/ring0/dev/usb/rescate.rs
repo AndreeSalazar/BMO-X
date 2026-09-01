@@ -201,9 +201,12 @@ fn segunda_llamada() -> bool {
     // Las dos dejan la maquina en un estado que nadie puede nombrar. Ahora
     // `core::purga` cierra, **cede el CPU hasta que `reap` recoge**, y dice
     // cuantos marcos y cuantas ranuras volvieron. Ver `core/purga.rs`.
-    let parte = crate::ring0::core::purga::purgar();
-    crate::ring0::core::purga::contar(&parte);
-    echado.is_some() || parte.tareas > 0
+    // [!] Se PIDE, no se purga. Esta funcion se alcanza tambien desde
+    // `poll_ascii`, o sea DENTRO DE UN SYSCALL de Ring 3 -- y purgar ahi marca
+    // muerta a la tarea que llamo y cede el CPU, asi que no vuelve nunca y el
+    // parte no se imprime jamas. El motivo entero, en `core/purga.rs`.
+    crate::ring0::core::purga::pedir();
+    echado.is_some()
 }
 
 /// ESC as a **Set 1** scancode, which is what the raw queue carries (`hid_to_ps2`
