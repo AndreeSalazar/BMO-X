@@ -288,6 +288,17 @@ pub fn context_rsp_of(tid: u32) -> u64 {
 /// un registro historico de ocho entries, y como ese registro no baja nunca,
 /// tras ocho lanzamientos --cinco de ellos los demos del arranque-- la maquina no
 /// admitia un programa mas hasta reiniciar.
+/// **Queda alguna tarea de Ring 3 en pie?** La purga cede el CPU hasta que no.
+///
+/// `Exited` cuenta como que SI queda: la tarea existe hasta que `reap` la
+/// recoge, y lo que la purga espera es precisamente esa recogida. Contarla como
+/// ida seria declarar limpio un sitio que todavia tiene inquilino.
+pub fn queda_alguna_de_ring3() -> bool {
+    let s = unsafe { &*core::ptr::addr_of!(SCHEDULER) };
+    s.tasks.iter().any(|t| t.is_user && t.state != TaskState::Empty)
+}
+
+
 pub fn hay_hueco() -> bool {
     let _g = SCHED_LOCK.lock();
     let s = sched();

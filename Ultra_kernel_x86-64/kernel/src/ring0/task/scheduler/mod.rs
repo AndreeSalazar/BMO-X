@@ -42,7 +42,7 @@ pub use roja::{
 pub use verde::{
     context_rsp_of, counts, cr3_de_pid, current_pid, current_state, current_tid, duenno_de_pila,
     fue_de_quien,
-    hay_hueco, huecos_libres, ns_to_tsc, pid_de, quien_corre, rdtsc, rdtsc_serial, switch_snap,
+    hay_hueco, huecos_libres, queda_alguna_de_ring3, ns_to_tsc, pid_de, quien_corre, rdtsc, rdtsc_serial, switch_snap,
     tid_de, tid_state, tsc_freq, user_switches, vive, TaskState, DEFAULT_QUANTUM_TICKS, MAX_TASKS,
     QUANTUM_DELANTE,
 };

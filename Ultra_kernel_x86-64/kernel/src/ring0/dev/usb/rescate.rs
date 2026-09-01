@@ -187,14 +187,23 @@ fn segunda_llamada() -> bool {
     //
     // El desmontaje de verdad lo hace `reap`, que es el unico sitio que ya sabe
     // hacerlo bien. Esto solo dice quienes mueren.
-    let (muertas, libres_antes) = crate::ring0::task::scheduler::limpieza_de_ring3();
-    if muertas > 0 {
-        crate::ring0::cabina::warn(
-            "patada", "Ring 3 ENTERO cerrado: tareas marcadas", muertas as u64);
-        crate::ring0::cabina::addr(
-            "patada", "marcos libres ANTES de recoger", libres_antes);
-    }
-    echado.is_some() || muertas > 0
+    // *** Y NO SOLO MARCAR: PURGAR Y CONTAR.
+    //
+    // ** La primera version marcaba las tareas y se iba, y el dueno lo llamo
+    // por su nombre: *"se siente que es superficial"*. Tenia razon, y el
+    // defecto era EL MISMO que el de la patada vieja, un nivel mas arriba:
+    //
+    // ```text
+    //    la patada vieja   echaba al dueno de la pantalla y a nadie mas
+    //    la limpieza v1    marcaba a todos... y no comprobaba nada
+    // ```
+    //
+    // Las dos dejan la maquina en un estado que nadie puede nombrar. Ahora
+    // `core::purga` cierra, **cede el CPU hasta que `reap` recoge**, y dice
+    // cuantos marcos y cuantas ranuras volvieron. Ver `core/purga.rs`.
+    let parte = crate::ring0::core::purga::purgar();
+    crate::ring0::core::purga::contar(&parte);
+    echado.is_some() || parte.tareas > 0
 }
 
 /// ESC as a **Set 1** scancode, which is what the raw queue carries (`hid_to_ps2`
