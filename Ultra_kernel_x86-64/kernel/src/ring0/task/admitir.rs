@@ -9,6 +9,9 @@
 //! [riesgo]  AJENO -- todo lo que lee viene de un fichero de fuera. Cada campo
 //!           de la cabecera BEF es un numero que lo escribio otro.
 //!
+//! [prueba]  bmo-carga-juicio -- el juez de la regla 7: la comparacion que
+//!           decide si lo DECLARADO cabe, con el caso de "cabe justo" dentro.
+//!
 //! ** NO SE PARTE: es ROJO de arriba abajo. No hay nada verde que separar, y
 //! tres ficheros donde solo hay un carril es la aguja mejor escondida.
 //!
@@ -134,6 +137,43 @@ const MAX_FIRMA: usize = 8 + bex::MAX_BEX_SECTIONS * 40;
 /// secciones, que es todo lo que hace falta para hacer el plan. **El resto ya no
 /// se trae de antemano** -- se pide por `origen` seccion a seccion, y cada una
 /// cae directamente en los marcos de su proceso.
+/// Cuanto de la seccion de requisitos se lee. Ocho requisitos con su motivo
+/// entero (160 B) caben de sobra; un `.bex` que declare mas de eso se juzga por
+/// lo que quepa aqui, y eso se dice: **truncar en silencio seria admitir por lo
+/// que no se leyo.**
+const REQUISITOS_MAX: usize = 2048;
+
+/// El buffer, `static` y no en la pila: la de esta tarea son 8 KiB y esto es la
+/// cuarta parte. Es seguro porque la admision esta serializada por `EN_USO` en
+/// `launch.rs` -- el mismo candado que protege el buffer de la imagen.
+static mut REQUISITOS_BUF: [u8; REQUISITOS_MAX] = [0; REQUISITOS_MAX];
+
+/// **Lo que hay que dejarle a la maquina despues de admitir. 64 MiB.**
+///
+/// Un programa que declara exactamente lo que hay entra... y deja el sistema sin
+/// un marco para la pila del siguiente hilo, el buffer de DMA del disco o la
+/// pagina de rebote. La admision dice que si y la maquina muere despues, cuando
+/// ya no hay nadie para decir que no.
+///
+/// > Aceptar lo que cabe JUSTO no es ser generoso: es mover el fallo a un sitio
+/// > donde ya no hay quien lo cuente.
+///
+/// [!] El numero vive AQUI y no dentro del juez, a proposito: `bmo-carga-juicio`
+/// no tiene ni una constante de tamano, igual que `bmo-fisica-juicio`. Un juez
+/// que no puede inventarse el techo no puede equivocarse en el techo.
+const MARGEN_DEL_KERNEL: u64 = 64 * 1024 * 1024;
+
+/// Lo ultimo que un `.bex` declaro, y por que se rechazo el ultimo. Lo pinta
+/// `run`: un "no" que no se puede leer es un "no" que no se puede contestar.
+pub static mut ULTIMO_DECLARADO: u64 = 0;
+pub static mut RECHAZO_PIDE: u64 = 0;
+pub static mut RECHAZO_LIBRE: u64 = 0;
+/// El motivo del ultimo rechazo, COPIADO. No un `&str`: prometer `'static`
+/// sobre un prestamo del buffer seria mentirle al compilador para ahorrar 160
+/// bytes de `.bss`.
+pub static mut RECHAZO_MOTIVO: [u8; 160] = [0; 160];
+pub static mut RECHAZO_MOTIVO_N: usize = 0;
+
 pub(crate) fn admit_payload_desde(
     prologo: &[u8],
     origen: &mut Origen,
@@ -327,6 +367,78 @@ pub(crate) fn admit_payload_desde(
                     crate::ring0::cabina::info("firma", confianza::nombre(clave), clave as u64);
                 }
             }
+        }
+    }
+
+    // == ** LA REGLA 7: DECIR QUE NO ANTES DE RESERVAR EL PRIMER MARCO =======
+    //
+    // `docs/identidad/LA_RAM.md`, Parte III, regla 7 --*"lo que se declara, se
+    // cumple o se grita"*-- y su Parte IV lo remata:
+    //
+    // > *"hoy se dice 'no' al quinto `malloc`; con el manifiesto se puede decir
+    // > 'no' ANTES DE EMPEZAR, que es cuando el fallo no cuesta nada."*
+    //
+    // ** La seccion `Requisitos = 0x15` tenia formato, lector, y **cada `.bex`
+    // que sale del escritor la trae escrita desde el 2026-08-10**. Lo unico que
+    // faltaba era esto: que alguien la leyera. El kernel importaba
+    // `SECTION_REQUISITOS` y no la usaba en ninguna linea.
+    //
+    // *** Y el sitio es ESTE y no otro. Cinco lineas mas abajo empieza el pase
+    // 2, que reserva marcos, crea tablas de pagina y monta un espacio de
+    // direcciones. Decir que no despues de eso obliga a DESMONTARLO -- que es
+    // justo la ruta que lleva dos dias dando pantallas azules. **El no barato
+    // es el que se da antes de la primera reserva.**
+    if plan.requisitos_file_size > 0 {
+        let n = (plan.requisitos_file_size as usize).min(REQUISITOS_MAX);
+        let buf = unsafe { &mut *core::ptr::addr_of_mut!(REQUISITOS_BUF) };
+        let leidos = origen.traer(plan.requisitos_file_offset as usize, &mut buf[..n]);
+        if let Some(tabla) = bmo_carga_juicio::Tabla::abrir(&buf[..leidos]) {
+            // Solo lo OBLIGATORIO y solo lo que se mide en BYTES. Un requisito
+            // opcional no es una condicion de arranque, y una mascara de CPU no
+            // se suma a una cantidad de memoria.
+            let mut pide = 0u64;
+            for r in tabla.iter() {
+                if !r.es_obligatorio() || r.unidad != bmo_carga_juicio::UNIDAD_BYTES {
+                    continue;
+                }
+                if r.clase == bmo_carga_juicio::CLASE_MEMORIA
+                    || r.clase == bmo_carga_juicio::CLASE_MONTON
+                {
+                    pide = pide.saturating_add(r.cantidad);
+                }
+            }
+            let (_, marcos_libres) = phys::stats();
+            let libre = marcos_libres.saturating_mul(mm::PAGE);
+            let v = bmo_carga_juicio::cabe(pide, libre, MARGEN_DEL_KERNEL);
+            if !v.admite() {
+                // ** EL MOTIVO VIAJA CON EL RECHAZO, y por eso el motivo es un
+                // campo del formato y no un comentario. Un "no" sin razon manda
+                // a mirar el kernel cuando quien lo sabe es quien hizo el
+                // programa.
+                let mut peor = "";
+                for r in tabla.iter() {
+                    if r.es_obligatorio() && r.cantidad > 0 {
+                        peor = tabla.motivo(&r);
+                        break;
+                    }
+                }
+                crate::ring0::cabina::fault(
+                    "carga", "RECHAZADO por lo que DECLARA: bytes que pide", pide);
+                crate::ring0::cabina::addr("carga", "bytes libres en la maquina", libre);
+                if !peor.is_empty() {
+                    crate::ring0::cabina::count("carga", peor, pide);
+                }
+                unsafe {
+                    RECHAZO_PIDE = pide;
+                    RECHAZO_LIBRE = libre;
+                    let b = peor.as_bytes();
+                    let n = b.len().min(RECHAZO_MOTIVO.len());
+                    RECHAZO_MOTIVO[..n].copy_from_slice(&b[..n]);
+                    RECHAZO_MOTIVO_N = n;
+                }
+                return None;
+            }
+            unsafe { ULTIMO_DECLARADO = pide };
         }
     }
 

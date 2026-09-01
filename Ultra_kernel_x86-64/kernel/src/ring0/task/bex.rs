@@ -81,6 +81,21 @@ pub struct BexLoadPlan {
     /// `usize::MAX` si no hay.
     pub relocs_indice: usize,
 
+    /// * DONDE ESTA LA TABLA DE REQUISITOS, si la hay. **Regla 7 de `LA_RAM.md`.**
+    ///
+    /// Tampoco es un `BexMapping`: no se mapea, se LEE -- y se lee **antes de
+    /// asignar el primer marco**, que es la razon entera de que exista.
+    ///
+    /// > *"hoy se dice 'no' al quinto `malloc`; con el manifiesto se puede
+    /// > decir 'no' antes de empezar, que es cuando el fallo no cuesta nada"*
+    /// > -- `docs/identidad/LA_RAM.md`, Parte IV
+    ///
+    /// [!] `0` en los dos = el `.bex` no declara. **No es un fallo**: los
+    /// binarios de antes de esta regla no la llevan, y rechazarlos seria romper
+    /// el disco del dueno el dia que se enciende. Ver `bmo-carga-juicio`.
+    pub requisitos_file_offset: u64,
+    pub requisitos_file_size: u64,
+
     /// ** DONDE ESTA LA TABLA DE HASHES, para que la comprobacion la haga QUIEN
     /// COPIA y no este modulo.
     ///
@@ -248,6 +263,8 @@ pub fn inspect(bytes: &[u8], tam_fichero: usize) -> Result<BexLoadPlan, BexError
         relocs_file_offset: 0,
         relocs_file_size: 0,
         relocs_indice: usize::MAX,
+        requisitos_file_offset: 0,
+        requisitos_file_size: 0,
         firma_file_offset: 0,
         firma_file_size: 0,
         firma_indice: usize::MAX,
@@ -274,9 +291,25 @@ pub fn inspect(bytes: &[u8], tam_fichero: usize) -> Result<BexLoadPlan, BexError
             plan.firma_indice = s.indice;
             continue;
         }
-        // * Y lo demas --manifiesto, requisitos, recursos, simbolos, o un tipo
-        // que este kernel no conoce-- se valido y no se mapea. Ver
-        // `gate::se_carga`: un tipo desconocido se SALTA, no se rechaza.
+        // * LOS REQUISITOS: lo que el programa DECLARA que va a pedir.
+        //
+        // ** Esta seccion llevaba escrita desde el 2026-08-10 --cada `.bex` que
+        // sale del escritor la trae-- y el kernel importaba su constante y no
+        // la leia en ninguna linea. Era la regla 7 de `LA_RAM.md` declarada y
+        // sin cumplir, que es la misma forma que ya tuvieron `Resources 0x0B` y
+        // `Manifest 0x09`: un hueco del formato que nadie abre.
+        //
+        // Aqui solo se apunta DONDE esta. Quien la lee es `admitir`, y la lee
+        // antes de reservar nada.
+        if s.kind == gate::REQUISITOS {
+            plan.requisitos_file_offset = s.file_offset;
+            plan.requisitos_file_size = s.file_size;
+            skipped += 1;
+            continue;
+        }
+        // * Y lo demas --manifiesto, recursos, simbolos, o un tipo que este
+        // kernel no conoce-- se valido y no se mapea. Ver `gate::se_carga`: un
+        // tipo desconocido se SALTA, no se rechaza.
         if !gate::se_carga(s.kind) {
             skipped += 1;
             continue;

@@ -306,6 +306,31 @@ regla 1, y es lo que si se hace.
 **7. Lo que se declara, se cumple o se grita.**
 Ver la Parte IV.
 
+★★ **[x] HECHA el 2026-08-31.** La seccion `Requisitos = 0x15` tenia formato,
+lector, y **cada `.bex` que sale del escritor la traia escrita desde el 10-08**.
+Lo unico que faltaba era que alguien la leyera: el kernel importaba
+`SECTION_REQUISITOS` en `task/bex.rs` y no la usaba en ninguna linea.
+
+Ahora `admitir` la lee y decide **antes de reservar el primer marco**, con
+`bmo-carga-juicio` (6 pruebas). Y el "no" trae el motivo que escribio quien hizo
+el programa, porque el motivo es un campo del formato y viaja dentro del `.bex`:
+
+```text
+  run apps/gordo.bex
+  rechazado   el `.bex` no paso la admision
+  declara     18,0 MB  y libres hay 12,3 MB
+  dice        "el WAD entero residente para el modo pesadilla"
+```
+
+⚠ **Y el margen no es cero: 64 MiB.** Un programa que declara exactamente lo que
+hay entra y deja la maquina sin un marco para la pila del siguiente hilo. La
+admision dice que si y la maquina muere despues, **cuando ya no hay nadie para
+decir que no**. El numero vive en `admitir.rs`, no en el juez: un juez sin
+constantes de tamano no puede equivocarse en el techo.
+
+[!] Un `.bex` que NO declara entra como entraba antes. Trinquete, no muro: lo
+nuevo obliga y lo viejo se tolera con su motivo escrito.
+
 ---
 
 # PARTE IV -- La burocracia inteligente que verifica

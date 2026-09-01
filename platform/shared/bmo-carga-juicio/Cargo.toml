@@ -1,0 +1,16 @@
+[package]
+name = "bmo-carga-juicio"
+version = "0.1.0"
+edition = "2021"
+description = "El juez de la admision: cabe lo que este programa DECLARA que va a pedir?"
+license = "Techne"
+
+[lib]
+
+# ** CERO DEPENDENCIAS, por el mismo motivo que `bmo-fisica-juicio` y
+# `bmo-mmio-juicio`.
+#
+# Lo consume Ring 0 --sin asignador, en el metal, dentro del gate de admision--
+# y `cargo test` en el anfitrion. Una sola dependencia que arrastrara `alloc` lo
+# dejaria fuera del kernel, que es el consumidor por el que existe.
+[dependencies]

@@ -258,6 +258,23 @@ pub(crate) fn shell_run(arg: &[u8]) {
         }
         Err(f) => {
             row("rechazado", |l| { l.txt(f.motivo()); });
+            // ** Y SI FUE POR LO QUE DECLARA, LOS NUMEROS Y EL MOTIVO DEL AUTOR.
+            //
+            // Regla 7 de `LA_RAM.md`. Un "no" sin razon manda a mirar el kernel
+            // cuando quien lo sabe es quien hizo el programa -- por eso el
+            // motivo es un campo del formato y viaja DENTRO del `.bex`.
+            let pide = unsafe { crate::ring0::task::admitir::RECHAZO_PIDE };
+            if pide > 0 {
+                row("declara", |l| { l.size(pide); l.txt("  y libres hay "); 
+                    l.size(unsafe { crate::ring0::task::admitir::RECHAZO_LIBRE }); });
+                let n = unsafe { crate::ring0::task::admitir::RECHAZO_MOTIVO_N };
+                if n > 0 {
+                    let m = unsafe { &crate::ring0::task::admitir::RECHAZO_MOTIVO[..n] };
+                    if let Ok(s) = core::str::from_utf8(m) {
+                        row("dice", |l| { l.txt(s); });
+                    }
+                }
+            }
         }
     }
 }
