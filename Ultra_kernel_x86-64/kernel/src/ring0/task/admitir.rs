@@ -391,7 +391,24 @@ pub(crate) fn admit_payload_desde(
     if plan.requisitos_file_size > 0 {
         let n = (plan.requisitos_file_size as usize).min(REQUISITOS_MAX);
         let buf = unsafe { &mut *core::ptr::addr_of_mut!(REQUISITOS_BUF) };
-        let leidos = origen.traer(plan.requisitos_file_offset as usize, &mut buf[..n]);
+        // [!] `traer_suelto` y NO `traer`, y esto costo un arranque el mismo dia.
+        //
+        // ** La tabla de requisitos vive **al final del fichero**, igual que los
+        // hashes y las relocations. Con `traer` la pide el cursor SECUENCIAL,
+        // que se va al final y **ya no puede volver al codigo**: solo avanza, a
+        // proposito. El sintoma no fue un error de lectura sino tres lineas mas
+        // abajo, en otro sitio:
+        //
+        // ```text
+        //    fs: se pidio un rango HACIA ATRAS: el cursor solo avanza
+        //    proc: una seccion se quedo a medias al aterrizar
+        //    gui: el .bex no paso la admision
+        // ```
+        //
+        // *** Es la trampa que este fichero ya tenia contada en `traer_suelto`,
+        // veinte lineas mas arriba, escrita el dia que le paso a los hashes. La
+        // lei al escribirla y use la otra igual.
+        let leidos = origen.traer_suelto(plan.requisitos_file_offset as usize, &mut buf[..n]);
         if let Some(tabla) = bmo_carga_juicio::Tabla::abrir(&buf[..leidos]) {
             // Solo lo OBLIGATORIO y solo lo que se mide en BYTES. Un requisito
             // opcional no es una condicion de arranque, y una mascara de CPU no
