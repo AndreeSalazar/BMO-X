@@ -169,6 +169,53 @@ impl Scheduler {
                     "pila de hilo liberada, base fisica",
                     stack_phys,
                 );
+                // *** PASO 0 DEL PLAN: MEDIR, NO ARREGLAR (2026-08-31).
+                //
+                // ** `reap` decide liberar mirando UNA SOLA COSA: el estado de
+                // la tarea, mas la guarda del `rsp` que protege la pila que
+                // estamos pisando. Y hay CUATRO punteros mas publicados que
+                // pueden estar dentro de este rango:
+                //
+                // ```text
+                //    TSS.RSP0                  donde aterriza un trap de Ring 3
+                //    percpu.syscall_stack_top  donde aterriza un SYSCALL
+                //    percpu.trap_rsp           el contexto vigente en este CPU
+                //    otra tarea .context_rsp   un contexto guardado ajeno
+                // ```
+                //
+                // Ninguno se comprueba. Hoy eso es SEGURO por un invariante que
+                // **nadie escribio y nadie vigila**: *"antes de que Ring 3
+                // vuelva a entrar siempre hay un cambio que refresca RSP0"*.
+                //
+                // > Un invariante que no esta escrito no es un invariante:
+                // > es una suerte que dura hasta que deja de durar.
+                //
+                // Esto no lo arregla -- lo MIDE. Si alguna vez grita, el caso de
+                // la pantalla azul esta cerrado y con nombre; si no grita nunca,
+                // el invariante se cumple y hay que buscar en otro sitio. Las
+                // dos respuestas valen, y ninguna cambia la conducta.
+                let fin = mm::phys_to_virt(stack_phys) + stack_pages * mm::PAGE;
+                let ini = mm::phys_to_virt(stack_phys);
+                let dentro = |p: u64| p >= ini && p < fin;
+                if dentro(crate::ring0::task::proc::tss_rsp0()) {
+                    crate::ring0::cabina::fault(
+                        "sched", "se libera la pila que el TSS publica (RSP0)", stack_phys);
+                }
+                if dentro(percpu::syscall_stack_top()) {
+                    crate::ring0::cabina::fault(
+                        "sched", "se libera la rampa de SYSCALL publicada", stack_phys);
+                }
+                if dentro(percpu::trap_rsp()) {
+                    crate::ring0::cabina::fault(
+                        "sched", "se libera la pila del contexto VIGENTE", stack_phys);
+                }
+                for (j, o) in self.tasks.iter().enumerate() {
+                    if j != i && o.state != TaskState::Empty && dentro(o.context_rsp) {
+                        crate::ring0::cabina::fault(
+                            "sched", "se libera una pila con el contexto de otra tarea",
+                            o.tid as u64);
+                    }
+                }
                 anotar_muerta(self.tasks[i].tid, stack_phys, stack_pages);
                 for p in 0..stack_pages {
                     phys::free_frame(stack_phys + p * mm::PAGE);

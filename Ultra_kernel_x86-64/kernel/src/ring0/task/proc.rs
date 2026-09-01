@@ -152,6 +152,23 @@ pub fn set_tss_rsp0(top: u64) {
     }
 }
 
+/// **Lo que el TSS dice AHORA MISMO.** `0` = no hay TSS.
+///
+/// Existe porque un puntero que solo se escribe no se puede auditar: `reap`
+/// necesita poder preguntar *"la pila que voy a liberar es la que el CPU usara
+/// en el proximo trap desde Ring 3?"*. Ver `PLAN_LA_PILA_HUERFANA.md`.
+pub fn tss_rsp0() -> u64 {
+    let tss = unsafe { TSS_PTR };
+    if tss == 0 {
+        return 0;
+    }
+    unsafe {
+        let bajo = ((tss + 4) as *const u32).read_volatile() as u64;
+        let alto = ((tss + 8) as *const u32).read_volatile() as u64;
+        (alto << 32) | bajo
+    }
+}
+
 pub(crate) fn log(msg: &str) {
     crate::ring0::dev::console::serial_write(msg);
 }

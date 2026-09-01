@@ -115,6 +115,15 @@ pub fn set_trap_rsp(rsp: u64) {
 /// ever arrive from the task currently on the CPU, so mid-dispatch updates
 /// only affect the next entry. gs-relative: the SYSCALL entry reads this
 /// slot as `mov rsp, gs:[0x00]`.
+/// La rampa de SYSCALL que hay publicada ahora. Misma razon que `tss_rsp0`.
+pub fn syscall_stack_top() -> u64 {
+    let v: u64;
+    unsafe {
+        core::arch::asm!("mov {}, gs:[0]", out(reg) v, options(nostack, preserves_flags));
+    }
+    v
+}
+
 pub fn set_syscall_stack_top(top: u64) {
     unsafe {
         core::arch::asm!("mov gs:[0x00], {}", in(reg) top, options(nostack));
