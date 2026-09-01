@@ -165,6 +165,8 @@ pub mod core {
     /// retrying. The launching happens at boot; the DECIDING does not, which
     /// is why it is no longer inside the file named after the boot phases.
     pub mod desktop;
+    /// La PURGA: devolver Ring 3 a como estaba al arrancar, y demostrarlo.
+    pub mod purga;
     pub mod phase;
     /// **Las ordenes del shell de Ring 0**, repartidas por lo que preguntan.
     /// `phase.rs` llevaba 27 dentro y ocupaban dos tercios del fichero del

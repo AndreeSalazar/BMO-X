@@ -133,6 +133,8 @@ pub(crate) fn run_shell(ctx: &BootContext) -> ! {
             super::files::shell_bex();
         } else if cmd == b"panic" {
             super::danger::shell_panic();
+        } else if cmd == b"purga" || cmd == b"limpieza" {
+            shell_purga();
         } else if cmd == b"escritorio" || cmd == b"gui" || cmd == b"desktop" {
             shell_escritorio();
         } else if cmd == b"reboot" {
@@ -171,6 +173,23 @@ pub(crate) fn run_shell(ctx: &BootContext) -> ! {
 /// que le diga "no" a alguien que lo esta pidiendo a proposito, no. Asi que la
 /// orden **suma su intento y no se deja frenar por el tope** -- y lo dice, para
 /// que el numero siga contando la verdad.
+/// **`purga`** -- cerrar Ring 3 entero y contar lo que vuelve.
+///
+/// ** La misma operacion que hace `Ctrl+Alt+Esc`, por la puerta de delante.
+///
+/// Y existe por una razon de metodo, no de comodidad: la tecla es para cuando
+/// la maquina esta secuestrada, o sea el peor momento para leer un informe. Una
+/// orden deja **probar la purga con la maquina sana**, comparar el parte con el
+/// de `save`, y saber que numeros son los normales.
+///
+/// > Un instrumento que solo se usa en la emergencia se estrena el dia que no
+/// > hay tiempo de aprender a leerlo.
+fn shell_purga() {
+    let parte = crate::ring0::core::purga::purgar();
+    crate::ring0::core::purga::contar(&parte);
+}
+
+
 fn shell_escritorio() {
     use super::super::desktop::{desktop_died, start_desktop, DESKTOP_ATTEMPTS};
     if !desktop_died() && unsafe { DESKTOP_ATTEMPTS } > 0 {

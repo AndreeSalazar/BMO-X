@@ -434,7 +434,11 @@ pub(crate) fn shell_help() {
     // situacion no lee una fila de diez palabras: busca la suya. Una fila con
     // una sola orden es la que se encuentra el dia peor.
     row("volver", |l| l.txt("escritorio   levanta otra vez el de Ring 3"));
-    row("rescate", |l| l.txt("Ctrl+Alt+Esc  quita la pantalla; DOS veces en 3s echa al escritorio"));
+    row("rescate", |l| l.txt("Ctrl+Alt+Esc  quita la pantalla; DOS veces en 3s PURGA Ring 3"));
+    // ** La purga va en el `help` y no solo en la tecla, y es de metodo: la
+    // tecla es para cuando la maquina esta secuestrada, o sea el peor momento
+    // para leer un informe por primera vez. Con la orden se prueba en frio.
+    row("purga", |l| l.txt("purga   cierra Ring 3 ENTERO y cuenta los marcos que vuelven"));
     row("poder", |l| l.txt("reboot  halt  panic"));
     row("ayuda", |l| l.txt("help"));
 }
