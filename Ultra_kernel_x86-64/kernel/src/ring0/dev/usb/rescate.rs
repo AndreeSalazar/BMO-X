@@ -157,18 +157,44 @@ fn segunda_llamada() -> bool {
         return true;
     }
     unsafe { PRIMER_INTENTO = 0 };
-    match crate::ring0::obj::fb::rescate_de_emergencia() {
-        Some(pid) => {
-            let _ = crate::ring0::obj::input::release(pid);
-            crate::ring0::cabina::warn(
-                "input",
-                "SEGUNDA llamada: el escritorio pierde la pantalla",
-                pid as u64,
-            );
-            true
-        }
-        None => false,
+    let echado = crate::ring0::obj::fb::rescate_de_emergencia();
+    if let Some(pid) = echado {
+        let _ = crate::ring0::obj::input::release(pid);
+        crate::ring0::cabina::warn(
+            "input",
+            "SEGUNDA llamada: el escritorio pierde la pantalla",
+            pid as u64,
+        );
     }
+    // *** Y AHORA LA LIMPIEZA ENTERA, no solo el dueno de la pantalla.
+    //
+    // ** Lo pidio el dueno con la maquina en la mano: *"que haga limpieza total
+    // en la RAM en Ring 3 como si estuviera reiniciando, porque ya llevo asi
+    // repitiendo constantemente"*.
+    //
+    // Hasta hoy esta tecla echaba **al dueno de la pantalla** y a nadie mas.
+    // Devuelve la imagen --que era el problema del 26-08-- y deja en pie a todos
+    // los demas procesos de Ring 3, con su espacio, sus capabilities y sus
+    // marcos. Y despues se relanza el escritorio ENCIMA de eso.
+    //
+    // > Una vuelta a cero que no vuelve a cero no es un punto de partida: es
+    // > otro estado mas, y encima uno que nadie ha escrito.
+    //
+    // *** Y esto vale aunque NO sea la causa de la pantalla azul, que es lo que
+    // se esta investigando: **una patada que limpia a medias no sirve para
+    // descartar nada**. Despues del segundo intento ya no se sabe que quedaba de
+    // antes, y sin eso ningun arranque contesta una pregunta.
+    //
+    // El desmontaje de verdad lo hace `reap`, que es el unico sitio que ya sabe
+    // hacerlo bien. Esto solo dice quienes mueren.
+    let (muertas, libres_antes) = crate::ring0::task::scheduler::limpieza_de_ring3();
+    if muertas > 0 {
+        crate::ring0::cabina::warn(
+            "patada", "Ring 3 ENTERO cerrado: tareas marcadas", muertas as u64);
+        crate::ring0::cabina::addr(
+            "patada", "marcos libres ANTES de recoger", libres_antes);
+    }
+    echado.is_some() || muertas > 0
 }
 
 /// ESC as a **Set 1** scancode, which is what the raw queue carries (`hid_to_ps2`

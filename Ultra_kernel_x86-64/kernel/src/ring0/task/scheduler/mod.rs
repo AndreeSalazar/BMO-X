@@ -34,6 +34,7 @@ mod verde;
 
 pub use roja::{
     pilas_liberadas,
+    limpieza_de_ring3,
     delante, exit_and_park, exit_current, init, kill_current_and_pick, on_timer, park_until,
     spawn_kernel, spawn_user, terminar, wait_current, wait_current_checked, wake_by_key,
     yield_current, Task,

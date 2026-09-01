@@ -823,6 +823,77 @@ pub fn terminar(tid: u32) -> bool {
 }
 
 
+/// **LA LIMPIEZA TOTAL DE RING 3.** Devuelve `(cuantas, marcos_antes)`.
+///
+/// # *** POR QUE EXISTE, y lo pidio el dueno con la maquina en la mano
+///
+/// > *"que haga limpieza total en la RAM en Ring 3 como si estuviera
+/// > reiniciando, porque ya llevo asi repitiendo constantemente"*
+///
+/// La patada de `Ctrl+Alt+Esc` echaba **al dueno de la pantalla** y a nadie
+/// mas. Eso devuelve la imagen, que era el problema del 26-08 -- pero deja en
+/// pie a todos los demas procesos de Ring 3, con su espacio de direcciones, sus
+/// capabilities y sus marcos. Y despues se relanza el escritorio ENCIMA.
+///
+/// ** Lo que el dueno describe --*"mato el servidor y revivo, y sale la azul
+/// otra vez"*-- es exactamente la forma de un estado que sobrevive al ciclo. No
+/// importa si esta es la causa de la azul o no: **una patada que limpia a medias
+/// no se puede usar para descartar nada**, porque despues del segundo intento ya
+/// no se sabe que quedaba de antes.
+///
+/// > Una vuelta a cero que no vuelve a cero no es un punto de partida: es otro
+/// > estado mas, y encima uno que nadie ha escrito.
+///
+/// # Como se limpia, y por que asi
+///
+/// Se le quitan las capabilities a cada proceso de Ring 3 y se marca su tarea
+/// `Exited`. **No se destruye nada aqui**: el desmontaje lo hace `reap`, que
+/// corre despues del cambio de contexto y es el unico sitio que ya sabe hacerlo
+/// bien --devuelve las hojas con `PTE_NUESTRA`, respeta lo prestado, y no tira
+/// el suelo que se esta pisando--.
+///
+/// *** Duplicar ese trabajo aqui seria escribir por segunda vez la funcion mas
+/// delicada del kernel para usarla desde una tecla. Esto solo dice QUIENES
+/// mueren; el como ya estaba resuelto.
+///
+/// [!] La tarea 0 nunca: es el shell de Ring 0, o sea el sitio al que se vuelve.
+/// [!] Y los hilos de kernel tampoco --el del bus USB es quien te esta leyendo
+/// la tecla--. `is_user` es la linea, y es la correcta: lo que se limpia es
+/// Ring 3, no la maquina.
+pub fn limpieza_de_ring3() -> (u32, u64) {
+    let (_, libres_antes) = phys::stats();
+    let mut muertas = 0u32;
+    let mut pids: [u32; MAX_TASKS] = [0; MAX_TASKS];
+    let mut n = 0usize;
+    {
+        let _g = SCHED_LOCK.lock();
+        let s = sched();
+        for i in 1..s.tasks.len() {
+            if !s.tasks[i].is_user {
+                continue;
+            }
+            if s.tasks[i].state == TaskState::Empty || s.tasks[i].state == TaskState::Exited {
+                continue;
+            }
+            pids[n] = s.tasks[i].pid;
+            n += 1;
+            s.tasks[i].state = TaskState::Exited;
+            muertas += 1;
+        }
+    }
+    // ** Las capabilities se sueltan FUERA del cerrojo del planificador.
+    //
+    // `revoke_all` toca la pantalla, el audio, el disco y la memoria prestada, y
+    // cada uno de esos tiene su propio cerrojo. Hacerlo con `SCHED_LOCK` en la
+    // mano es la receta del abrazo mortal, y en la ruta de una tecla de rescate
+    // colgarse es lo unico que no se puede permitir: **es el ultimo recurso**.
+    for pid in pids.iter().take(n) {
+        crate::ring0::obj::cap::revoke_all(*pid);
+    }
+    (muertas, libres_antes)
+}
+
+
 pub fn wait_current(key: u64, deadline_tsc: u64) {
     let _g = SCHED_LOCK.lock();
     let s = sched();
