@@ -181,6 +181,14 @@ pub(super) extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u6
             l.hex(tid as u64, 2);
             l.s(" liberada en tick ");
             l.hex(tick, 8);
+        } else {
+            // [!] Y si NO se reconoce hay que decir cuantas van: con mas pilas
+            // liberadas que fichas, "no lo reconoce" significa "puede que se
+            // haya ido por el anillo", que no es lo mismo que "no fue `reap`".
+            // Un veredicto con dos lecturas no cierra nada.
+            l.s(" (morgue: ");
+            l.hex(crate::ring0::task::scheduler::pilas_liberadas(), 2);
+            l.s(" liberadas)");
         }
     }
     inf.push(l);
