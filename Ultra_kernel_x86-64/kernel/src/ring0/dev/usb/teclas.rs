@@ -104,6 +104,36 @@ fn sacar_crudo() -> Option<(u8, bool)> {
 }
 
 /// Eventos crudos tirados por cola llena. Para el panel.
+/// **VACIAR la cola cruda.** Se llama al enchufar y al desenchufar.
+///
+/// # Por que hace falta, y lo dijo el dueno
+///
+/// > *"cuando mi teclado estaba siendo usado hay datos e informacion basura que
+/// > me gustaria que a la hora de conectar no tenga ese problema"*
+///
+/// ** Lo que queda en esta cola son scancodes de ANTES: teclas que se pulsaron
+/// con el aparato viejo, o durante el desenchufe. Al reconectar salen como si
+/// alguien las acabara de pulsar -- y no hay forma de distinguirlas, porque un
+/// scancode no trae la hora ni de que teclado vino.
+///
+/// > Un evento de entrada que sobrevive a su aparato no es un evento tardio:
+/// > es un evento de otro.
+///
+/// [!] Los perdidos NO se ponen a cero: son la bitacora de cuantos eventos se
+/// tiraron por saturacion desde el arranque, y esa cuenta es un sintoma que hay
+/// que poder seguir viendo crecer.
+pub fn vaciar_cola_cruda() -> u32 {
+    unsafe {
+        let habia = if CRUDOS_ESCRIBE >= CRUDOS_LEE {
+            CRUDOS_ESCRIBE - CRUDOS_LEE
+        } else {
+            EVENTOS_CRUDOS - CRUDOS_LEE + CRUDOS_ESCRIBE
+        };
+        CRUDOS_LEE = CRUDOS_ESCRIBE;
+        habia as u32
+    }
+}
+
 pub fn eventos_crudos_perdidos() -> u32 {
     unsafe { CRUDOS_PERDIDOS }
 }

@@ -145,6 +145,15 @@ fn atender_enchufe(puerto: u8) {
         )
     };
     let estado = ((k as u64) << 8) | m as u64;
+    // ** SE OLVIDA LO DE ANTES, y este es el sitio (2026-09-01).
+    //
+    // Un aparato nuevo llega sin nada pulsado. Lo que quede de la sesion
+    // anterior --un Ctrl que se quedo trabado porque su KeyUp no existio nunca,
+    // scancodes en la cola de un teclado que ya no esta-- no es del aparato que
+    // acaba de entrar, y al reconectar sale como si lo fuera.
+    //
+    // Ver `olvidar_estado_de_teclado`, donde esta contado entero.
+    super::olvidar_estado_de_teclado("puerto ENCHUFADO: se olvida el teclado de antes");
     if k && m {
         crate::ring0::cabina::info("usb", "puerto: ENCHUFADO, ya creo tenerlo todo", puerto as u64);
         crate::ring0::cabina::bits("usb", "  ...creo tener teclado:raton", estado);
@@ -171,6 +180,13 @@ fn atender_desenchufe(puerto: u8) {
         let hid = &mut *core::ptr::addr_of_mut!(HID);
         hid.soltar_puerto(puerto.saturating_sub(1))
     };
+    // ** Y AL DESENCHUFAR TAMBIEN, que es donde nace el estado colgado.
+    //
+    // Este es el instante exacto en que un `break` deja de poder llegar: el
+    // aparato se fue con la tecla pulsada y `bmo_uhid` no tiene informe
+    // siguiente con el que notar que se solto. Olvidarlo aqui es cerrar el
+    // agujero en su origen, no solo taparlo al reconectar.
+    super::olvidar_estado_de_teclado("puerto DESENCHUFADO: se olvida lo que quedara pulsado");
     crate::ring0::cabina::warn("usb", "puerto: algo se DESENCHUFO", puerto as u64);
     if solto {
         // Two different pieces of news, and they used to be one. A
