@@ -353,6 +353,16 @@ pub fn render_hud() {
     // audio pone `IOC` en CADA trama. Va pegado a `hu` porque los dos salen del
     // mismo bucle y se leen juntos.
     r.txt(" sat="); r.dec(saturados as u64);
+    // ** Y LAS TECLAS QUE SE TIRARON POR COLA LLENA (2026-09-01).
+    //
+    // `sat=` cuenta los sondeos que se cortaron por el tope de 64 por vuelta.
+    // Esto cuenta otra cosa distinta y hasta hoy no la miraba nadie: eventos
+    // que ENTRARON y se tiraron porque la cola cruda estaba llena.
+    //
+    // Son los dos motivos por los que "el teclado a veces no responde", y
+    // separarlos importa: `sat` se arregla sondeando mas, `perd` se arregla
+    // consumiendo mas. Un solo numero para dos causas manda al sitio que no es.
+    r.txt(" perd="); r.dec(crate::ring0::dev::usb::eventos_crudos_perdidos() as u64);
     r.txt("  (ev=0 -> USB - ev sube y x/y quietos -> formato del informe)");
     let raton_color = if !mouse { C_DIM } else if mev > 0 { C_OK } else { C_FAULT };
     splash_dashboard_log_color(total - 1, r.as_str(), raton_color);

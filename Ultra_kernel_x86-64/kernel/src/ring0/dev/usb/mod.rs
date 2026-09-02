@@ -192,6 +192,62 @@ static mut LALT: bool = false;
 
 /// Ultima tecla que sigue pulsada (0 = ninguna) y su contexto.
 static mut HELD_CODE: u8 = 0;
+
+/// **OLVIDAR TODO LO QUE EL TECLADO CREIA TENER PULSADO.**
+///
+/// # *** EL FALLO QUE ESTO CIERRA, y es de raiz
+///
+/// El dueno: *"aunque funcione a veces no me responde... es como reinicio
+/// constante para mi kernel que deje entrar"*.
+///
+/// ** Los modificadores se ACUMULAN desde make/break, al estilo PS/2:
+///
+/// ```text
+///    0x1D -> CTRL = true        0x9D -> CTRL = false
+/// ```
+///
+/// Y el `break` puede no llegar NUNCA. `bmo_uhid` genera el KeyUp comparando el
+/// informe de ahora con el de antes, o sea **mientras haya informes**: si el
+/// teclado se desenchufa con Ctrl pulsado, no hay informe siguiente, no hay
+/// KeyUp, y `CTRL` se queda en `true` **para siempre**.
+///
+/// *** Y con Ctrl trabado cada letra deja de ser una letra: `a` es `Ctrl+A`. El
+/// teclado responde perfectamente y **parece muerto**, que es exactamente el
+/// sintoma descrito. No hay camino de vuelta porque no existe ningun sitio que
+/// ponga estos cinco booleanos a `false`.
+///
+/// > Un estado que solo se puede encender no es un estado: es una trampa con
+/// > forma de variable.
+///
+/// [!] `CAPS` tambien se olvida, y eso es una decision: es un `toggle` y su LED
+/// vive en el aparato. Al reconectar, el teclado nuevo llega con su LED apagado,
+/// asi que quedarse con el `true` de antes seria mentir sobre lo que el dueno
+/// ve encendido en su mesa.
+pub fn olvidar_estado_de_teclado(motivo: &'static str) {
+    let colgados = unsafe {
+        let n = (SHIFT as u64)
+            | ((CTRL as u64) << 1)
+            | ((LALT as u64) << 2)
+            | ((ALTGR as u64) << 3)
+            | ((CAPS as u64) << 4)
+            | ((HELD_CODE != 0) as u64) << 5;
+        SHIFT = false;
+        CTRL = false;
+        LALT = false;
+        ALTGR = false;
+        CAPS = false;
+        HELD_CODE = 0;
+        n
+    };
+    let tirados = teclas::vaciar_cola_cruda();
+    // Se dice SIEMPRE, aunque no hubiera nada colgado: es la unica forma de
+    // saber que el olvido ocurrio. Un saneamiento que solo habla cuando
+    // encuentra algo no se puede distinguir de uno que no corre.
+    crate::ring0::cabina::bits("usb", motivo, colgados);
+    if tirados > 0 {
+        crate::ring0::cabina::count("usb", "  ...y teclas viejas tiradas de la cola", tirados as u64);
+    }
+}
 static mut HELD_SHIFT: bool = false;
 static mut HELD_ALTGR: bool = false;
 static mut HELD_CTRL: bool = false;
