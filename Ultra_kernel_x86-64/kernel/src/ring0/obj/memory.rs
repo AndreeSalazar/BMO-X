@@ -196,6 +196,46 @@ static mut CUENTAS: [Count; MAX_PROCS] = [FREE_SLOT; MAX_PROCS];
 /// no engana a nadie; el problema es usarlo como indice.
 static mut TOTAL: u64 = 0;
 
+/// **De que proceso es este marco fisico.** `(pid, desplazamiento)`.
+///
+/// # Por que existe, y por que la pantalla de fallo la necesitaba
+///
+/// La azul sabia decir `marco OCUPADO` --el asignador cree que esta
+/// entregado-- y ahi se paraba. Y `OCUPADO` significa **"se entrego dos
+/// veces"**, que solo es accionable si se sabe la otra punta: sin el nombre,
+/// el veredicto manda a mirar el arbol entero.
+///
+/// ** Es el mismo callejon del que ya salio `de NADIE VIVO` cuando gano la
+/// morgue: *"decia que la pila no tiene duena y no decia quien la solto"*.
+/// Aquello se arreglo mirando una tabla que ya existia. Esto tambien.
+///
+/// [!] SIN CERROJO, y decidido igual que `duenno_de_pila`: lo llama la pantalla
+/// de fallo con la maquina ya rota. Colgarse aqui cambia un volcado legible por
+/// un silencio, y un dato de hace un tick sirve para un diagnostico.
+///
+/// [!] Y solo mira los bloques de `KIND_MEMORIA`. Un marco puede estar
+/// entregado y no ser de aqui --una pila de kernel, un buffer de fichero, la
+/// imagen de un proceso-- asi que `None` **no** significa "de nadie": significa
+/// "de nadie DE AQUI". La pantalla pregunta a las tres tablas por turno.
+pub fn duenno_de_fisica(fisica: u64) -> Option<(u32, u64)> {
+    let cuentas = unsafe { &*core::ptr::addr_of!(CUENTAS) };
+    for c in cuentas.iter() {
+        if c.pid == 0 {
+            continue;
+        }
+        for b in c.bloques.iter() {
+            if b.base == 0 || b.bytes == 0 {
+                continue;
+            }
+            if fisica >= b.fisica && fisica < b.fisica + b.bytes {
+                return Some((c.pid, fisica - b.fisica));
+            }
+        }
+    }
+    None
+}
+
+
 /// La ranura de este proceso, si tiene una.
 fn slot(pid: u32) -> Option<usize> {
     unsafe {
