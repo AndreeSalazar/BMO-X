@@ -1,0 +1,31 @@
+# LA FRONTERA DE REX -- que NO es superficie de una app.
+#
+# Va en una TABLA y no en un comentario del guardian a proposito: una lista de
+# lo que falta invita a meterlo todo, y lo unico que para eso es una frontera
+# que se pueda leer sin abrir el codigo.
+#
+#    REX es la superficie de una APP, no la del sistema.
+#
+# Si una operacion solo tiene sentido para el escritorio, el explorador o un
+# panel del kernel, **no es de REX aunque este en el ABI**. Y no es "todavia
+# no": es que no. Cada fila de la puerta de los terceros es una promesa que hay
+# que mantener despues.
+#
+# ** Esta tabla es ademas el DENOMINADOR de R16. Un porcentaje de cobertura
+# contra las constantes del ABI enteras seria una forma elegante de mentirse:
+# contaria como "pendiente" cosas que nunca van a estar.
+#
+# [!] Y se puede cruzar en las dos direcciones. Si un dia una app de verdad
+# necesita algo de aqui, se borra su prefijo de esta tabla **y se escribe por
+# que** -- que es exactamente el momento en que la decision se toma a la vista.
+#
+# Formato:  prefijo  de quien es
+
+DISCO_      los paneles. Un programa lee el disco por `BMO_INFO_DISCO_*`, que SI esta
+ES_         ESTRATOS y su explorador -- un navegador de ficheros, no una app cualquiera
+CABINA_     la cabina del kernel: su ventana, sus severidades, sus barridos
+USB_        el panel de salud del USB
+AUTOPSIA_   instrumento de Ring 0: lo que queda despues de una pantalla azul
+KLOG_       instrumento de Ring 0: el registro del propio kernel
+SYSCALL_    instrumento de Ring 0: las clases con las que se cuenta la puerta
+MAQ_        el juicio de si un perfil es de ESTA maquina. Lo usa el cargador

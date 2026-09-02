@@ -407,7 +407,7 @@ y los mismos valores. **No quedan constantes muertas en el ABI.**
 
 ---
 
-# PASO 4 -- R16, la cobertura es un numero y solo sube
+# ~~PASO 4~~ -- R16, la cobertura ✅ HECHO (2026-09-02)
 
 Cuantas operaciones del contrato tienen funcion en REX. Hoy **74 de 337**, y de
 lo que es de app faltan 31 en siete familias.
@@ -418,21 +418,107 @@ frontera de arriba excluye -- **un porcentaje contra un denominador inflado es
 una forma elegante de mentirse**.
 
 ```
-   [ ] 4.1  la frontera, como tabla legible (no como comentario)
-   [ ] 4.2  R16 con trinquete en COBERTURA.txt
+   [x] 4.1  FRONTERA_REX.txt -- ocho prefijos, cada uno con de quien es
+   [x] 4.2  R16 con trinquete en COBERTURA.txt, sellado en 93
 ```
+
+**REX cubre 93 de las 194 constantes del ABI que son de app -- el 47%.** La
+frontera deja fuera 137, y por eso el denominador es 194 y no 331: un
+porcentaje contra el total contaria como pendiente cosas que nunca van a estar.
+
+Probado que muerde: se subio el suelo a 94 a mano y R16 lo dijo; deshecho.
+
+## ★★ Y el paso 4 encontro un bug DENTRO de R13
+
+Midiendo la cobertura salieron valores que no cuadraban. El extractor de
+constantes cazaba `(0x[0-9A-Fa-f]+|\d+)` y **paraba ahi**:
+
+```text
+   pub const DEVICE_HDA: u64 = 1 << 1;                  leia 1, vale 2
+   pub const CURRENT_TASK: u64 = 0xFFFF_FFFF_FFFF_FFFE;  leia 0xFFFF
+```
+
+**Dos truncamientos en silencio, dentro del juez que existe para cazar numeros
+que no coinciden.** Si `CURRENT_TASK` hubiera tenido pareja, R13 habria cantado
+un choque falso -- y peor: un truncamiento que POR CASUALIDAD coincida da un
+`clean` que nadie puede distinguir de uno de verdad.
+
+> Un extractor que trunca no lee de menos: lee MAL, y lo hace en voz de dato.
+
+Arreglado: se captura la expresion entera y se **evalua o se descarta**. Lo que
+no se sabe leer exacto no se empareja, y sale a la vista --hoy 13 constantes--
+en vez de colarse con un valor adivinado. Seis autopruebas nuevas, una por cada
+forma que le costo.
+
+Con los valores ya correctos aparecieron **tres parejas que antes eran
+imposibles**: `CURRENT_TASK`, `DEVICE_SPEAKER` y `DEVICE_HDA`. El espejo pasa
+de 90 a 93, y el gate de revision de R13 hizo lo suyo: paro el build hasta que
+una persona las miro.
 
 ---
 
-# PASO 5 -- `<bmo/tarea.h>`: lanzar un hijo Y ESPERARLO
+# PASO 5 -- REESCRITO: **el zero copy, y el streaming a ritmo de quien lee**
 
-`TAREA_OP_CERRAR`, `VIVE`, `DELANTE`, `TID`. Hoy `BMO_OP_EJECUTAR` lanza y
-**no hay forma de saber si el hijo sigue vivo** desde C.
+La version anterior decia *"`<bmo/tarea.h>`: lanzar un hijo y esperarlo... es
+la I/O en segundo plano"*. **Esa etiqueta era mia y era mala**, y el dueno la
+cuestiono con la pregunta correcta:
 
-Es literalmente la I/O en segundo plano que lleva pendiente desde el 14-08 --el
-shell de Ring 0 quedandose con el teclado hasta que el hijo lo reclama-- y es el
-unico sitio de REX donde `WAIT` seria la respuesta natural en vez de un bucle
-que cede. Las dos puertas, usadas como se disenaron.
+> *"I/O no se si me beneficia porque mi BMO-X es zero copy, es MAS en tiempo
+> real... si hay alternativa MEJOR que I/O, mejor."*
+
+Tiene razon, y lo mejor es que **la alternativa ya existe en el kernel**: lo
+que falta es publicarla.
+
+## Lo que el ABI ya tiene, y REX no cuenta
+
+### 1. Streaming a ritmo de QUIEN LEE (no I/O asincrona)
+
+`TASK_OP_ARCHIVO_ASINC` + `ARCH_OP_LISTO`, y lo dice el propio ABI:
+
+> *"Este vuelve en cuanto sabe que el archivo esta ahi. Los bytes llegan a
+> trozos, y **preguntar por el archivo es lo que lo trae**: cada `ARCH_OP_LISTO`
+> avanza un trozo y vuelve a Ring 3, asi que entre trozo y trozo el planificador
+> puede dar el turno a otro."*
+
+** Eso NO es I/O en segundo plano. No hay cola de terminaciones, ni callbacks,
+ni hilos, ni buffers en vuelo que no controlas. **El que consume marca el
+ritmo**, y el trabajo ocurre dentro de su propia llamada. Es exactamente la
+forma que pide un sistema sin hilos de Ring 3 y con la latencia acotada.
+
+`ARCH_OP_LISTO` contesta `(entero << 63) | bytes que ya llegaron` -- *"cuanto
+hay"* y *"queda mas"* en la misma respuesta, juntas a proposito.
+
+### 2. El TIEMPO, que es lo que hace falta para ser de tiempo real
+
+`LATIDO_OP_CUENTA`: *"el testigo que se le pasa a `WAIT`. Solo sube y no se
+reinicia nunca: un contador que da la vuelta convierte 'espera al siguiente' en
+'espera para siempre'"*. Es la pareja natural de la segunda puerta, y REX no la
+publica.
+
+### 3. ★★ Y el hueco mas gordo: **el zero copy esta publicado A MEDIAS**
+
+```text
+   MEM_OP_OFRECER     SI esta en REX   (superficie/roja.h)   prestar
+   TASK_OP_TOMAR      NO               tomar lo prestado
+   PRESTADO_OP_*      NO               medirlo, ver si el dueno vive, soltarlo
+```
+
+**Una app de C puede PRESTAR memoria y no puede RECIBIRLA.** Justo el eje que
+el dueno dice que le importa, y esta cortado por la mitad. `superficie.h` usa
+`OFRECER` porque una ventana ofrece sus pixeles al DIRECTOR; el camino de
+vuelta --recibir un bloque de otro sin copiarlo-- no tiene cabecera.
+
+## Lo que se propone entonces
+
+```
+   5a  <bmo/prestado.h>   TOMAR + PRESTADO_OP_*   el zero copy, entero
+   5b  <bmo/latido.h>     LATIDO + WAIT           el tiempo, y la 2a puerta
+   5c  <bmo/corriente.h>  ARCHIVO_ASINC + LISTO   leer a ritmo de quien lee
+```
+
+Y `<bmo/tarea.h>` --`CERRAR`, `VIVE`, `DELANTE`, `TID`-- baja de prioridad: es
+control de procesos, util para un shell, y **no toca ni el zero copy ni la
+latencia**. Lo que la hacia parecer urgente era mi etiqueta, no su contenido.
 
 ---
 

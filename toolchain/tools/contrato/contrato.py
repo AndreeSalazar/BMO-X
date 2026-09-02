@@ -180,6 +180,14 @@ RING0_DIR = "Ultra_kernel_x86-64/kernel/src/ring0"
 REX_DIR = "toolchain/forge/sem-asm/tables/bmo"
 ESPEJO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "REX_ESPEJO.txt")
 
+# Las constantes cuyo valor este juez NO sabe evaluar exacto. Se llevan a la
+# vista a proposito: una lista vacia dice "lo lei todo", y una con nombres dice
+# "estas no las juzgo" -- que es una respuesta, y esconderla no lo seria.
+SIN_EVALUAR = []
+
+FRONTERA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "FRONTERA_REX.txt")
+COBERTURA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "COBERTURA.txt")
+
 # -- R14: las APPS del arbol propio. -----------------------------------------
 #
 # No cubre `mods/` ni `$BMO_MODS`: **un tercero TIENE DERECHO a redefinir un
@@ -272,11 +280,58 @@ REX_A_MANO = {
     "TASK_OP_EXIT": "BMO_OP_SALIR",
     "TASK_OP_CONSOLE_WRITE": "BMO_OP_CONSOLA_ESCRIBIR",
     "TASK_OP_CONSOLE_READ": "BMO_OP_CONSOLA_LEER",
+    # ** Estas TRES no podian emparejarse hasta el 2026-09-02, y no por falta de
+    # mapa: el extractor truncaba sus valores. `CURRENT_TASK` es
+    # `0xFFFF_FFFF_FFFF_FFFE` y se leia `0xFFFF`; `DEVICE_HDA` es `1 << 1` y se
+    # leia `1`. Emparejarlas entonces habria dado un choque FALSO.
+    "CURRENT_TASK": "BMO_TAREA_ACTUAL",
+    "DEVICE_SPEAKER": "BMO_APARATO_ALTAVOZ",
+    "DEVICE_HDA": "BMO_APARATO_HDA",
 }
 
-RE_CONST_RS = re.compile(r"pub const ([A-Z0-9_]+): u64 = (0x[0-9A-Fa-f]+|\d+)")
-RE_CONST_H = re.compile(
-    r"^#define ([A-Z0-9_]+)\s+(0x[0-9A-Fa-f]+|\d+)\s*(?:/\*.*)?$", re.M)
+# ** SE CAPTURA LA EXPRESION ENTERA, y luego se evalua o se descarta.
+#
+# La primera version cazaba `(0x[0-9A-Fa-f]+|\d+)` y paraba ahi. Con eso:
+#
+#     pub const DEVICE_HDA: u64 = 1 << 1;                 leia 1, vale 2
+#     pub const CURRENT_TASK: u64 = 0xFFFF_FFFF_FFFF_FFFE; leia 0xFFFF
+#
+# **Dos truncamientos en silencio, dentro del juez que existe para cazar
+# numeros que no coinciden.** Si `CURRENT_TASK` hubiera tenido pareja, R13
+# habria cantado un choque falso -- y peor: un truncamiento que POR CASUALIDAD
+# coincida da un "clean" que nadie puede distinguir de uno de verdad.
+#
+# > Un extractor que trunca no lee de menos: lee MAL, y lo hace en voz de dato.
+RE_CONST_RS = re.compile(r"pub const ([A-Z0-9_]+): u64 = ([^;]+);")
+RE_CONST_H = re.compile(r"^#define ([A-Z0-9_]+)[ \t]+([^\n]+?)[ \t]*$", re.M)
+# Lo que SI se sabe evaluar exacto: un literal, o un desplazamiento de literales.
+RE_LITERAL = re.compile(r"^(0[xX][0-9A-Fa-f_]+|\d[\d_]*)$")
+RE_DESPL = re.compile(r"^(0[xX][0-9A-Fa-f_]+|\d[\d_]*)\s*<<\s*(\d+)$")
+
+
+def valor_exacto(txt):
+    """El valor de una constante, o `None` si no se puede saber SIN suponer.
+
+    ** `None` no es un fallo: es la unica respuesta honesta para una expresion
+    que este juez no sabe evaluar. Lo que no se puede leer exacto **no se
+    empareja**, porque una pareja con un valor adivinado es peor que no tenerla.
+    """
+    t = txt.strip()
+    # los sufijos de C (`ULL`, `UL`, `U`) y los comentarios de linea sobran
+    corte = t.find("/*")
+    if corte >= 0:
+        t = t[:corte].strip()
+    for suf in ("ULL", "ull", "UL", "ul", "LL", "ll", "U", "u", "L", "l"):
+        if t.endswith(suf) and len(t) > len(suf):
+            t = t[:-len(suf)].strip()
+            break
+    m = RE_LITERAL.match(t)
+    if m:
+        return int(m.group(1).replace("_", ""), 0)
+    m = RE_DESPL.match(t)
+    if m:
+        return int(m.group(1).replace("_", ""), 0) << int(m.group(2))
+    return None
 RE_SELLO_H = re.compile(r"^ \* \[(carril|cuesta|riesgo)\]\s+(.*)$", re.M)
 # Una clase es una palabra ENTERA en mayusculas. Ver `sellos_de_cabecera`.
 RE_MAYUSCULAS = re.compile(r"^[A-Z]+$")
@@ -649,6 +704,21 @@ CABECERA_CUESTAS = """# EL SUELO DE L6e -- cuantos ficheros declaran `[cuesta]`.
 
 """
 
+CABECERA_COBERTURA = """# EL SUELO DE R16 -- cuantas constantes del ABI tienen cabecera en REX.
+#
+# La pregunta del dueno era *"que reglas para que el ABI se aproveche TODO?"*, y
+# la respuesta honesta no es "se expone todo": es **el hueco es este numero, y
+# no puede crecer**.
+#
+# ** El denominador sale de `FRONTERA_REX.txt`, no del ABI entero. Un
+# porcentaje contra las constantes enteras contaria como pendiente cosas que
+# nunca van a estar -- y eso no es una medida, es una excusa que se ve bien.
+#
+# El numero va solo en la primera linea util. Se resella con `--sellar`.
+#
+# [!] Lo que esto NO mide: si la cabecera es BUENA. Mide que exista.
+"""
+
 CABECERA_RIESGOS = """# EL SUELO DE L6f -- cuantos ficheros declaran `[riesgo]`.
 #
 # La ley esta en `META-KERNEL_HARD.md`, L6f (MODULAR PRECISA NIVEL 2). L6e dice
@@ -810,6 +880,19 @@ def autoprueba():
     ABI_CHOQUES_TOLERADOS.clear()
     ABI_CHOQUES_TOLERADOS.update(_guardadas)
 
+    # R16 -- la cobertura no baja.
+    exige("R16(baja)", r16_la_cobertura_solo_sube(80, 197, 93))
+    exige("R16(igual)", r16_la_cobertura_solo_sube(93, 197, 93), False)
+    exige("R16(sube)", r16_la_cobertura_solo_sube(94, 197, 93), False)
+    # *** Que la SUPERFICIE crezca no es un fallo: el ABI gana operaciones antes
+    # de que exista la cabecera. Lo que no puede es perderse una que ya estaba.
+    exige("R16(la superficie crece)", r16_la_cobertura_solo_sube(93, 240, 93), False)
+    # *** Y la frontera es la que hace honesto el denominador.
+    _abi = {"TASK_OP_X": (1, "t.rs"), "CABINA_Y": (2, "c.rs")}
+    _c, _s = cobertura_de_rex(_abi, {"TASK_OP_X": {}}, [("CABINA_", "el panel")])
+    exige("R16(la frontera no cuenta)",
+          [] if (_c, _s) == (1, 1) else ["conto %d de %d" % (_c, _s)], False)
+
     # R15 -- el ABI no repite dentro de una familia.
     q, _ = r15_el_abi_no_repite_numero(
         {"TASK_OP_A": (0x30, "t.rs"), "TASK_OP_B": (0x30, "t.rs")})
@@ -827,6 +910,24 @@ def autoprueba():
     q, _ = r15_el_abi_no_repite_numero(
         {"INFO_TSC_HZ": (0x05, "i.rs"), "INFO_TXT_EXT_NOMBRE": (0x05, "i.rs")})
     exige("R15(INFO contra INFO_TXT)", q, False)
+
+    # -- El EXTRACTOR, que es de quien depende R13 entero -------------------
+    # *** Los dos truncamientos que tuvo de verdad, cada uno con su nombre.
+    exige("valor(desplazamiento)",
+          [] if valor_exacto("1 << 1") == 2 else ["1<<1 no da 2"], False)
+    exige("valor(guiones bajos)",
+          [] if valor_exacto("0xFFFF_FFFF_FFFF_FFFE") == 0xFFFFFFFFFFFFFFFE
+          else ["los _ truncan"], False)
+    exige("valor(sufijo ULL)",
+          [] if valor_exacto("0x8000000000000000ULL") == 0x8000000000000000
+          else ["el sufijo estorba"], False)
+    exige("valor(decimal)",
+          [] if valor_exacto("64") == 64 else ["decimal mal"], False)
+    # *** Y lo que NO se sabe evaluar contesta None en vez de inventarse algo.
+    exige("valor(lo que no se sabe)",
+          [] if valor_exacto("(1024 * 1024)") is None else ["se invento un valor"], False)
+    exige("valor(un nombre)",
+          [] if valor_exacto("OTRA_CONSTANTE") is None else ["se invento un valor"], False)
 
     # R13 -- el espejo. Se arman a mano, que es lo que permite probar los casos
     # que el arbol real no tiene (y ojala no tenga nunca).
@@ -927,7 +1028,7 @@ def autoprueba():
     # ** El numero se CUENTA, no se escribe. La version anterior decia "21
     # casos" y habia 19: un guardian con una cifra a mano dentro es un guardian
     # que dice un numero viejo con toda la confianza del mundo.
-    print("clean: las QUINCE reglas saben decir que NO (%d casos)" % casos[0])
+    print("clean: las DIECISEIS reglas saben decir que NO (%d casos)" % casos[0])
     return 0
 
 
@@ -1279,7 +1380,11 @@ def constantes_del_abi():
             continue
         with open(os.path.join(d, n), "r", encoding="utf-8", errors="replace") as f:
             for nombre, valor in RE_CONST_RS.findall(f.read()):
-                fuera[nombre] = (int(valor, 0), n)
+                v = valor_exacto(valor)
+                if v is not None:
+                    fuera[nombre] = (v, n)
+                else:
+                    SIN_EVALUAR.append("%s (%s)" % (nombre, valor.strip()[:40]))
     return fuera
 
 
@@ -1297,7 +1402,11 @@ def constantes_de_rex():
             rel = os.path.relpath(ruta, d).replace(os.sep, "/")
             with open(ruta, "r", encoding="utf-8", errors="replace") as f:
                 for nombre, valor in RE_CONST_H.findall(f.read()):
-                    fuera[nombre] = (int(valor, 0), rel)
+                    v = valor_exacto(valor)
+                    if v is not None:
+                        fuera[nombre] = (v, rel)
+                    else:
+                        SIN_EVALUAR.append("%s (%s)" % (nombre, valor.strip()[:40]))
     return fuera
 
 
@@ -1537,6 +1646,60 @@ def r15_el_abi_no_repite_numero(abi):
     return quejas, notas
 
 
+def frontera_leer():
+    """`[(prefijo, motivo)]` de `FRONTERA_REX.txt`. Lo que NO es de REX."""
+    fuera = []
+    if not os.path.exists(FRONTERA):
+        return fuera
+    with open(FRONTERA, "r", encoding="utf-8") as f:
+        for linea in f:
+            linea = linea.strip()
+            if not linea or linea.startswith("#"):
+                continue
+            trozos = linea.split(None, 1)
+            fuera.append((trozos[0], trozos[1] if len(trozos) > 1 else ""))
+    return fuera
+
+
+def cobertura_de_rex(abi, sellado, frontera):
+    """`(cubiertas, superficie)` -- cuanto del ABI que es DE APP tiene cabecera.
+
+    ** El denominador NO son las constantes del ABI enteras: son las que quedan
+    tras quitar la frontera. Un porcentaje contra el total contaria como
+    "pendiente" cosas que nunca van a estar, y eso no es una medida, es una
+    excusa que se ve bien.
+    """
+    prefijos = tuple(p for p, _ in frontera)
+    superficie = [n for n in abi if not n.startswith(prefijos)]
+    cubiertas = [n for n in superficie if n in sellado]
+    return len(cubiertas), len(superficie)
+
+
+def r16_la_cobertura_solo_sube(cubiertas, superficie, suelo):
+    """R16 -- cuantas operaciones del contrato tienen funcion en REX.
+
+    ** Convierte *"REX no tiene X"* de sensacion en cifra con trinquete. Es la
+    respuesta a la pregunta del dueno --*"que reglas para que el ABI se
+    aproveche TODO?"*-- y la respuesta honesta no es "se expone todo": es **el
+    hueco es este numero, y no puede crecer**.
+
+    Una sola exigencia, y es la del trinquete: **las cubiertas no bajan**. Que
+    la superficie crezca no es un fallo --el ABI gana operaciones antes de que
+    haya cabecera para ellas-- pero perder una cabecera que ya existia si lo es.
+
+    [!] Y lo que R16 NO mide: si la cabecera es BUENA. Mide que exista. Una
+    cabecera que compila y no hace lo que dice cuenta igual que una buena, y
+    ninguna maquina va a distinguirlas.
+    """
+    quejas = []
+    if cubiertas < suelo:
+        quejas.append(
+            "la cobertura de REX bajo de %d a %d constantes con cabecera. El "
+            "trinquete solo sube: si una cabecera se ha retirado a proposito, "
+            "resella con --sellar (R16)" % (suelo, cubiertas))
+    return quejas
+
+
 def declarantes_de_coste():
     """Los `[cuesta]` -- L6e. Una clase por fichero."""
     return _declarantes(RE_CUESTA, lambda g: g)
@@ -1619,6 +1782,10 @@ def comprobar():
     q15, n15 = r15_el_abi_no_repite_numero(abi_c)
     quejas += [("R15 el ABI repite un numero", q) for q in q15]
     notas += n15
+    frontera = frontera_leer()
+    cub, sup = cobertura_de_rex(abi_c, espejo_leer(), frontera)
+    quejas += [("R16 la cobertura de REX bajo", q)
+               for q in r16_la_cobertura_solo_sube(cub, sup, _suelo(COBERTURA))]
 
     for nota in notas:
         print("  [i] " + nota)
@@ -1663,6 +1830,14 @@ def comprobar():
     if par:
         print("clean: %d constante(s) escritas en REX y en el ABI dicen el mismo numero"
               % len(par))
+    if sup:
+        print("clean: REX cubre %d de las %d constantes del ABI que son DE APP "
+              "(%d%%); la frontera deja fuera %d"
+              % (cub, sup, (100 * cub) // sup, len(abi_c) - sup))
+    if SIN_EVALUAR:
+        print("  [i] %d constante(s) con un valor que este juez no evalua exacto, "
+              "y por eso NO se emparejan: %s"
+              % (len(SIN_EVALUAR), ", ".join(sorted(set(SIN_EVALUAR))[:6])))
     if r0:
         colores = {c: 0 for c in SEMAFORO}
         for txt in r0.values():
@@ -1703,6 +1878,14 @@ def main():
         rex_c = constantes_de_rex()
         n_esp = espejo_escribir(abi_c, parejas_de_rex(abi_c, rex_c), espejo_leer())
         print("sellado el espejo de REX: %d pareja(s) ABI <-> C" % n_esp)
+        _fr = frontera_leer()
+        _cub, _sup = cobertura_de_rex(abi_c, espejo_leer(), _fr)
+        with open(COBERTURA, "w", encoding="utf-8", newline="\n") as f:
+            f.write(CABECERA_COBERTURA)
+            f.write("%d\n" % _cub)
+            f.write("# de %d constantes del ABI que son de app; la frontera deja fuera %d\n"
+                    % (_sup, len(abi_c) - _sup))
+        print("sellada la cobertura de REX: %d de %d" % (_cub, _sup))
         print("sellado el suelo de L6e: %d fichero(s) declaran [cuesta]" % len(decl))
         print("sellado el suelo de L6f: %d fichero(s) declaran [riesgo]" % len(ries))
         print("sellada la linea base: %d numero(s) en las dos tablas" % n)
