@@ -198,7 +198,43 @@ pub(super) extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u6
             let fisica = fault_rsp.wrapping_sub(0xFFFF_8000_0000_0000);
             match crate::ring0::mm::phys::esta_libre(fisica) {
                 Some(true) => l.s(" marco LIBRE"),
-                Some(false) => l.s(" marco OCUPADO"),
+                Some(false) => {
+                    l.s(" marco OCUPADO");
+                    // *** Y DE QUIEN ES AHORA. (2026-09-02, a peticion del dueno)
+                    //
+                    // ** `OCUPADO` significa **se entrego dos veces**, y eso
+                    // solo es accionable con la OTRA punta. Sin el nombre, el
+                    // veredicto es correcto y manda a mirar el arbol entero --
+                    // exactamente el callejon del que ya salio `de NADIE VIVO`
+                    // cuando gano la morgue:
+                    //
+                    // > decia que la pila no tiene duena y no decia quien la
+                    // > solto.
+                    //
+                    // Se pregunta a las tablas que llevan DUENO y direccion
+                    // FISICA, por turno y de la mas probable a la menos:
+                    //
+                    //    KIND_MEMORIA   el bloque de un proceso de Ring 3
+                    //    fichero        el buffer de uno reflejado
+                    //
+                    // [!] Y si ninguna lo reclama **tambien se dice**, porque
+                    // es una respuesta y de las caras: un marco que el
+                    // asignador da por entregado y que ninguna tabla reconoce
+                    // es contabilidad rota, no un dueno que falta.
+                    if let Some((pid, desp)) =
+                        crate::ring0::obj::memory::duenno_de_fisica(fisica)
+                    {
+                        l.s(", AHORA es del bloque de pid=");
+                        l.hex(pid as u64, 2);
+                        l.s(" +0x");
+                        l.hex(desp, 6);
+                    } else if let Some(i) = crate::ring0::obj::file::buffer_de_fisica(fisica) {
+                        l.s(", AHORA es el buffer del archivo ");
+                        l.hex(i as u64, 2);
+                    } else {
+                        l.s(", y NINGUNA tabla lo reclama");
+                    }
+                }
                 None => l.s(" marco fuera del espejo"),
             }
             l.s(" (morgue: ");

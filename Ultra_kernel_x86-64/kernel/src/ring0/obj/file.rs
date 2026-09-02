@@ -224,6 +224,31 @@ pub const ARCH_OP_ESCRIBIR_DE: u64 = 0x08;
 // Si no hay un hueco contiguo, se dice: un archivo entregado a trozos sin que
 // el llamante lo sepa es peor que un "no".
 static mut BUF_FIS: [u64; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
+
+/// **Es este marco el buffer de un fichero abierto?** Devuelve su ranura.
+///
+/// La tercera tabla a la que pregunta la pantalla de fallo cuando dice `marco
+/// OCUPADO`. Un fichero reflejado tiene marcos contiguos pedidos al asignador,
+/// asi que puede ser perfectamente el otro dueno de un marco entregado dos
+/// veces -- y sin esta pregunta, ese caso se veria igual que cualquier otro.
+///
+/// [!] Sin cerrojo, por lo mismo que `duenno_de_fisica`: la maquina ya esta
+/// rota cuando esto se llama.
+pub fn buffer_de_fisica(fisica: u64) -> Option<usize> {
+    unsafe {
+        let fis = &*core::ptr::addr_of!(BUF_FIS);
+        let pags = &*core::ptr::addr_of!(BUF_PAGS);
+        for i in 0..MAX_ABIERTOS {
+            if fis[i] == 0 || pags[i] == 0 {
+                continue;
+            }
+            if fisica >= fis[i] && fisica < fis[i] + pags[i] * crate::ring0::mm::PAGE {
+                return Some(i);
+            }
+        }
+    }
+    None
+}
 static mut BUF_PAGS: [u64; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 /// Bytes validos: **lo que mide el archivo** si se refleja, lo leido del disco
 /// si se trajo a trozos, o lo acumulado si se esta escribiendo.
