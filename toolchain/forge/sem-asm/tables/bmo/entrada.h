@@ -109,6 +109,29 @@ unsigned long long bmo_entrada_reclamar() {
     return bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_ENTRADA_RECLAMAR, 0, 0, 0);
 }
 
+/* ** DEVOLVERLA SIGUIENDO VIVO. `0` = hecho. (2026-09-01)
+ *
+ * Faltaba, y esta cabecera era la peor donde podia faltar: se etiqueto
+ * `[cuesta] APARATO` porque *"el teclado secuestrado"* es el precedente de esa
+ * clase en L6e -- o sea que la pieza que cuesta un aparato era justo la que no
+ * sabia soltarlo. `sonido.h` si tenia el suyo desde el principio.
+ *
+ * La operacion del kernel llevaba tiempo cableada (`TASK_OP_ENTRADA_SOLTAR`,
+ * `op_aparato::entrada_soltar`); lo unico que faltaba era publicarla.
+ *
+ * [!] Y casi nunca se suelta sola: quien devuelve el teclado suele estar
+ * devolviendo tambien la pantalla. Lo dice el kernel con su propio escarmiento
+ * --*"separarlas fue el bug"*-- asi que lo normal es esto, en este orden:
+ *
+ *     bmo_entrada_soltar();
+ *     bmo_pantalla_cerrar(&p);
+ *
+ * Primero la entrada: si algo falla al soltar la pantalla, al menos el teclado
+ * ya volvio y la maquina se puede usar para averiguar que paso. */
+unsigned long long bmo_entrada_soltar() {
+    return bmo_codigo(BMO_TAREA_ACTUAL, BMO_OP_ENTRADA_SOLTAR, 0, 0, 0);
+}
+
 /* Los tres datos del puntero vienen empaquetados en una sola llamada:
  * `(x << 32) | (y << 16) | botones`. Una llamada por fotograma, no tres. */
 unsigned long long bmo_entrada_puntero(unsigned long long ent) {

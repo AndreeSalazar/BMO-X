@@ -123,7 +123,7 @@ paso 1, que es cuando por fin habra algo que ensenar.
 
 ---
 
-# PASO 1 -- `<bmo/pantalla.h>`, la cabecera que falta
+# ~~PASO 1~~ -- `<bmo/pantalla.h>` ✅ HECHO (2026-09-01)
 
 ## Por que es la primera
 
@@ -169,15 +169,58 @@ que es la regla 1 del proyecto.
 ## Casillas
 
 ```
-   [ ] 1.1  escribir <bmo/pantalla.h> con la receta entera
-   [ ] 1.2  raycaster_C.c deja de definir FB_BASE y lo incluye
-   [ ] 1.3  un ejemplo nuevo, y que cubra tambien la casilla 6 de entrada.h
-   [ ] 1.4  fila en el README con su color
-   [ ] 1.5  DOOM: doomgeneric_bmo.c deja de definir los suyos
+   [x] 1.1  <bmo/pantalla.h>, 238 lineas, carril ROJO. R11 la acepta
+   [x] 1.2  raycaster_C.c: CUATRO numeros fuera, no tres
+   [x] 1.3  examples/pantalla_C.c -- y con el, entrada.h deja de ser la
+            unica cabecera sin ejemplo, hueco abierto desde el 19-08
+   [x] 1.4  fila en el README, y el indice pasa a ONCE piezas
+   [x] 1.5  DOOM: los tres suyos fuera. Compila, 891.704 bytes
 ```
 
 [!] 1.5 va en `BMO-externo`, que no es repo git. Se hace y se dice; no aparece
 en ningun commit.
+
+## ★★ Lo que salio por el camino, y no estaba en la lista
+
+**1. `raycaster_C.c` tenia CUATRO numeros copiados, no tres.** El cuarto era
+`#define ENT_TECLA 0x03` -- y `<bmo/entrada.h>`, que lo publica desde siempre,
+**ya estaba incluida nueve lineas mas arriba**. O sea que no todos los numeros
+copiados vienen de que falte la cabecera: uno venia de no mirarla. Eso es
+exactamente lo que el paso 3 (R14) va a cazar.
+
+**2. ★★ `unity.py` compilaba el fichero equivocado, y decia que si.**
+
+Construia `bmo_unity.c` --el agregado de los 81 ficheros de DOOM, que no tiene
+`main` porque el punto de entrada vive en la capa de plataforma-- en vez de
+`doomgeneric_bmo.c`, que es quien INCLUYE al agregado. El frontend contestaba
+
+```text
+   error: no hay funcion 'main': un programa de Ring 3 necesita punto de entrada
+```
+
+y el guion lo imprimia como una linea mas y **salia con codigo 0**.
+
+> Un guion que falla y sale con cero no es un guion roto: es un guion que
+> MIENTE.
+
+Por eso `doom-port/out/doom.bex` llevaba **desde el 14-08 sin tocarse** --19
+dias-- y nadie lo noto: el binario que se desplegaba se construia a mano con la
+orden que la cabecera de `doomgeneric_bmo.c` documenta. Arreglado: compila la
+entrada correcta y propaga el codigo de salida.
+
+**3. En REX una cabecera se paga por INCLUIRLA, no por usarla.** Medido:
+
+```text
+   incluir <bmo/pantalla.h> y no llamar a nada   +1.795 B
+   scroll_C, que no llama a bmo_entrada_soltar      +51 B
+```
+
+La cabecera trae el cuerpo --no hay `libbmo.so`-- y no hay enlazador detras que
+pode lo que nadie llama. ★ **Se descubrio porque lo escribi al reves**: la
+primera version de `pantalla.h` decia *"quien no lo usa no lo paga"* citando a
+`<bmo/bloque.h>`, y ahi la regla es otra --el CODEGEN no emite las globales si
+nadie las declara--. Se midio, salio falso, y la frase esta corregida en la
+cabecera. Es una propiedad de REX entera y no estaba escrita en ninguna parte.
 
 ---
 

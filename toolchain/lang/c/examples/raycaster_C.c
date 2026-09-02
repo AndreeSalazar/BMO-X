@@ -65,19 +65,28 @@
  * este programa solo leia CARACTERES-- y entra con el buzon: dentro de una
  * ventana lo que llega es scancode, y hay que saber cual es cual. */
 #include <bmo/entrada.h>
+#include <bmo/pantalla.h>
 
 /* Lo que mide la ventana cuando hay compositor. En pantalla exclusiva se usa
  * lo que mida el panel, que es lo que hacia este programa desde el primer dia. */
 #define VEN_ANCHO 640
 #define VEN_ALTO  400
 
-/* Operaciones sobre el handle de pantalla (KIND_FRAMEBUFFER). */
-#define FB_BASE   0x01
-#define FB_DIMS   0x02   /* ancho<<32 | alto */
-#define FB_STRIDE 0x03   /* stride<<32 | formato -- stride va en PIXELES */
-
-/* Operaciones sobre el handle de entrada (KIND_INPUT). */
-#define ENT_TECLA 0x03   /* no bloquea: 0 = no hay nada */
+/* ** AQUI HABIA CUATRO NUMEROS DEL KERNEL COPIADOS A MANO, y se fueron el
+ * 2026-09-01:
+ *
+ *     #define FB_BASE   0x01        ahora <bmo/pantalla.h>
+ *     #define FB_DIMS   0x02              idem
+ *     #define FB_STRIDE 0x03              idem
+ *     #define ENT_TECLA 0x03        ya estaba en <bmo/entrada.h>, que este
+ *                                   fichero incluye nueve lineas mas arriba
+ *
+ * Los tres primeros no tenian donde vivir --REX no publicaba el framebuffer,
+ * y DOOM se los copiaba igual-- pero el cuarto es peor: la cabecera correcta
+ * ya estaba incluida en este mismo fichero.
+ *
+ * ** Un numero del kernel copiado en un ejemplo es una copia que nadie
+ * compara con el original, y de ahi salen los pasos 2 y 3 del plan de REX. */
 
 #define UNO   65536      /* 1.0 en 16.16 */
 #define MAPA_N 16
@@ -354,9 +363,7 @@ int menu_golpe(int ancho, int alto, int mx, int my) {
 int main() {
     unsigned long long pant;
     unsigned long long ent;
-    unsigned long long base;
-    unsigned long long dims;
-    unsigned long long st;
+    BMO_PANTALLA pan;
     unsigned int *fb;
     int ancho;
     int alto;
@@ -462,18 +469,15 @@ int main() {
     } else {
         /* * LA PANTALLA TIENE UN SOLO DUENO. Si no hay compositor que preste
          * una caja, se toma entera, que es lo que este ejemplo hacia siempre. */
-        pant = bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_PANTALLA_RECLAMAR, 0, 0, 0);
-        if (pant == 0) {
+        if (bmo_pantalla_abrir(&pan) == 0) {
             printf("ni ventana ni pantalla: no hay donde dibujar\n");
             return 1;
         }
-        base = bmo_valor(pant, FB_BASE, 0, 0, 0);
-        dims = bmo_valor(pant, FB_DIMS, 0, 0, 0);
-        st = bmo_valor(pant, FB_STRIDE, 0, 0, 0);
-        fb = (unsigned int *)base;
-        ancho = (int)(dims >> 32);
-        alto = (int)(dims & 0xFFFFFFFF);
-        stride = (int)(st >> 32);
+        pant = pan.cap;
+        fb = pan.pixeles;
+        ancho = pan.ancho;
+        alto = pan.alto;
+        stride = pan.paso;
 
         /* SIN ENTRADA NO SE ARRANCA. Ver la nota al final del fichero. */
         ent = bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_ENTRADA_RECLAMAR, 0, 0, 0);
@@ -705,7 +709,7 @@ int main() {
                 if ((ev & BMO_EVENTO_PULSADA) == 0) continue;
                 accion = accion_de_scancode((int)(ev & 0xFF));
             } else {
-                tecla = (int)bmo_valor(ent, ENT_TECLA, 0, 0, 0);
+                tecla = (int)bmo_valor(ent, BMO_ENTRADA_TECLA, 0, 0, 0);
                 if (tecla == 0) break;             /* la cola esta vacia */
                 /* *** EL BIT QUE DEJABA ESTE PROGRAMA SIN CONTROL.
                  *
@@ -862,9 +866,9 @@ int main() {
          *
          * Cuesta un INVOKE por fotograma, que es lo mismo que ya cuesta leer una
          * tecla. Y con el handle revocado la operacion contesta 0, que es un
-         * valor que `FB_BASE` no puede devolver siendo valido. */
+         * valor que `BMO_FB_BASE` no puede devolver siendo valido. */
         if (sup == 0) {
-            if (bmo_valor(pant, FB_BASE, 0, 0, 0) == 0) {
+            if (bmo_valor(pant, BMO_FB_BASE, 0, 0, 0) == 0) {
                 printf("raycaster: me quitaron la pantalla, salgo\n");
                 return 0;
             }
