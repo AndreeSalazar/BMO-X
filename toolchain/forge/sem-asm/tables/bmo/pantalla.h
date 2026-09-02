@@ -211,6 +211,72 @@ int bmo_pantalla_cerrar(BMO_PANTALLA *p) {
     return 0;
 }
 
+/* -- ** CEDER LA PANTALLA UN RATO, Y VOLVER --------------------------
+ *
+ * == El problema, con numeros ==
+ *
+ * Una app a pantalla completa repinta sus pixeles decenas de veces por
+ * segundo. DOOM a 28 fps con escala x5 reescribe 1600x1000 cada 35 ms, asi que
+ * **cualquier cosa que el kernel escriba dentro de ese rectangulo vive 35
+ * milisegundos**. No es que el kernel no pinte: es que pierde la carrera.
+ *
+ * Y esto no se arregla con el kernel reservandose una franja. Eso seria meter
+ * politica de pantalla en Ring 0, que es exactamente lo que `KIND_LIENZO`
+ * hacia y por lo que se quito -- ver `obj/loan.rs` y la pregunta del dueno:
+ * *"Ring 3 no puede administrar eso el?"*.
+ *
+ * == Como lo resuelve Linux, que es de donde sale esto ==
+ *
+ * No reservando nada. El kernel da el framebuffer ENTERO al cliente grafico y
+ * no se guarda un pixel; `printk` mientras corre X no se ve, y va al anillo
+ * (`dmesg`) y al cable. Lo que hay es **una forma de irse a mirar y volver**:
+ *
+ *     Ctrl+Alt+F1     cambio de terminal virtual
+ *     drmDropMaster   el cliente suelta el display
+ *     drmSetMaster    y lo recupera al volver
+ *
+ * ** BMO-X ya tenia las tres piezas que importan --el klog, el cable y la
+ * pantalla azul-- y le faltaba solo esta: **soltar sin morir**.
+ *
+ * == Como se usa ==
+ *
+ *     if (tecla_de_consola) {
+ *         if (p.cap != 0) { bmo_pantalla_ceder(&p); }
+ *         else            { bmo_pantalla_recuperar(&p); }
+ *     }
+ *
+ * Mientras esta cedida, `p.pixeles` vale 0 y `p.cap` vale 0: la app **no puede
+ * dibujar aunque lo intente**, y eso es a proposito. Un puntero que sigue
+ * apuntando a una pantalla que ya no es tuya es la trampa que salta despues y
+ * lejos.
+ *
+ * [!] Y ceder NO repinta nada. La pantalla se queda con el ultimo fotograma
+ * hasta que alguien escriba: el panel del kernel pinta cuando hay algo que
+ * decir, y `F11` vuelca el klog encima. Eso es lo que hay que mirar.
+ */
+
+/* Suelta la pantalla y deja la app CIEGA pero viva. `1` = cedida. */
+int bmo_pantalla_ceder(BMO_PANTALLA *p) {
+    if (p == 0 || p->cap == 0) {
+        return 0;
+    }
+    if (bmo_pantalla_soltar() != 0) {
+        return 0;
+    }
+    p->cap = 0;
+    p->pixeles = 0;
+    return 1;
+}
+
+/* La vuelve a pedir y remide el panel. `1` = otra vez es tuya.
+ *
+ * ** Se REMIDE y no se restaura lo guardado: entre ceder y volver, la pantalla
+ * pudo cambiar de manos, y una anchura vieja se indexa igual de bien y pinta
+ * en el sitio que no es. */
+int bmo_pantalla_recuperar(BMO_PANTALLA *p) {
+    return bmo_pantalla_abrir(p);
+}
+
 /* Cabe este pixel en lo que el kernel mapeo?
  *
  * ** Existe porque `RANGECHECK` de DOOM enseno lo que cuesta no tenerla: un
