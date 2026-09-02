@@ -82,8 +82,10 @@
 0x4E INFO_CPU_HILOS_POR_NUCLEO      BMO_INFO_CPU_HILOS_POR_NUCLEO    fila de INFORME: crece por filas y no rompe a nadie
 0x01 ARCH_OP_LEER                   BMO_ARCH_LEER                    operacion sobre KIND_ARCHIVO
 0x01 AUDIO_OP_DEVICES               BMO_SONIDO_APARATO               devices / aparato -- mapa de bits, no una cuenta
+0x01 DEVICE_SPEAKER                 BMO_APARATO_ALTAVOZ              el altavoz del PC. Mapa de BITS: 1<<0, no una cuenta
 0x01 FB_OP_BASE                     BMO_FB_BASE                      la pantalla. DOOM y raycaster_C los tenian COPIADOS hasta el 01-09
 0x02 AUDIO_OP_BEEP                  BMO_SONIDO_PITAR                 beep / pitar
+0x02 DEVICE_HDA                     BMO_APARATO_HDA                  HD Audio, 1<<1. **Hoy siempre 0**: no hay driver
 0x02 FB_OP_DIMS                     BMO_FB_DIMS                      la pantalla. DOOM y raycaster_C los tenian COPIADOS hasta el 01-09
 0x03 ARCH_OP_TAMANO                 BMO_ARCH_TAMANO                  operacion sobre KIND_ARCHIVO
 0x03 AUDIO_OP_VOLUME                BMO_SONIDO_VOLUMEN               volume / volumen
@@ -95,6 +97,7 @@
 0x06 ARCH_OP_LEER_EN                BMO_ARCH_LEER_EN                 operacion sobre KIND_ARCHIVO
 0x07 ARCH_OP_SALTAR                 BMO_ARCH_SALTAR                  operacion sobre KIND_ARCHIVO
 0x08 ARCH_OP_ESCRIBIR_DE            BMO_ARCH_ESCRIBIR_DE             operacion sobre KIND_ARCHIVO
+0xFFFFFFFFFFFFFFFE CURRENT_TASK                   BMO_TAREA_ACTUAL                 la pseudo-capability de uno mismo. NO se transfiere nunca
 0x01 TASK_OP_GET_PID                BMO_OP_PID                       get_pid / pid
 0x02 TASK_OP_GET_TID                BMO_OP_TID                       get_tid / tid
 0x03 TASK_OP_YIELD                  BMO_OP_CEDER                     yield / ceder
