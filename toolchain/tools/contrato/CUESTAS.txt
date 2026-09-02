@@ -11,11 +11,28 @@
 # El numero va solo en la primera linea util. Lo de abajo es el inventario, y es
 # comentario: esta para leerlo, no para juzgarlo.
 
-7
+24
+# NADA      Ultra_kernel_x86-64/kernel/src/ring0/core/autopsy.rs
 # APARATO   Ultra_kernel_x86-64/kernel/src/ring0/core/emergencia.rs
-# MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/mm/phys.rs
-# MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/mm/vmm.rs
+# NADA      Ultra_kernel_x86-64/kernel/src/ring0/core/gato/masks.rs
+# MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/core/purga.rs
+# MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/mm/phys/amarilla.rs
+# MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/mm/phys/mod.rs
+# MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/mm/phys/roja.rs
+# MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/mm/vmm/amarilla.rs
+# MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/mm/vmm/mod.rs
+# MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/mm/vmm/roja.rs
+# NADA      Ultra_kernel_x86-64/kernel/src/ring0/mm/vmm/verde.rs
+# MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/obj/fb/roja.rs
+# NADA      Ultra_kernel_x86-64/kernel/src/ring0/obj/fb/verde.rs
 # TAREA     Ultra_kernel_x86-64/kernel/src/ring0/obj/latido.rs
 # MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/obj/mmio.rs
+# MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/plat/faults/amarilla.rs
+# MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/plat/faults/roja.rs
+# NADA      Ultra_kernel_x86-64/kernel/src/ring0/plat/faults/verde.rs
+# MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/task/admitir.rs
+# MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/task/scheduler/roja.rs
+# NADA      Ultra_kernel_x86-64/kernel/src/ring0/task/scheduler/verde.rs
 # APARATO   platform/drivers/net/src/lib.rs
+# MAQUINA   platform/shared/bmo-fisica-juicio/src/lib.rs
 # MAQUINA   platform/shared/bmo-mmio-juicio/src/lib.rs

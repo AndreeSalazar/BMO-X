@@ -1,0 +1,117 @@
+# EL ESPEJO DE REX -- los numeros que estan escritos DOS veces.
+#
+# `bmo-abi` los declara en Rust y las cabeceras de `<bmo/...>` los repiten en C,
+# porque C no puede importar de Rust. `<bmo/paquete.h>` ya lo confesaba: *"si
+# algun dia dejan de coincidir, la fila de pruebas ... es la que lo dice"* -- y
+# eso cubria UNA fila de las 90.
+#
+# ** Es el patron que ya costo caro: una tabla con dos lectores, y crecer por
+# uno la rompe para el otro. El 22-08 fueron `intrinsics.toml` y cinco frontends.
+#
+# == Por que una TABLA y no una comparacion en vivo ==
+#
+# Comparar los dos lados hoy diria que coinciden. Lo que NO diria es que alguien
+# cambio el numero **en los dos a la vez**: seguirian coincidiendo, y ese es
+# justo el cambio que rompe los `.bex` que ya estan firmados. Contra el numero
+# SELLADO no hay forma de que pase.
+#
+# == Lo que esta tabla NO puede decir ==
+#
+# **Si la pareja es la correcta.** Que `TASK_OP_FRAMEBUFFER_CLAIM` y
+# `BMO_OP_PANTALLA_RECLAMAR` sean la misma cosa lo dice una PERSONA, aqui, en la
+# nota. Una herramienta que lo dedujera estaria adivinando -- y un guardian que
+# adivina da permiso con autoridad. Misma frontera que `LINEA_BASE.txt`.
+#
+# Formato:  numero  nombre_abi  nombre_c  nota
+# Se regenera con `--sellar`, que CONSERVA las notas de las filas que no cambian.
+
+0x01 INPUT_OP_PUNTERO               BMO_ENTRADA_PUNTERO              operacion sobre KIND_INPUT
+0x02 INPUT_OP_EVENTOS               BMO_ENTRADA_EVENTOS              operacion sobre KIND_INPUT
+0x03 INPUT_OP_TECLA                 BMO_ENTRADA_TECLA                operacion sobre KIND_INPUT
+0x04 INPUT_OP_MODIFICADORES         BMO_ENTRADA_MODIFICADORES        operacion sobre KIND_INPUT
+0x05 INPUT_OP_RUEDA                 BMO_ENTRADA_RUEDA                operacion sobre KIND_INPUT
+0x06 INPUT_OP_EVENTO_TECLA          BMO_ENTRADA_EVENTO_TECLA         operacion sobre KIND_INPUT
+0x01 INFO_RAM_TOTAL                 BMO_INFO_RAM_TOTAL               fila de INFORME: crece por filas y no rompe a nadie
+0x02 INFO_RAM_LIBRE                 BMO_INFO_RAM_LIBRE               fila de INFORME: crece por filas y no rompe a nadie
+0x05 INFO_TSC_HZ                    BMO_INFO_TSC_HZ                  0x05 tambien en TXT_EXT_NOMBRE, y no es choque: los TXT entran por TASK_OP_INFO_TEXTO (0x14), otra operacion
+0x05 INFO_TXT_EXT_NOMBRE            BMO_INFO_TXT_EXT_NOMBRE          espacio de numeracion de INFO_TEXTO, no de INFO
+0x06 INFO_CPU_HILOS                 BMO_INFO_CPU_HILOS               0x06 tambien en TXT_EXT_NOTA -- mismo motivo que 0x05
+0x06 INFO_TXT_EXT_NOTA              BMO_INFO_TXT_EXT_NOTA            idem
+0x07 INFO_CPU_NUCLEOS               BMO_INFO_CPU_NUCLEOS             fila de INFORME: crece por filas y no rompe a nadie
+0x0B INFO_TICKS                     BMO_INFO_TICKS                   fila de INFORME: crece por filas y no rompe a nadie
+0x1B INFO_SMP_VIVOS                 BMO_INFO_SMP_VIVOS               fila de INFORME: crece por filas y no rompe a nadie
+0x20 INFO_CPU_HZ_REAL               BMO_INFO_CPU_HZ_REAL             fila de INFORME: crece por filas y no rompe a nadie
+0x21 INFO_CPU_MW_PAQUETE            BMO_INFO_CPU_MW_PAQUETE          fila de INFORME: crece por filas y no rompe a nadie
+0x22 INFO_CPU_MW_NUCLEO_ACTUAL      BMO_INFO_CPU_MW_NUCLEO_ACTUAL    fila de INFORME: crece por filas y no rompe a nadie
+0x23 INFO_CPU_SENSORES              BMO_INFO_CPU_SENSORES            fila de INFORME: crece por filas y no rompe a nadie
+0x27 INFO_NET_PRESENTE              BMO_INFO_NET_PRESENTE            fila de INFORME: crece por filas y no rompe a nadie
+0x28 INFO_NET_VENDOR_DEVICE         BMO_INFO_NET_VENDOR_DEVICE       fila de INFORME: crece por filas y no rompe a nadie
+0x29 INFO_NET_MAC                   BMO_INFO_NET_MAC                 fila de INFORME: crece por filas y no rompe a nadie
+0x2A INFO_NET_PHY_CRUDO             BMO_INFO_NET_PHY_CRUDO           fila de INFORME: crece por filas y no rompe a nadie
+0x2B INFO_NET_MEGABITS              BMO_INFO_NET_MEGABITS            fila de INFORME: crece por filas y no rompe a nadie
+0x2C INFO_NET_RX_ARMADO             BMO_INFO_NET_RX_ARMADO           fila de INFORME: crece por filas y no rompe a nadie
+0x2D INFO_NET_RX_TRAMAS             BMO_INFO_NET_RX_TRAMAS           fila de INFORME: crece por filas y no rompe a nadie
+0x2E INFO_NET_PCI                   BMO_INFO_NET_PCI                 fila de INFORME: crece por filas y no rompe a nadie
+0x2F INFO_SYSCALL_CUENTA            BMO_INFO_SYSCALL_CUENTA          fila de INFORME: crece por filas y no rompe a nadie
+0x30 INFO_SYSCALL_CICLOS            BMO_INFO_SYSCALL_CICLOS          fila de INFORME: crece por filas y no rompe a nadie
+0x31 INFO_CPU_EXT_N                 BMO_INFO_CPU_EXT_N               fila de INFORME: crece por filas y no rompe a nadie
+0x32 INFO_CPU_EXT_HAY               BMO_INFO_CPU_EXT_HAY             fila de INFORME: crece por filas y no rompe a nadie
+0x33 INFO_CPU_EXT_USA               BMO_INFO_CPU_EXT_USA             fila de INFORME: crece por filas y no rompe a nadie
+0x34 INFO_CPU_EXT_AVERIAS           BMO_INFO_CPU_EXT_AVERIAS         fila de INFORME: crece por filas y no rompe a nadie
+0x35 INFO_SYSCALL_CICLOS_GUARDA     BMO_INFO_SYSCALL_CICLOS_GUARDA   fila de INFORME: crece por filas y no rompe a nadie
+0x36 INFO_SYSCALL_CICLOS_RESTAURA   BMO_INFO_SYSCALL_CICLOS_RESTAURA fila de INFORME: crece por filas y no rompe a nadie
+0x37 INFO_PRESUPUESTO_PUERTA        BMO_INFO_PRESUPUESTO_PUERTA      fila de INFORME: crece por filas y no rompe a nadie
+0x38 INFO_PRESUPUESTO_DISPATCH      BMO_INFO_PRESUPUESTO_DISPATCH    fila de INFORME: crece por filas y no rompe a nadie
+0x39 INFO_PRESUPUESTO_HANDLE        BMO_INFO_PRESUPUESTO_HANDLE      fila de INFORME: crece por filas y no rompe a nadie
+0x3D INFO_PRESUPUESTO_MAQUINA       BMO_INFO_PRESUPUESTO_MAQUINA     fila de INFORME: crece por filas y no rompe a nadie
+0x3E INFO_SUELO_CRUCE               BMO_INFO_SUELO_CRUCE             fila de INFORME: crece por filas y no rompe a nadie
+0x3F INFO_DISCO_MEDIO               BMO_INFO_DISCO_MEDIO             fila de INFORME: crece por filas y no rompe a nadie
+0x40 INFO_DISCO_ENLACE              BMO_INFO_DISCO_ENLACE            fila de INFORME: crece por filas y no rompe a nadie
+0x41 INFO_DISCO_GEOMETRIA           BMO_INFO_DISCO_GEOMETRIA         fila de INFORME: crece por filas y no rompe a nadie
+0x42 INFO_DISCO_JUICIO              BMO_INFO_DISCO_JUICIO            fila de INFORME: crece por filas y no rompe a nadie
+0x43 INFO_DISCO_TRIM_SECTORES       BMO_INFO_DISCO_TRIM_SECTORES     fila de INFORME: crece por filas y no rompe a nadie
+0x44 INFO_DISCO_TRIM_ORDENES        BMO_INFO_DISCO_TRIM_ORDENES      fila de INFORME: crece por filas y no rompe a nadie
+0x45 INFO_DISCO_COLA_LBA            BMO_INFO_DISCO_COLA_LBA          fila de INFORME: crece por filas y no rompe a nadie
+0x46 INFO_DISCO_COLA_SECTORES       BMO_INFO_DISCO_COLA_SECTORES     fila de INFORME: crece por filas y no rompe a nadie
+0x47 INFO_DISCO_TRIM_BLOQUES        BMO_INFO_DISCO_TRIM_BLOQUES      fila de INFORME: crece por filas y no rompe a nadie
+0x48 INFO_DISCO_TRIM_FALLO          BMO_INFO_DISCO_TRIM_FALLO        fila de INFORME: crece por filas y no rompe a nadie
+0x4A INFO_NET_RX_BYTES              BMO_INFO_NET_RX_BYTES            fila de INFORME: crece por filas y no rompe a nadie
+0x4B INFO_NET_RX_PERDIDAS           BMO_INFO_NET_RX_PERDIDAS         fila de INFORME: crece por filas y no rompe a nadie
+0x4C INFO_NET_RX_TIPOS              BMO_INFO_NET_RX_TIPOS            fila de INFORME: crece por filas y no rompe a nadie
+0x4D INFO_CPU_TOPOLOGIA_DUDA        BMO_INFO_CPU_TOPOLOGIA_DUDA      fila de INFORME: crece por filas y no rompe a nadie
+0x4E INFO_CPU_HILOS_POR_NUCLEO      BMO_INFO_CPU_HILOS_POR_NUCLEO    fila de INFORME: crece por filas y no rompe a nadie
+0x01 ARCH_OP_LEER                   BMO_ARCH_LEER                    operacion sobre KIND_ARCHIVO
+0x01 AUDIO_OP_DEVICES               BMO_SONIDO_APARATO               devices / aparato -- mapa de bits, no una cuenta
+0x01 FB_OP_BASE                     BMO_FB_BASE                      la pantalla. DOOM y raycaster_C los tenian COPIADOS hasta el 01-09
+0x02 AUDIO_OP_BEEP                  BMO_SONIDO_PITAR                 beep / pitar
+0x02 FB_OP_DIMS                     BMO_FB_DIMS                      la pantalla. DOOM y raycaster_C los tenian COPIADOS hasta el 01-09
+0x03 ARCH_OP_TAMANO                 BMO_ARCH_TAMANO                  operacion sobre KIND_ARCHIVO
+0x03 AUDIO_OP_VOLUME                BMO_SONIDO_VOLUMEN               volume / volumen
+0x03 FB_OP_STRIDE                   BMO_FB_STRIDE                    la pantalla. DOOM y raycaster_C los tenian COPIADOS hasta el 01-09
+0x03 MEM_OP_OFRECER                 BMO_MEM_OFRECER                  prestar un trozo del bloque propio al DIRECTOR
+0x04 ARCH_OP_CERRAR                 BMO_ARCH_CERRAR                  operacion sobre KIND_ARCHIVO
+0x04 AUDIO_OP_SILENCE               BMO_SONIDO_CALLAR                silence / callar
+0x04 FB_OP_BYTES                    BMO_FB_BYTES                     la pantalla. DOOM y raycaster_C los tenian COPIADOS hasta el 01-09
+0x06 ARCH_OP_LEER_EN                BMO_ARCH_LEER_EN                 operacion sobre KIND_ARCHIVO
+0x07 ARCH_OP_SALTAR                 BMO_ARCH_SALTAR                  operacion sobre KIND_ARCHIVO
+0x08 ARCH_OP_ESCRIBIR_DE            BMO_ARCH_ESCRIBIR_DE             operacion sobre KIND_ARCHIVO
+0x01 TASK_OP_GET_PID                BMO_OP_PID                       get_pid / pid
+0x02 TASK_OP_GET_TID                BMO_OP_TID                       get_tid / tid
+0x03 TASK_OP_YIELD                  BMO_OP_CEDER                     yield / ceder
+0x04 TASK_OP_EXIT                   BMO_OP_SALIR                     exit / salir
+0x06 TASK_OP_CONSOLE_WRITE          BMO_OP_CONSOLA_ESCRIBIR          console_write / consola_escribir
+0x09 TASK_OP_FRAMEBUFFER_CLAIM      BMO_OP_PANTALLA_RECLAMAR         el mismo objeto en dos idiomas: claim / reclamar
+0x0A TASK_OP_INPUT_CLAIM            BMO_OP_ENTRADA_RECLAMAR          idem -- input / entrada
+0x0B TASK_OP_RUTA                   BMO_OP_RUTA                      operacion sobre BMO_TAREA_ACTUAL
+0x0C TASK_OP_EJECUTAR               BMO_OP_EJECUTAR                  operacion sobre BMO_TAREA_ACTUAL
+0x0F TASK_OP_CONSOLE_READ           BMO_OP_CONSOLA_LEER              console_read / consola_leer
+0x10 TASK_OP_ARCHIVO_ABRIR          BMO_OP_ARCHIVO_ABRIR             operacion sobre BMO_TAREA_ACTUAL
+0x11 TASK_OP_ARCHIVO_CREAR          BMO_OP_ARCHIVO_CREAR             operacion sobre BMO_TAREA_ACTUAL
+0x12 TASK_OP_REINICIAR              BMO_OP_REINICIAR                 operacion sobre BMO_TAREA_ACTUAL
+0x13 TASK_OP_INFO                   BMO_OP_INFO                      operacion sobre BMO_TAREA_ACTUAL
+0x1D TASK_OP_PANTALLA_SOLTAR        BMO_OP_PANTALLA_SOLTAR           la pareja de CLAIM que falto hasta el 2026-09-01
+0x1E TASK_OP_ENTRADA_SOLTAR         BMO_OP_ENTRADA_SOLTAR            idem. Va con la de arriba: separarlas fue el bug
+0x21 TASK_OP_AUDIO_CLAIM            BMO_OP_SONIDO_RECLAMAR           idem -- audio / sonido
+0x22 TASK_OP_AUDIO_RELEASE          BMO_OP_SONIDO_SOLTAR             idem -- release / soltar. La UNICA que ya tenia pareja
+0x25 TASK_OP_MI_PAQUETE             BMO_OP_MI_PAQUETE                operacion sobre BMO_TAREA_ACTUAL
+0x26 TASK_OP_MI_PADRE               BMO_OP_MI_PADRE                  operacion sobre BMO_TAREA_ACTUAL

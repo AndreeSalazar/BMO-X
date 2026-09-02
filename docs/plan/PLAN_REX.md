@@ -224,7 +224,7 @@ cabecera. Es una propiedad de REX entera y no estaba escrita en ninguna parte.
 
 ---
 
-# PASO 2 -- R13, el espejo de los numeros
+# ~~PASO 2~~ -- R13, el espejo ✅ HECHO (2026-09-01)
 
 ## El problema, con su cita
 
@@ -257,13 +257,48 @@ adivinando. Tablas y no cerebros.
 ## Casillas
 
 ```
-   [ ] 2.1  generar el borrador con el emparejador de familias (74 parejas)
-   [ ] 2.2  revisarlo A MANO: una herramienta no sabe si dos nombres son la
-            misma cosa. Es la misma nota que ya lleva `--sellar`
-   [ ] 2.3  R13 en contrato.py + autoprueba (un par que discrepa, un par nuevo
-            sin sellar, y el suelo que baja)
-   [ ] 2.4  sellar el suelo en 74
+   [x] 2.1  borrador: **90 parejas, no 74**. El paso 1 anadio los cuatro
+            FB_OP_* y los dos SOLTAR, y cada uno trajo su pareja
+   [x] 2.2  revisadas a mano las 90. **CERO discrepancias hoy**
+   [x] 2.3  R13 en contrato.py + SEIS autopruebas
+   [x] 2.4  sellado en 90, en `toolchain/tools/contrato/REX_ESPEJO.txt`
 ```
+
+## ★ Y se comprobo que MUERDE, no que compila
+
+Se cambio a mano `BMO_FB_STRIDE` de `0x03` a `0x33` en el arbol de verdad:
+
+```text
+   [X] R13 el espejo de REX: el espejo sello FB_OP_STRIDE = BMO_FB_STRIDE =
+       0x03, y hoy el ABI dice 0x03 y REX dice 0x33. Cambiar un numero de la
+       puerta rompe binarios que YA existen
+```
+
+y se deshizo. Una regla que solo se ha visto pasar no se ha visto.
+
+## ★★ Lo que salio por el camino
+
+**1. `INFO_TSC_HZ` y `INFO_TXT_EXT_NOMBRE` valen los DOS `0x05`** (y
+`CPU_HILOS` / `TXT_EXT_NOTA`, los dos `0x06`). Parece un choque y no lo es: los
+campos de texto entran por `TASK_OP_INFO_TEXTO` (0x14), que es **otra
+operacion**, asi que viven en otro espacio de numeracion. Queda escrito en la
+nota de esas cuatro filas para que nadie lo *arregle*.
+
+**2. ★★ Los trinquetes de L6e y L6f llevaban desfasados.** Al correr
+`--sellar` salieron sus suelos reales:
+
+```text
+   [cuesta]   suelo 7  ->  24 ficheros lo declaran
+   [riesgo]   suelo 3  ->  20
+```
+
+No es un resellado cosmetico. **Un suelo por debajo de la realidad es un
+trinquete que no trinca**: con el suelo en 7, diecisiete ficheros de Ring 0
+podian perder su etiqueta y el guardian habria dicho que todo bien. Se quedaron
+atras cuando Ring 0 gano sus carriles y nadie volvio a sellar.
+
+> Un trinquete que no se resella deja de ser un trinquete y pasa a ser un
+> numero viejo con autoridad.
 
 ---
 
