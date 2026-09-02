@@ -84,17 +84,103 @@ pub(super) fn tecla_del_dueno(t: Option<u8>) -> Option<u8> {
 ///
 /// Returns `true` if there was someone to rescue.
 fn rescue_owner() -> bool {
+    // == ** LA SEGUNDA PULSACION MANDA SIEMPRE (corregido el 2026-09-01) =====
+    //
+    // ** El dueno lo probo y no paso nada: *"no se cumplio"*. Y la razon estaba
+    // en el orden de este `match`:
+    //
+    // ```text
+    //    fb::rescue() -> Some   le quita la pantalla al dueno y SE VA
+    //    fb::rescue() -> None   ...y solo por AQUI se llegaba a la purga
+    // ```
+    //
+    // O sea que la limpieza total solo ocurria cuando el dueno de la pantalla
+    // era **el escritorio**, que es el unico a quien `fb::rescue` se niega a
+    // echar. Con DOOM delante --que NO es el primer dueno-- la primera
+    // pulsacion lo echaba, devolvia `Some`, y la purga no se pedia jamas.
+    //
+    // *** Asi que la ventana se mira ANTES que la pantalla, y con eso el atajo
+    // tiene por fin dos significados limpios y predecibles:
+    //
+    // ```text
+    //    una pulsacion    devuelveme la pantalla
+    //    dos seguidas     REINICIA RING 3 -- mire quien mire la pantalla
+    // ```
+    //
+    // La segunda ya no depende de QUIEN sea el dueno, que es exactamente lo que
+    // hacia que la tecla se comportara distinto segun lo que hubiera delante.
+    if segunda_pulsacion() {
+        unsafe { PRIMER_INTENTO = 0 };
+        // La pantalla, sin respetar al primer dueno: aqui ya se pidio dos veces.
+        if let Some(pid) = crate::ring0::obj::fb::rescate_de_emergencia() {
+            let _ = crate::ring0::obj::input::release(pid);
+            crate::ring0::cabina::warn(
+                "input", "SEGUNDA llamada: la pantalla vuelve al kernel", pid as u64);
+        }
+        // Y la limpieza entera. Se PIDE: la recoge el hilo del bus, porque esto
+        // se alcanza tambien desde un syscall. Ver `core/purga.rs`.
+        crate::ring0::cabina::warn(
+            "input", "SEGUNDA llamada: se pide la PURGA de Ring 3 entero", 0);
+        crate::ring0::core::purga::pedir();
+        return true;
+    }
     match crate::ring0::obj::fb::rescue() {
         Some(pid) => {
             let _ = crate::ring0::obj::input::release(pid);
             crate::ring0::cabina::warn("input", "entrada RESCATADA por el teclado", pid as u64);
-            unsafe { PRIMER_INTENTO = 0 };
             true
         }
-        // Nadie a quien rescatar. Y hasta el 2026-08-26 eso era el final de la
-        // historia -- ver `segunda_llamada`.
-        None => segunda_llamada(),
+        // Nadie a quien rescatar por las buenas. La ventana ya quedo abierta
+        // arriba, asi que la siguiente pulsacion purga.
+        None => {
+            crate::ring0::cabina::warn(
+                "input", "nadie a quien rescatar: pulsa otra vez para REINICIAR Ring 3", 0);
+            true
+        }
     }
+}
+
+/// **Es esta la SEGUNDA pulsacion dentro de la ventana?**
+///
+/// Si no lo es, abre la ventana y contesta `false`. Salio de `segunda_llamada`
+/// el 2026-09-01 para poder preguntarlo **antes** de mirar quien tiene la
+/// pantalla: mientras la pregunta vivio dentro de aquella funcion, la purga
+/// dependia de que el dueno fuera el escritorio.
+///
+/// [!] Sin TSC medido no hay ventana que medir, y entonces se trata como
+/// primera llamada SIEMPRE: **mejor no dar la patada que darla sin querer.** Es
+/// la regla de los jueces de esta casa -- cuando falta un dato, la respuesta es
+/// la que no asume.
+fn segunda_pulsacion() -> bool {
+    use crate::ring0::task::scheduler;
+    let ahora = scheduler::rdtsc();
+    let hz = scheduler::tsc_freq();
+    let anterior = unsafe { PRIMER_INTENTO };
+    // ** LA VENTANA TIENE SUELO Y TECHO, y el suelo es nuevo (2026-09-01).
+    //
+    // `watch_rescue` corre en el bucle del hilo del bus y **dispara mientras la
+    // tecla sigue pulsada**: no limpia `HELD_CODE`, lo limpia el KeyUp. Con solo
+    // el techo de tres segundos, dos vueltas de ese bucle --separadas por
+    // microsegundos-- contarian como dos pulsaciones, y **mantener el atajo
+    // apretado reiniciaria Ring 3 sin querer**.
+    //
+    // Eso tiraria por tierra lo unico que la doble pulsacion compra: que sea
+    // deliberada. Cien milisegundos separan dos dedos de un bucle de kernel por
+    // tres ordenes de magnitud, y ningun humano pulsa dos veces mas rapido.
+    //
+    // > Una confirmacion que se puede dar sin querer no confirma nada.
+    let d = ahora.wrapping_sub(anterior);
+    if hz != 0 && anterior != 0 && d >= hz / 10 && d < hz * VENTANA_S {
+        return true;
+    }
+    // [!] Dentro de los 100 ms NO se reabre la ventana: es la MISMA pulsacion
+    // repitiendose, y reabrirla moveria el reloj hacia adelante para siempre --
+    // la segunda de verdad nunca caeria dentro del plazo.
+    if hz != 0 && anterior != 0 && d < hz / 10 {
+        return false;
+    }
+    unsafe { PRIMER_INTENTO = ahora };
+    false
 }
 
 /// Cuando se pidio ayuda y no habia a quien rescatar. `0` = no hay intento vivo.
@@ -106,108 +192,27 @@ static mut PRIMER_INTENTO: u64 = 0;
 /// pulsaciones separadas por un cafe cuenten como una insistencia.
 const VENTANA_S: u64 = 3;
 
-/// **LA SEGUNDA LLAMADA: `Ctrl+Alt+Esc` otra vez, y esta SI echa al escritorio.**
-///
-/// # El agujero que esto cierra, y lo conto el metal
-///
-/// El 2026-08-26 el dueno abrio la calculadora, tecleo `10 * 60 =`, el motor de
-/// COBOL se murio, y **`Ctrl+Alt+Esc` no hizo nada**. No era un bug: `fb::rescue`
-/// se niega a echar al PRIMER dueno --el escritorio-- porque *"seria la tecla de
-/// romper la maquina"*.
-///
-/// *** A ese razonamiento le faltaba un dato: **`run_shell` no se para nunca.**
-/// Es un bucle que no retorna y que sigue leyendo el teclado mientras el
-/// escritorio corre. Hay donde aterrizar, asi que quitarle la pantalla al
-/// escritorio no es romper la maquina -- es volver al sitio del que se salio.
-///
-/// # Por que DOS pulsaciones y no una
-///
-/// Porque las dos cosas son verdad a la vez:
-///
-/// ```text
-///    una pulsacion    puede ser un error, y tirar el escritorio por un error
-///                     es exactamente lo que la version anterior evitaba
-///    dos seguidas     ya no es un error: es alguien diciendo "de verdad"
-/// ```
-///
-/// La primera no hace nada visible salvo apuntar la hora y dejarlo dicho en
-/// CABINA. La segunda, dentro de la ventana, da la patada.
-///
-/// [!] Y el ESC **se traga igual en la primera**, aunque no rescate a nadie. Si
-/// se entregara, la aplicacion recibiria un ESC que el usuario no le mando -- y
-/// en un dialogo eso es un "cancelar" que nadie pulso.
-fn segunda_llamada() -> bool {
-    use crate::ring0::task::scheduler;
-    let ahora = scheduler::rdtsc();
-    let hz = scheduler::tsc_freq();
-    let anterior = unsafe { PRIMER_INTENTO };
-    // Sin TSC medido no hay ventana que medir. Se trata como primera llamada
-    // siempre: **mejor no dar la patada que darla sin querer.** Es la regla de
-    // los jueces de esta casa -- cuando falta un dato, la respuesta es la que no
-    // asume.
-    let dentro = hz != 0 && anterior != 0 && ahora.wrapping_sub(anterior) < hz * VENTANA_S;
-    if !dentro {
-        unsafe { PRIMER_INTENTO = ahora };
-        crate::ring0::cabina::warn(
-            "input",
-            "la pantalla la tiene el ESCRITORIO: pulsa otra vez para echarlo",
-            0,
-        );
-        // Se traga el ESC igual. Ver la nota de arriba.
-        return true;
-    }
-    unsafe { PRIMER_INTENTO = 0 };
-    let echado = crate::ring0::obj::fb::rescate_de_emergencia();
-    if let Some(pid) = echado {
-        let _ = crate::ring0::obj::input::release(pid);
-        crate::ring0::cabina::warn(
-            "input",
-            "SEGUNDA llamada: el escritorio pierde la pantalla",
-            pid as u64,
-        );
-    }
-    // *** Y AHORA LA LIMPIEZA ENTERA, no solo el dueno de la pantalla.
-    //
-    // ** Lo pidio el dueno con la maquina en la mano: *"que haga limpieza total
-    // en la RAM en Ring 3 como si estuviera reiniciando, porque ya llevo asi
-    // repitiendo constantemente"*.
-    //
-    // Hasta hoy esta tecla echaba **al dueno de la pantalla** y a nadie mas.
-    // Devuelve la imagen --que era el problema del 26-08-- y deja en pie a todos
-    // los demas procesos de Ring 3, con su espacio, sus capabilities y sus
-    // marcos. Y despues se relanza el escritorio ENCIMA de eso.
-    //
-    // > Una vuelta a cero que no vuelve a cero no es un punto de partida: es
-    // > otro estado mas, y encima uno que nadie ha escrito.
-    //
-    // *** Y esto vale aunque NO sea la causa de la pantalla azul, que es lo que
-    // se esta investigando: **una patada que limpia a medias no sirve para
-    // descartar nada**. Despues del segundo intento ya no se sabe que quedaba de
-    // antes, y sin eso ningun arranque contesta una pregunta.
-    //
-    // El desmontaje de verdad lo hace `reap`, que es el unico sitio que ya sabe
-    // hacerlo bien. Esto solo dice quienes mueren.
-    // *** Y NO SOLO MARCAR: PURGAR Y CONTAR.
-    //
-    // ** La primera version marcaba las tareas y se iba, y el dueno lo llamo
-    // por su nombre: *"se siente que es superficial"*. Tenia razon, y el
-    // defecto era EL MISMO que el de la patada vieja, un nivel mas arriba:
-    //
-    // ```text
-    //    la patada vieja   echaba al dueno de la pantalla y a nadie mas
-    //    la limpieza v1    marcaba a todos... y no comprobaba nada
-    // ```
-    //
-    // Las dos dejan la maquina en un estado que nadie puede nombrar. Ahora
-    // `core::purga` cierra, **cede el CPU hasta que `reap` recoge**, y dice
-    // cuantos marcos y cuantas ranuras volvieron. Ver `core/purga.rs`.
-    // [!] Se PIDE, no se purga. Esta funcion se alcanza tambien desde
-    // `poll_ascii`, o sea DENTRO DE UN SYSCALL de Ring 3 -- y purgar ahi marca
-    // muerta a la tarea que llamo y cede el CPU, asi que no vuelve nunca y el
-    // parte no se imprime jamas. El motivo entero, en `core/purga.rs`.
-    crate::ring0::core::purga::pedir();
-    echado.is_some()
-}
+// ** `segunda_llamada` SE RETIRO el 2026-09-01, y su doctrina se quedo.
+//
+// Lo que hacia --la ventana de tres segundos y la patada al escritorio-- vive
+// ahora repartido entre `segunda_pulsacion` y `rescue_owner`, y el motivo del
+// reparto es que la pregunta *"es la segunda?"* tenia que poder hacerse ANTES
+// de mirar quien tiene la pantalla. Mientras vivio aqui dentro, la purga
+// dependia de que el dueno fuera el escritorio.
+//
+// Lo que sigue valiendo igual, y por eso se copia y no se borra:
+//
+//   * DOS pulsaciones y no una. Una puede ser un error, y tirar Ring 3 por un
+//     error es lo que la version de antes del 26-08 evitaba. Dos seguidas ya no
+//     es un error: es alguien diciendo "de verdad".
+//
+//   * El ESC se traga IGUAL en la primera. Si se entregara, la aplicacion
+//     recibiria un ESC que el usuario no le mando -- y en un dialogo eso es un
+//     "cancelar" que nadie pulso.
+//
+//   * Hay donde aterrizar: `run_shell` es un bucle que no retorna y sigue
+//     leyendo el teclado. Por eso quitarle la pantalla al escritorio no es
+//     romper la maquina, es volver al sitio del que se salio.
 
 /// ESC as a **Set 1** scancode, which is what the raw queue carries (`hid_to_ps2`
 /// maps HID usage 0x29 to this 0x01). It is NOT the 27 of the character queue:
