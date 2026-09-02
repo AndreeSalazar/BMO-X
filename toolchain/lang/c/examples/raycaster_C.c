@@ -478,6 +478,24 @@ int main() {
         ancho = pan.ancho;
         alto = pan.alto;
         stride = pan.paso;
+        /* ** DICE LO QUE CONSIGUIO, y no es adorno: este programa dejo de
+         * ensenar el 3D cuando la reclamacion paso a `<bmo/pantalla.h>` en el
+         * paso 1 del plan de REX, y el diff era equivalente linea a linea.
+         *
+         * O sea que leyendo no se encuentra. Un numero raro aqui --un `stride`
+         * a cero, un `alto` que no es el del panel-- se ve en una corrida y no
+         * se deduce en ninguna. Es la misma leccion que las dos guardas mudas
+         * de DOOM: **lo que no se dice, se supone mal**.
+         *
+         * [!] Se quita cuando conteste. */
+        printf("raycaster: pantalla %d x %d, paso %d, fmt %d, %llu bytes
+",
+               ancho, alto, stride, pan.formato, pan.bytes);
+        if (fb == 0 || stride <= 0 || ancho <= 0 || alto <= 0) {
+            printf("raycaster: los numeros NO sirven para dibujar. Salgo.
+");
+            return 1;
+        }
 
         /* SIN ENTRADA NO SE ARRANCA. Ver la nota al final del fichero. */
         ent = bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_ENTRADA_RECLAMAR, 0, 0, 0);
