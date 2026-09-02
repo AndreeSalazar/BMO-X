@@ -348,6 +348,19 @@ pub const TASK_OP_ARCHIVO_ASINC: u64 = 0x27;
 /// `0` si no hay nada. El mapeo ocurre DENTRO de esta llamada, en el espacio de
 /// quien la hace -- por eso se toma en vez de que el otro te lo coloque.
 pub const TASK_OP_TOMAR: u64 = 0x1C;
+// ** ESTE 0x1C LO COMPARTIA `TASK_OP_LIENZO_REFLEJO`, y no era simetria: era una
+// constante MUERTA okupando un numero VIVO. Quien escribiera el nombre bonito
+// habria invocado esto. Borrada el 2026-09-02; el diseno de `KIND_LIENZO` salio
+// del kernel hace tiempo (ver `obj/loan.rs` y `docs/identidad/LIENZO.md`).
+//
+// [!] Y no se RESERVA el numero, al reves que con `BMO_CHANNEL_KICK`. Alli la
+// regla era *"el numero no se recicla"* porque estaba libre; aqui **ya estaba
+// reciclado**: es de `TOMAR` y lo lleva usando desde siempre.
+//
+// Lo encontro `R15` el dia que se escribio. Este proyecto ya habia pagado el
+// mismo error --`MEMORIA_PEDIR` en el `0x12` de `REINICIAR`, y pedir memoria
+// habria reiniciado la maquina-- y desde entonces la regla es listar los
+// opcodes ORDENADOS antes de elegir. Ahora hay quien lo comprueba.
 
 pub const TASK_OP_AUDIO_CLAIM: u64 = 0x21;
 
@@ -358,34 +371,6 @@ pub const TASK_OP_AUDIO_CLAIM: u64 = 0x21;
 /// prestarla ni queriendo. El mismo hueco aqui seria que el primer programa que
 /// pite se queda el aparato para siempre.
 pub const TASK_OP_AUDIO_RELEASE: u64 = 0x22;
-
-/// **Pedir el REFLEJO: pintar directamente donde se ve.**
-///
-/// `arg0` = **paginas** de 4 KiB - `arg1` = formato. Devuelve un handle
-/// (`KIND_LIENZO`), o `0` si no hay reflejo que prestar.
-///
-/// === Por que se pide en PAGINAS y no en filas ===
-///
-/// Porque es la unidad que el kernel sabe repartir y proteger. Pedirlo en filas
-/// obligaba a traducir filas<->paginas, y esa traduccion es donde vivia todo lo
-/// dificil: una fila mide `stridex4` bytes --7680 con stride 1920-- que no es
-/// multiplo de 4096, asi que solo cada ocho filas cae en un limite de pagina.
-/// Habia que calcular ese grano con un maximo comun divisor, en los dos lados, y
-/// que los dos lados coincidieran para siempre.
-///
-/// * **Ese problema no se resuelve: se elimina.** Cada lado habla en su unidad:
-///
-/// | | Habla en | Porque |
-/// |---|---|---|
-/// | el kernel | **paginas** | es lo unico que sabe repartir |
-/// | la app | **filas** | es lo unico que sabe pintar |
-/// | el contrato | **bytes** | `base`, `bytes`, `stride` |
-///
-/// Las ultimas N paginas de un bloque alineado estan alineadas **siempre**, sin
-/// una cuenta. El kernel adelanta la `base` hasta el principio de fila --una
-/// division local, no una formula compartida-- y la app saca sus filas con
-/// `bytes / (stridex4)`. **Ninguno necesita la aritmetica del otro.**
-pub const TASK_OP_LIENZO_REFLEJO: u64 = 0x1C;
 
 /// **Despertar los otros nucleos.** Devuelve `alive<<32 | esperados`, ambos sin
 /// contar el BSP.
@@ -428,7 +413,7 @@ pub const TASK_OP_ESTRATOS_SELLAR: u64 = 0x18;
 /// `EJECUTAR` y para abrir; el contenido usa el suyo.
 ///
 /// ** Y el contenido lleva CUENTA EXPLICITA (`arg2`) donde la ruta se corta en
-/// el primer cero. No es un capricho: en una ruta un ` ` no puede aparecer, y
+/// el primer cero. No es un capricho: en una ruta un `\0` no puede aparecer, y
 /// **en un fichero si**. Un fichero que se corta en su primer byte nulo no es un
 /// fichero: es la mitad de uno.
 ///

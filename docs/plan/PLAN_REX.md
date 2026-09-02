@@ -370,12 +370,40 @@ opcode de `PANTALLA_SOLTAR`:
 que lee quien escribe una app. R15 lo vigila ahora; en todo el ABI hay
 exactamente UN choque, y es ese.
 
-[!] **No se ha tocado la constante.** Retirar algo de la superficie congelada
-es una decision del dueno, y el precedente esta escrito en `<bmo/bmo.h>` con
-`BMO_CHANNEL_KICK`: *"RETIRADO y RESERVADO ... el numero no se recicla"*. Aqui
-el numero YA esta reciclado, asi que la salida no es reservarlo sino borrar la
-constante muerta. Queda TOLERADO con su motivo, visible en cada build, y la
-lista **tiene que llegar a cero**.
+### ★ BORRADAS el 2026-09-02, a peticion del dueno
+
+Ocho constantes fuera: `TASK_OP_LIENZO_REFLEJO`, `LIENZO_FMT_*`,
+`LIENZO_OP_*`, `LIENZO_UNICO` y `LIENZO_FILAS_RESERVADAS_ARRIBA`. **La lista de
+tolerados esta a CERO**, que es su estado correcto -- duro exactamente un dia.
+
+[!] Y **no se reserva el numero**, al reves que con `BMO_CHANNEL_KICK`. Alli la
+regla era *"el numero no se recicla"* porque estaba libre; aqui ya estaba
+reciclado: el `0x1C` es de `TOMAR` y lo lleva usando desde siempre. La lapida
+queda al lado de `TASK_OP_TOMAR`, que es donde hace falta leerla.
+
+** Y R15 gano una exigencia mas: **una tolerancia que ya no hace falta tambien
+se dice**. Una deuda saldada que sigue escrita miente igual que una oculta --
+la proxima persona la lee y cree que el choque sigue ahi.
+
+### ★★ Y el borrado destapo otra cosa: un byte NUL dentro de un comentario
+
+`surface/tarea.rs` tenia un `0x00` literal en la linea 431, dentro de una frase
+que hablaba *de* el: *"en una ruta un `\0` no puede aparecer"*. Alguien
+quiso escribir `\0` y metio el byte.
+
+**Consecuencia: `grep` trataba el fichero como BINARIO y lo saltaba en
+silencio.** Sin `-a`, todas las busquedas sobre el ABI se dejaban fuera el
+fichero de las operaciones de TAREA -- que son 49. Asi es como un fichero se
+vuelve invisible para las herramientas sin que nadie lo decida.
+
+Arreglado. Y deja un hueco anotado abajo.
+
+### Lo que se busco despues, y NO estaba
+
+Se barrio el ABI entero buscando mas operaciones muertas: 3 candidatas
+(`PRESTADO_OP_BASE`, `_BYTES`, `_SOLTAR`) y **las tres son falsa alarma** -- el
+kernel las implementa con otro nombre (`loan::OP_BASE`, `OP_BYTES`, `OP_SOLTAR`)
+y los mismos valores. **No quedan constantes muertas en el ABI.**
 
 ---
 
@@ -417,3 +445,8 @@ que cede. Las dos puertas, usadas como se disenaron.
   esta probado.
 - **`semantic/`** son intrinsecos del metal, no superficie de app. Otra puerta.
 - **Enlace de COBOL y Ada a REX.** No existe y no lo pide nadie todavia.
+- **`ascii-sweep` no mira los bytes de CONTROL.** Vigila lo de arriba (>127) y
+  no lo de abajo: un `NUL` en un comentario paso su `--check` mientras hacia
+  que `grep` tratara el fichero como binario. Es pequeno --unas quince lineas--
+  y no bloquea nada de este plan, pero un fichero invisible para `grep` es un
+  fichero que las herramientas dejan de auditar sin decirlo.

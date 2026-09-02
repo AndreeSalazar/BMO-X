@@ -471,52 +471,23 @@ pub const DEVICE_SPEAKER: u64 = 1 << 0;
 /// Hay HD Audio con su codec abierto. **Hoy siempre 0.**
 pub const DEVICE_HDA: u64 = 1 << 1;
 
-/// El formato **lo declara la app**, no lo fija el kernel.
-///
-/// Decision del dueno el 2026-08-07, y tiene destinatario: DOOM pinta en 8 bits
-/// con paleta. Fijar 32 bits ahora obligaria a reabrir el contrato el dia que
-/// llegue -- y un contrato que se reabre no era un contrato.
-pub const LIENZO_FMT_XRGB32: u64 = 0x00;
+// -- ** AQUI VIVIA `KIND_LIENZO`, y se borro el 2026-09-02 -------------------
+//
+// Siete constantes --`LIENZO_FMT_*`, `LIENZO_OP_*`, `LIENZO_UNICO`,
+// `LIENZO_FILAS_RESERVADAS_ARRIBA`-- de un diseno que **el kernel ya no tiene**:
+// el prestamo se hizo generico y `obj/loan.rs` lo cuenta con la pregunta del
+// dueno que lo destapo, *"Ring 3 no puede administrar eso el?"*. Quien decide
+// cuanto se presta es el compositor; el kernel solo mueve paginas.
+//
+// [!] Se deja la lapida y no solo el borrado **porque una idea retirada sin
+// motivo escrito vuelve**. El motivo entero esta en `docs/identidad/LIENZO.md`.
+//
+// Lo que las sustituye, y hace lo mismo sin que Ring 0 sepa que es un lienzo:
+//
+//     MEM_OP_OFRECER    el dueno ofrece un trozo de SU bloque
+//     TASK_OP_TOMAR     el otro lo toma, y el mapeo ocurre en su espacio
+//     PRESTADO_OP_*     medirlo, preguntar si el dueno vive, y soltarlo
 
-/// 8 bits con paleta. **Todavia no se sirve**: el numero queda reservado para
-/// que nadie lo use para otra cosa. Pedirlo hoy recibe un no, que es distinto de
-/// que el campo no exista.
-pub const LIENZO_FMT_PAL8: u64 = 0x01;
-
-/// Operaciones sobre el handle del reflejo. Mismo trato que el framebuffer:
-/// se pregunta donde esta y cuanto mide, y se pinta sin volver a llamar.
-pub const LIENZO_OP_BASE: u64 = 0x01;
-
-/// Bytes utilizables **desde `BASE`**, ya descontado lo que se perdio al
-/// alinear a fila.
-pub const LIENZO_OP_BYTES: u64 = 0x02;
-
-/// Stride **en pixeles**, el del panel. La app indexa `y*stride + x`.
-///
-/// [!] No es el ancho de la banda: es el ancho del lienzo entero. Usar el ancho
-/// en vez del stride es el bug mas viejo de los graficos -- la imagen sale
-/// inclinada en diagonal y compila perfectamente.
-pub const LIENZO_OP_STRIDE: u64 = 0x03;
-
-/// **Solo hay UN reflejo, y es a pantalla completa.**
-///
-/// No hay tabla de bandas, ni apilado, ni cuentas de lo reservado: un
-/// `Option<pid>` en el kernel y ya. Cubre exactamente el caso que importa --DOOM
-/// y el raycaster van a pantalla completa-- y el dia que hagan falta dos
-/// programas a la vez, ese es el **modo ventana con copia**, que es el que
-/// compone de verdad.
-///
-/// Reflejo = uno, sin copias. Ventana = varios, con copia. Dos modos con un
-/// trabajo cada uno, y ninguno intentando ser el otro.
-pub const LIENZO_UNICO: bool = true;
-
-/// Filas del lienzo que **nunca** se prestan: la barra del escritorio y su caja
-/// de Ejecutar viven arriba.
-///
-/// Que sea un numero fijo y no "lo que el compositor diga" es a proposito: el
-/// kernel no puede preguntarle a un proceso de Ring 3 cuanto sitio necesita para
-/// decidir si le presta memoria a otro. Un minimo fijo se audita de un vistazo.
-pub const LIENZO_FILAS_RESERVADAS_ARRIBA: u32 = 64;
 
 /// Donde empieza el bloque, en el espacio del proceso que lo pidio.
 pub const MEM_OP_BASE: u64 = 0x01;
