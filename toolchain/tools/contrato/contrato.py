@@ -180,6 +180,54 @@ RING0_DIR = "Ultra_kernel_x86-64/kernel/src/ring0"
 REX_DIR = "toolchain/forge/sem-asm/tables/bmo"
 ESPEJO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "REX_ESPEJO.txt")
 
+# -- R14: las APPS del arbol propio. -----------------------------------------
+#
+# No cubre `mods/` ni `$BMO_MODS`: **un tercero TIENE DERECHO a redefinir un
+# numero**, que es literalmente lo que promete el buscador de cabeceras. Esta
+# regla es para lo que el proyecto publica como ejemplo -- que es lo que la
+# gente copia.
+APPS_C_DIR = "toolchain/lang/c/examples"
+RE_DEFINE_C = re.compile(r"^#define\s+([A-Za-z_][A-Za-z0-9_]*)\s+([^\n]*?)\s*(?:/\*.*)?$", re.M)
+# La OPERACION es el segundo argumento de la puerta. Lo demas --capability,
+# a0, a1, a2-- son datos; solo este dice QUE se pide.
+RE_PUERTA_C = re.compile(r"bmo_(?:valor|codigo)\s*\(\s*[^,()]+,\s*([^,]+),")
+RE_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+RE_SOLO_NUMERO = re.compile(r"^\s*(0[xX][0-9A-Fa-f]+|\d+)\s*$")
+
+# -- R15: el ABI no puede repetir un numero DENTRO de una familia -------------
+#
+# ** Este proyecto ya lo pago una vez, y el kernel lo dejo escrito al elegir
+# `PANTALLA_SOLTAR`: *"0x1D elegido tras listar los opcodes ORDENADOS, que es la
+# regla desde que MEMORIA_PEDIR se puso en 0x12 --ya ocupado por REINICIAR-- y
+# pedir memoria habria reiniciado la maquina"*.
+#
+# R5 ya vigila eso en el KERNEL. Nadie lo vigilaba en el ABI, que es la lista
+# que lee quien escribe una app.
+ABI_FAMILIAS_OP = (
+    "TASK_OP_", "ARCH_OP_", "INPUT_OP_", "FB_OP_", "AUDIO_OP_", "MEM_OP_",
+    "CONSOLA_OP_", "DIR_OP_", "DISCO_OP_", "RED_OP_", "PLACA_OP_",
+    "TAREA_OP_", "PRESTADO_OP_", "CHANNEL_OP_", "LIENZO_OP_", "APARATO_OP_",
+    # ** `INFO_TXT_` ANTES que `INFO_`, y no es orden alfabetico: los campos de
+    # texto entran por `TASK_OP_INFO_TEXTO` (0x14) y no por `TASK_OP_INFO`
+    # (0x13), asi que son OTRO espacio de numeracion. Sin esta linea, R15
+    # gritaria que `INFO_TSC_HZ` y `INFO_TXT_EXT_NOMBRE` comparten el 0x05 --y
+    # comparten el numero, y no es un choque.
+    "INFO_TXT_", "INFO_",
+)
+
+# Los choques que hoy existen y se toleran, con su motivo. ** TIENE QUE LLEGAR A
+# CERO: no es una lista de excepciones, es una deuda escrita.
+ABI_CHOQUES_TOLERADOS = {
+    ("TASK_OP_", 0x1C): (
+        "TASK_OP_LIENZO_REFLEJO es de un diseno RETIRADO -- `KIND_LIENZO` y sus "
+        "dos operaciones salieron del kernel cuando el prestamo se hizo generico "
+        "(ver `obj/loan.rs` y `docs/identidad/LIENZO.md`). Nadie la implementa y "
+        "nadie la llama, pero **okupa el numero de TASK_OP_TOMAR, que si esta "
+        "viva**: quien la escriba invocara TOMAR. Se retira cuando el dueno diga "
+        "como -- borrarla, o marcarla RETIRADA como se hizo con CHANNEL_KICK."
+    ),
+}
+
 # -- R13: EL ESPEJO. Los mismos numeros, escritos dos veces --------------------
 #
 # `<bmo/paquete.h>` lo confiesa por escrito: *"los numeros del formato viven en
@@ -730,6 +778,44 @@ def autoprueba():
     exige("R11(la segunda clase tambien)",
           r11_el_semaforo_de_rex({"a/roja.h": CAR + CUE + " * [riesgo]  AJENO RARO" + chr(10)}))
 
+    # R14 -- la operacion sale de REX, no del fichero.
+    REXN = {"BMO_ARCH_LEER": (0x01, "archivo/roja.h")}
+    D = chr(35) + "define "
+    malo = D + "FB_BASE 0x01" + chr(10) + "x = bmo_valor(p, FB_BASE, 0, 0, 0);"
+    q, _ = r14_ninguna_app_inventa_un_numero({"a.c": malo}, REXN)
+    exige("R14(un numero copiado)", q)
+    bueno = "x = bmo_valor(p, BMO_ARCH_LEER, 0, 0, 0);"
+    q, _ = r14_ninguna_app_inventa_un_numero({"a.c": bueno}, REXN)
+    exige("R14(el nombre de REX)", q, False)
+    # *** Un alias que apunta a REX NO es pecado: el numero sigue en un sitio.
+    alias = D + "MIO BMO_ARCH_LEER" + chr(10) + "x = bmo_valor(p, MIO, 0, 0, 0);"
+    q, _ = r14_ninguna_app_inventa_un_numero({"a.c": alias}, REXN)
+    exige("R14(alias de un nombre de REX)", q, False)
+    # *** Y un literal desnudo INFORMA, no falla: la sonda de seguridad llama a
+    # operaciones que no existen a proposito, y gritarle la apagaria.
+    q, n = r14_ninguna_app_inventa_un_numero(
+        {"a.c": "x = bmo_codigo(p, 0x7777, 0, 0, 0);"}, REXN)
+    exige("R14(un literal no falla)", q, False)
+    exige("R14(pero se informa)", n)
+
+    # R15 -- el ABI no repite dentro de una familia.
+    q, _ = r15_el_abi_no_repite_numero(
+        {"TASK_OP_A": (0x30, "t.rs"), "TASK_OP_B": (0x30, "t.rs")})
+    exige("R15(dos ops con el mismo numero)", q)
+    q, _ = r15_el_abi_no_repite_numero(
+        {"TASK_OP_A": (0x30, "t.rs"), "TASK_OP_B": (0x31, "t.rs")})
+    exige("R15(numeros distintos)", q, False)
+    # *** Familias distintas SI pueden compartir: `ARCH_OP_LEER` y
+    # `INPUT_OP_PUNTERO` valen las dos 0x01 y no se estorban.
+    q, _ = r15_el_abi_no_repite_numero(
+        {"ARCH_OP_X": (0x01, "o.rs"), "INPUT_OP_Y": (0x01, "e.rs")})
+    exige("R15(familias distintas)", q, False)
+    # *** Y el 0x05 de INFO_TSC_HZ contra INFO_TXT_EXT_NOMBRE: NO es choque,
+    # porque los TXT entran por otra operacion del kernel.
+    q, _ = r15_el_abi_no_repite_numero(
+        {"INFO_TSC_HZ": (0x05, "i.rs"), "INFO_TXT_EXT_NOMBRE": (0x05, "i.rs")})
+    exige("R15(INFO contra INFO_TXT)", q, False)
+
     # R13 -- el espejo. Se arman a mano, que es lo que permite probar los casos
     # que el arbol real no tiene (y ojala no tenga nunca).
     ABI = {"TASK_OP_X": (0x09, "tarea.rs")}
@@ -829,7 +915,7 @@ def autoprueba():
     # ** El numero se CUENTA, no se escribe. La version anterior decia "21
     # casos" y habia 19: un guardian con una cifra a mano dentro es un guardian
     # que dice un numero viejo con toda la confianza del mundo.
-    print("clean: las TRECE reglas saben decir que NO (%d casos)" % casos[0])
+    print("clean: las QUINCE reglas saben decir que NO (%d casos)" % casos[0])
     return 0
 
 
@@ -1324,6 +1410,111 @@ def r13_el_espejo_de_rex(abi, rex, parejas, sellado):
     return quejas
 
 
+def fuentes_de_apps():
+    """`{ruta: texto}` de los `.c` que el proyecto publica como ejemplo."""
+    d = os.path.join(raiz(), APPS_C_DIR.replace("/", os.sep))
+    if not os.path.isdir(d):
+        return {}
+    fuera = {}
+    for n in sorted(os.listdir(d)):
+        if not n.endswith(".c"):
+            continue
+        with open(os.path.join(d, n), "r", encoding="utf-8", errors="replace") as f:
+            fuera["%s/%s" % (APPS_C_DIR, n)] = f.read()
+    return fuera
+
+
+def r14_ninguna_app_inventa_un_numero(fuentes, rex):
+    """R14 -- la OPERACION que cruza la puerta viene de REX, no del fichero.
+
+    ** El pecado no es *"el nombre parece del kernel"* --eso seria adivinar-- es
+    concreto y se ve: **el segundo argumento de `bmo_valor`/`bmo_codigo` es un
+    macro que el propio fichero define como un numero**. Ese macro es una copia
+    de un numero del kernel que nadie compara con el original.
+
+    Es lo que paso de verdad, dos veces, en el mismo fichero:
+
+        #define FB_BASE   0x01     REX no publicaba el framebuffer
+        #define ENT_TECLA 0x03     y esta SI estaba en <bmo/entrada.h>,
+                                   incluida nueve lineas mas arriba
+
+    ** Un `#define` que apunta a un nombre de REX **no es pecado**: es un alias
+    legible, y el numero sigue viniendo de un solo sitio.
+
+    [!] Y un LITERAL desnudo no se juzga aqui, se INFORMA. `sonda_C.c` llama a
+    `0x7777` y a `0xFFFFFFFF` a proposito -- su trabajo es comprobar que el
+    kernel dice que no a lo que no existe. **Una regla que le grita a la sonda
+    de seguridad por hacer su trabajo es una regla que se acaba apagando.**
+    Devuelve `(quejas, notas)`.
+    """
+    quejas, notas = [], []
+    for ruta in sorted(fuentes):
+        txt = fuentes[ruta]
+        propios = {}
+        for nombre, cuerpo in RE_DEFINE_C.findall(txt):
+            propios[nombre] = cuerpo.strip()
+        for arg in RE_PUERTA_C.findall(txt):
+            arg = arg.strip()
+            if RE_SOLO_NUMERO.match(arg):
+                notas.append(
+                    "%s cruza la puerta con el literal %s. Si es una sonda esta "
+                    "bien; si no, es una operacion que REX no publica (R14)"
+                    % (ruta, arg))
+                continue
+            for ident in RE_IDENT.findall(arg):
+                if ident not in propios:
+                    continue
+                cuerpo = propios[ident]
+                # Un alias de un nombre de REX es legitimo: el numero sigue
+                # viniendo de un sitio solo.
+                if any(x in rex for x in RE_IDENT.findall(cuerpo)):
+                    continue
+                quejas.append(
+                    "%s pasa `%s` como operacion, y lo define el mismo fichero "
+                    "(`#define %s %s`). Un numero del kernel copiado en una app "
+                    "es una copia que nadie compara con el original: usa el "
+                    "nombre de REX (R14)" % (ruta, ident, ident, cuerpo))
+    return quejas, notas
+
+
+def r15_el_abi_no_repite_numero(abi):
+    """R15 -- dos operaciones de la MISMA familia no pueden valer lo mismo.
+
+    ** Este proyecto ya lo pago, y el kernel lo dejo escrito al elegir el opcode
+    de `PANTALLA_SOLTAR`: *"0x1D elegido tras listar los opcodes ORDENADOS, que
+    es la regla desde que `MEMORIA_PEDIR` se puso en `0x12` --ya ocupado por
+    `REINICIAR`-- y pedir memoria habria reiniciado la maquina"*.
+
+    R5 vigila eso en el KERNEL. Nadie lo vigilaba en el ABI -- que es la lista
+    que lee quien escribe una app, y la que R13 acaba de sellar contra REX.
+
+    Devuelve `(quejas, notas)`: un choque tolerado sale como nota con su motivo,
+    para que la deuda se vea en cada build en vez de olvidarse.
+    """
+    quejas, notas = [], []
+    familias = {}
+    for nombre in sorted(abi):
+        for pre in ABI_FAMILIAS_OP:
+            if nombre.startswith(pre):
+                familias.setdefault(pre, {}).setdefault(abi[nombre][0], []).append(nombre)
+                break
+    for pre in sorted(familias):
+        for valor in sorted(familias[pre]):
+            nombres = familias[pre][valor]
+            if len(nombres) < 2:
+                continue
+            if (pre, valor) in ABI_CHOQUES_TOLERADOS:
+                notas.append("en la familia %s la 0x%02X la comparten %s -- TOLERADO: %s"
+                             % (pre, valor, " y ".join(nombres),
+                                ABI_CHOQUES_TOLERADOS[(pre, valor)]))
+                continue
+            quejas.append(
+                "en el ABI, %s valen las dos 0x%02X y son la misma familia de "
+                "operaciones. Quien escriba una invocara la otra (R15)"
+                % (" y ".join(nombres), valor))
+    return quejas, notas
+
+
 def declarantes_de_coste():
     """Los `[cuesta]` -- L6e. Una clase por fichero."""
     return _declarantes(RE_CUESTA, lambda g: g)
@@ -1400,6 +1591,12 @@ def comprobar():
     par = parejas_de_rex(abi_c, rex_c)
     quejas += [("R13 el espejo de REX", q)
                for q in r13_el_espejo_de_rex(abi_c, rex_c, par, espejo_leer())]
+    q14, n14 = r14_ninguna_app_inventa_un_numero(fuentes_de_apps(), rex_c)
+    quejas += [("R14 una app inventa un numero del kernel", q) for q in q14]
+    notas += n14
+    q15, n15 = r15_el_abi_no_repite_numero(abi_c)
+    quejas += [("R15 el ABI repite un numero", q) for q in q15]
+    notas += n15
 
     for nota in notas:
         print("  [i] " + nota)

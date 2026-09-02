@@ -302,7 +302,7 @@ atras cuando Ring 0 gano sus carriles y nadie volvio a sellar.
 
 ---
 
-# PASO 3 -- R14, ninguna app define un numero del kernel
+# ~~PASO 3~~ -- R14, y de regalo R15 ✅ HECHO (2026-09-01)
 
 Un `.c` no puede llevar un `#define` de una constante que ya vive en el ABI.
 
@@ -311,17 +311,75 @@ DESPUES del 1: una regla que prohibe algo sin dar la salida es una regla que se
 apaga en una semana.
 
 ```
-   [ ] 3.1  R14 sobre toolchain/lang/c/examples/
-   [ ] 3.2  decidir el alcance: solo examples/, o tambien mods/ de terceros
+   [x] 3.1  R14 sobre toolchain/lang/c/examples/, con cinco autopruebas
+   [x] 3.2  alcance DECIDIDO: solo el arbol propio
 ```
 
-[!] 3.2 no es obvio y no se decide aqui. Un tercero **tiene derecho** a
-redefinir un numero -- es lo que `$BMO_MODS` promete. La regla es para el
-arbol propio.
+[!] 3.2 se cierra como decia el plan: un tercero **tiene derecho** a redefinir
+un numero --es lo que `$BMO_MODS` promete-- asi que R14 no mira `mods/`. Mira
+lo que el proyecto PUBLICA como ejemplo, que es lo que la gente copia.
+
+## ★★ Que comprueba R14 exactamente, y por que no lo obvio
+
+*"El nombre parece del kernel"* seria adivinar, y un guardian que adivina da
+permiso con autoridad. Lo que R14 mira es concreto y se ve:
+
+> **el segundo argumento de `bmo_valor`/`bmo_codigo` es un macro que el propio
+> fichero define como un numero.**
+
+Ese macro ES una copia de un numero del kernel que nadie compara con el
+original. Un `#define` que apunta a un nombre de REX no es pecado: es un alias
+legible y el numero sigue viniendo de un sitio solo.
+
+### ★ Y se probo contra el codigo de VERDAD, no contra un test sintetico
+
+R14 corrio sobre el `raycaster_C.c` de `d5bd4abe` --el de antes del paso 1-- y
+canto los **cinco** usos reales: `FB_BASE` (dos veces), `FB_DIMS`, `FB_STRIDE`
+y `ENT_TECLA`. La regla caza el bug que la motivo, sobre el codigo que lo tenia.
+
+### [!] Y un literal desnudo INFORMA, no falla
+
+`sonda_C.c` llama a `0x7777` y a `0xFFFFFFFF` **a proposito**: su trabajo es
+comprobar que el kernel dice que no a lo que no existe. Una regla que le grita
+a la sonda de seguridad por hacer su trabajo es una regla que se acaba
+apagando. Salen como `[i]`, y ahi se ve el cuarto --`0x1C`-- que **no** es una
+sonda: es una operacion viva que REX no publica.
+
+## ★★ R15, que no estaba en el plan: EL ABI REPITE UN NUMERO
+
+Aparecio mirando ese `0x1C`. En `bmo-abi`:
+
+```text
+   TASK_OP_TOMAR           0x1C     viva, la implementa el kernel
+   TASK_OP_LIENZO_REFLEJO  0x1C     nadie la implementa
+```
+
+Misma familia, mismo numero, ninguna nota. `KIND_LIENZO` fue un diseno
+**retirado** --salio del kernel cuando el prestamo se hizo generico, y lo
+cuentan `obj/loan.rs` y `docs/identidad/LIENZO.md`-- asi que es **una constante
+muerta okupando un numero vivo**: quien la escriba invocara `TOMAR`.
+
+** Y este proyecto ya lo pago una vez. Lo dejo escrito el kernel al elegir el
+opcode de `PANTALLA_SOLTAR`:
+
+> *"0x1D elegido tras listar los opcodes ORDENADOS, que es la regla desde que
+> `MEMORIA_PEDIR` se puso en `0x12` --ya ocupado por `REINICIAR`-- y pedir
+> memoria habria reiniciado la maquina."*
+
+`R5` vigila eso en el KERNEL. **Nadie lo vigilaba en el ABI**, que es la lista
+que lee quien escribe una app. R15 lo vigila ahora; en todo el ABI hay
+exactamente UN choque, y es ese.
+
+[!] **No se ha tocado la constante.** Retirar algo de la superficie congelada
+es una decision del dueno, y el precedente esta escrito en `<bmo/bmo.h>` con
+`BMO_CHANNEL_KICK`: *"RETIRADO y RESERVADO ... el numero no se recicla"*. Aqui
+el numero YA esta reciclado, asi que la salida no es reservarlo sino borrar la
+constante muerta. Queda TOLERADO con su motivo, visible en cada build, y la
+lista **tiene que llegar a cero**.
 
 ---
 
-# PASO 4 -- R15, la cobertura es un numero y solo sube
+# PASO 4 -- R16, la cobertura es un numero y solo sube
 
 Cuantas operaciones del contrato tienen funcion en REX. Hoy **74 de 337**, y de
 lo que es de app faltan 31 en siete familias.
@@ -333,7 +391,7 @@ una forma elegante de mentirse**.
 
 ```
    [ ] 4.1  la frontera, como tabla legible (no como comentario)
-   [ ] 4.2  R15 con trinquete en COBERTURA.txt
+   [ ] 4.2  R16 con trinquete en COBERTURA.txt
 ```
 
 ---
