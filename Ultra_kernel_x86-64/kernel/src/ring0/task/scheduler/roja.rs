@@ -197,26 +197,39 @@ impl Scheduler {
                 let fin = mm::phys_to_virt(stack_phys) + stack_pages * mm::PAGE;
                 let ini = mm::phys_to_virt(stack_phys);
                 let dentro = |p: u64| p >= ini && p < fin;
+                //
+                // ** Y EL GRITO SE GUARDA, ADEMAS DE GRITARSE. (2026-09-02)
+                //
+                // `cabina::fault` va a un anillo en RAM, y el paso 1 del plan
+                // pide leerlo DESPUES de una pantalla azul -- que pinta encima y
+                // reinicia a los veinte segundos. **El grito no sobrevive al
+                // suceso que lo provoca.** La ficha de la morgue si, porque la
+                // azul la consulta. Asi que el motivo viaja tambien ahi.
+                let mut motivo = 0u8;
                 if dentro(crate::ring0::task::proc::tss_rsp0()) {
+                    motivo |= 1;
                     crate::ring0::cabina::fault(
                         "sched", "se libera la pila que el TSS publica (RSP0)", stack_phys);
                 }
                 if dentro(percpu::syscall_stack_top()) {
+                    motivo |= 2;
                     crate::ring0::cabina::fault(
                         "sched", "se libera la rampa de SYSCALL publicada", stack_phys);
                 }
                 if dentro(percpu::trap_rsp()) {
+                    motivo |= 4;
                     crate::ring0::cabina::fault(
                         "sched", "se libera la pila del contexto VIGENTE", stack_phys);
                 }
                 for (j, o) in self.tasks.iter().enumerate() {
                     if j != i && o.state != TaskState::Empty && dentro(o.context_rsp) {
+                        motivo |= 8;
                         crate::ring0::cabina::fault(
                             "sched", "se libera una pila con el contexto de otra tarea",
                             o.tid as u64);
                     }
                 }
-                anotar_muerta(self.tasks[i].tid, stack_phys, stack_pages);
+                anotar_muerta(self.tasks[i].tid, stack_phys, stack_pages, motivo);
                 for p in 0..stack_pages {
                     phys::free_frame(stack_phys + p * mm::PAGE);
                 }
@@ -305,6 +318,29 @@ pub(super) struct PilaMuerta {
     pub base: u64,
     pub paginas: u64,
     pub tick: u64,
+    /// **Cual de los cuatro punteros publicados caia dentro al liberarla.**
+    ///
+    /// # Por que va en la ficha y no solo en CABINA
+    ///
+    /// Los cuatro instrumentos del paso 0 gritan con `cabina::fault`, y el paso
+    /// 1 del plan dice *"mira la azul Y CABINA"*. **Eso no se puede hacer**: un
+    /// fallo de Ring 0 pinta la azul encima y reinicia a los veinte segundos, y
+    /// el anillo de CABINA se va con la maquina. El grito existe y no hay forma
+    /// de leerlo despues.
+    ///
+    /// La morgue si sobrevive --la azul la consulta sin cerrojo, a proposito--
+    /// asi que el motivo viaja pegado al marco del que habla. Un byte.
+    ///
+    /// ```text
+    ///    bit 0   TSS.RSP0                  donde aterriza un trap de Ring 3
+    ///    bit 1   percpu.syscall_stack_top  donde aterriza un SYSCALL
+    ///    bit 2   percpu.trap_rsp           el contexto vigente en este CPU
+    ///    bit 3   otra tarea .context_rsp   un contexto guardado ajeno
+    /// ```
+    ///
+    /// ** `0` es la respuesta buena y no es un hueco: significa que se libero
+    /// una pila a la que no apuntaba ninguno de los cuatro.
+    pub motivo: u8,
 }
 
 // ** TREINTA Y DOS Y NO OCHO, y el motivo salio del primer arranque.
@@ -322,6 +358,7 @@ pub(super) static mut MORGUE: [PilaMuerta; MORGUE_FICHAS] = [PilaMuerta {
     base: 0,
     paginas: 0,
     tick: 0,
+    motivo: 0,
 }; MORGUE_FICHAS];
 
 pub(super) static mut MORGUE_N: usize = 0;
@@ -333,7 +370,7 @@ pub fn pilas_liberadas() -> u64 {
     unsafe { MORGUE_N as u64 }
 }
 
-fn anotar_muerta(tid: u32, base: u64, paginas: u64) {
+fn anotar_muerta(tid: u32, base: u64, paginas: u64, motivo: u8) {
     unsafe {
         let n = MORGUE_N % MORGUE_FICHAS;
         MORGUE[n] = PilaMuerta {
@@ -341,6 +378,7 @@ fn anotar_muerta(tid: u32, base: u64, paginas: u64) {
             base,
             paginas,
             tick: crate::ring0::plat::timer::ticks(),
+            motivo,
         };
         MORGUE_N = MORGUE_N.wrapping_add(1);
     }
