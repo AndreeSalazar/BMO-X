@@ -178,6 +178,54 @@ RING0_DIR = "Ultra_kernel_x86-64/kernel/src/ring0"
 # --`AJENO ESPEJO AJENO: los offsets...`-- y un juez que adivina da permiso con
 # autoridad.
 REX_DIR = "toolchain/forge/sem-asm/tables/bmo"
+ESPEJO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "REX_ESPEJO.txt")
+
+# -- R13: EL ESPEJO. Los mismos numeros, escritos dos veces --------------------
+#
+# `<bmo/paquete.h>` lo confiesa por escrito: *"los numeros del formato viven en
+# `bmo_abi::bef` y aqui se repiten porque C no puede importar de Rust"*. Eso es
+# verdad de TODA cabecera de REX, no solo de aquella: 90 constantes escritas dos
+# veces, en dos lenguajes, sin nadie que las compare.
+#
+# ** Y es el patron que ya costo caro: una tabla con dos lectores, y crecer por
+# uno la rompe para el otro. El 22-08 fueron `intrinsics.toml` y cinco frontends.
+#
+# El emparejamiento es JUICIO y no deduccion: los dos lados se llaman distinto a
+# proposito --uno habla ingles de kernel (`TASK_OP_FRAMEBUFFER_CLAIM`), el otro
+# espanol de app (`BMO_OP_PANTALLA_RECLAMAR`)-- asi que un juez que dedujera la
+# pareja estaria adivinando. Lo que hay aqui es el mapa de familias que cubre lo
+# mecanico, y `REX_A_MANO` para lo que no tiene cola comun.
+REX_FAMILIAS = (
+    ("ARCH_OP_", "BMO_ARCH_"),
+    ("INPUT_OP_", "BMO_ENTRADA_"),
+    ("INFO_", "BMO_INFO_"),
+    ("MEM_OP_", "BMO_MEM_"),
+    ("TASK_OP_", "BMO_OP_"),
+    ("FB_OP_", "BMO_FB_"),
+)
+
+# Las parejas que no comparten cola. Cada una es una persona diciendo "estas dos
+# son la misma cosa", que es justo lo que una herramienta no puede decir.
+REX_A_MANO = {
+    "AUDIO_OP_DEVICES": "BMO_SONIDO_APARATO",
+    "AUDIO_OP_BEEP": "BMO_SONIDO_PITAR",
+    "AUDIO_OP_VOLUME": "BMO_SONIDO_VOLUMEN",
+    "AUDIO_OP_SILENCE": "BMO_SONIDO_CALLAR",
+    "TASK_OP_FRAMEBUFFER_CLAIM": "BMO_OP_PANTALLA_RECLAMAR",
+    "TASK_OP_INPUT_CLAIM": "BMO_OP_ENTRADA_RECLAMAR",
+    "TASK_OP_AUDIO_CLAIM": "BMO_OP_SONIDO_RECLAMAR",
+    "TASK_OP_AUDIO_RELEASE": "BMO_OP_SONIDO_SOLTAR",
+    "TASK_OP_GET_PID": "BMO_OP_PID",
+    "TASK_OP_GET_TID": "BMO_OP_TID",
+    "TASK_OP_YIELD": "BMO_OP_CEDER",
+    "TASK_OP_EXIT": "BMO_OP_SALIR",
+    "TASK_OP_CONSOLE_WRITE": "BMO_OP_CONSOLA_ESCRIBIR",
+    "TASK_OP_CONSOLE_READ": "BMO_OP_CONSOLA_LEER",
+}
+
+RE_CONST_RS = re.compile(r"pub const ([A-Z0-9_]+): u64 = (0x[0-9A-Fa-f]+|\d+)")
+RE_CONST_H = re.compile(
+    r"^#define ([A-Z0-9_]+)\s+(0x[0-9A-Fa-f]+|\d+)\s*(?:/\*.*)?$", re.M)
 RE_SELLO_H = re.compile(r"^ \* \[(carril|cuesta|riesgo)\]\s+(.*)$", re.M)
 # Una clase es una palabra ENTERA en mayusculas. Ver `sellos_de_cabecera`.
 RE_MAYUSCULAS = re.compile(r"^[A-Z]+$")
@@ -682,6 +730,28 @@ def autoprueba():
     exige("R11(la segunda clase tambien)",
           r11_el_semaforo_de_rex({"a/roja.h": CAR + CUE + " * [riesgo]  AJENO RARO" + chr(10)}))
 
+    # R13 -- el espejo. Se arman a mano, que es lo que permite probar los casos
+    # que el arbol real no tiene (y ojala no tenga nunca).
+    ABI = {"TASK_OP_X": (0x09, "tarea.rs")}
+    REX = {"BMO_OP_X": (0x09, "bmo/roja.h")}
+    PAR = {"TASK_OP_X": "BMO_OP_X"}
+    SELLO = {"TASK_OP_X": {"c": "BMO_OP_X", "valor": 0x09, "nota": "ok"}}
+    exige("R13(sellado y coincide)", r13_el_espejo_de_rex(ABI, REX, PAR, SELLO), False)
+    # Los dos lados discrepan: es el caso obvio.
+    exige("R13(discrepan)",
+          r13_el_espejo_de_rex(ABI, {"BMO_OP_X": (0x0A, "bmo/roja.h")}, PAR, SELLO))
+    # Una pareja nueva que nadie miro: gate de revision.
+    exige("R13(pareja sin sellar)", r13_el_espejo_de_rex(ABI, REX, PAR, {}))
+    # Un nombre que desaparece de un lado.
+    exige("R13(el nombre de C se fue)", r13_el_espejo_de_rex(ABI, {}, {}, SELLO))
+    exige("R13(el nombre del ABI se fue)", r13_el_espejo_de_rex({}, REX, {}, SELLO))
+    # *** LA QUE JUSTIFICA LA TABLA: cambian los DOS a la vez. Una comparacion
+    # en vivo diria que coinciden --y coinciden-- y se le escaparia el unico
+    # cambio que rompe los `.bex` que ya estan firmados.
+    exige("R13(cambian los dos a la vez)",
+          r13_el_espejo_de_rex({"TASK_OP_X": (0x77, "tarea.rs")},
+                               {"BMO_OP_X": (0x77, "bmo/roja.h")}, PAR, SELLO))
+
     FACH = "#include <bmo/x/roja.h>" + chr(10) + "#include <bmo/x/verde.h>" + chr(10)
     exige("R12(carpeta limpia)",
           r12_los_carriles_de_rex({"t/bmo/x": ["roja.h", "verde.h"]}, {"t/bmo/x.h": FACH}),
@@ -759,7 +829,7 @@ def autoprueba():
     # ** El numero se CUENTA, no se escribe. La version anterior decia "21
     # casos" y habia 19: un guardian con una cifra a mano dentro es un guardian
     # que dice un numero viejo con toda la confianza del mundo.
-    print("clean: las DOCE reglas saben decir que NO (%d casos)" % casos[0])
+    print("clean: las TRECE reglas saben decir que NO (%d casos)" % casos[0])
     return 0
 
 
@@ -1100,6 +1170,160 @@ def r12_los_carriles_de_rex(carpetas, ficheros):
     return quejas
 
 
+def constantes_del_abi():
+    """`{nombre: (valor, fichero)}` de la superficie de `bmo-abi`."""
+    fuera = {}
+    d = os.path.join(raiz(), SURFACE_ABI.replace("/", os.sep))
+    if not os.path.isdir(d):
+        return fuera
+    for n in sorted(os.listdir(d)):
+        if not n.endswith(".rs"):
+            continue
+        with open(os.path.join(d, n), "r", encoding="utf-8", errors="replace") as f:
+            for nombre, valor in RE_CONST_RS.findall(f.read()):
+                fuera[nombre] = (int(valor, 0), n)
+    return fuera
+
+
+def constantes_de_rex():
+    """`{nombre: (valor, fichero)}` de las cabeceras de REX."""
+    fuera = {}
+    d = os.path.join(raiz(), REX_DIR.replace("/", os.sep))
+    if not os.path.isdir(d):
+        return fuera
+    for dirpath, dirnames, filenames in os.walk(d):
+        for n in sorted(filenames):
+            if not n.endswith(".h"):
+                continue
+            ruta = os.path.join(dirpath, n)
+            rel = os.path.relpath(ruta, d).replace(os.sep, "/")
+            with open(ruta, "r", encoding="utf-8", errors="replace") as f:
+                for nombre, valor in RE_CONST_H.findall(f.read()):
+                    fuera[nombre] = (int(valor, 0), rel)
+    return fuera
+
+
+def parejas_de_rex(abi, rex):
+    """`{nombre_abi: nombre_c}` -- lo que el mapa de familias sabe emparejar."""
+    fuera = {}
+    for na in sorted(abi):
+        nc = REX_A_MANO.get(na)
+        if nc is None:
+            for pre_a, pre_c in REX_FAMILIAS:
+                if na.startswith(pre_a):
+                    cand = pre_c + na[len(pre_a):]
+                    if cand in rex:
+                        nc = cand
+                    break
+        if nc and nc in rex:
+            fuera[na] = nc
+    return fuera
+
+
+def espejo_leer():
+    """`{nombre_abi: {"c":.., "valor":.., "nota":..}}` de `REX_ESPEJO.txt`."""
+    fuera = {}
+    if not os.path.exists(ESPEJO):
+        return fuera
+    with open(ESPEJO, "r", encoding="utf-8") as f:
+        for linea in f:
+            linea = linea.strip()
+            if not linea or linea.startswith("#"):
+                continue
+            trozos = linea.split(None, 3)
+            if len(trozos) < 3:
+                continue
+            fuera[trozos[1]] = {
+                "c": trozos[2],
+                "valor": int(trozos[0], 0),
+                "nota": trozos[3] if len(trozos) > 3 else "",
+            }
+    return fuera
+
+
+def espejo_escribir(abi, parejas, previa):
+    """Reescribe `REX_ESPEJO.txt`. **Conserva la nota** de lo que no cambia.
+
+    ** La nota es lo unico de este fichero que no puede regenerarse, porque es
+    lo unico que no sale del arbol: dice POR QUE dos nombres distintos son la
+    misma cosa. Perderla al resellar convertiria el trinquete en una lista de
+    numeros -- y una lista de numeros no se puede revisar.
+
+    Una pareja nueva entra con la nota vacia a proposito: asi el que sella ve
+    en el diff exactamente lo que le toca escribir.
+    """
+    filas = []
+    for na in sorted(parejas, key=lambda x: (abi[x][1], abi[x][0], x)):
+        nota = previa.get(na, {}).get("nota", "")
+        filas.append("0x%02X %-30s %-32s %s"
+                     % (abi[na][0], na, parejas[na], nota))
+    cabecera = ""
+    if os.path.exists(ESPEJO):
+        with open(ESPEJO, "r", encoding="utf-8") as f:
+            for linea in f:
+                if linea.strip() and not linea.startswith("#"):
+                    break
+                cabecera += linea
+    with open(ESPEJO, "w", encoding="utf-8", newline="\n") as f:
+        f.write(cabecera)
+        f.write("\n".join(filas) + "\n")
+    return len(filas)
+
+
+def r13_el_espejo_de_rex(abi, rex, parejas, sellado):
+    """R13 -- los numeros de REX dicen lo mismo que los del ABI.
+
+    Cuatro exigencias, y la cuarta es la razon de que haya una TABLA en vez de
+    una comparacion en vivo:
+
+      1. una pareja SELLADA sigue existiendo en los dos lados. Si un nombre
+         desaparece, o alguien lo renombra, se dice.
+      2. las dos siguen valiendo lo que se sello.
+      3. una pareja que el mapa encuentra y **nadie ha sellado** para el build.
+         Es un gate de revision: un numero nuevo compartido lo mira una persona
+         antes de que exista en dos sitios para siempre.
+      4. ** una pareja que cambia **en los dos lados a la vez** tambien se caza.
+         Una comparacion en vivo diria que coinciden --porque coinciden-- y se
+         le escaparia justo el cambio que rompe todos los `.bex` ya firmados.
+         Contra el numero SELLADO no hay forma de que pase.
+
+    [!] Lo que R13 NO puede comprobar, y hay que decirlo: **que la pareja sea
+    la correcta**. Que `TASK_OP_FRAMEBUFFER_CLAIM` y `BMO_OP_PANTALLA_RECLAMAR`
+    sean la misma cosa lo dice una persona en la nota, y una herramienta que lo
+    dedujera estaria adivinando. Es la misma frontera que ya tiene `--sellar`
+    para la linea base de kinds.
+    """
+    quejas = []
+    for na in sorted(sellado):
+        fila = sellado[na]
+        nc = fila["c"]
+        if na not in abi:
+            quejas.append(
+                "%s esta sellado en el espejo y ya no existe en el ABI. Si se "
+                "renombro, la fila se actualiza con --sellar (R13)" % na)
+            continue
+        if nc not in rex:
+            quejas.append(
+                "%s esta sellado contra %s, y %s ya no existe en REX (R13)"
+                % (na, nc, nc))
+            continue
+        va = abi[na][0]
+        vc = rex[nc][0]
+        if va != fila["valor"] or vc != fila["valor"]:
+            quejas.append(
+                "el espejo sello %s = %s = 0x%02X, y hoy el ABI dice 0x%02X y "
+                "REX dice 0x%02X. Cambiar un numero de la puerta rompe binarios "
+                "que YA existen (R13)"
+                % (na, nc, fila["valor"], va, vc))
+    for na in sorted(parejas):
+        if na not in sellado:
+            quejas.append(
+                "%s y %s son el mismo numero en dos sitios y nadie lo ha "
+                "sellado. Miralo y sella con --sellar (R13)"
+                % (na, parejas[na]))
+    return quejas
+
+
 def declarantes_de_coste():
     """Los `[cuesta]` -- L6e. Una clase por fichero."""
     return _declarantes(RE_CUESTA, lambda g: g)
@@ -1171,6 +1395,11 @@ def comprobar():
     vias_rex = carpetas_de_carriles_rex()
     quejas += [("R12 L6g los carriles de REX", q)
                for q in r12_los_carriles_de_rex(vias_rex, rex)]
+    abi_c = constantes_del_abi()
+    rex_c = constantes_de_rex()
+    par = parejas_de_rex(abi_c, rex_c)
+    quejas += [("R13 el espejo de REX", q)
+               for q in r13_el_espejo_de_rex(abi_c, rex_c, par, espejo_leer())]
 
     for nota in notas:
         print("  [i] " + nota)
@@ -1212,6 +1441,9 @@ def comprobar():
     if vias_rex:
         print("clean: %d carpeta(s) de carriles en REX, y sus fachadas las traen enteras"
               % len(vias_rex))
+    if par:
+        print("clean: %d constante(s) escritas en REX y en el ABI dicen el mismo numero"
+              % len(par))
     if r0:
         colores = {c: 0 for c in SEMAFORO}
         for txt in r0.values():
@@ -1248,11 +1480,16 @@ def main():
             f.write("%d\n" % len(ries))
             for ruta, clases in sorted(ries.items()):
                 f.write("# %-18s %s\n" % (" ".join(clases), ruta))
+        abi_c = constantes_del_abi()
+        rex_c = constantes_de_rex()
+        n_esp = espejo_escribir(abi_c, parejas_de_rex(abi_c, rex_c), espejo_leer())
+        print("sellado el espejo de REX: %d pareja(s) ABI <-> C" % n_esp)
         print("sellado el suelo de L6e: %d fichero(s) declaran [cuesta]" % len(decl))
         print("sellado el suelo de L6f: %d fichero(s) declaran [riesgo]" % len(ries))
         print("sellada la linea base: %d numero(s) en las dos tablas" % n)
         print("[!] revisa las notas A MANO: una herramienta no sabe si KIND_ARCHIVO y File")
-        print("    son el mismo objeto.")
+        print("    son el mismo objeto, ni si TASK_OP_FRAMEBUFFER_CLAIM es")
+        print("    BMO_OP_PANTALLA_RECLAMAR. Una fila NUEVA sale con la nota vacia.")
         return 0
     return comprobar()
 

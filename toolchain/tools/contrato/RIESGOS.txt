@@ -11,7 +11,24 @@
 # El numero va solo en la primera linea util. Lo de abajo es el inventario, y es
 # comentario: esta para leerlo, no para juzgarlo.
 
-3
-# ESPEJO             Ultra_kernel_x86-64/kernel/src/ring0/mm/phys.rs
-# AJENO ESPEJO       Ultra_kernel_x86-64/kernel/src/ring0/mm/vmm.rs
+20
+# SILENCIO           Ultra_kernel_x86-64/kernel/src/ring0/core/autopsy.rs
+#                    Ultra_kernel_x86-64/kernel/src/ring0/core/gato/masks.rs
+# AJENO SILENCIO     Ultra_kernel_x86-64/kernel/src/ring0/core/purga.rs
+# ESPEJO             Ultra_kernel_x86-64/kernel/src/ring0/mm/phys/amarilla.rs
+# ESPEJO             Ultra_kernel_x86-64/kernel/src/ring0/mm/phys/mod.rs
+# ESPEJO             Ultra_kernel_x86-64/kernel/src/ring0/mm/phys/roja.rs
+# ESPEJO             Ultra_kernel_x86-64/kernel/src/ring0/mm/vmm/amarilla.rs
+# AJENO ESPEJO       Ultra_kernel_x86-64/kernel/src/ring0/mm/vmm/mod.rs
+# AJENO              Ultra_kernel_x86-64/kernel/src/ring0/mm/vmm/roja.rs
+#                    Ultra_kernel_x86-64/kernel/src/ring0/mm/vmm/verde.rs
+# AJENO ESPEJO       Ultra_kernel_x86-64/kernel/src/ring0/obj/fb/roja.rs
+#                    Ultra_kernel_x86-64/kernel/src/ring0/obj/fb/verde.rs
+# SILENCIO ESPEJO    Ultra_kernel_x86-64/kernel/src/ring0/plat/faults/amarilla.rs
+# AJENO              Ultra_kernel_x86-64/kernel/src/ring0/plat/faults/roja.rs
+#                    Ultra_kernel_x86-64/kernel/src/ring0/plat/faults/verde.rs
+# AJENO              Ultra_kernel_x86-64/kernel/src/ring0/task/admitir.rs
+# AJENO              Ultra_kernel_x86-64/kernel/src/ring0/task/scheduler/roja.rs
+#                    Ultra_kernel_x86-64/kernel/src/ring0/task/scheduler/verde.rs
 # SILENCIO           platform/drivers/net/src/lib.rs
+# ESPEJO             platform/shared/bmo-fisica-juicio/src/lib.rs
