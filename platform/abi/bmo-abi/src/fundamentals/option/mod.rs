@@ -4,6 +4,17 @@
 //! por `#[repr(C)]` con un discriminante explicito `bx_u64`. Esto evita
 //! las optimizaciones de nicho de Rust (que son geniales para Rust, pero
 //! letales para FFI).
+//!
+//! -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+//!
+//! Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+//! toco. La ley esta en `META-KERNEL_HARD.md`.
+//!
+//! [carril]  VERDE        `BmoOption<T>` FFI-safe. **DECLARADO Y SIN
+//!                        ESTRENAR**: hoy no lo llama nadie
+//! [cuesta]  NADA         no puede costar nada porque no corre
+//! [riesgo]  SILENCIO     no tiene ni una prueba, y lo que no corre ni se
+//!                        prueba puede estar roto sin que se note
 
 use crate::bmo_abi::primitives::bx_u64;
 

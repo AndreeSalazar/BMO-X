@@ -81,7 +81,6 @@ bmo_abi/
 |   +-- memory/         BmoSlice, BmoSliceMut, BmoRange, BmoAligned
 |   +-- buffer/         BmoBuffer (32 B shared memory descriptor)
 |   +-- allocator/      BmoAllocator trait, GlobalAllocator wrapper
-|   +-- io/             BmoRead, BmoWrite, BmoSeek traits + BmoPipe
 |   +-- fmt/            BmoFormatter stack-allocated (256 B buffer)
 |   +-- sync/           BmoAtomicU32/U64/Bool, BmoSpinLock
 |

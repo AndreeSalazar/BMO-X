@@ -3,6 +3,18 @@
 //! Reemplaza `void* + size_t` de C con tipos que llevan la semantica
 //! incorporada: BmoSlice (ptr + len), BmoRange (offset + size), BmoAligned
 //! (alineacion garantizada).
+//!
+//! -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+//!
+//! Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+//! toco. La ley esta en `META-KERNEL_HARD.md`.
+//!
+//! [carril]  ROJO         `BmoSlice`, `BmoRange`, `BmoAligned` -- aritmetica
+//!                        sobre punteros crudos
+//! [cuesta]  MAQUINA      un rango mal calculado es una lectura o escritura
+//!                        fuera de lo entregado
+//! [riesgo]  AJENO        los limites vienen de fuera; comprobarlos aqui es
+//!                        lo unico que hay entre eso y el mapeo
 
 use crate::bmo_abi::primitives::bx_u64;
 

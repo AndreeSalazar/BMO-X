@@ -5,6 +5,18 @@
 //! capacidades que determinan que operaciones se permiten.
 //!
 //! `BmoStatus::NEEDS_CAP` se devuelve cuando falta una capacidad.
+//!
+//! -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+//!
+//! Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+//! toco. La ley esta en `META-KERNEL_HARD.md`.
+//!
+//! [carril]  ROJO         los BITS de permiso. Un bit de mas es autoridad de
+//!                        mas
+//! [cuesta]  MAQUINA      un permiso concedido por error no da un fallo: da
+//!                        acceso
+//! [riesgo]  SILENCIO     una mascara mal calculada CONCEDE en vez de negar,
+//!                        y eso no se parece a un error
 
 use crate::bmo_abi::primitives::bx_u64;
 

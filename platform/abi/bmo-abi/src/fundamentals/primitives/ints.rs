@@ -2,6 +2,16 @@
 //!
 //! Garantizado en todas las plataformas BMO (x86-64): tamanos fijos,
 //! sin `int` ambiguo, sin `long` que cambie con la plataforma.
+//!
+//! -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+//!
+//! Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+//! toco. La ley esta en `META-KERNEL_HARD.md`.
+//!
+//! [carril]  VERDE        alias de tipos enteros. No hay logica que tocar
+//! [cuesta]  NADA         no hay nada que se pierda: son nombres
+//! [riesgo]  ESPEJO       si un alias dejara de coincidir con el tipo de
+//!                        Rust, todo lo de encima mentiria a la vez
 
 #![allow(non_camel_case_types)]
 

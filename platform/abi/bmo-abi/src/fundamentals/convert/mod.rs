@@ -2,6 +2,18 @@
 //!
 //! BmoStatus <-> BmoError <-> ErrorCode <-> BmoResult. Un solo punto de
 //! traduccion para que el resto del kernel nunca tenga que pensar en esto.
+//!
+//! -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+//!
+//! Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+//! toco. La ley esta en `META-KERNEL_HARD.md`.
+//!
+//! [carril]  AMARILLO     convierte entre `BmoStatus`, `BmoError` y
+//!                        `ErrorCode`
+//! [cuesta]  NADA         una conversion mal hecha cambia un fallo por otro,
+//!                        y el sintoma apunta lejos
+//! [riesgo]  ESPEJO       existe SOLO porque hay tres representaciones del
+//!                        mismo hecho. Es el espejo hecho funcion
 
 use crate::bmo_abi::fundamentals::error::BmoError;
 use crate::bmo_abi::fundamentals::result::BmoResult;

@@ -115,6 +115,16 @@ SEMAFORO = ("ROJO", "AMARILLO", "VERDE")
 COLOR_DEL_NOMBRE = {"roja": "ROJO", "amarilla": "AMARILLO", "verde": "VERDE"}
 RING0_DIR = "Ultra_kernel_x86-64/kernel/src/ring0"
 
+# -- R17: la CARA RUST del ABI, que tampoco llevaba letrero -------------------
+#
+# `fundamentals/` son los tipos que cruzan la frontera: `BmoStatus` en rax/rdx,
+# `BmoHandle` con su generacion, los bits de `BmoCap`. Un tercero que escriba
+# Rust para BMO-X abre ESTE directorio, igual que quien escribe C abre `tables/`.
+#
+# ** Y estaba en la misma situacion que REX antes de R11: cubierto por ninguna
+# regla, porque L6g decia *"todo `.rs` de Ring 0"* y esto no es Ring 0.
+FUNDAMENTALS_DIR = "platform/abi/bmo-abi/src/fundamentals"
+
 def raiz():
     return os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))
 

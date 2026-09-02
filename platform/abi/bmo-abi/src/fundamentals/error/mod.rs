@@ -4,6 +4,17 @@
 //! con un solo tipo de 16 bytes que puede representar cualquier error del
 //! sistema, incluyendo el codigo de error, flags de contexto, y un payload
 //! opcional de 64 bits.
+//!
+//! -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+//!
+//! Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+//! toco. La ley esta en `META-KERNEL_HARD.md`.
+//!
+//! [carril]  AMARILLO     el `BmoError` unificado. No decide nada: describe
+//! [cuesta]  NADA         un error mal descrito manda a mirar donde no es
+//! [riesgo]  ESPEJO       es la TERCERA forma de decir lo mismo, con
+//!                        `BmoStatus` y `ErrorCode`. Tres nombres de un fallo
+//!                        pueden discrepar
 
 use crate::bmo_abi::error_code;
 use crate::bmo_abi::fundamentals::status::error::message as error_message;
