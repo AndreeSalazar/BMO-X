@@ -975,6 +975,36 @@ pub(crate) fn shell_mem() {
     row("usada", |l| { l.size(used_b); l.txt("   "); l.pct(used_b, total_b); });
     row("libre", |l| { l.size(free_b); l.txt("   "); l.pct(free_b, total_b); });
 
+    // == LO QUE CUESTA MOVER LOS BYTES, que la regla 4 exige contar ==========
+    //
+    // `docs/identidad/LA_RAM.md`, Parte III, regla 4: *"copiar es un coste, y se
+    // cuenta"*. Y la Parte IV lo remataba: *"hoy nadie lo mide"*.
+    //
+    // ** Se media. Los dos contadores llevaban meses puestos --`cuentas_dma` en
+    // el disco y `file::cuentas` en el archivo-- y **cero consumidores**. Es la
+    // tercera vez el mismo dia: un numero que el kernel calcula y esconde no
+    // cumple una regla que dice "se cuenta".
+    //
+    // *** Y el segundo contesta una pregunta que hizo el dueno: *"y si DOOM
+    // trata la puerta como un syscall clasico?"*. `RETROCESOS` es exactamente
+    // eso medido: cada `fseek` hacia atras que obligo al cursor de FAT32 a
+    // volver a recorrer la cadena desde el principio. El diseno lo permite y no
+    // miente; lo que no hacia era **decir lo que vale**.
+    let (directos, rebotados) = crate::ring0::dev::disk::cuentas_dma();
+    let (reflejados, retrocesos) = crate::ring0::obj::file::cuentas();
+    row("disco DMA", |l| {
+        l.size(directos);
+        l.txt(" directos al marco, ");
+        l.size(rebotados);
+        l.txt(" por la pagina de rebote");
+    });
+    row("archivo", |l| {
+        l.size(reflejados);
+        l.txt(" reflejados, ");
+        l.dec(retrocesos);
+        l.txt(" saltos HACIA ATRAS (cada uno recorre la cadena)");
+    });
+
     // ** LO QUE RING 3 TIENE PEDIDO **AHORA**, que no es lo que decia `info`.
     //
     // `total_handed_over()` es un contador HISTORICO de la sesion y esta
