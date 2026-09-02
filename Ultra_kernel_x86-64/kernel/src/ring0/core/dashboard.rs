@@ -67,8 +67,36 @@ pub(crate) fn dashboard_log_impl(msg: &str, color: Option<u32>) {
     // pantalla, y la maquina que ya cedio la pantalla a Ring 3.
     //
     // Ese segundo caso es el de todos los dias desde que el escritorio es el
-    // arranque: el panel del kernel no se pinta, asi que sin esto el relato de
-    // como arranco la maquina no existia en ninguna parte.
+    // arranque, y sin esto el relato de como arranco la maquina no existiria en
+    // ninguna parte.
+    //
+    // ** [!] Y AQUI HABIA UNA FRASE QUE AFIRMABA UN INVARIANTE QUE NADIE
+    // IMPLEMENTA. (corregida el 2026-09-02)
+    //
+    // Decia *"el panel del kernel no se pinta"* cuando Ring 3 tiene la
+    // pantalla. **Nada lo comprueba.** Las dos salidas tempranas de abajo son
+    // `has_fb()` y `rows == 0`, y `log_rows()` nunca da cero: su primera linea
+    // es `if total == 0 { return 1; }`. Ni una mira `fb::owner()`.
+    //
+    // Lo que de verdad pasa es otra cosa, y conviene saberla porque se apoya en
+    // una casualidad: **todos los que llaman aqui son deliberados o de
+    // arranque** -- `phase` (arranca), `purga` y `emergencia` (Ctrl+Alt+Esc),
+    // `cockpit` (F11) y el shell (una orden tuya). Ninguno se dispara solo,
+    // asi que en la practica no se pinta encima de Ring 3.
+    //
+    // > Un invariante que no esta escrito no es un invariante: es una suerte
+    // > que dura hasta que deja de durar.
+    //
+    // Es la MISMA frase que `scheduler::reap` ya tiene escrita sobre su propio
+    // hueco. El dia que un subsistema de fondo llame aqui, pintara encima de
+    // una app a pantalla completa y nadie lo habra decidido. Cuando eso pase,
+    // la puerta es la de `splash_dashboard_log_color` --que ya existe para la
+    // intro-- mas una variante `forzado` para las cuatro salidas que TIENEN que
+    // pintar pase lo que pase.
+    //
+    // [!] Se deja MEDIDO y no arreglado a proposito: hoy no hay ni un llamante
+    // de fondo, asi que la guarda no cambiaria una sola pantalla y costaria
+    // diecinueve sitios. Lo que faltaba era que la frase dijera la verdad.
     //
     // ** Y va con la HORA delante. `[  1234ms] usb: ...`
     //
