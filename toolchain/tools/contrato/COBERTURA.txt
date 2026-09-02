@@ -11,5 +11,5 @@
 # El numero va solo en la primera linea util. Se resella con `--sellar`.
 #
 # [!] Lo que esto NO mide: si la cabecera es BUENA. Mide que exista.
-93
+98
 # de 194 constantes del ABI que son de app; la frontera deja fuera 137

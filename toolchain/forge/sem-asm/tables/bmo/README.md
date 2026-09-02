@@ -6,7 +6,7 @@
 > hay, para que sirve cada pieza y por donde se empieza.
 
 REX es lo que hay entre las **dos puertas congeladas** (`INVOKE` y `WAIT`) y un
-programa. Once cabeceras publicas, 3.296 lineas en 19 ficheros, y dos
+programa. Doce cabeceras publicas, 3.580 lineas en 20 ficheros, y dos
 propiedades que conviene
 saber antes de usarlas:
 
@@ -37,7 +37,7 @@ arrastro?**
 las cabeceras partidas conservan nombre y sitio y son una **fachada**, igual que
 un `mod.rs` que re-exporta. Incluir un carril suelto tambien vale.
 
-## Las once piezas
+## Las doce piezas
 
 | Cabecera | Lineas | Color | Que resuelve | Ejemplo |
 |---|---|---|---|---|
@@ -54,6 +54,7 @@ un `mod.rs` que re-exporta. Incluir un carril suelto tambien vale.
 | [`musica.h`](musica.h) | 269 | VERDE | notas, figuras y compas, encima de `sonido.h` | `examples/vivaldi_C.c` |
 | [`pantalla.h`](pantalla.h) | 238 | ROJO | **la pantalla entera**: tomarla, medirla y devolverla | `examples/pantalla_C.c` |
 | [`paquete.h`](paquete.h) | 261 | AMARILLO | leer los datos que viajan **dentro** del `.bex` | `examples/caja_C.c` |
+| [`prestado.h`](prestado.h) | 284 | ROJO | **memoria que viaja sin copiarse**: prestar, tomar y soltar | `examples/prestado_C.c` |
 | [`superficie.h`](superficie.h) | 515 | ROJO | dibujar en TU memoria y ofrecerla al DIRECTOR | `examples/raycaster_C.c` |
 | &nbsp;&nbsp;[`superficie/roja.h`](superficie/roja.h) | 176 | ROJO | pedir el bloque y **ofrecerlo** | -- |
 | &nbsp;&nbsp;[`superficie/amarilla.h`](superficie/amarilla.h) | 167 | AMARILLO | decodificar eventos y puntero | -- |
