@@ -28,6 +28,21 @@
  *
  * Valen 0 hasta el primer `malloc`, y eso es lo correcto: antes de pedir
  * memoria no hay bloque del que hablar.
+ *
+ * -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+ *
+ * Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+ * toco. La ley esta en `META-KERNEL_HARD.md`; el juez, en
+ * `toolchain/tools/contrato/contrato.py`.
+ *
+ * [carril]  ROJO         son los DOS numeros con los que el kernel decide
+ *                        DONDE escribir; tocarlos arrastra a `fread` y a
+ *                        `MEM_OFRECER` a la vez
+ * [cuesta]  DATO         una `base` equivocada no da fault: hace que el kernel
+ *                        escriba el fichero de alguien en el sitio que no es
+ * [riesgo]  ESPEJO       las escribe el CODEGEN (`publicar_bloque`) y las leen
+ *                        DOS cabeceras. Si el compilador deja de publicarlas,
+ *                        aqui valen 0
  */
 #ifndef BMO_BLOQUE_H
 #define BMO_BLOQUE_H

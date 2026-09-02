@@ -388,12 +388,48 @@ imposible de no ver.
           [cuesta] y [riesgo]. Las carpetas no se listan: SE DESCUBREN
      R10  todo .rs de Ring 0 declara [carril]; el color es uno de los tres;
           y si el fichero SE LLAMA como un carril, nombre y etiqueta coinciden
+     R11  toda cabecera de REX declara [carril], [cuesta] y [riesgo], con UNA
+          sola clase de [cuesta] -- dos es un fichero mal cortado (L6e)
+     R12  una carpeta de carriles de REX no MEZCLA, tiene fachada, y la
+          fachada TRAE todos sus carriles
   ```
 
   ★ La tercera de R10 caza el **renombrado a medias**, que es como una pieza
   cambiaria de color sin que nadie lo haya decidido. Y R10 dio su primer NO el
   dia que se escribio: al partir `mm/phys.rs`, el `mod.rs` nuevo salio sin
   color. *Una regla que no muerde a su autor el primer dia es decorativa.*
+
+  ### Y desde el 2026-09-01, el semaforo sale de Ring 0
+
+  La ley decia *"todo `.rs` de Ring 0"*, y con eso **las diez cabeceras con las
+  que se escribe una app no llevaban color**: la unica parte del arbol que un
+  tercero abre de verdad era la unica sin letrero. Ahora las cubre entera --18
+  ficheros, 9 rojos, 5 amarillos, 4 verdes-- y las juzgan R11 y R12.
+
+  ★★ **Y la regla de corte de L6e volvio a cortar sola.** Cuatro de las diez no
+  podian declarar UN `[cuesta]`, que es la definicion de estar mal cortadas:
+
+  ```text
+     bmo.h          los numeros de las puertas PUERTA | la tabla INFO   NADA
+     archivo.h      leer y escribir de verdad  DATO   | el cursor       NADA
+     monton.h       la arena y el reparto      DATO   | los medidores   NADA
+     superficie.h   ofrecer memoria al DIRECTOR DATO  | decodificar     NADA
+  ```
+
+  Las cuatro pasaron a carpeta (`bmo/archivo/{roja,amarilla}.h`) y **fuera no
+  cambio nada**: la fachada conserva el nombre y el sitio, igual que un
+  `mod.rs` que re-exporta, asi que `#include <bmo/archivo.h>` sigue valiendo
+  letra por letra. Cambiar eso habria costado `PUERTA`.
+
+  ★ La prueba de que el corte no toco el codigo: de los trece ejemplos de C,
+  **nueve salen byte a byte identicos** y los cuatro que cambian --los que usan
+  las dos cabeceras cuyas masas venian intercaladas-- miden **exactamente lo
+  mismo**. Se movieron funciones de sitio; no se escribio ninguna.
+
+  [!] Y R11 dio su primer NO contra su autor, como R10: el motivo de un
+  `[riesgo]` de `musica.h` empezaba por una palabra en mayusculas y el juez la
+  leyo como una clase. *Una regla que no muerde a su autor el primer dia es
+  decorativa.*
 
   [!] **Lo que NINGUNA maquina comprueba, y hay que decirlo: que el color sea el
   correcto.** Un guardian que intentara deducirlo acabaria adivinando, y **un

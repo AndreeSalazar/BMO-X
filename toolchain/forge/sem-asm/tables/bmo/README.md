@@ -6,8 +6,8 @@
 > hay, para que sirve cada pieza y por donde se empieza.
 
 REX es lo que hay entre las **dos puertas congeladas** (`INVOKE` y `WAIT`) y un
-programa. Diez cabeceras, 2.360 lineas, y dos propiedades que conviene saber
-antes de usarlas:
+programa. Diez cabeceras publicas, 3.015 lineas, y dos propiedades que conviene
+saber antes de usarlas:
 
 1. **No es un runtime.** Una cabecera de REX **trae el cuerpo**: no hay
    `libbmo.so` que alguien tenga que resolver despues, porque aqui no hay
@@ -19,22 +19,54 @@ antes de usarlas:
 
 ---
 
+## El semaforo: que arriesgas si tocas cada pieza
+
+Desde el 2026-09-01 **cada cabecera lleva su color** (L6g), y las que tenian dos
+masas con costes distintos estan partidas por dentro. La pregunta que contesta
+el color no es *que hace*, que ya lo dice el nombre: es **voy a tocar esto, que
+arrastro?**
+
+| color | que dice | que exige antes de tocar |
+|---|---|---|
+| **ROJO** | puede corromper memoria o romper binarios que YA existen | leerlo entero |
+| **AMARILLO** | si se equivoca no falla: **convence** | mirar quien lee lo mismo al otro lado |
+| **VERDE** | normal y seguro, se puede jugar | nada |
+
+**Fuera no cambia nada.** `#include <bmo/archivo.h>` sigue trayendo lo mismo:
+las cabeceras partidas conservan nombre y sitio y son una **fachada**, igual que
+un `mod.rs` que re-exporta. Incluir un carril suelto tambien vale.
+
 ## Las diez piezas
 
-| Cabecera | Lineas | Que resuelve | Ejemplo |
-|---|---|---|---|
-| [`bmo.h`](bmo.h) | 334 | las dos puertas, en C. **Se empieza por aqui** | `examples/sonda_C.c`, `examples/raycaster_C.c` |
-| [`archivo.h`](archivo.h) | 446 | leer ficheros de verdad, contra `KIND_ARCHIVO` | `examples/leer_C.c` |
-| [`entrada.h`](entrada.h) | 335 | teclado y raton | ⚠ **ninguno** |
-| [`monton.h`](monton.h) | 284 | `malloc`/`free`/`realloc` sobre UN bloque del kernel. Llega por `<stdlib.h>` | `examples/memoria_C.c` |
-| [`musica.h`](musica.h) | 255 | notas, figuras y compas, encima de `sonido.h` | `examples/vivaldi_C.c`, `examples/musica_C.c` |
-| [`paquete.h`](paquete.h) | 245 | leer los datos que viajan **dentro** del propio `.bex` | `examples/caja_C.c` |
-| [`superficie.h`](superficie.h) | 194 | dibujar en TU memoria y ofrecerla al DIRECTOR | `examples/raycaster_C.c` |
-| [`scroll.h`](scroll.h) | 126 | una ventana que se mueve sobre un historial | `examples/scroll_C.c` |
-| [`sonido.h`](sonido.h) | 103 | el sonido | `examples/sonido_C.c` |
-| [`bloque.h`](bloque.h) | 38 | que bloque del kernel es el del monton. Lo traen `archivo.h` y `superficie.h` | -- |
+| Cabecera | Lineas | Color | Que resuelve | Ejemplo |
+|---|---|---|---|---|
+| [`bmo.h`](bmo.h) | 437 | ROJO | las dos puertas, en C. **Se empieza por aqui** | `examples/sonda_C.c` |
+| &nbsp;&nbsp;[`bmo/roja.h`](bmo/roja.h) | 137 | ROJO | `INVOKE`, `WAIT` y los numeros de operacion | -- |
+| &nbsp;&nbsp;[`bmo/verde.h`](bmo/verde.h) | 229 | VERDE | la tabla `INFO_*`: crece por filas | -- |
+| [`archivo.h`](archivo.h) | 522 | ROJO | leer ficheros de verdad, contra `KIND_ARCHIVO` | `examples/leer_C.c` |
+| &nbsp;&nbsp;[`archivo/roja.h`](archivo/roja.h) | 340 | ROJO | abrir, `fread`, `fwrite`, `fclose` | -- |
+| &nbsp;&nbsp;[`archivo/amarilla.h`](archivo/amarilla.h) | 117 | AMARILLO | el cursor, que es un ESPEJO del del kernel | -- |
+| [`entrada.h`](entrada.h) | 349 | AMARILLO | teclado y raton | ** **ninguno** |
+| [`monton.h`](monton.h) | 351 | ROJO | `malloc`/`free`/`realloc`. Llega por `<stdlib.h>` | `examples/memoria_C.c` |
+| &nbsp;&nbsp;[`monton/roja.h`](monton/roja.h) | 168 | ROJO | la arena y el reparto | -- |
+| &nbsp;&nbsp;[`monton/verde.h`](monton/verde.h) | 74 | VERDE | cuanto queda y cuanto cabe | -- |
+| [`musica.h`](musica.h) | 269 | VERDE | notas, figuras y compas, encima de `sonido.h` | `examples/vivaldi_C.c` |
+| [`paquete.h`](paquete.h) | 261 | AMARILLO | leer los datos que viajan **dentro** del `.bex` | `examples/caja_C.c` |
+| [`superficie.h`](superficie.h) | 515 | ROJO | dibujar en TU memoria y ofrecerla al DIRECTOR | `examples/raycaster_C.c` |
+| &nbsp;&nbsp;[`superficie/roja.h`](superficie/roja.h) | 176 | ROJO | pedir el bloque y **ofrecerlo** | -- |
+| &nbsp;&nbsp;[`superficie/amarilla.h`](superficie/amarilla.h) | 167 | AMARILLO | decodificar eventos y puntero | -- |
+| [`scroll.h`](scroll.h) | 140 | VERDE | una ventana que se mueve sobre un historial | `examples/scroll_C.c` |
+| [`sonido.h`](sonido.h) | 118 | AMARILLO | el sonido | `examples/sonido_C.c` |
+| [`bloque.h`](bloque.h) | 53 | ROJO | que bloque del kernel es el del monton | -- |
 
 Los ejemplos viven en `toolchain/lang/c/examples/`.
+
+** **Lo comprueba una maquina**, no la buena voluntad: `contrato.py --check`,
+reglas R11 y R12. R11 exige las tres etiquetas y **UNA sola clase de
+`[cuesta]`** -- dos significa que el fichero esta mal cortado, y es la regla que
+creo estas cuatro carpetas. R12 exige que la carpeta no mezcle y que **la
+fachada traiga todos sus carriles**: uno que se quede fuera no da un `fichero no
+encontrado`, da un simbolo sin declarar a nueve capas de distancia.
 
 ★ **Queda UN hueco, y es el que importa ahora**: `entrada.h` no tiene ejemplo.
 Eran dos hasta el 2026-08-19, cuando `raycaster_C.c` se porto a ventana (paso 2b

@@ -36,6 +36,21 @@
  * BMO_SONIDO_MAX_MS, asi que pedir mas no cuelga la maquina -- pero tampoco
  * suena mas. Es una propiedad del altavoz, no del contrato: con HDA se llena un
  * anillo y el DMA lo consume solo.
+ *
+ * -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+ *
+ * Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+ * toco. La ley esta en `META-KERNEL_HARD.md`; el juez, en
+ * `toolchain/tools/contrato/contrato.py`.
+ *
+ * [carril]  AMARILLO     reclamar es EXCLUSIVO, igual que la pantalla y por el
+ *                        mismo motivo: dos duenos en el mismo aparato no es
+ *                        mezclar, es ruido
+ * [cuesta]  APARATO      un proceso que reclama y muere sin soltar deja el
+ *                        altavoz sin dueno hasta que alguien reinicie
+ * [riesgo]  SILENCIO     `aparatos()` dice que hay CAMINO, no que se oiga: hay
+ *                        placas con el cabezal SPKR sin nada conectado y desde
+ *                        aqui no se sabe
  */
 #ifndef BMO_SONIDO_H
 #define BMO_SONIDO_H
