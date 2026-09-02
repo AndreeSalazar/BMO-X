@@ -5,6 +5,17 @@
 //!
 //! Util para logging en Ring 0 (donde no hay heap disponible) y para
 //! construir mensajes de error cortos sin dependencias.
+//!
+//! -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+//!
+//! Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+//! toco. La ley esta en `META-KERNEL_HARD.md`.
+//!
+//! [carril]  VERDE        `BmoFormatter` sobre la pila, sin monton. **SIN
+//!                        ESTRENAR**, pero con SEIS pruebas
+//! [cuesta]  NADA         no puede costar nada porque nadie lo llama
+//! [riesgo]  SILENCIO     es el mas probado de `fundamentals` y el menos
+//!                        usado -- la inversion conviene verla escrita
 
 use crate::bmo_abi::fundamentals::memory::BmoSlice;
 use crate::bmo_abi::primitives::bx_u64;

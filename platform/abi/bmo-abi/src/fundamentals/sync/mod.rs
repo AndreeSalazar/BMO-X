@@ -3,6 +3,20 @@
 //! Thin wrapper around `core::sync::atomic` to keep BMO ABI types
 //! (BxU64 instead of u64) in the type signature. The wrapper is `const`
 //! where possible to allow static initialization.
+//!
+//! -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+//!
+//! Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+//! toco. La ley esta en `META-KERNEL_HARD.md`.
+//!
+//! [carril]  ROJO         atomicos y ordenes de memoria. Es lo UNICO de aqui
+//!                        que consume `bmo-rt`
+//! [cuesta]  MAQUINA      una orden de memoria floja no falla en la prueba:
+//!                        falla bajo contienda y en metal
+//! [riesgo]  RELOJ        `MemOrder` traduce a
+//!                        `core::sync::atomic::Ordering`. Poner `Relaxed`
+//!                        donde iba `Acquire` funciona en un nucleo y se
+//!                        rompe en doce
 
 #![allow(dead_code)]
 

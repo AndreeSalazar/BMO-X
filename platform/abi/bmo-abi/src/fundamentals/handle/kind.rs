@@ -3,6 +3,20 @@
 //! 7 bits = 128 tipos posibles. Tag bit 63 distingue:
 //!   - 0 = recurso pasivo (textura, buffer, sampler)
 //!   - 1 = canal/cola activo (queue, cmdlist, socket)
+//!
+//! -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+//!
+//! Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+//! toco. La ley esta en `META-KERNEL_HARD.md`.
+//!
+//! [carril]  ROJO         la taxonomia de handles. Un numero de aqui esta en
+//!                        todo `.bex` firmado
+//! [cuesta]  PUERTA       cambiarlo rompe binarios que ya existen; es una de
+//!                        las DOS tablas que compara R2 contra el kernel
+//! [riesgo]  ESPEJO UNICO
+//!                        ESPEJO: el kernel tiene su propia lista en
+//!                        `obj/cap.rs` y hoy divergen en cinco. UNICO: un
+//!                        codigo de kind se congela y no se recicla
 
 use crate::bmo_abi::primitives::bx_u8;
 

@@ -7,6 +7,19 @@
 //!   bits 55..40   : generation (16 bits -- invalida UAF)
 //!   bits 39..0    : index      (40 bits -- 1 trillon de slots)
 //! ```
+//!
+//! -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+//!
+//! Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+//! toco. La ley esta en `META-KERNEL_HARD.md`.
+//!
+//! [carril]  ROJO         empaqueta tag, kind y GENERACION en 64 bits a base
+//!                        de desplazamientos
+//! [cuesta]  PUERTA       un desplazamiento mal deja pasar un handle revocado
+//!                        como si fuera valido
+//! [riesgo]  SILENCIO     la generacion es lo unico que caduca un handle. Si
+//!                        se lee del bit que no es, un handle muerto vuelve a
+//!                        valer y NADA falla al hacerlo
 
 use super::kind::HandleKind;
 use crate::bmo_abi::primitives::{bx_u16, bx_u64, bx_u8};

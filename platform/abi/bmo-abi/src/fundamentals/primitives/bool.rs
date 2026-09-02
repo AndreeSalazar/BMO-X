@@ -2,6 +2,16 @@
 //!
 //! 1 byte (vs el `BOOL` 32-bit de Win32 que desperdicia 24 bits). Same
 //! representation que el `bool` de Rust -> conversiones gratis.
+//!
+//! -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+//!
+//! Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+//! toco. La ley esta en `META-KERNEL_HARD.md`.
+//!
+//! [carril]  VERDE        `bx_bool` para cruzar la frontera FFI
+//! [cuesta]  NADA         no hay nada detras
+//! [riesgo]  SILENCIO     un booleano que cruza como entero admite valores
+//!                        que no son 0 ni 1
 
 #![allow(non_camel_case_types)]
 

@@ -5,6 +5,17 @@
 //!
 //! Para errores sin detalle, `BmoResult<T, ()>` equivale a
 //! `BmoOption<T>` pero con semantica de error.
+//!
+//! -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+//!
+//! Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+//! toco. La ley esta en `META-KERNEL_HARD.md`.
+//!
+//! [carril]  VERDE        `BmoResult<T,E>` FFI-safe. **DECLARADO Y SIN
+//!                        ESTRENAR**
+//! [cuesta]  NADA         no puede costar nada porque no corre
+//! [riesgo]  SILENCIO     sin consumidor y sin prueba: es una forma, no un
+//!                        comportamiento comprobado
 
 use crate::bmo_abi::fundamentals::status::BmoStatus;
 use crate::bmo_abi::primitives::bx_u64;

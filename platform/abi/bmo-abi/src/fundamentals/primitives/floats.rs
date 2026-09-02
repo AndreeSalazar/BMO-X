@@ -7,6 +7,18 @@
 //!     - backends graficos modernos cuando existan
 //!     - CPU via conversion software o instrucciones disponibles
 //!   El kernel lo expone como struct opaco; las apps lo usan en shaders.
+//!
+//! -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+//!
+//! Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+//! toco. La ley esta en `META-KERNEL_HARD.md`.
+//!
+//! [carril]  AMARILLO     `bx_f16` con conversion IEEE-754 a mano;
+//!                        `bx_f32/f64` son alias
+//! [cuesta]  NADA         se equivoca y da un numero, no un error
+//! [riesgo]  SILENCIO     media precision a mano es donde este proyecto ya se
+//!                        quemo: el emulador decia que `add` nunca desbordaba
+//!                        y HACIA PASAR el test que debia fallar
 
 #![allow(non_camel_case_types)]
 

@@ -10,6 +10,18 @@
 //! [16..23] capacity: u64     -- capacidad total (>= len)
 //! [24..31] flags:    u64     -- BmoBufferFlags
 //! ```
+//!
+//! -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+//!
+//! Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+//! toco. La ley esta en `META-KERNEL_HARD.md`.
+//!
+//! [carril]  ROJO         el descriptor de memoria COMPARTIDA entre procesos:
+//!                        ptr, len, capacidad
+//! [cuesta]  DATO         describe mal lo compartido y el receptor lee el
+//!                        trabajo de otro, o fuera de el
+//! [riesgo]  AJENO        los dos extremos se creen este descriptor y ninguno
+//!                        puede comprobar al otro
 
 use crate::bmo_abi::primitives::bx_u64;
 

@@ -7,6 +7,19 @@
 //!
 //! Cabe integro en `RAX:RDX`, sin tocar memoria. Reemplaza `HRESULT` y la
 //! pareja "codigo + GetLastError + valor en out param" del C/Win32.
+//!
+//! -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+//!
+//! Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+//! toco. La ley esta en `META-KERNEL_HARD.md`.
+//!
+//! [carril]  ROJO         `BmoStatus` es lo que VIAJA en rax/rdx al volver de
+//!                        la puerta
+//! [cuesta]  PUERTA       `into_registers` decide que ve Ring 3 al volver:
+//!                        cambiarlo cambia todo retorno
+//! [riesgo]  SILENCIO     `0` es lo unico que significa exito, y los 32 bits
+//!                        altos son banderas. Confundir el campo da un `ok`
+//!                        que no lo era
 
 use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 

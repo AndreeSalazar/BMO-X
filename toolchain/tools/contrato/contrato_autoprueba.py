@@ -116,6 +116,20 @@ def autoprueba():
     exige("R11(la segunda clase tambien)",
           r11_el_semaforo_de_rex({"a/roja.h": CAR + CUE + " * [riesgo]  AJENO RARO" + chr(10)}))
 
+    # R17 -- la cara Rust del ABI declara sus tres etiquetas.
+    D3 = "//! [carril]  ROJO      x" + chr(10)
+    C3 = "//! [cuesta]  PUERTA    x" + chr(10)
+    R3 = "//! [riesgo]  AJENO ESPEJO" + chr(10)
+    exige("R17(entera)", r17_el_semaforo_de_fundamentals({"a.rs": D3 + C3 + R3}), False)
+    exige("R17(sin carril)", r17_el_semaforo_de_fundamentals({"a.rs": C3 + R3}))
+    exige("R17(sin cuesta)", r17_el_semaforo_de_fundamentals({"a.rs": D3 + R3}))
+    exige("R17(color inventado)",
+          r17_el_semaforo_de_fundamentals({"a.rs": "//! [carril]  AZUL x" + chr(10) + C3 + R3}))
+    # *** La segunda clase de [riesgo] tambien se juzga, que es la trampa de R7.
+    exige("R17(la segunda clase)",
+          r17_el_semaforo_de_fundamentals(
+              {"a.rs": D3 + C3 + "//! [riesgo]  AJENO RARO" + chr(10)}))
+
     # R14 -- la operacion sale de REX, no del fichero.
     REXN = {"BMO_ARCH_LEER": (0x01, "archivo/roja.h")}
     D = chr(35) + "define "
@@ -293,7 +307,7 @@ def autoprueba():
     # ** El numero se CUENTA, no se escribe. La version anterior decia "21
     # casos" y habia 19: un guardian con una cifra a mano dentro es un guardian
     # que dice un numero viejo con toda la confianza del mundo.
-    print("clean: las DIECISEIS reglas saben decir que NO (%d casos)" % casos[0])
+    print("clean: las DIECISIETE reglas saben decir que NO (%d casos)" % casos[0])
     return 0
 
 

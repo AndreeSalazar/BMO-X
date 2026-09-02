@@ -3,6 +3,16 @@
 //! The canonical definitions now live in `crate::bmo_abi::error_code`.
 //! This file re-exports them so existing code using
 //! `crate::bmo_abi::fundamentals::status::error_code::*` continues to compile.
+//!
+//! -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+//!
+//! Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+//! toco. La ley esta en `META-KERNEL_HARD.md`.
+//!
+//! [carril]  AMARILLO     los constructores de error de `BmoStatus`
+//! [cuesta]  NADA         se equivoca y un fallo sale con el codigo de otro
+//! [riesgo]  ESPEJO       comparte verdad con `error_code/` y con
+//!                        `error/mod.rs`
 
 /// Devuelve un texto humano para el codigo de error. Cero asignacion.
 pub const fn message(code: u32) -> &'static str {

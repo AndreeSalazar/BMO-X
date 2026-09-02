@@ -5,6 +5,18 @@
 //!
 //! - `BmoStr` -- vista prestada (ptr + len), similar a `&str`.
 //! - `BmoString` -- owned (ptr + len + capacity), similar a `String`.
+//!
+//! -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+//!
+//! Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+//! toco. La ley esta en `META-KERNEL_HARD.md`.
+//!
+//! [carril]  ROJO         construye `&str` desde ptr+len ajenos. Diez
+//!                        `unsafe` y diez punteros crudos
+//! [cuesta]  MAQUINA      un `len` de mas lee fuera del mapeo: #PF en el
+//!                        mejor caso, memoria de otro en el peor
+//! [riesgo]  AJENO        el ptr y el len los escribio OTRO -- Ring 3, o un
+//!                        fichero. Nada de esto es de aqui
 
 use crate::bmo_abi::primitives::bx_u64;
 use alloc::string::String;

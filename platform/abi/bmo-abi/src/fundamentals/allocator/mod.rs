@@ -5,6 +5,17 @@
 //! - Buddy system (paginas fisicas)
 //! - Pool allocator (objetos fijos)
 //! - Heap de usuario (Ring 3)
+//!
+//! -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+//!
+//! Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+//! toco. La ley esta en `META-KERNEL_HARD.md`.
+//!
+//! [carril]  ROJO         reparte memoria. Cuatro `unsafe` y cinco punteros
+//! [cuesta]  MAQUINA      entregar dos veces el mismo sitio es dos duenos de
+//!                        un byte -- es la pantalla azul de hoy
+//! [riesgo]  UNICO        una reserva se hace una vez; deshacerla mal no da
+//!                        fault, da un marco con dos duenos
 
 use crate::bmo_abi::fundamentals::status::BmoStatus;
 use crate::bmo_abi::primitives::{bx_u64, bx_usize};

@@ -648,6 +648,66 @@ def carpetas_de_carriles():
     return fuera
 
 
+def ficheros_de_fundamentals():
+    """`{ruta: texto}` de todo `.rs` de `fundamentals/`."""
+    d = os.path.join(raiz(), FUNDAMENTALS_DIR.replace("/", os.sep))
+    if not os.path.isdir(d):
+        return {}
+    fuera = {}
+    for dirpath, _dirnames, filenames in os.walk(d):
+        for n in sorted(filenames):
+            if not n.endswith(".rs"):
+                continue
+            ruta = os.path.join(dirpath, n)
+            with open(ruta, "r", encoding="utf-8", errors="replace") as f:
+                fuera[os.path.relpath(ruta, raiz()).replace(os.sep, "/")] = f.read()
+    return fuera
+
+
+def r17_el_semaforo_de_fundamentals(ficheros):
+    """R17 -- la cara RUST del ABI declara que cuesta y que arrastra.
+
+    Mismo trabajo que R11 hace con REX, y por el mismo motivo: `fundamentals/`
+    es lo que abre quien escribe Rust para BMO-X. Hasta el 2026-09-02 no lo
+    cubria ninguna regla -- L6g dice *"todo `.rs` de Ring 0"*, y esto no es
+    Ring 0.
+
+    Tres exigencias, las mismas de siempre:
+
+      1. declara `[carril]`, y el color es uno de los tres.
+      2. declara `[cuesta]` (L6e) y `[riesgo]` (L6f), con su vocabulario.
+      3. ** UNA sola clase de `[cuesta]`: dos es un fichero mal cortado.
+
+    [!] Sin trinquete, igual que R10 y R11: se empieza cubriendo las 23 de 23.
+    """
+    quejas = []
+    for ruta in sorted(ficheros):
+        txt = ficheros[ruta]
+        m = RE_CARRIL.search(txt)
+        if not m:
+            quejas.append("%s no declara [carril]. Los colores son: %s (R17)"
+                          % (ruta, ", ".join(SEMAFORO)))
+        elif m.group(1) not in SEMAFORO:
+            quejas.append("%s dice [carril] %s, que no es un color (R17)"
+                          % (ruta, m.group(1)))
+        mc = RE_CUESTA.search(txt)
+        if not mc:
+            quejas.append("%s no declara [cuesta] (L6e)" % ruta)
+        elif mc.group(1) not in COSTES:
+            quejas.append("%s declara [cuesta] %s, que no esta en el vocabulario. "
+                          "Son: %s" % (ruta, mc.group(1), ", ".join(COSTES)))
+        mr = RE_RIESGO.search(txt)
+        if not mr:
+            quejas.append("%s no declara [riesgo] (L6f)" % ruta)
+        else:
+            for clase in mr.group(1).split():
+                if clase not in RIESGOS:
+                    quejas.append(
+                        "%s declara [riesgo] %s, que no esta en el vocabulario. "
+                        "Son: %s" % (ruta, clase, ", ".join(RIESGOS)))
+    return quejas
+
+
 def declarantes_de_coste():
     """Los `[cuesta]` -- L6e. Una clase por fichero."""
     return _declarantes(RE_CUESTA, lambda g: g)
@@ -734,6 +794,9 @@ def comprobar():
     cub, sup = cobertura_de_rex(abi_c, espejo_leer(), frontera)
     quejas += [("R16 la cobertura de REX bajo", q)
                for q in r16_la_cobertura_solo_sube(cub, sup, _suelo(COBERTURA))]
+    fund = ficheros_de_fundamentals()
+    quejas += [("R17 el semaforo de fundamentals", q)
+               for q in r17_el_semaforo_de_fundamentals(fund)]
 
     for nota in notas:
         print("  [i] " + nota)
@@ -786,6 +849,15 @@ def comprobar():
         print("  [i] %d constante(s) con un valor que este juez no evalua exacto, "
               "y por eso NO se emparejan: %s"
               % (len(SIN_EVALUAR), ", ".join(sorted(set(SIN_EVALUAR))[:6])))
+    if fund:
+        cf = {c: 0 for c in SEMAFORO}
+        for txt in fund.values():
+            m = RE_CARRIL.search(txt)
+            if m and m.group(1) in cf:
+                cf[m.group(1)] += 1
+        print("clean: el semaforo cubre los %d ficheros de fundamentals (la cara "
+              "Rust del ABI) -- %s"
+              % (len(fund), "  ".join("%s %d" % (c, cf[c]) for c in SEMAFORO)))
     if r0:
         colores = {c: 0 for c in SEMAFORO}
         for txt in r0.values():

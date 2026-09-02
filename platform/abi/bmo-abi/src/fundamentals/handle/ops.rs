@@ -2,6 +2,17 @@
 //!
 //! Este modulo define el trait `BmoHandleOps` que todo backend de handles
 //! (kernel, driver, biblioteca) debe implementar.
+//!
+//! -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+//!
+//! Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+//! toco. La ley esta en `META-KERNEL_HARD.md`.
+//!
+//! [carril]  ROJO         las operaciones que se piden con un handle:
+//!                        superficie congelada
+//! [cuesta]  PUERTA       cambiar un numero rompe binarios ya firmados
+//! [riesgo]  UNICO        un opcode se elige una vez. `MEMORIA_PEDIR` en el
+//!                        0x12 de `REINICIAR` habria reiniciado la maquina
 
 use crate::bmo_abi::fundamentals::handle::BmoHandle;
 use crate::bmo_abi::fundamentals::status::BmoStatus;

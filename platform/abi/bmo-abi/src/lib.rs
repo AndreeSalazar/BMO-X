@@ -20,7 +20,6 @@
 //! |   +-- memory/      -- BmoSlice, BmoRange, BmoAligned
 //! |   +-- buffer/      -- BmoBuffer shared memory descriptor
 //! |   +-- allocator/   -- BmoAllocator trait + Global wrapper
-//! |   +-- io/          -- BmoRead, BmoWrite, BmoSeek, BmoPipe
 //! |   +-- fmt/         -- BmoFormatter stack-allocated
 //! |   +-- sync/        -- BmoAtomicU32/U64/Bool, MemOrder, BmoSpinLock
 //! |
