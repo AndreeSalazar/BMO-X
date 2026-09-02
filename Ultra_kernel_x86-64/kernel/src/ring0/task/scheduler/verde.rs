@@ -248,7 +248,7 @@ pub fn duenno_de_pila(rsp: u64) -> Option<(u32, bool)> {
 ///
 /// [!] Sin cerrojo, y decidido: lo llama la pantalla de fallo. Un dato de hace
 /// un tick sirve para un diagnostico; no arrancar la pantalla, no.
-pub fn fue_de_quien(rsp: u64) -> Option<(u32, u64)> {
+pub fn fue_de_quien(rsp: u64) -> Option<(u32, u64, u8)> {
     unsafe {
         let m = &*core::ptr::addr_of!(super::roja::MORGUE);
         for f in m.iter() {
@@ -257,7 +257,7 @@ pub fn fue_de_quien(rsp: u64) -> Option<(u32, u64)> {
             }
             let base = mm::phys_to_virt(f.base);
             if rsp >= base && rsp < base + f.paginas * mm::PAGE {
-                return Some((f.tid, f.tick));
+                return Some((f.tid, f.tick, f.motivo));
             }
         }
     }

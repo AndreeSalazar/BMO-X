@@ -179,11 +179,25 @@ pub(super) extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u6
         // pregunta *"quien pisa aqui?"* se contesta en la propia pantalla, sin
         // tener que ir a CABINA con la maquina parada.
         l.s(" -- de NADIE VIVO");
-        if let Some((tid, tick)) = crate::ring0::task::scheduler::fue_de_quien(fault_rsp) {
+        if let Some((tid, tick, motivo)) = crate::ring0::task::scheduler::fue_de_quien(fault_rsp)
+        {
             l.s(", fue de tid=");
             l.hex(tid as u64, 2);
             l.s(" liberada en tick ");
             l.hex(tick, 8);
+            // ** Y CON QUE PUNTERO DENTRO, que es el veredicto del paso 0.
+            //
+            // Sin esto, "la libero tid=NN" manda a leer una ruta entera; con
+            // esto se sabe **por que estaba mal liberarla**. Se dice cada uno
+            // por su nombre y no como un numero: un byte de banderas en una
+            // pantalla que se lee con una camara no lo descifra nadie.
+            if motivo != 0 {
+                l.s(" -- Y APUNTABA DENTRO:");
+                if motivo & 1 != 0 { l.s(" TSS.RSP0"); }
+                if motivo & 2 != 0 { l.s(" rampa-SYSCALL"); }
+                if motivo & 4 != 0 { l.s(" contexto-VIGENTE"); }
+                if motivo & 8 != 0 { l.s(" contexto-AJENO"); }
+            }
         } else {
             // [!] Y si NO se reconoce hay que decir cuantas van: con mas pilas
             // liberadas que fichas, "no lo reconoce" significa "puede que se

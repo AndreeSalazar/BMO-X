@@ -106,12 +106,40 @@ evitar.
       pantalla azul las consulta: `de NADIE VIVO` pasa a decir **de quien fue**.
       Hecho el 2026-08-31 en `task/scheduler/roja.rs` y
       `plat/faults/amarilla.rs`.
+- [x] **0c. QUE LA AZUL PUEDA CONTESTAR.** Hecho el 2026-09-02, y no estaba
+      en este plan porque nadie lo habia mirado. El paso 1 se intento y **volvio
+      con media frase**: la foto del dueno acaba en `marco OCUPADO,` y ahi se
+      corta. Dos cosas, las dos silenciosas:
+
+      * **El renglon media 80 bytes** y descartaba el resto sin decirlo. La
+        linea del veredicto mide 102, o sea que `(morgue: NN liberadas)` --el
+        numero del que cuelga la seccion 6 de este documento-- se calculaba en
+        cada azul y **no llegaba nunca al cristal**. No era el borde de la
+        pantalla: `CHAR_W` son 10 pixeles y el informe empieza en `w/12`, asi
+        que a 1920 caben 176 caracteres. Ahora el renglon mide 112 y, si aun
+        asi se pasa, lo dice con `>>>`. Ver `plat/faults/verde.rs`.
+      * **Y "mirar CABINA" no se puede hacer.** Los cuatro instrumentos del
+        paso 0 gritan a un anillo en RAM, y un fallo de Ring 0 pinta la azul
+        encima y reinicia a los veinte segundos: *el grito no sobrevive al
+        suceso que lo provoca*. Asi que el motivo viaja ahora **en la ficha de
+        la morgue**, que la azul si consulta, y sale por su nombre:
+        `-- Y APUNTABA DENTRO: TSS.RSP0`.
+
 - [ ] **1. ARRANCAR Y LEER.** Reproducir --matar Ring 3, volver a entrar-- y
-      mirar la azul y CABINA. Tres resultados, y los tres cierran algo:
-      grita uno de los cuatro punteros (caso cerrado con nombre), no grita
-      ninguno pero la morgue da un tid (el que libera tiene nombre y se mira su
-      ruta), o no grita nada (la pila no salio de `reap` y hay que buscar quien
-      mas llama a `free_frame` sobre un rango de pila).
+      mirar **la azul**, que ahora lo dice todo ella sola. Tres resultados, y
+      los tres cierran algo:
+
+      1. La morgue reconoce el `rsp` **y trae motivo**: caso cerrado con
+         nombre, y el nombre es cual de los cuatro punteros. Se va al paso 2.
+      2. La morgue lo reconoce **y el motivo es 0**: `reap` la libero y ninguno
+         de los cuatro apuntaba dentro. Se mira la ruta del tid que sale.
+      3. La morgue **no lo reconoce** y `(morgue: NN)` es menor o igual que 32:
+         entonces las fichas estan todas y la respuesta es firme --esa pila no
+         la libero `reap`-- y este plan pierde. Ver la seccion 6.
+
+      [!] Si `NN` pasa de 32 la tercera lectura vuelve a ser ambigua, y por eso
+      el numero se imprime: es la diferencia entre "no fue `reap`" y "puede que
+      la ficha se fuera por el anillo".
 - [ ] **2. EL JUEZ, en su crate.** `platform/shared/bmo-pila-juicio`: *"se
       puede liberar este rango?"*, dados los punteros publicados. Puro, sin
       dependencias, sin `unsafe`, y con la direccion EXACTA de esta pantalla
