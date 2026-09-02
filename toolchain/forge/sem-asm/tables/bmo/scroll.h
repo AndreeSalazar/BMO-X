@@ -28,6 +28,20 @@
  * El convenio de signo es el mismo que usa el compositor: **positivo = hacia
  * atras en el tiempo**. Si aqui fuera al reves, la rueda giraria al contrario
  * segun quien la lea.
+ *
+ * -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+ *
+ * Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+ * toco. La ley esta en `META-KERNEL_HARD.md`; el juez, en
+ * `toolchain/tools/contrato/contrato.py`.
+ *
+ * [carril]  VERDE        funciones puras: no tocan memoria y no llaman a
+ *                        nadie. Reciben la vista de ahora y devuelven la de
+ *                        despues
+ * [cuesta]  NADA         se equivoca y la ventana ensena la fila que no es
+ * [riesgo]  ESPEJO       el convenio `positivo = hacia atras` lo comparte con
+ *                        el compositor. Si cambia aqui, la rueda gira al reves
+ *                        para uno
  */
 #ifndef BMO_SCROLL_H
 #define BMO_SCROLL_H

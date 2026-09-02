@@ -27,6 +27,20 @@
  * devuelve 0. Es a proposito: quien lee entrada tiene un bucle de fotograma, y
  * dormirse en el teclado congelaria el puntero entre tecla y tecla -- justo al
  * reves de lo que uno quiere. El bucle correcto llama a `bmo_ceder()`.
+ *
+ * -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+ *
+ * Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+ * toco. La ley esta en `META-KERNEL_HARD.md`; el juez, en
+ * `toolchain/tools/contrato/contrato.py`.
+ *
+ * [carril]  AMARILLO     reclamar la entrada es EXCLUSIVO: mientras la tengas,
+ *                        el shell de Ring 0 se queda sin teclado fisico
+ * [cuesta]  APARATO      el teclado secuestrado. La fila de L6e sale
+ *                        literalmente de esta capability
+ * [riesgo]  SILENCIO     `reclamar` devuelve 0 cuando la tiene otro, y quien
+ *                        no lo mira lee ceros para siempre: parece un raton
+ *                        roto, no un permiso
  */
 #ifndef BMO_ENTRADA_H
 #define BMO_ENTRADA_H

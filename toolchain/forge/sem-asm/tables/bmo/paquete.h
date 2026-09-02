@@ -34,6 +34,22 @@
  * ** Y la forma correcta de abrir el propio es `paquete_mio()`, **sin ruta**:
  * el kernel se acuerda de por donde entro el proceso. `paquete_abrir(ruta)`
  * sigue existiendo para mirar el paquete de OTRO, que es un caso distinto.
+ *
+ * -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+ *
+ * Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+ * toco. La ley esta en `META-KERNEL_HARD.md`; el juez, en
+ * `toolchain/tools/contrato/contrato.py`.
+ *
+ * [carril]  AMARILLO     parsea un formato. Lo que arrastra no esta en este
+ *                        fichero: esta en `bmo_abi::bef`, de donde salen los
+ *                        numeros
+ * [cuesta]  TAREA        un offset mal leido mata al programa que abre su
+ *                        propia caja. BMO sigue
+ * [riesgo]  AJENO ESPEJO
+ *                        AJENO: los offsets los escribio la herramienta de
+ *                        empaquetado. ESPEJO: los numeros del formato se
+ *                        REPITEN aqui, y ya se dice
  */
 #ifndef BMO_PAQUETE_H
 #define BMO_PAQUETE_H

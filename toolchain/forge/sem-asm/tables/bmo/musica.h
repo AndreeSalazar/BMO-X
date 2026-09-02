@@ -36,6 +36,20 @@
  *
  * Esa es la razon de escribir esto ahora: **el lenguaje de la musica no cambia
  * cuando cambia el aparato.**
+ *
+ * -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
+ *
+ * Que cuesta que falle, por que falla ESTA pieza, y que arrastro si la
+ * toco. La ley esta en `META-KERNEL_HARD.md`; el juez, en
+ * `toolchain/tools/contrato/contrato.py`.
+ *
+ * [carril]  VERDE        una tabla de frecuencias y aritmetica de tempo. Ni
+ *                        una puerta propia: todo baja por `<bmo/sonido.h>`
+ * [cuesta]  NADA         se equivoca y suena mal. No hay nada detras que se
+ *                        lleve por delante
+ * [riesgo]  RELOJ        `PITAR` bloquea con tope de 250 ms, asi que `bmo_nota`
+ *                        trocea las largas: lo que se OYE depende de cuando
+ *                        vuelve cada syscall
  */
 #ifndef BMO_MUSICA_H
 #define BMO_MUSICA_H

@@ -159,6 +159,30 @@ SEMAFORO = ("ROJO", "AMARILLO", "VERDE")
 COLOR_DEL_NOMBRE = {"roja": "ROJO", "amarilla": "AMARILLO", "verde": "VERDE"}
 RING0_DIR = "Ultra_kernel_x86-64/kernel/src/ring0"
 
+# -- L6g EN LA PUERTA DE LOS TERCEROS: las cabeceras de REX -------------------
+#
+# ** El semaforo cubria los 162 ficheros de Ring 0 y NINGUNA de las diez
+# cabeceras con las que se escribe una app. O sea que la unica parte del arbol
+# que un tercero abre de verdad era la unica sin letrero.
+#
+# La ley es la misma; lo que cambia es el idioma del comentario. Rust marca con
+# `//!` y C no tiene doc-comment, asi que la marca vive dentro del bloque de
+# cabecera del propio fichero:
+#
+#      * [carril]  ROJO      ...
+#
+# [!] Y una diferencia de FORMA que el juez tiene que conocer: una linea de
+# `[riesgo]` puede llevar VARIAS clases, asi que cuando lleva mas de una **la
+# linea es solo para ellas** y el motivo baja a la siguiente. Con el motivo
+# pegado detras no hay forma de saber donde acaba la clase y empieza la prosa
+# --`AJENO ESPEJO AJENO: los offsets...`-- y un juez que adivina da permiso con
+# autoridad.
+REX_DIR = "toolchain/forge/sem-asm/tables/bmo"
+RE_SELLO_H = re.compile(r"^ \* \[(carril|cuesta|riesgo)\]\s+(.*)$", re.M)
+# Una clase es una palabra ENTERA en mayusculas. Ver `sellos_de_cabecera`.
+RE_MAYUSCULAS = re.compile(r"^[A-Z]+$")
+VOCABULARIO = {"carril": SEMAFORO, "cuesta": COSTES, "riesgo": RIESGOS}
+
 
 def raiz():
     return os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))
@@ -638,6 +662,39 @@ def autoprueba():
     exige("R7(dos buenas)", r7_el_riesgo_declarado({"x.rs": ("AJENO", "ESPEJO")}, 0), False)
     exige("R7(el suelo baja)", r7_el_riesgo_declarado({"x.rs": ("AJENO",)}, 5))
 
+    # R11/R12 -- L6g en REX. Las cabeceras son C, asi que la marca va dentro
+    # del bloque de comentario y no en un `//!`. Se arman por trozos por el
+    # mismo motivo que las de R8.
+    CAR = " * [carril]  ROJO      x" + chr(10)
+    CUE = " * [cuesta]  DATO      x" + chr(10)
+    RIE = " * [riesgo]  AJENO ESPEJO" + chr(10)
+    entera = CAR + CUE + RIE
+    exige("R11(cabecera entera)", r11_el_semaforo_de_rex({"a/roja.h": entera}), False)
+    exige("R11(sin carril)", r11_el_semaforo_de_rex({"a/x.h": CUE + RIE}))
+    exige("R11(color inventado)",
+          r11_el_semaforo_de_rex({"a/x.h": " * [carril]  AZUL x" + chr(10) + CUE + RIE}))
+    # *** La regla de corte de L6e, que es la que crea las carpetas.
+    exige("R11(dos costes = mal cortado)",
+          r11_el_semaforo_de_rex({"a/x.h": CAR + " * [cuesta]  DATO PUERTA" + chr(10) + RIE}))
+    # *** El renombrado a medias: se llama verde y dice ROJO.
+    exige("R11(nombre contra etiqueta)", r11_el_semaforo_de_rex({"a/verde.h": entera}))
+    # *** Y que la SEGUNDA clase de [riesgo] tambien se juzgue.
+    exige("R11(la segunda clase tambien)",
+          r11_el_semaforo_de_rex({"a/roja.h": CAR + CUE + " * [riesgo]  AJENO RARO" + chr(10)}))
+
+    FACH = "#include <bmo/x/roja.h>" + chr(10) + "#include <bmo/x/verde.h>" + chr(10)
+    exige("R12(carpeta limpia)",
+          r12_los_carriles_de_rex({"t/bmo/x": ["roja.h", "verde.h"]}, {"t/bmo/x.h": FACH}),
+          False)
+    exige("R12(un colado entre carriles)",
+          r12_los_carriles_de_rex({"t/bmo/x": ["roja.h", "ayudas.h"]}, {"t/bmo/x.h": FACH}))
+    exige("R12(sin fachada)",
+          r12_los_carriles_de_rex({"t/bmo/x": ["roja.h"]}, {}))
+    # *** La que paga el silencio: la fachada existe y se deja un carril fuera.
+    exige("R12(carril fuera de la fachada)",
+          r12_los_carriles_de_rex({"t/bmo/x": ["roja.h", "verde.h"]},
+                                  {"t/bmo/x.h": "#include <bmo/x/roja.h>" + chr(10)}))
+
     # R8 -- L6g: las cuatro exigencias de critic/, cada una por separado. Se
     # arman por trozos y no con literales de varias lineas: el fichero que
     # contiene esta prueba se lee y se parchea a menudo, y una cadena con saltos
@@ -702,7 +759,7 @@ def autoprueba():
     # ** El numero se CUENTA, no se escribe. La version anterior decia "21
     # casos" y habia 19: un guardian con una cifra a mano dentro es un guardian
     # que dice un numero viejo con toda la confianza del mundo.
-    print("clean: las DIEZ reglas saben decir que NO (%d casos)" % casos[0])
+    print("clean: las DOCE reglas saben decir que NO (%d casos)" % casos[0])
     return 0
 
 
@@ -878,6 +935,171 @@ def carpetas_de_carriles():
     return fuera
 
 
+def sellos_de_cabecera(txt):
+    """`{etiqueta: [clases]}` de una cabecera de C. Lo que no este, no aparece.
+
+    ** LAS CLASES SON LAS PALABRAS EN MAYUSCULAS QUE ABREN LA LINEA, y se
+    reclaman TODAS antes de juzgar ninguna. La primera version tomaba palabras
+    *mientras estuvieran en el vocabulario* y paraba en la primera que no --y
+    con eso `[riesgo] AJENO RARO` colaba: `RARO` no era una clase mala, era
+    "el motivo, que empieza por RARO". **La autoprueba lo cazo el dia que se
+    escribio.**
+
+    Es la trampa que L6f ya tenia contada en R7 con estas palabras: *un juez
+    que solo mire la primera palabra deja pasar la mitad de cada linea*. La
+    volvi a escribir igual.
+
+    [!] El precio, dicho: un motivo que EMPIECE por una palabra en mayusculas
+    se lee como una clase y R11 se queja. Es a proposito -- se falla hacia la
+    queja y no hacia el permiso, y la salida es la que ya manda el formato:
+    cuando hay mas de una clase, la linea es solo para ellas.
+    """
+    fuera = {}
+    for etiqueta, resto in RE_SELLO_H.findall(txt):
+        clases = []
+        for w in resto.split():
+            if not RE_MAYUSCULAS.match(w):
+                break
+            clases.append(w)
+        if not clases and resto.split():
+            clases = [resto.split()[0]]
+        fuera[etiqueta] = clases
+    return fuera
+
+
+def cabeceras_de_rex():
+    """`{ruta: texto}` de todo `.h` de `tables/bmo/`, carriles incluidos."""
+    d = os.path.join(raiz(), REX_DIR.replace("/", os.sep))
+    if not os.path.isdir(d):
+        return {}
+    fuera = {}
+    for dirpath, dirnames, filenames in os.walk(d):
+        for n in sorted(filenames):
+            if not n.endswith(".h"):
+                continue
+            ruta = os.path.join(dirpath, n)
+            with open(ruta, "r", encoding="utf-8", errors="replace") as f:
+                fuera[os.path.relpath(ruta, raiz()).replace(os.sep, "/")] = f.read()
+    return fuera
+
+
+def carpetas_de_carriles_rex():
+    """`{carpeta: [ficheros]}` de las carpetas de carriles de REX.
+
+    Una carpeta ES de carriles si tiene al menos un `.h` con nombre de carril.
+    No hay lista que mantener: **el arbol se declara solo**, igual que en Ring
+    0. Partir manana `entrada.h` ya viene vigilado sin tocar esto.
+    """
+    d = os.path.join(raiz(), REX_DIR.replace("/", os.sep))
+    if not os.path.isdir(d):
+        return {}
+    fuera = {}
+    for dirpath, dirnames, filenames in os.walk(d):
+        hs = [n for n in filenames if n.endswith(".h")]
+        if not any(n[:-2] in VIAS_MODULO for n in hs):
+            continue
+        rel = os.path.relpath(dirpath, raiz()).replace(os.sep, "/")
+        fuera[rel] = sorted(hs)
+    return fuera
+
+
+def r11_el_semaforo_de_rex(ficheros):
+    """L6g en REX -- toda cabecera de `<bmo/...>` lleva sus TRES etiquetas.
+
+    Las mismas exigencias que R10 en Ring 0, y una cuarta que aqui muerde de
+    verdad:
+
+      1. declara `[carril]`, y el color es uno de los tres.
+      2. si el fichero SE LLAMA como un carril, nombre y etiqueta coinciden --
+         caza el renombrado a medias, que es como una pieza cambia de color sin
+         que nadie lo decida.
+      3. declara `[cuesta]` (L6e) y `[riesgo]` (L6f), con su vocabulario, y
+         **la segunda clase se juzga igual que la primera**.
+      4. ** UNA sola clase de `[cuesta]`. Es la regla de corte de L6e --*"un
+         fichero cuya cabecera necesita declarar DOS clases esta mal
+         cortado"*-- y las cuatro carpetas de `tables/bmo/` existen justamente
+         porque su fichero necesitaba declarar dos.
+
+    [!] Sin trinquete, igual que R10 y por el mismo motivo: se empieza cubriendo
+    las 18 de 18, y una regla que se cumple entera el primer dia no necesita un
+    suelo que tolere lo que ya estaba mal.
+    """
+    quejas = []
+    for ruta in sorted(ficheros):
+        sellos = sellos_de_cabecera(ficheros[ruta])
+        n = ruta.rsplit("/", 1)[-1]
+        for etiqueta in ("carril", "cuesta", "riesgo"):
+            if etiqueta not in sellos:
+                quejas.append("%s no declara [%s] (L6%s)"
+                              % (ruta, etiqueta, {"carril": "g", "cuesta": "e",
+                                                  "riesgo": "f"}[etiqueta]))
+                continue
+            for clase in sellos[etiqueta]:
+                if clase not in VOCABULARIO[etiqueta]:
+                    quejas.append(
+                        "%s declara [%s] %s, que no esta en el vocabulario. "
+                        "Son: %s" % (ruta, etiqueta, clase,
+                                     ", ".join(VOCABULARIO[etiqueta])))
+        if len(sellos.get("cuesta", [])) > 1:
+            quejas.append(
+                "%s declara DOS clases de [cuesta] (%s). Un fichero que las "
+                "necesita esta mal cortado: el corte va por donde cambia el "
+                "coste (L6e)" % (ruta, " ".join(sellos["cuesta"])))
+        if len(sellos.get("carril", [])) > 1:
+            quejas.append("%s declara DOS colores. Un fichero tiene UNO (L6g)" % ruta)
+        debido = COLOR_DEL_NOMBRE.get(n[:-2])
+        if debido and sellos.get("carril", [None])[0] != debido:
+            quejas.append(
+                "%s se llama `%s` y declara [carril] %s. El nombre y la "
+                "etiqueta tienen que decir lo mismo (L6g)"
+                % (ruta, n, " ".join(sellos.get("carril", ["nada"]))))
+    return quejas
+
+
+def r12_los_carriles_de_rex(carpetas, ficheros):
+    """L6g -- una carpeta de carriles de REX no MEZCLA, y su fachada la trae.
+
+    Tres exigencias, y la tercera es la que de verdad hace falta aqui:
+
+      1. **todo `.h` de una carpeta de carriles ES un carril.** Un `ayudas.h`
+         colado entre carriles es la aguja volviendo al pajar.
+      2. **la fachada existe**: `bmo/<X>/` obliga a que haya `bmo/<X>.h`. Sin
+         ella `#include <bmo/X.h>` deja de resolver, y eso cuesta PUERTA -- se
+         lleva por delante fuentes que ya existen.
+      3. ** **la fachada trae TODOS sus carriles.** Uno que se quede fuera no da
+         un `fichero no encontrado`: da un simbolo no declarado a nueve capas de
+         distancia. Es exactamente el fallo que `<bmo/bloque.h>` ya conto una
+         vez, cuando `superficie.h` leia `__bmo_bloque_cap` sin traerlo y el
+         error hablaba de un simbolo que el programa no habia escrito nunca.
+    """
+    quejas = []
+    for carpeta in sorted(carpetas):
+        tallo = carpeta.rsplit("/", 1)[-1]
+        for n in carpetas[carpeta]:
+            if n[:-2] not in VIAS_MODULO:
+                quejas.append(
+                    "%s/%s esta en una carpeta de carriles y no es uno. Los "
+                    "carriles son: %s (L6g)"
+                    % (carpeta, n, ", ".join(v + ".h" for v in VIAS_MODULO)))
+        fachada = carpeta.rsplit("/", 1)[0] + "/" + tallo + ".h"
+        if fachada not in ficheros:
+            quejas.append(
+                "hay carriles en %s/ y no hay fachada `%s`. Sin ella "
+                "`#include <bmo/%s.h>` deja de resolver, y eso cuesta PUERTA (L6g)"
+                % (carpeta, fachada, tallo))
+            continue
+        texto = ficheros[fachada]
+        for n in carpetas[carpeta]:
+            if n[:-2] not in VIAS_MODULO:
+                continue
+            if ("<bmo/%s/%s>" % (tallo, n)) not in texto:
+                quejas.append(
+                    "la fachada `%s` no trae `%s/%s`. Un carril fuera de la "
+                    "fachada no da un fichero no encontrado: da un simbolo sin "
+                    "declarar a nueve capas (L6g)" % (fachada, tallo, n))
+    return quejas
+
+
 def declarantes_de_coste():
     """Los `[cuesta]` -- L6e. Una clase por fichero."""
     return _declarantes(RE_CUESTA, lambda g: g)
@@ -944,6 +1166,11 @@ def comprobar():
     quejas += [("R9 L6g los carriles del modulo", q)
                for q in r9_los_carriles_del_modulo(vias)]
     quejas += [("R10 L6g el semaforo de Ring 0", q) for q in r10_el_semaforo(r0)]
+    rex = cabeceras_de_rex()
+    quejas += [("R11 L6g el semaforo de REX", q) for q in r11_el_semaforo_de_rex(rex)]
+    vias_rex = carpetas_de_carriles_rex()
+    quejas += [("R12 L6g los carriles de REX", q)
+               for q in r12_los_carriles_de_rex(vias_rex, rex)]
 
     for nota in notas:
         print("  [i] " + nota)
@@ -974,6 +1201,17 @@ def comprobar():
     if vias:
         print("clean: %d carpeta(s) de carriles (L6g), %d carril(es), todos con letrero"
               % (len(vias), sum(len([n for n in g if n != "mod.rs"]) for g in vias.values())))
+    if rex:
+        cr = {c: 0 for c in SEMAFORO}
+        for txt in rex.values():
+            sel = sellos_de_cabecera(txt).get("carril", [])
+            if sel and sel[0] in cr:
+                cr[sel[0]] += 1
+        print("clean: el semaforo cubre las %d cabeceras de REX -- %s"
+              % (len(rex), "  ".join("%s %d" % (c, cr[c]) for c in SEMAFORO)))
+    if vias_rex:
+        print("clean: %d carpeta(s) de carriles en REX, y sus fachadas las traen enteras"
+              % len(vias_rex))
     if r0:
         colores = {c: 0 for c in SEMAFORO}
         for txt in r0.values():
