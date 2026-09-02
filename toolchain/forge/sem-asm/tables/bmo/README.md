@@ -6,7 +6,8 @@
 > hay, para que sirve cada pieza y por donde se empieza.
 
 REX es lo que hay entre las **dos puertas congeladas** (`INVOKE` y `WAIT`) y un
-programa. Diez cabeceras publicas, 3.015 lineas, y dos propiedades que conviene
+programa. Once cabeceras publicas, 3.296 lineas en 19 ficheros, y dos
+propiedades que conviene
 saber antes de usarlas:
 
 1. **No es un runtime.** Una cabecera de REX **trae el cuerpo**: no hay
@@ -36,21 +37,22 @@ arrastro?**
 las cabeceras partidas conservan nombre y sitio y son una **fachada**, igual que
 un `mod.rs` que re-exporta. Incluir un carril suelto tambien vale.
 
-## Las diez piezas
+## Las once piezas
 
 | Cabecera | Lineas | Color | Que resuelve | Ejemplo |
 |---|---|---|---|---|
-| [`bmo.h`](bmo.h) | 437 | ROJO | las dos puertas, en C. **Se empieza por aqui** | `examples/sonda_C.c` |
+| [`bmo.h`](bmo.h) | 457 | ROJO | las dos puertas, en C. **Se empieza por aqui** | `examples/sonda_C.c` |
 | &nbsp;&nbsp;[`bmo/roja.h`](bmo/roja.h) | 137 | ROJO | `INVOKE`, `WAIT` y los numeros de operacion | -- |
 | &nbsp;&nbsp;[`bmo/verde.h`](bmo/verde.h) | 229 | VERDE | la tabla `INFO_*`: crece por filas | -- |
 | [`archivo.h`](archivo.h) | 522 | ROJO | leer ficheros de verdad, contra `KIND_ARCHIVO` | `examples/leer_C.c` |
 | &nbsp;&nbsp;[`archivo/roja.h`](archivo/roja.h) | 340 | ROJO | abrir, `fread`, `fwrite`, `fclose` | -- |
 | &nbsp;&nbsp;[`archivo/amarilla.h`](archivo/amarilla.h) | 117 | AMARILLO | el cursor, que es un ESPEJO del del kernel | -- |
-| [`entrada.h`](entrada.h) | 349 | AMARILLO | teclado y raton | ** **ninguno** |
+| [`entrada.h`](entrada.h) | 372 | AMARILLO | teclado y raton, y **devolverlos** | `examples/pantalla_C.c` |
 | [`monton.h`](monton.h) | 351 | ROJO | `malloc`/`free`/`realloc`. Llega por `<stdlib.h>` | `examples/memoria_C.c` |
 | &nbsp;&nbsp;[`monton/roja.h`](monton/roja.h) | 168 | ROJO | la arena y el reparto | -- |
 | &nbsp;&nbsp;[`monton/verde.h`](monton/verde.h) | 74 | VERDE | cuanto queda y cuanto cabe | -- |
 | [`musica.h`](musica.h) | 269 | VERDE | notas, figuras y compas, encima de `sonido.h` | `examples/vivaldi_C.c` |
+| [`pantalla.h`](pantalla.h) | 238 | ROJO | **la pantalla entera**: tomarla, medirla y devolverla | `examples/pantalla_C.c` |
 | [`paquete.h`](paquete.h) | 261 | AMARILLO | leer los datos que viajan **dentro** del `.bex` | `examples/caja_C.c` |
 | [`superficie.h`](superficie.h) | 515 | ROJO | dibujar en TU memoria y ofrecerla al DIRECTOR | `examples/raycaster_C.c` |
 | &nbsp;&nbsp;[`superficie/roja.h`](superficie/roja.h) | 176 | ROJO | pedir el bloque y **ofrecerlo** | -- |
@@ -68,11 +70,16 @@ creo estas cuatro carpetas. R12 exige que la carpeta no mezcle y que **la
 fachada traiga todos sus carriles**: uno que se quede fuera no da un `fichero no
 encontrado`, da un simbolo sin declarar a nueve capas de distancia.
 
-★ **Queda UN hueco, y es el que importa ahora**: `entrada.h` no tiene ejemplo.
-Eran dos hasta el 2026-08-19, cuando `raycaster_C.c` se porto a ventana (paso 2b
-de `PLAN_DIRECTOR.md`) y `superficie.h` gano el suyo. El de `entrada.h` llega con
-el paso 2c: hoy una app en ventana no recibe teclas, asi que un ejemplo ensenaria
-a reclamar la pantalla entera, que es el modelo del que se sale.
+★★ **El hueco de `entrada.h` se cerro el 2026-09-01**, y lo cerro la cabecera
+que faltaba. Llevaba abierto desde el 19-08 y el README lo decia cada dia:
+*"ninguno"*. La razon de que no llegara antes estaba escrita aqui mismo --*"un
+ejemplo ensenaria a reclamar la pantalla entera, que es el modelo del que se
+sale"*-- y era cierta: no habia cabecera para eso.
+
+`examples/pantalla_C.c` ensena las dos a la vez porque el caso real es UNO:
+quien toma la pantalla necesita el teclado para poder salir. Y demuestra lo
+que ningun otro ejemplo podia demostrar -- que se **devuelven**, y el proceso
+sigue vivo.
 
 [!] Y lo que ese puerto destapo: `superficie.h` leia `__bmo_bloque_cap` **sin
 traerlo**, asi que una app que solo queria una ventana no compilaba. De ahi sale

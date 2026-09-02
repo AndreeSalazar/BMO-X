@@ -45,6 +45,26 @@
 #define BMO_OP_CONSOLA_ESCRIBIR 0x06
 #define BMO_OP_PANTALLA_RECLAMAR 0x09
 #define BMO_OP_ENTRADA_RECLAMAR 0x0A
+/* ** Y SOLTARLAS SIGUIENDO VIVO, que hasta el 2026-09-01 no se podia desde C.
+ *
+ * Las dos operaciones existen en el kernel desde hace tiempo --`ops.rs`, y las
+ * despacha `op_aparato`-- y **ninguna cabecera las publicaba**. O sea que un
+ * programa de C podia tomar la pantalla y el teclado y la unica forma de
+ * devolverlos era morirse.
+ *
+ * Lo destapo el semaforo del 31-08: `sonido.h` tenia su `SOLTAR` y `entrada.h`
+ * no, siendo la que se etiqueto `[cuesta] APARATO` porque *"el teclado
+ * secuestrado"* es el precedente de esa clase.
+ *
+ * [!] Van JUNTAS y no es simetria de adorno. Lo dice el kernel con su propio
+ * escarmiento: *"separarlas fue el bug -- prestar la pantalla sin la entrada
+ * dejo a `ray.bex` pintando sin poder leer su propio ESC, y a la maquina sin
+ * teclado"*. Quien suelta una casi siempre quiere soltar la otra.
+ *
+ * Los cuerpos viven donde les toca por familia: `<bmo/pantalla.h>` y
+ * `<bmo/entrada.h>`. Aqui solo estan los numeros, al lado de sus gemelas. */
+#define BMO_OP_PANTALLA_SOLTAR 0x1D
+#define BMO_OP_ENTRADA_SOLTAR 0x1E
 #define BMO_OP_RUTA 0x0B
 #define BMO_OP_EJECUTAR 0x0C
 /* Reiniciar la maquina. Desde el 25-08 pide AUTORIDAD, y solo la tiene quien
