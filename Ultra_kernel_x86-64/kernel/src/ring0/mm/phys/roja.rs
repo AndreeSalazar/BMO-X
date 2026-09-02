@@ -270,7 +270,58 @@ pub fn free_frame(phys: u64) {
         if bm[w] & (1 << b) != 0 {
             bm[w] &= !(1 << b);
             FREE_FRAMES += 1;
+        } else {
+            // ** UN MARCO QUE SE DEVUELVE DOS VECES YA NO ES MUDO (2026-09-01).
+            //
+            // La cuenta estaba protegida --el `if` impide que `FREE_FRAMES` se
+            // infle-- asi que un doble `free` no rompia nada y **no se decia**.
+            //
+            // *** Y la cabecera de este fichero nombra justo esa forma de
+            // fallo: *"entregar dos veces el mismo marco no da un fallo: da dos
+            // duenos del mismo byte, y el sintoma tres arranques despues"*. Un
+            // doble `free` no ES ese fallo, pero es su MISMA firma contable: un
+            // sitio que cree tener algo que ya devolvio.
+            //
+            // > Lo que no se dice no se puede buscar. Y esto se estaba
+            // > tragando en silencio en la unica funcion del kernel cuya
+            // > documentacion avisa de este bug exacto.
+            crate::ring0::cabina::fault(
+                "phys", "se devuelve un marco que YA estaba libre", phys);
         }
+    }
+}
+
+/// **Esta LIBRE este marco fisico?** `None` = fuera del espejo.
+///
+/// # *** LA PREGUNTA QUE LLEVO CUATRO PANTALLAS AZULES SIN HACER
+///
+/// La azul dice `pila de HILO DEL KERNEL -- de NADIE VIVO`, y eso contesta
+/// *"ninguna TAREA la reclama"*. Pero no contesta la de debajo, que es la que
+/// parte el caso en dos investigaciones distintas:
+///
+/// ```text
+///    el marco esta OCUPADO   alguien lo tiene AHORA -> se entrego dos veces.
+///                            El fallo es liberar algo que seguia en uso
+///    el marco esta LIBRE     no lo tiene nadie -> el kernel esta corriendo
+///                            sobre memoria devuelta. Es un uso-despues-de-libre
+/// ```
+///
+/// Son dos bugs opuestos y se distinguen mirando UN BIT. Es la misma jugada que
+/// el `id` de la zona de DOOM --que separo PISADO de ASIGNADOR-- y que la
+/// morgue, que separo "lo libero `reap`" de "no fue `reap`".
+///
+/// [!] Se lee SIN el cerrojo, y esta decidido: lo llama la pantalla de fallo.
+/// Colgarse ahi cambia un volcado legible por una maquina muda, y un bit de
+/// hace un instante sirve para un diagnostico.
+pub fn esta_libre(phys: u64) -> Option<bool> {
+    if phys >= MAX_PHYS {
+        return None;
+    }
+    let frame = (phys / PAGE) as usize;
+    let (w, b) = (frame / 64, frame % 64);
+    unsafe {
+        let bm = &*core::ptr::addr_of!(BITMAP);
+        Some(bm[w] & (1 << b) == 0)
     }
 }
 

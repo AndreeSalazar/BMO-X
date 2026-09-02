@@ -47,4 +47,6 @@ mod amarilla;
 mod roja;
 
 pub use amarilla::zero_frame;
-pub use roja::{alloc_frame, alloc_frames_contig, free_frame, init, stats, tramos};
+pub use roja::{
+    alloc_frame, alloc_frames_contig, esta_libre, free_frame, init, stats, tramos,
+};
