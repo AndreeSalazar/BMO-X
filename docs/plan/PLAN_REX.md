@@ -511,14 +511,39 @@ vuelta --recibir un bloque de otro sin copiarlo-- no tiene cabecera.
 ## Lo que se propone entonces
 
 ```
-   5a  <bmo/prestado.h>   TOMAR + PRESTADO_OP_*   el zero copy, entero
-   5b  <bmo/latido.h>     LATIDO + WAIT           el tiempo, y la 2a puerta
-   5c  <bmo/corriente.h>  ARCHIVO_ASINC + LISTO   leer a ritmo de quien lee
+   [x] 5a  <bmo/prestado.h>   TOMAR + PRESTADO_OP_*   HECHO 2026-09-02
+   [ ] 5b  <bmo/latido.h>     LATIDO + WAIT           el tiempo, y la 2a puerta
+   [ ] 5c  <bmo/corriente.h>  ARCHIVO_ASINC + LISTO   leer a ritmo de quien lee
 ```
 
-Y `<bmo/tarea.h>` --`CERRAR`, `VIVE`, `DELANTE`, `TID`-- baja de prioridad: es
-control de procesos, util para un shell, y **no toca ni el zero copy ni la
-latencia**. Lo que la hacia parecer urgente era mi etiqueta, no su contenido.
+## ✅ 5a HECHO -- y la cobertura pasa del 47% al 50%
+
+`prestado.h`, 284 lineas, carril ROJO. Cinco parejas nuevas en el espejo
+(98 en total) y `examples/prestado_C.c`.
+
+### ★★ Lo que el ejemplo destapo, y no estaba en el plan
+
+**El kernel prohibe prestarse a uno mismo** --`if destino == owner { return
+false; }` en `obj/loan.rs`-- asi que un solo `.bex` no puede ser las dos
+puntas. El ejemplo hace las dos cosas que SI caben solas (prestar al padre,
+tomar lo que haya) y **dice que no puede ensenar el ciclo entero** en vez de
+fingir uno.
+
+Y tirando de ahi salio el hueco de verdad:
+
+> Para prestarle a un HIJO hace falta su TID, y el unico TID que un programa
+> de C puede conseguir hoy es el de su PADRE. `TAREA_OP_TID` existe en el ABI
+> y **no esta en REX**.
+
+** O sea que la punta corta del zero copy no era tomar --eso ya esta-- sino
+**saber a quien prestar**. Eso es `<bmo/tarea.h>`, que este plan habia bajado
+de prioridad por una razon distinta y equivocada. Sube: no como *control de
+procesos*, sino como **el direccionamiento que le falta al prestamo**.
+
+Y `<bmo/tarea.h>` --`CERRAR`, `VIVE`, `DELANTE`, `TID`-- parecia bajar de
+prioridad: control de procesos, util para un shell, sin tocar el zero copy.
+**Escribir 5a lo desmintio** -- ver abajo. `TID` es el direccionamiento del
+prestamo, asi que la mitad de esa cabecera es zero copy con otro nombre.
 
 ---
 

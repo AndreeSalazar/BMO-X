@@ -261,6 +261,7 @@ REX_FAMILIAS = (
     ("MEM_OP_", "BMO_MEM_"),
     ("TASK_OP_", "BMO_OP_"),
     ("FB_OP_", "BMO_FB_"),
+    ("PRESTADO_OP_", "BMO_PRESTADO_"),
 )
 
 # Las parejas que no comparten cola. Cada una es una persona diciendo "estas dos

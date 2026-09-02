@@ -84,16 +84,20 @@
 0x01 AUDIO_OP_DEVICES               BMO_SONIDO_APARATO               devices / aparato -- mapa de bits, no una cuenta
 0x01 DEVICE_SPEAKER                 BMO_APARATO_ALTAVOZ              el altavoz del PC. Mapa de BITS: 1<<0, no una cuenta
 0x01 FB_OP_BASE                     BMO_FB_BASE                      la pantalla. DOOM y raycaster_C los tenian COPIADOS hasta el 01-09
+0x01 PRESTADO_OP_BASE               BMO_PRESTADO_BASE                donde quedo, en MI espacio -- la ranura decide la direccion
 0x02 AUDIO_OP_BEEP                  BMO_SONIDO_PITAR                 beep / pitar
 0x02 DEVICE_HDA                     BMO_APARATO_HDA                  HD Audio, 1<<1. **Hoy siempre 0**: no hay driver
 0x02 FB_OP_DIMS                     BMO_FB_DIMS                      la pantalla. DOOM y raycaster_C los tenian COPIADOS hasta el 01-09
+0x02 PRESTADO_OP_BYTES              BMO_PRESTADO_BYTES               cuanto se presto. Lo eligio el otro, no se supone
 0x03 ARCH_OP_TAMANO                 BMO_ARCH_TAMANO                  operacion sobre KIND_ARCHIVO
 0x03 AUDIO_OP_VOLUME                BMO_SONIDO_VOLUMEN               volume / volumen
 0x03 FB_OP_STRIDE                   BMO_FB_STRIDE                    la pantalla. DOOM y raycaster_C los tenian COPIADOS hasta el 01-09
 0x03 MEM_OP_OFRECER                 BMO_MEM_OFRECER                  prestar un trozo del bloque propio al DIRECTOR
+0x03 PRESTADO_OP_DUENO              BMO_PRESTADO_DUENO               el TID del que presto, o 0 si murio. Se pregunta CADA VEZ
 0x04 ARCH_OP_CERRAR                 BMO_ARCH_CERRAR                  operacion sobre KIND_ARCHIVO
 0x04 AUDIO_OP_SILENCE               BMO_SONIDO_CALLAR                silence / callar
 0x04 FB_OP_BYTES                    BMO_FB_BYTES                     la pantalla. DOOM y raycaster_C los tenian COPIADOS hasta el 01-09
+0x04 PRESTADO_OP_SOLTAR             BMO_PRESTADO_SOLTAR              devolverlo. Sin esto las ranuras se agotan hasta reiniciar
 0x06 ARCH_OP_LEER_EN                BMO_ARCH_LEER_EN                 operacion sobre KIND_ARCHIVO
 0x07 ARCH_OP_SALTAR                 BMO_ARCH_SALTAR                  operacion sobre KIND_ARCHIVO
 0x08 ARCH_OP_ESCRIBIR_DE            BMO_ARCH_ESCRIBIR_DE             operacion sobre KIND_ARCHIVO
@@ -112,6 +116,7 @@
 0x11 TASK_OP_ARCHIVO_CREAR          BMO_OP_ARCHIVO_CREAR             operacion sobre BMO_TAREA_ACTUAL
 0x12 TASK_OP_REINICIAR              BMO_OP_REINICIAR                 operacion sobre BMO_TAREA_ACTUAL
 0x13 TASK_OP_INFO                   BMO_OP_INFO                      operacion sobre BMO_TAREA_ACTUAL
+0x1C TASK_OP_TOMAR                  BMO_OP_TOMAR                     tomar lo ofrecido. El mapeo ocurre DENTRO de esta llamada
 0x1D TASK_OP_PANTALLA_SOLTAR        BMO_OP_PANTALLA_SOLTAR           la pareja de CLAIM que falto hasta el 2026-09-01
 0x1E TASK_OP_ENTRADA_SOLTAR         BMO_OP_ENTRADA_SOLTAR            idem. Va con la de arriba: separarlas fue el bug
 0x21 TASK_OP_AUDIO_CLAIM            BMO_OP_SONIDO_RECLAMAR           idem -- audio / sonido
