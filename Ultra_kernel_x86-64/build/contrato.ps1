@@ -394,9 +394,41 @@ Write-Host ('    caras: ' + $maqFiles.Count + ' .maqueta, y su Rust generado dic
 # operaciones no (`BMO_OP_CEDER` es `TASK_OP_YIELD`), y traducirlas pide el
 # diccionario a mano que ya vive --con su porque-- en la prueba del ABI. Este
 # guardian no la sustituye: le quita el trabajo que puede hacer solo.
-$hRuta = Join-Path $root '..\toolchain\forge\sem-asm\tables\bmo\bmo.h'
+#
+# ** Y DESDE EL 2026-09-02 SE SIGUE LA FACHADA, no un fichero.
+#
+# `bmo.h` se partio por carriles (L6g): las constantes se mudaron a
+# `bmo/roja.h` y `bmo/verde.h`, y `bmo.h` quedo como fachada que las incluye.
+# Este guardian leia UN fichero, encontro **cero** constantes... y paso en
+# verde, porque cero de cero coinciden.
+#
+# *** Eso es peor que fallar. Es literalmente lo que este mismo build tiene
+# escrito dos veces: *"un guardian que lee menos no avisa de menos, avisa de
+# nada"*. Por eso van los DOS arreglos, y el segundo es el que vale para el
+# proximo: **cero constantes es un FALLO**, no un OK.
+$hDirTablas = Join-Path $root '..\toolchain\forge\sem-asm\tables'
+$hRuta = Join-Path $hDirTablas 'bmo\bmo.h'
 if (Test-Path $hRuta) {
-    $hTexto = Get-Content $hRuta -Raw
+    # La fachada y todo lo que trae. Solo `<bmo/...>`: `<stdlib.h>` no es la
+    # superficie del kernel, y meterlo traeria constantes que no cruzan.
+    $hPendientes = New-Object System.Collections.Queue
+    $hPendientes.Enqueue('bmo/bmo.h') | Out-Null
+    $hVistos = @{}
+    $hTexto = ''
+    while ($hPendientes.Count -gt 0) {
+        $rel = $hPendientes.Dequeue()
+        if ($hVistos.ContainsKey($rel)) { continue }
+        $hVistos[$rel] = $true
+        $f = Join-Path $hDirTablas ($rel -replace '/', '\')
+        if (-not (Test-Path $f)) {
+            Fail ('la fachada de bmo.h trae ' + $rel + ' y no esta en ' + $f)
+        }
+        $t = Get-Content $f -Raw
+        $hTexto = $hTexto + $t + "`n"
+        foreach ($inc in [regex]::Matches($t, '(?m)^\s*#include\s+<(bmo/[^>]+)>')) {
+            $hPendientes.Enqueue($inc.Groups[1].Value) | Out-Null
+        }
+    }
     $hCampos = [regex]::Matches($hTexto, '(?m)^\s*#define\s+BMO_(INFO_[A-Z0-9_]+)\s+(0x[0-9A-Fa-f]+|\d+)')
     $hMal = 0
     foreach ($m in $hCampos) {
@@ -416,7 +448,13 @@ if (Test-Path $hRuta) {
         }
         $hMal++
     }
-    Write-Host ('    bmo.h: ' + $hMal + ' constantes INFO_, el mismo valor que el ABI') -ForegroundColor DarkGray
+    # ** CERO ES UN FALLO. Un guardian que no encuentra nada no esta diciendo
+    # que todo este bien: esta diciendo que no ha mirado, y lo dice con la misma
+    # voz. Es como este se quedo mudo al partirse la cabecera.
+    if ($hMal -eq 0) {
+        Fail ('bmo.h: CERO constantes INFO_ leidas de la fachada y sus carriles. Un guardian que no encuentra nada no ha mirado -- revisa que ' + $hRuta + ' siga trayendo lo que dice')
+    }
+    Write-Host ('    bmo.h: ' + $hMal + ' constantes INFO_ (fachada + ' + ($hVistos.Count - 1) + ' carriles), el mismo valor que el ABI') -ForegroundColor DarkGray
 } else {
     Fail ('no se encuentra bmo.h en ' + $hRuta + ' -- el contrato de C no se puede comprobar')
 }

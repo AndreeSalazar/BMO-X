@@ -69,6 +69,11 @@ const PAREJAS: &[(&str, &str, u64)] = &[
     ("BMO_OP_ENTRADA_RECLAMAR", "TASK_OP_INPUT_CLAIM", 0x0A),
     ("BMO_OP_SONIDO_RECLAMAR", "TASK_OP_AUDIO_CLAIM", 0x21),
     ("BMO_OP_SONIDO_SOLTAR", "TASK_OP_AUDIO_RELEASE", 0x22),
+    // ** Y las dos que faltaban desde siempre, publicadas el 2026-09-01: hasta
+    // ese dia un programa de C podia tomar la pantalla y el teclado y la unica
+    // forma de devolverlos era morirse.
+    ("BMO_OP_PANTALLA_SOLTAR", "TASK_OP_PANTALLA_SOLTAR", 0x1D),
+    ("BMO_OP_ENTRADA_SOLTAR", "TASK_OP_ENTRADA_SOLTAR", 0x1E),
     // Ficheros y lanzamiento.
     ("BMO_OP_RUTA", "TASK_OP_RUTA", 0x0B),
     ("BMO_OP_EJECUTAR", "TASK_OP_EJECUTAR", 0x0C),
@@ -158,11 +163,71 @@ const PAREJAS: &[(&str, &str, u64)] = &[
 /// heuristica es una regla que nadie escribio: el dia que alguien anada
 /// `BMO_ALGO_H` que SI sea del contrato, una heuristica lo perdonaria y esta
 /// lista lo caza.
-const NO_SON_CONTRATO: &[&str] = &["BMO_BMO_H"];
+const NO_SON_CONTRATO: &[&str] = &[
+    "BMO_BMO_H",
+    // ** Los centinelas de los CARRILES, desde que `bmo.h` se partio (L6g,
+    // 2026-09-01). Van listados uno a uno y no con un `ends_with("_H")` por lo
+    // que dice el parrafo de arriba: una heuristica es una regla que nadie
+    // escribio, y perdonaria un `BMO_ALGO_H` que si fuera del contrato.
+    "BMO_BMO_ROJA_H",
+    "BMO_BMO_VERDE_H",
+];
+
+fn dir_de_tablas() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../toolchain/forge/sem-asm/tables")
+}
 
 fn ruta_del_h() -> std::path::PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../toolchain/forge/sem-asm/tables/bmo/bmo.h")
+    dir_de_tablas().join("bmo/bmo.h")
+}
+
+/// **El `.h` y todo lo que trae.** Esto es lo que de verdad ve un programa.
+///
+/// # Por que dejo de bastar leer un fichero
+///
+/// El 2026-09-01 `bmo.h` se partio por carriles (L6g): las constantes se
+/// mudaron a `bmo/roja.h` y `bmo/verde.h`, y `bmo.h` paso a ser una **fachada**
+/// que las incluye -- igual que un `mod.rs` que re-exporta. Fuera no cambio
+/// nada: `#include <bmo/bmo.h>` sigue trayendo lo mismo.
+///
+/// Pero esta prueba leia UN fichero, y de golpe encontro cero constantes. Dijo
+/// *"ya no esta en bmo.h"* setenta veces, y tenia razon literal y no de fondo.
+///
+/// ** La leccion, que es la que se escribe aqui para el proximo corte: **una
+/// prueba que lee un fichero comprueba un fichero; lo que hay que comprobar es
+/// lo que el compilador VE.** Ahora se siguen los `#include <bmo/...>`, asi que
+/// el proximo fichero que se parta no rompe nada.
+///
+/// [!] Y se sigue solo `<bmo/...>` a proposito. `<stdlib.h>` o `<string.h>` no
+/// son la superficie del kernel; meterlos traeria constantes que no cruzan y
+/// haria que `ningun_define_del_h_se_queda_sin_pareja` pidiera parejas para el
+/// asignador de memoria.
+fn texto_del_h() -> String {
+    let mut vistos: Vec<String> = Vec::new();
+    let mut fuera = String::new();
+    absorber("bmo/bmo.h", &mut vistos, &mut fuera);
+    fuera
+}
+
+fn absorber(rel: &str, vistos: &mut Vec<String>, fuera: &mut String) {
+    if vistos.iter().any(|v| v == rel) {
+        return;
+    }
+    vistos.push(rel.to_string());
+    let ruta = dir_de_tablas().join(rel);
+    let Ok(texto) = std::fs::read_to_string(&ruta) else {
+        panic!("la fachada trae `{rel}` y no esta en {}", ruta.display());
+    };
+    for linea in texto.lines() {
+        let l = linea.trim();
+        if let Some(r) = l.strip_prefix("#include <").and_then(|r| r.strip_suffix('>')) {
+            if r.starts_with("bmo/") {
+                absorber(r, vistos, fuera);
+            }
+        }
+    }
+    fuera.push_str(&texto);
+    fuera.push('\n');
 }
 
 /// Todos los `#define BMO_x valor` del fichero, con su valor ya en numero.
@@ -195,7 +260,7 @@ fn defines_del_h(texto: &str) -> Vec<(String, Option<u64>)> {
 /// esta ejecutando otra -- y el sintoma llega en metal, no aqui.
 #[test]
 fn el_h_y_el_abi_dicen_el_mismo_numero() {
-    let texto = std::fs::read_to_string(ruta_del_h()).expect("bmo.h tiene que estar donde dice");
+    let texto = texto_del_h();
     let del_h: std::collections::HashMap<_, _> = defines_del_h(&texto).into_iter().collect();
 
     let mut malas = Vec::new();
@@ -237,6 +302,8 @@ fn las_parejas_dicen_lo_que_el_abi_dice() {
         ("BMO_OP_ENTRADA_RECLAMAR", s::TASK_OP_INPUT_CLAIM),
         ("BMO_OP_SONIDO_RECLAMAR", s::TASK_OP_AUDIO_CLAIM),
         ("BMO_OP_SONIDO_SOLTAR", s::TASK_OP_AUDIO_RELEASE),
+        ("BMO_OP_PANTALLA_SOLTAR", s::TASK_OP_PANTALLA_SOLTAR),
+        ("BMO_OP_ENTRADA_SOLTAR", s::TASK_OP_ENTRADA_SOLTAR),
         ("BMO_OP_RUTA", s::TASK_OP_RUTA),
         ("BMO_OP_EJECUTAR", s::TASK_OP_EJECUTAR),
         ("BMO_OP_REINICIAR", s::TASK_OP_REINICIAR),
@@ -311,7 +378,7 @@ fn las_parejas_dicen_lo_que_el_abi_dice() {
 /// es el OTRO fichero, y la lista solo sirve para traducir.
 #[test]
 fn ningun_define_del_h_se_queda_sin_pareja() {
-    let texto = std::fs::read_to_string(ruta_del_h()).expect("bmo.h tiene que estar donde dice");
+    let texto = texto_del_h();
     let huerfanos: Vec<String> = defines_del_h(&texto)
         .into_iter()
         .map(|(n, _)| n)

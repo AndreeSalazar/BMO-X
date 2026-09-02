@@ -1,7 +1,7 @@
 # REX -- la puerta de los terceros, ORDENADA
 
 > La ley esta en [`META-SDK_HARD.md`](../../META-SDK_HARD.md) y el indice en
-> [`tables/bmo/README.md`](../../toolchain/forge/sem-asm/tables/bmo/README.md).
+> [`toolchain/forge/sem-asm/tables/bmo/README.md`](../../toolchain/forge/sem-asm/tables/bmo/README.md).
 > **Esto es otra cosa: es el ORDEN.** Donde va lo proximo, que NO entra nunca, y
 > que forma tiene una cabecera para que la numero 11 se parezca a la numero 1.
 
