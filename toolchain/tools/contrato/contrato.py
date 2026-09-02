@@ -218,14 +218,17 @@ ABI_FAMILIAS_OP = (
 # Los choques que hoy existen y se toleran, con su motivo. ** TIENE QUE LLEGAR A
 # CERO: no es una lista de excepciones, es una deuda escrita.
 ABI_CHOQUES_TOLERADOS = {
-    ("TASK_OP_", 0x1C): (
-        "TASK_OP_LIENZO_REFLEJO es de un diseno RETIRADO -- `KIND_LIENZO` y sus "
-        "dos operaciones salieron del kernel cuando el prestamo se hizo generico "
-        "(ver `obj/loan.rs` y `docs/identidad/LIENZO.md`). Nadie la implementa y "
-        "nadie la llama, pero **okupa el numero de TASK_OP_TOMAR, que si esta "
-        "viva**: quien la escriba invocara TOMAR. Se retira cuando el dueno diga "
-        "como -- borrarla, o marcarla RETIRADA como se hizo con CHANNEL_KICK."
-    ),
+    # ** VACIA, Y ESE ES EL ESTADO CORRECTO. (2026-09-02)
+    #
+    # Tuvo una entrada exactamente un dia: `TASK_OP_LIENZO_REFLEJO` compartia el
+    # `0x1C` con `TASK_OP_TOMAR`. Era una constante MUERTA --de `KIND_LIENZO`,
+    # un diseno que salio del kernel-- okupando un numero VIVO, asi que la
+    # salida no fue tolerarla: fue borrarla.
+    #
+    # [!] Si algo vuelve aqui, la fila lleva su motivo y **la lista solo puede
+    # encoger**: `r15_el_abi_no_repite_numero` se queja de una tolerancia que ya
+    # no hace falta, para que una deuda saldada no se quede escrita como si
+    # todavia existiera.
 }
 
 # -- R13: EL ESPEJO. Los mismos numeros, escritos dos veces --------------------
@@ -797,6 +800,15 @@ def autoprueba():
         {"a.c": "x = bmo_codigo(p, 0x7777, 0, 0, 0);"}, REXN)
     exige("R14(un literal no falla)", q, False)
     exige("R14(pero se informa)", n)
+
+    # *** Y una tolerancia que ya no hace falta se dice tambien: una deuda
+    # saldada que sigue escrita miente igual que una oculta.
+    _guardadas = dict(ABI_CHOQUES_TOLERADOS)
+    ABI_CHOQUES_TOLERADOS[("TASK_OP_", 0xEE)] = "una deuda que ya no existe"
+    q, _ = r15_el_abi_no_repite_numero({"TASK_OP_A": (0x30, "t.rs")})
+    exige("R15(tolerancia que sobra)", q)
+    ABI_CHOQUES_TOLERADOS.clear()
+    ABI_CHOQUES_TOLERADOS.update(_guardadas)
 
     # R15 -- el ABI no repite dentro de una familia.
     q, _ = r15_el_abi_no_repite_numero(
@@ -1498,11 +1510,13 @@ def r15_el_abi_no_repite_numero(abi):
             if nombre.startswith(pre):
                 familias.setdefault(pre, {}).setdefault(abi[nombre][0], []).append(nombre)
                 break
+    vivos = set()
     for pre in sorted(familias):
         for valor in sorted(familias[pre]):
             nombres = familias[pre][valor]
             if len(nombres) < 2:
                 continue
+            vivos.add((pre, valor))
             if (pre, valor) in ABI_CHOQUES_TOLERADOS:
                 notas.append("en la familia %s la 0x%02X la comparten %s -- TOLERADO: %s"
                              % (pre, valor, " y ".join(nombres),
@@ -1512,6 +1526,14 @@ def r15_el_abi_no_repite_numero(abi):
                 "en el ABI, %s valen las dos 0x%02X y son la misma familia de "
                 "operaciones. Quien escriba una invocara la otra (R15)"
                 % (" y ".join(nombres), valor))
+    # ** Y una tolerancia que ya no hace falta TAMBIEN se dice. Una deuda
+    # saldada que sigue escrita miente igual que una deuda oculta: la proxima
+    # persona la lee y cree que el choque sigue ahi.
+    for pre, valor in sorted(ABI_CHOQUES_TOLERADOS):
+        if (pre, valor) not in vivos:
+            quejas.append(
+                "%s0x%02X esta en ABI_CHOQUES_TOLERADOS y ya NO choca. Borra "
+                "esa linea: la lista solo puede encoger (R15)" % (pre, valor))
     return quejas, notas
 
 
