@@ -152,6 +152,16 @@ pub const MOD_CTRL: u8 = 1 << 1;
 pub const MOD_ALT: u8 = 1 << 2;
 pub const MOD_ALTGR: u8 = 1 << 3;
 pub const MOD_CAPS: u8 = 1 << 4;
+/// **La tecla WINDOWS.** Que significa lo decide Ring 3, no el kernel.
+///
+/// El bit existe para que el compositor pueda atarla a lo que quiera --abrir el
+/// lanzador, cambiar de ventana-- sin que el kernel tenga una politica de
+/// atajos dentro. Es la misma frontera que `WANTS_SCREEN`: el kernel arbitra,
+/// Ring 3 manda.
+///
+/// [!] Va en el bit 5 y no en el 6 porque el 5 estaba libre: los numeros de
+/// esta mascara son contrato con Ring 3 y no se reordenan.
+pub const MOD_GUI: u8 = 1 << 5;
 
 pub fn modificadores() -> u8 {
     unsafe {
@@ -161,6 +171,7 @@ pub fn modificadores() -> u8 {
         if LALT { m |= MOD_ALT; }
         if ALTGR { m |= MOD_ALTGR; }
         if CAPS { m |= MOD_CAPS; }
+        if GUI { m |= MOD_GUI; }
         m
     }
 }

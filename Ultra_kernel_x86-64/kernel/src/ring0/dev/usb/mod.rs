@@ -184,6 +184,28 @@ static mut CTRL: bool = false;
 /// aprendio ahi lo tiene en los dedos: aqui tambien vale.
 static mut LALT: bool = false;
 
+/// **La tecla WINDOWS.** `bmo_uhid` ya la entrega --`MOD_LGUI -> 0x5B`,
+/// `MOD_RGUI -> 0x5C`-- y hasta hoy **nadie la reconocia**: caia a la tabla de
+/// distribucion como si fuera una letra, y de ahi salia lo que hubiera en ese
+/// indice. Una tecla que el aparato manda bien y el sistema interpreta mal.
+///
+/// # Que hace falta para APROVECHARLA, y por que es esto y no mas
+///
+/// En Linux la cadena es la misma y termina fuera del kernel: `hid-input`
+/// traduce la usage HID `0xE3` a `KEY_LEFTMETA`, lo entrega **como una tecla
+/// mas**, y lo que hace que "funcione" es el escritorio, que la ata a algo.
+/// El kernel no decide nunca lo que significa.
+///
+/// *** Y eso es exactamente lo que BMO-X tiene que hacer, por la misma razon
+/// por la que el compositor decide `WANTS_SCREEN` y no el kernel: **una politica
+/// de atajos en Ring 0 es un cerebro en el anillo cero.** Lo que le toca al
+/// kernel es entregarla sin mentir; lo que significa `Win+E` lo decide `d.bex`.
+///
+/// [!] Y NO produce caracter, igual que Ctrl o Alt. Por eso entra en la rama de
+/// modificadores con su `continue`: sin el, cada pulsacion metia un caracter
+/// fantasma en la cola.
+static mut GUI: bool = false;
+
 // -- Repeticion al mantener (typematic) --------------------------------------
 //
 // El teclado USB no repite solo: manda un reporte cuando la tecla BAJA y otro
@@ -230,12 +252,14 @@ pub fn olvidar_estado_de_teclado(motivo: &'static str) {
             | ((LALT as u64) << 2)
             | ((ALTGR as u64) << 3)
             | ((CAPS as u64) << 4)
+            | ((GUI as u64) << 6)
             | ((HELD_CODE != 0) as u64) << 5;
         SHIFT = false;
         CTRL = false;
         LALT = false;
         ALTGR = false;
         CAPS = false;
+        GUI = false;
         HELD_CODE = 0;
         n
     };
@@ -439,6 +463,12 @@ fn repartir_eventos(evs: &[InputEvent]) {
                 }
                 if ev.code == 0x38 { unsafe { LALT = true }; continue; }
                 if ev.code == 0x1D { unsafe { CTRL = true }; continue; }
+                // La tecla Windows: izquierda (0x5B) y derecha (0x5C). No
+                // produce caracter, asi que sale por aqui como Ctrl y Alt.
+                if ev.code == 0x5B || ev.code == 0x5C {
+                    unsafe { GUI = true };
+                    continue;
+                }
                 // Caps Lock (0x3A): toggle al presionar, como Windows.
                 if ev.code == 0x3A {
                     unsafe { CAPS = !CAPS };
@@ -464,6 +494,7 @@ fn repartir_eventos(evs: &[InputEvent]) {
                 if ev.code == bmo_uhid::SC_ALTGR { unsafe { ALTGR = false }; }
                 if ev.code == 0x38 { unsafe { LALT = false }; }
                 if ev.code == 0x1D { unsafe { CTRL = false }; }
+                if ev.code == 0x5B || ev.code == 0x5C { unsafe { GUI = false }; }
                 // Soltar la tecla corta la repeticion.
                 unsafe { if HELD_CODE == ev.code { HELD_CODE = 0; } }
             }
