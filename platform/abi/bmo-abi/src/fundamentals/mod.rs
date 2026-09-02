@@ -1,19 +1,70 @@
-//! `fundamentals` -- tipos que TODO el codigo del BMO ABI necesita.
+//! `fundamentals` -- los tipos que CRUZAN LA FRONTERA del ABI.
 //!
-//! Si un tipo se usa en mas del 50% del codigo BMO, vive aqui.
+//! # ** EL LISTON, CORREGIDO EL 2026-09-02
+//!
+//! Aqui ponia: *"Si un tipo se usa en mas del 50% del codigo BMO, vive aqui"*.
+//! **Era falso**, y se midio contando consumidores fuera de este directorio:
+//!
+//! ```text
+//!    BmoStatus                                        18   <- el unico
+//!    BmoHandle                                         6
+//!    BmoCap, BmoStr, BmoError, HandleKind              2 cada uno
+//!    BmoString, BmoSlice, BmoBuffer, MemOrder          1
+//!    BmoOption, BmoResult, BmoFormatter, BmoAllocator  0
+//! ```
+//!
+//! **Uno de catorce pasaba el 50%.** Y un criterio escrito que no se aplica es
+//! peor que ninguno: da autoridad a lo que ya esta dentro y no sabe decirle
+//! que no a lo que viene.
+//!
+//! # El liston de verdad, que es el que estos tipos SI cumplen
+//!
+//! > Aqui vive lo que **cruza la frontera del ABI**: lo que viaja en un
+//! > registro, lo que nombra un objeto del kernel, o lo que fija el tamano de
+//! > un campo que dos lenguajes tienen que leer igual.
+//!
+//! Eso es una prueba que se puede hacer mirando el tipo, no un porcentaje que
+//! nadie recuenta:
+//!
+//! ```text
+//!    viaja en un registro   BmoStatus (rax/rdx al volver), BmoCap
+//!    nombra un objeto       BmoHandle con su generacion, HandleKind
+//!    fija un tamano         primitives, BmoStr, BmoSlice, BmoBuffer
+//!    lo exige el metal      sync -- ordenes de memoria; lo usa `bmo-rt`
+//! ```
+//!
+//! # ** Y LO QUE ESTA AQUI SIN CUMPLIRLO, dicho y no escondido
+//!
+//! `option`, `result`, `convert`, `error` y `fmt` **no cruzan nada todavia**:
+//! son formas FFI-safe declaradas antes de tener consumidor. Se quedan --un
+//! ABI puede declarar la forma antes que el motor, y `<bmo/sonido.h>` lo hace
+//! a proposito-- pero **se dicen**, aqui y en su `[carril]`, fichero por
+//! fichero.
+//!
+//! [!] Y la diferencia con `io`, que si se borro, es la que decide si algo se
+//! queda: **estas formas son de ESTE sistema**. `BmoPipe` describia un SO que
+//! reparte descriptores, y BMO-X no lo es. Sin estrenar se tolera; prestado de
+//! otro sistema, no.
+//!
+//! # Las piezas
+//!
+//! El `(N)` es cuantos ficheros de fuera lo nombran. `(0)` no es un error: es
+//! una forma declarada, y esta puesto para que se vea sin tener que contarlo.
 //!
 //! - [`primitives`]   -- tipos numericos (`bx_u8..u64`, `bx_i*`, `bx_f16/32/64`).
-//! - [`status`]       -- `BmoStatus` 16-byte (sustituye `HRESULT`/`errno`).
-//! - [`handle`]       -- `BmoHandle` 64-bit con generacion + ops (sustituye `HANDLE`/`fd`).
-//! - [`capability`]   -- `BmoCap`, `BmoCapSet` (sustituye permisos Unix/ACL).
-//! - [`option`]       -- `BmoOption<T>` FFI-safe (sustituye punteros nullable).
-//! - [`result`]       -- `BmoResult<T, E>` FFI-safe (errores inline sin TLS).
-//! - [`error`]        -- `BmoError` unificado de 16 bytes.
-//! - [`convert`]      -- conversiones BmoStatus <-> BmoError <-> ErrorCode.
-//! - [`string`]       -- `BmoStr`/`BmoString` (ptr+len UTF-8).
-//! - [`memory`]       -- `BmoSlice`, `BmoRange`, `BmoAligned`.
-//! - [`buffer`]       -- `BmoBuffer` descriptor de memoria compartida (32 B).
-//! - [`allocator`]    -- `BmoAllocator` trait + `BmoGlobalAllocator`.
+//! - [`status`]       -- `BmoStatus` 16-byte, lo que viaja en rax/rdx. **(18)**
+//! - [`handle`]       -- `BmoHandle` 64-bit con generacion + ops. **(6)**
+//! - [`capability`]   -- `BmoCap`, `BmoCapSet`: los bits de permiso. (2)
+//! - [`string`]       -- `BmoStr`/`BmoString` (ptr+len UTF-8). (2)
+//! - [`error`]        -- `BmoError` unificado de 16 bytes. (2)
+//! - [`memory`]       -- `BmoSlice`, `BmoRange`, `BmoAligned`. (1)
+//! - [`buffer`]       -- `BmoBuffer` descriptor de memoria compartida (32 B). (1)
+//! - [`sync`]         -- atomicos y `MemOrder`. Lo unico que consume `bmo-rt`. (1)
+//! - [`convert`]      -- conversiones BmoStatus <-> BmoError <-> ErrorCode. (0)
+//! - [`option`]       -- `BmoOption<T>` FFI-safe. SIN ESTRENAR. (0)
+//! - [`result`]       -- `BmoResult<T, E>` FFI-safe. SIN ESTRENAR. (0)
+//! - [`fmt`]          -- `BmoFormatter` sobre la pila. SIN ESTRENAR. (0)
+//! - [`allocator`]    -- `BmoAllocator` + `BmoGlobalAllocator`. SIN ESTRENAR. (0)
 //!
 //! # ** AQUI VIVIA `io`, y se borro el 2026-09-02
 //!
