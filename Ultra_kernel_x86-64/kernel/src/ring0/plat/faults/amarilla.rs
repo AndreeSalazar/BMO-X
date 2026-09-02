@@ -137,6 +137,9 @@ pub(super) extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u6
     // deberia ser la pila alta de la tarea; si es otra cosa, este numero dice
     // donde estaba el CPU de verdad.
     let mut l = Line::new();
+    // Se ANOTA dentro del veredicto y se imprime DESPUES, en su propia
+    // linea: pegado detras de `marco OCUPADO` se salia de la pantalla.
+    let mut duenno_del_marco: Option<u64> = None;
     l.s("rsp=0x"); l.hex(fault_rsp, 16);
     // ** Y DE QUIEN ES ESA PILA, que es la pregunta siguiente y no se contestaba.
     //
@@ -221,19 +224,27 @@ pub(super) extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u6
                     // es una respuesta y de las caras: un marco que el
                     // asignador da por entregado y que ninguna tabla reconoce
                     // es contabilidad rota, no un dueno que falta.
-                    if let Some((pid, desp)) =
-                        crate::ring0::obj::memory::duenno_de_fisica(fisica)
-                    {
-                        l.s(", AHORA es del bloque de pid=");
-                        l.hex(pid as u64, 2);
-                        l.s(" +0x");
-                        l.hex(desp, 6);
-                    } else if let Some(i) = crate::ring0::obj::file::buffer_de_fisica(fisica) {
-                        l.s(", AHORA es el buffer del archivo ");
-                        l.hex(i as u64, 2);
-                    } else {
-                        l.s(", y NINGUNA tabla lo reclama");
-                    }
+                    // ** Y EL DUENO VA EN SU PROPIA LINEA. (2026-09-02)
+                    //
+                    // La primera version lo pegaba detras de `marco OCUPADO`, y
+                    // en el Ryzen la foto acaba en `marco OCUPADO,` -- el dato,
+                    // el que costo escribir el instrumento, no salia.
+                    //
+                    // [!] Y NO era el borde de la pantalla, aunque lo parecia:
+                    // esa coma es **el byte 80 del renglon**. Ver `Line` en
+                    // `verde.rs`, que ahora mide 112 y avisa cuando corta. Se
+                    // deja partido igual, porque un veredicto de dos mitades se
+                    // lee mejor en dos lineas que en una larguisima.
+                    //
+                    // *** Un instrumento cuya respuesta no cabe en la pantalla
+                    // no ha respondido. Es la tercera forma del mismo fallo de
+                    // hoy: uno que no mira, uno que miente, y este -- uno que
+                    // contesta fuera del papel.
+                    //
+                    // [!] Y la linea de al lado (`iq:`) tambien sale cortada.
+                    // Esta pantalla se lee con una CAMARA: lo que no entra en
+                    // el ancho no existe.
+                    duenno_del_marco = Some(fisica);
                 }
                 None => l.s(" marco fuera del espejo"),
             }
@@ -243,6 +254,30 @@ pub(super) extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u6
         }
     }
     inf.push(l);
+
+    // ** LA SEGUNDA MITAD DEL VEREDICTO, en su propia linea porque no cabia.
+    //
+    // `marco OCUPADO` dice que el asignador lo da por entregado; esto dice A
+    // QUIEN, que es lo unico que convierte "se entrego dos veces" en algo que
+    // se pueda ir a mirar.
+    if let Some(fisica) = duenno_del_marco {
+        let mut l = Line::new();
+        if let Some((pid, desp)) = crate::ring0::obj::memory::duenno_de_fisica(fisica) {
+            l.s("  ese marco es AHORA del bloque de pid=");
+            l.hex(pid as u64, 2);
+            l.s(" +0x");
+            l.hex(desp, 6);
+        } else if let Some(i) = crate::ring0::obj::file::buffer_de_fisica(fisica) {
+            l.s("  ese marco es AHORA el buffer del archivo ");
+            l.hex(i as u64, 2);
+        } else {
+            // [!] Y esto es una respuesta, no un hueco: un marco que el
+            // asignador da por entregado y que ninguna tabla reclama es
+            // CONTABILIDAD ROTA, no un dueno que falta.
+            l.s("  y NINGUNA tabla reclama ese marco: contabilidad rota");
+        }
+        inf.push(l);
+    }
 
     let (tid, es_user) = crate::ring0::task::scheduler::quien_corre();
     let mut l = Line::new();
