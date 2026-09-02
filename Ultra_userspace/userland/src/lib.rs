@@ -712,6 +712,13 @@ pub const MOD_CTRL: u8 = 1 << 1;
 pub const MOD_ALT: u8 = 1 << 2;
 pub const MOD_ALTGR: u8 = 1 << 3;
 pub const MOD_CAPS: u8 = 1 << 4;
+/// **La tecla WINDOWS.** El kernel la entrega; que significa lo decides tu.
+///
+/// Es la misma frontera que `WANTS_SCREEN`: Ring 0 arbitra y no interpreta. En
+/// Linux pasa igual --`hid-input` la entrega como `KEY_LEFTMETA` y lo que hace
+/// que "funcione" es el escritorio-- y por el mismo motivo: **una politica de
+/// atajos dentro del kernel es un cerebro en el anillo cero.**
+pub const MOD_GUI: u8 = 1 << 5;
 
 
 // ===========================================================================
