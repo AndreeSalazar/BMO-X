@@ -186,6 +186,21 @@ pub(super) extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u6
             // liberadas que fichas, "no lo reconoce" significa "puede que se
             // haya ido por el anillo", que no es lo mismo que "no fue `reap`".
             // Un veredicto con dos lecturas no cierra nada.
+            // ** Y EL BIT DEL ASIGNADOR, que es el que parte el caso en dos.
+            //
+            // "De nadie vivo" dice que ninguna TAREA la reclama. Esto dice si
+            // el ASIGNADOR cree que el marco esta entregado:
+            //
+            //    OCUPADO  alguien lo tiene ahora -> se entrego dos veces
+            //    LIBRE    no lo tiene nadie -> uso despues de liberar
+            //
+            // Dos bugs opuestos, un bit. Ver `mm::phys::esta_libre`.
+            let fisica = fault_rsp.wrapping_sub(0xFFFF_8000_0000_0000);
+            match crate::ring0::mm::phys::esta_libre(fisica) {
+                Some(true) => l.s(" marco LIBRE"),
+                Some(false) => l.s(" marco OCUPADO"),
+                None => l.s(" marco fuera del espejo"),
+            }
             l.s(" (morgue: ");
             l.hex(crate::ring0::task::scheduler::pilas_liberadas(), 2);
             l.s(" liberadas)");
