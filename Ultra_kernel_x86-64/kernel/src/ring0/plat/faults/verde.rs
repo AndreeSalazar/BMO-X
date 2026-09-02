@@ -17,22 +17,66 @@
 use crate::ring0::dev::console::serial_write;
 
 /// Small fixed-capacity line builder (no alloc, exception-context safe).
+///
+/// # *** CORTABA EN 80 BYTES Y NO LO DECIA (2026-09-02)
+///
+/// El dueno fotografio una pantalla azul cuyo veredicto acababa asi:
+///
+/// ```text
+///    rsp=0xFFFF800000B8DC50   pila de HILO DEL KERNEL -- de NADIE VIVO marco OCUPADO,
+/// ```
+///
+/// La coma es el byte 80. Detras iba **de quien es ahora ese marco**, que es el
+/// dato entero por el que existe esa linea. Y la de al lado, `iq: ... El fallo
+/// no es de un cambio de contexto`, mide 84 y perdia las cuatro ultimas.
+///
+/// ** Se creyo que era el borde de la pantalla, y no lo era: `CHAR_W` son 10
+/// pixeles y el informe empieza en `w/12`, o sea que a 1920 caben **176
+/// caracteres**. Sobraba media pantalla. El limite era este array.
+///
+/// > `Informe::push` ya habia pasado por esto --paso de 12 filas a 16 porque
+/// > *"descarta en silencio"*-- y el renglon hacia lo mismo un piso mas abajo
+/// > sin que nadie lo mirara. La misma enfermedad, dos veces.
+///
+/// Se arregla en dos mitades, porque una sola no basta:
+///
+/// * **112 y no 80.** Cabe desde 1280 de ancho (117 caracteres) hacia arriba.
+///   Por debajo de eso el que corta vuelve a ser el cristal, y entonces el
+///   limite es visible -- que es exactamente la diferencia que importa.
+/// * **Y si aun asi se pasa, LO DICE.** Los tres ultimos bytes pasan a `>>>`.
+///
+/// *** Un instrumento que descarta la respuesta en silencio es peor que uno que
+/// no mira: el que no mira se nota. Este contestaba, y la contestacion no
+/// llegaba al papel.
 #[derive(Clone, Copy)]
 pub(super) struct Line {
-    pub(super) b: [u8; 80],
+    pub(super) b: [u8; 112],
     pub(super) n: usize,
 }
 
 impl Line {
     pub(super) fn new() -> Self {
-        Self { b: [0; 80], n: 0 }
+        Self { b: [0; 112], n: 0 }
+    }
+    /// Un byte, o la marca de desbordado. **Todo lo que escribe pasa por aqui**
+    /// -- si `hex` volviera a llevar su propia copia del limite, la mitad de los
+    /// renglones seguirian cortando callados.
+    fn byte(&mut self, c: u8) {
+        if self.n < self.b.len() {
+            self.b[self.n] = c;
+            self.n += 1;
+            return;
+        }
+        // [!] La marca se pisa a si misma cuando sobran muchos bytes, y da
+        // igual: lo que hay que saber es **que falta algo**, no cuanto.
+        let fin = self.b.len();
+        self.b[fin - 3] = b'>';
+        self.b[fin - 2] = b'>';
+        self.b[fin - 1] = b'>';
     }
     pub(super) fn s(&mut self, s: &str) {
         for &c in s.as_bytes() {
-            if self.n < self.b.len() {
-                self.b[self.n] = c;
-                self.n += 1;
-            }
+            self.byte(c);
         }
     }
     pub(super) fn hex(&mut self, mut v: u64, digits: usize) {
@@ -43,10 +87,7 @@ impl Line {
             v >>= 4;
         }
         for i in 0..digits {
-            if self.n < self.b.len() {
-                self.b[self.n] = tmp[i];
-                self.n += 1;
-            }
+            self.byte(tmp[i]);
         }
     }
     pub(super) fn as_str(&self) -> &str {
