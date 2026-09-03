@@ -1,10 +1,11 @@
 pub mod codegen;
 pub mod ast;
 pub mod module;
-pub mod ir_emit;
 pub mod parser;
 pub mod standard;
 mod lexer;
+/// EL JUEZ UNICO de "que tipo es esta expresion". Ver su cabecera.
+mod tipos;
 
 use parser::Parser;
 
@@ -100,12 +101,6 @@ pub fn parse_with_features(source: &str, features: &StandardFeatures) -> Result<
     let mut p = Parser::new(source);
     p.features = features.clone();
     p.parse_program()
-}
-
-/// Compile C source to a unified IrModule (language-agnostic IR).
-pub fn compile_to_ir(source: &str) -> Result<bmo_abi::ir::IrModule, CError> {
-    let program = parse(source)?;
-    Ok(ir_emit::compile_to_ir(&program))
 }
 
 pub fn compile_source_to_bef_with_modules(source: &str, base_paths: Vec<PathBuf>) -> Result<Vec<u8>, CError> {

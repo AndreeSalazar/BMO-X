@@ -11,7 +11,7 @@
 # El numero va solo en la primera linea util. Lo de abajo es el inventario, y es
 # comentario: esta para leerlo, no para juzgarlo.
 
-20
+21
 # SILENCIO           Ultra_kernel_x86-64/kernel/src/ring0/core/autopsy.rs
 #                    Ultra_kernel_x86-64/kernel/src/ring0/core/gato/masks.rs
 # AJENO SILENCIO     Ultra_kernel_x86-64/kernel/src/ring0/core/purga.rs
@@ -32,3 +32,4 @@
 #                    Ultra_kernel_x86-64/kernel/src/ring0/task/scheduler/verde.rs
 # SILENCIO           platform/drivers/net/src/lib.rs
 # ESPEJO             platform/shared/bmo-fisica-juicio/src/lib.rs
+# ESPEJO SILENCIO   toolchain/lang/c/src/tipos.rs

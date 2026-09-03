@@ -52,71 +52,18 @@ impl Parser {
         }
     }
 
-    /// Tipo estatico de una expresion, hasta donde el parser puede saberlo.
-    /// Devuelve None si no es resoluble (y el offset caera a 0 -- visible en tests).
+    /// Tipo estatico de una expresion.
+    ///
+    /// ** DELEGA EN EL JUEZ UNICO (`crate::tipos`). Hasta el 2026-09-02 esta
+    /// funcion tenia su propia copia de la pregunta, y el codegen tenia otra
+    /// que sabia cosas distintas -- ver la cabecera de `tipos.rs`. Lo que
+    /// resolvia esta y no aquella (y al reves) era el fallo, no el reparto.
+    ///
+    /// Sigue devolviendo `None` cuando no se puede saber, y el llamante sigue
+    /// convirtiendolo en 0. Esa parte no cambia aqui: cambia CUANTAS formas de
+    /// C caen en el `None`.
     pub(super) fn resolve_expr_type(&self, expr: &Expr) -> Option<TypeSpec> {
-        match expr {
-            Expr::Var(n) => self.var_types.get(n).cloned(),
-            Expr::Subscript(n, _, _) => {
-                // arr[i]: el tipo del elemento
-                match self.var_types.get(n)? {
-                    TypeSpec::Ptr(base) => Some(base.as_ref().clone()),
-                    TypeSpec::Array(base, _) => Some(base.as_ref().clone()),
-                    t => Some(t.clone()),
-                }
-            }
-            Expr::Deref(inner) => {
-                match self.resolve_expr_type(inner)? {
-                    TypeSpec::Ptr(base) => Some(*base),
-                    // * `*tabla` sobre un ARRAY es su primer elemento.
-                    //
-                    // Un array decae a puntero en cuanto se usa en una
-                    // expresion, y aqui no decaia: solo se aceptaba `Ptr`. El
-                    // precio lo pagaba el modismo mas comun de C --
-                    // `sizeof(t) / sizeof(*t)` para contar los elementos-- que
-                    // aparece en nueve ficheros de DOOM y en casi todo
-                    // programa que recorra una tabla.
-                    TypeSpec::Array(base, _) => Some(*base),
-                    _ => None,
-                }
-            }
-            Expr::AddrOf(inner) => {
-                let t = self.resolve_expr_type(inner)?;
-                Some(TypeSpec::Ptr(Box::new(t)))
-            }
-            Expr::Field(base, fname, _, _) => {
-                // base.f: tipo del campo f en el struct de base
-                let s = self.resolve_struct_type(base)?;
-                self.field_types.get(&(s, fname.clone())).cloned()
-            }
-            Expr::Arrow(base, fname, _, _) => {
-                // base->f: tipo del campo f en el struct APUNTADO por base
-                let t = self.resolve_expr_type(base)?;
-                let s = Self::pointee_struct_of(&t)?.to_string();
-                self.field_types.get(&(s, fname.clone())).cloned()
-            }
-            // * Los que faltaban, y los cuatro son EXACTOS.
-            //
-            // Aparecieron pidiendolos `sizeof`, que desde hoy acepta una
-            // expresion. Se anaden solo estos y no la aritmetica: el tipo de
-            // `a + b` pide las conversiones usuales de C, y **equivocarse aqui
-            // no da un error, da un `memset` de la medida equivocada**. Sin
-            // resolver, `sizeof` lo dice; adivinando, lo escribe.
-            //
-            // `p[i]` ya trae el tipo del elemento dentro del nodo, que es
-            // justo lo que hace que este sea exacto y no una suposicion.
-            Expr::IndexPtr(_, _, elem) => Some(elem.clone()),
-            Expr::Cast(t, _) => Some(t.clone()),
-            Expr::Int(_) => Some(TypeSpec::Int),
-            Expr::CharLit(_) => Some(TypeSpec::Char),
-            // En C `sizeof("abc")` son CUATRO: el literal es un array con su
-            // cero, no un puntero.
-            Expr::StringLit(s) => Some(TypeSpec::Array(
-                Box::new(TypeSpec::Char),
-                s.len() as u32 + 1,
-            )),
-            _ => None,
-        }
+        crate::tipos::tipo_de(self, expr)
     }
 
     /// Struct/union del que la expresion ES valor (para `expr.field`).
@@ -264,5 +211,16 @@ impl Parser {
             TypeSpec::Ptr(_) => 8,
             otro => bmo_abi::types::alineado_de(self.type_size(otro)),
         }
+    }
+}
+
+/// El parser contesta la unica pregunta que el juez le hace.
+///
+/// [!] `var_types` incluye globales y locales porque el parser las registra en
+/// el mismo mapa segun las va viendo. Si algun dia se separan, este es el
+/// sitio donde se vuelven a juntar -- y no dentro del juez.
+impl crate::tipos::Ambito for Parser {
+    fn tipo_de_variable(&self, nombre: &str) -> Option<TypeSpec> {
+        self.var_types.get(nombre).cloned()
     }
 }
