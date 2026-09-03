@@ -362,3 +362,95 @@ fn copiar_un_struct_de_mas_de_ocho_bytes_por_puntero() {
     );
     assert_eq!(salida, "11 22 33", "los TRES campos, no los dos primeros");
 }
+
+// == TANDA DE SONDA 2026-09-03: las formas que usa `r_bsp.c` ================
+//
+// Se escriben JUNTAS y a proposito. Cada una es una forma de C que el port de
+// DOOM usa y que el banco no ejercia; lo que se busca no es que pasen, es
+// SABER CUALES NO.
+
+#[test] fn s1_struct_a_funcion_por_valor_desde_puntero() {
+    assert_eq!(run_c("struct par { int a; int b; };
+int suma(struct par p) { return p.a + p.b; }
+int main(){ struct par v; struct par *q; v.a=11; v.b=22; q=&v;
+ printf(\"%d\", suma(*q)); return 0; }"), "33");
+}
+
+#[test] fn s2_campo_de_struct_dentro_de_struct_por_puntero() {
+    assert_eq!(run_c("struct in { int x; int y; };
+struct out { int pad; struct in d; };
+int main(){ struct out o; struct out *p; p=&o;
+ p->d.x = 7; p->d.y = 9; o.pad = 5;
+ printf(\"%d %d %d\", o.pad, p->d.x, p->d.y); return 0; }"), "5 7 9");
+}
+
+#[test] fn s3_puntero_a_struct_con_postincremento() {
+    assert_eq!(run_c("struct par { int a; int b; };
+int main(){ struct par v[3]; struct par *p; int i;
+ for(i=0;i<3;i=i+1){ v[i].a=i; v[i].b=i*10; }
+ p=v; p++;
+ printf(\"%d %d\", p->a, p->b); return 0; }"), "1 10");
+}
+
+#[test] fn s4_comparar_punteros_a_struct() {
+    assert_eq!(run_c("struct par { int a; int b; };
+struct par v[3];
+int main(){ struct par *p; struct par *q; p=v; q=v+2;
+ printf(\"%d %d %d\", (int)(p<q), (int)(q<p), (int)(q-p)); return 0; }"), "1 0 2");
+}
+
+#[test] fn s5_while_con_flecha_sobre_puntero_avanzando() {
+    assert_eq!(run_c("struct par { int a; int b; };
+int main(){ struct par v[4]; struct par *p; int n;
+ v[0].a=1; v[1].a=1; v[2].a=1; v[3].a=0;
+ p=v; n=0;
+ while (p->a) { n=n+1; p++; }
+ printf(\"%d\", n); return 0; }"), "3");
+}
+
+#[test] fn s6_asignar_campo_a_traves_de_puntero_calculado() {
+    assert_eq!(run_c("struct par { int a; int b; };
+int main(){ struct par v[3]; struct par *tope;
+ v[2].a=0; v[2].b=0; tope=v+3;
+ (tope-1)->a = 41; (tope-1)->b = 42;
+ printf(\"%d %d\", v[2].a, v[2].b); return 0; }"), "41 42");
+}
+
+/// [!] LIMITE DECLARADO, no fallo silencioso: un PROTOTIPO que devuelve
+/// `struct X *` no parsea -- *"expected type, got Ident"*. Con `typedef` si.
+///
+/// ** Se fija como casilla porque lo importante es que **rechaza diciendolo**,
+/// que es la diferencia entre un hueco y un bug. Y no bloquea a DOOM: sus
+/// cabeceras declaran `side_t *getSide(...)`, o sea por alias.
+#[test] fn s7_prototipo_que_devuelve_struct_crudo_se_rechaza_diciendolo() {
+    let e = crate::compile_source_to_bef(
+        "struct par { int a; int b; };
+         struct par *dame(int i);
+         int main() { return 0; }",
+    ).expect_err("hoy no se parsea");
+    assert!(e.message.contains("expected type"), "tiene que decir QUE no entiende: {}", e.message);
+}
+
+/// Y la misma forma CON alias, que es la que usa DOOM: compila.
+#[test] fn s7b_con_typedef_el_prototipo_vale() {
+    assert_eq!(run_c("struct par { int a; int b; };
+typedef struct par par_t;
+par_t v[2];
+par_t *dame(int i);
+int main(){ v[1].a=8; v[1].b=9; printf(\"%d %d\", dame(1)->a, dame(1)->b); return 0; }
+par_t *dame(int i){ return &v[i]; }"), "8 9");
+}
+
+/// [!] LIMITE DECLARADO: un `double` GLOBAL no esta soportado, y el compilador
+/// lo dice con esas palabras --*"usa locales"*--. Tampoco bloquea a DOOM: su
+/// render es de enteros de punto fijo, sin un solo flotante.
+#[test] fn s8_un_double_global_se_rechaza_diciendolo() {
+    // [!] DECLARARLO compila; lo que se rechaza es USARLO. La primera version
+    // de esta casilla solo lo declaraba y pasaba en verde sin comprobar nada --
+    // una casilla que no ejerce lo que dice su nombre.
+    let e = crate::compile_source_to_bef(
+        "double d = 0;
+         int main() { d = 2.5; printf(\"%d\", (int)(d * 2)); return 0; }",
+    ).expect_err("hoy no se soporta");
+    assert!(e.message.contains("aun no soportada"), "tiene que decirlo: {}", e.message);
+}
