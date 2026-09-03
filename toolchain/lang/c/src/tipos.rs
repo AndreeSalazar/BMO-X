@@ -77,6 +77,26 @@ use crate::ast::{Expr, TypeSpec};
 /// MISMA respuesta sin compartir tablas.
 pub(crate) trait Ambito {
     fn tipo_de_variable(&self, nombre: &str) -> Option<TypeSpec>;
+    /// El tipo del campo `campo` dentro del agregado `agregado`.
+    ///
+    /// ** Segunda y ultima pregunta del contrato, y entro el 2026-09-02 al
+    /// vaciar `Expr::Field` y `Expr::Arrow`. Antes el tipo del campo viajaba
+    /// DENTRO del nodo, asi que el juez no tenia que preguntarlo -- y eso
+    /// obligaba al parser a resolverlo en el sitio y el momento en que menos
+    /// sabe. Ahora lo contesta cada consumidor con SU tabla, y las dos tablas
+    /// las coteja `codegen::cotejar_disposicion`.
+    fn tipo_de_campo(&self, agregado: &str, campo: &str) -> Option<TypeSpec>;
+    /// Lo que DEVUELVE una funcion.
+    ///
+    /// *** Tercera y ultima pregunta, y entro el 2026-09-02 porque DOOM no
+    /// compilaba: `getSide(secnum,i,0)->sector` es una LLAMADA seguida de
+    /// flecha, y sin este brazo el agregado no se resolvia.
+    ///
+    /// [!] Ojo a lo que eso significa hacia atras: **antes esto no daba error,
+    /// daba offset 0**. O sea que esa linea de `p_floor.c` llevaba leyendo el
+    /// primer campo de `side_t` donde pedia `sector`. Lo destapo el guardian
+    /// nuevo, no una corrida -- que es exactamente para lo que se puso.
+    fn tipo_de_retorno(&self, funcion: &str) -> Option<TypeSpec>;
 }
 
 /// Un array **decae a puntero** en cuanto se usa en una expresion.
@@ -111,18 +131,20 @@ pub(crate) fn tipo_de<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<TypeSpec>
         }
 
         // -- llegar a un elemento ------------------------------------------
-        Expr::Subscript(n, _, _) => match amb.tipo_de_variable(n)? {
+        Expr::Subscript(n, _) => match amb.tipo_de_variable(n)? {
             TypeSpec::Ptr(base) | TypeSpec::Array(base, _) => Some(*base),
             t => Some(t),
         },
-        Expr::AssignSubscript(n, _, _, _) => match amb.tipo_de_variable(n)? {
+        Expr::AssignSubscript(n, _, _) => match amb.tipo_de_variable(n)? {
             TypeSpec::Ptr(base) | TypeSpec::Array(base, _) => Some(*base),
             t => Some(t),
         },
-        // `p[i]` ya trae el tipo del elemento DENTRO del nodo: exacto, no una
-        // suposicion.
-        Expr::IndexPtr(_, _, elem) => Some(elem.clone()),
-        Expr::AssignIndexPtr(_, _, elem, _) => Some(elem.clone()),
+        // *** `p[i]` es lo mismo que `*(p + i)`: su tipo es a lo que apunta la
+        // BASE. Hasta el 2026-09-02 el elemento viajaba dentro del nodo,
+        // puesto por el parser; ahora sale de la unica pregunta que este
+        // fichero contesta, y por eso NO puede discrepar de `p + i`.
+        Expr::IndexPtr(base, _) => apunta_a(amb, base),
+        Expr::AssignIndexPtr(base, _, _) => apunta_a(amb, base),
 
         // -- indireccion ---------------------------------------------------
         Expr::Deref(inner) => match tipo_de(amb, inner)? {
@@ -139,9 +161,13 @@ pub(crate) fn tipo_de<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<TypeSpec>
         // tocaba -5: no se olvido de dividir, multiplico.
         Expr::AddrOf(inner) => Some(TypeSpec::Ptr(Box::new(tipo_de(amb, inner)?))),
 
-        // -- campos: el tipo VIAJA en el nodo ------------------------------
-        Expr::Field(_, _, _, t) | Expr::Arrow(_, _, _, t) => Some(t.clone()),
-        Expr::AssignField(_, _, _, t, _) | Expr::AssignArrow(_, _, _, t, _) => Some(t.clone()),
+        // -- campos: el agregado sale de la BASE ---------------------------
+        Expr::Field(base, campo) | Expr::AssignField(base, campo, _) => {
+            amb.tipo_de_campo(&agregado_de(amb, base)?, campo)
+        }
+        Expr::Arrow(base, campo) | Expr::AssignArrow(base, campo, _) => {
+            amb.tipo_de_campo(&agregado_apuntado(amb, base)?, campo)
+        }
 
         // -- lo que se dice a si mismo -------------------------------------
         Expr::Cast(t, _) => Some(t.clone()),
@@ -183,6 +209,9 @@ pub(crate) fn tipo_de<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<TypeSpec>
             Some(decaido(ta?))
         }
 
+        // ** Una LLAMADA vale lo que su funcion declara devolver.
+        Expr::Call(nombre, _) => amb.tipo_de_retorno(nombre),
+
         // -- ramas ---------------------------------------------------------
         Expr::Conditional(_, a, b) => tipo_de(amb, a).or_else(|| tipo_de(amb, b)),
         Expr::Comma(v) => tipo_de(amb, v.last()?),
@@ -200,6 +229,26 @@ pub(crate) fn tipo_de<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<TypeSpec>
 pub(crate) fn apunta_a<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<TypeSpec> {
     match tipo_de(amb, e)? {
         TypeSpec::Ptr(base) | TypeSpec::Array(base, _) => Some(*base),
+        _ => None,
+    }
+}
+
+/// Nombre del struct/union del que una expresion ES valor directo (`base.campo`).
+pub(crate) fn agregado_de<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<String> {
+    match tipo_de(amb, e)? {
+        TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => Some(s),
+        _ => None,
+    }
+}
+
+/// Nombre del struct/union al que APUNTA una expresion (`base->campo`).
+///
+/// [!] Pasa por `apunta_a`, o sea que hereda la decadencia de arrays y la
+/// aritmetica de punteros. **Ese es exactamente el arreglo del 02-09**:
+/// `(tope - 1)->next` no resolvia porque esta pregunta no se hacia aqui.
+pub(crate) fn agregado_apuntado<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<String> {
+    match apunta_a(amb, e)? {
+        TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => Some(s),
         _ => None,
     }
 }

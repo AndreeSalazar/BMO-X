@@ -453,3 +453,30 @@ int main() {{
     ));
     assert_eq!(salida, "1", "la cadena tiene que llegar al centinela");
 }
+
+/// *** UNA LLAMADA SEGUIDA DE FLECHA -- la linea de `p_floor.c` que no compilaba.
+///
+/// DOOM escribe `getSide(secnum,i,0)->sector`, y hasta el 2026-09-02 el juez no
+/// tenia brazo para `Expr::Call`: el agregado no se resolvia y el offset caia a
+/// **0 en silencio**. O sea que esa linea llevaba leyendo el PRIMER campo de
+/// `side_t` donde pedia `sector`, y nadie lo sabia.
+///
+/// [!] Lo destapo el guardian --que ahora dice que no en vez de contestar 0--,
+/// no una corrida en el Ryzen. Es la diferencia entre las dos clases de fallo
+/// de este compilador: los que se caen y los que **aciertan a veces**.
+#[test]
+fn una_llamada_seguida_de_flecha_resuelve_su_campo() {
+    let salida = run_c(&format!(
+        "{MOLDE}
+struct vs arr[4];
+vs_t *dame(int i);
+int main() {{
+    arr[1].prev = 0; arr[1].next = 0; arr[1].scale = 77;
+    dame(1)->scale = 88;
+    printf(\"%d %d\", arr[1].scale, (int)(arr[1].prev == 0));
+    return 0;
+}}
+vs_t *dame(int i) {{ return &arr[i]; }}"
+    ));
+    assert_eq!(salida, "88 1", "el campo tiene que caer en `scale`, no en el offset 0");
+}

@@ -1,18 +1,30 @@
-//! **TYPE AND LAYOUT RESOLUTION** -- what a name refers to, and where in a
-//! struct it lives.
+//! **LA DISPOSICION, del lado del frontend** -- cuanto mide cada agregado y
+//! donde cae cada campo.
 //!
-//! === Why this is a file of its own ===
+//! # *** 2026-09-02: ESTE FICHERO YA NO ES UN COMPROBADOR DE TIPOS
 //!
-//! Because the parser of C cannot stay a parser. In most languages `a.b.c`
-//! stays symbolic until a later pass resolves it; here the `Expr::Field` node
-//! **carries the byte offset inside it**, so by the time the tree is built the
-//! parser has already had to answer "what type is `a`, what does `b` point at,
-//! and how far in is `c`".
+//! Lo era, y lo decia aqui:
 //!
-//! That is a type checker's job living inside a parser, and it has its own
-//! state (`struct_sizes`, `struct_aligns`, `field_types`) that nothing else
-//! here touches. Kept in the same drawer as the grammar it was invisible;
-//! sitting on its own it is obvious that it is a second subsystem.
+//! > *"Because the parser of C cannot stay a parser [...] the `Expr::Field`
+//! > node **carries the byte offset inside it** [...] That is a type checker's
+//! > job living inside a parser."*
+//!
+//! Era cierto, y era el diagnostico correcto de un problema que nadie habia
+//! arreglado. **El nodo ya no carga el offset**: `Expr::Field` y `Expr::Arrow`
+//! solo NOMBRAN el campo, y quien lo resuelve es quien tiene la tabla en el
+//! momento de emitir. Con eso murieron los nueve metodos que hacian de
+//! comprobador --`resolve_field_expr_offset`, `field_type_via_*`,
+//! `resolve_arrow_expr_offset`, `pointee_size`, `element_size`...-- y el
+//! fichero paso de 232 lineas a 139.
+//!
+//! Lo que queda es lo unico que de verdad es del frontend: **colocar** los
+//! agregados que declara el programa, y contestar las dos preguntas del
+//! `trait Ambito`. La colocacion viaja en el `Program` y el codegen la coteja
+//! contra la suya -- ver `codegen::cotejar_disposicion`.
+//!
+//! [!] Y esto es lo que hace que el fallo del 02-09 no pueda volver: aquel
+//! offset 0 se grababa AQUI, al parsear, cuando `resolve_expr_type` no sabia
+//! tipar `tope - 1`. Ya no hay nada que grabar.
 //!
 //! === ** What being invisible cost, on 2026-08-13 ===
 //!
@@ -30,24 +42,10 @@
 use super::*;
 
 impl Parser {
-    pub(super) fn get_field_offset(&self, struct_name: &str, field: &str) -> Option<u32> {
-        self.struct_fields.get(struct_name).and_then(|fields| {
-            fields.iter().find(|(n, _, _)| n == field).map(|(_, off, _)| *off)
-        })
-    }
-
     /// Nombre del struct/union del que un TypeSpec ES valor directo.
     pub(super) fn struct_of(t: &TypeSpec) -> Option<&str> {
         match t {
             TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => Some(s),
-            _ => None,
-        }
-    }
-
-    /// Nombre del struct/union al que un TypeSpec APUNTA (un nivel de *).
-    pub(super) fn pointee_struct_of(t: &TypeSpec) -> Option<&str> {
-        match t {
-            TypeSpec::Ptr(base) => Self::struct_of(base),
             _ => None,
         }
     }
@@ -64,85 +62,6 @@ impl Parser {
     /// C caen en el `None`.
     pub(super) fn resolve_expr_type(&self, expr: &Expr) -> Option<TypeSpec> {
         crate::tipos::tipo_de(self, expr)
-    }
-
-    /// Struct/union del que la expresion ES valor (para `expr.field`).
-    pub(super) fn resolve_struct_type(&self, expr: &Expr) -> Option<String> {
-        let t = self.resolve_expr_type(expr)?;
-        match &t {
-            TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => Some(s.clone()),
-            // permisivo historico: p[i] con p: struct* ya cae en resolve_expr_type
-            _ => None,
-        }
-    }
-
-    pub(super) fn resolve_field_expr_offset(&self, expr: &Expr, field: &str) -> u32 {
-        self.resolve_struct_type(expr)
-            .and_then(|s| self.get_field_offset(&s, field))
-            .unwrap_or(0)
-    }
-
-    /// Tipo del campo para `expr.field` (base por valor).
-    pub(super) fn field_type_via_value(&self, expr: &Expr, field: &str) -> TypeSpec {
-        self.resolve_struct_type(expr)
-            .and_then(|s| self.field_types.get(&(s, field.to_string())).cloned())
-            .unwrap_or(TypeSpec::Long)
-    }
-
-    /// Tipo del campo para `expr->field` (base puntero).
-    pub(super) fn field_type_via_pointer(&self, expr: &Expr, field: &str) -> TypeSpec {
-        self.resolve_expr_type(expr)
-            .and_then(|t| Self::pointee_struct_of(&t).map(str::to_string))
-            .and_then(|s| self.field_types.get(&(s, field.to_string())).cloned())
-            .unwrap_or(TypeSpec::Long)
-    }
-
-    pub(super) fn resolve_arrow_expr_offset(&self, expr: &Expr, field: &str) -> u32 {
-        // expr->field: expr es puntero a struct; funciona ANIDADO (a->b->c)
-        // porque resolve_expr_type sigue los tipos de campo registrados.
-        self.resolve_expr_type(expr)
-            .and_then(|t| Self::pointee_struct_of(&t).map(str::to_string))
-            .and_then(|s| self.get_field_offset(&s, field))
-            .unwrap_or(0)
-    }
-
-    /// Tamano del elemento apuntado/contenido por `base` (para escalar subindices).
-    /// * THE STRIDE OF ONE STEP, AND WHY IT IS NOT A `u8`.
-    ///
-    /// For `int grid[2][3]`, one step of the outer index is a whole ROW: three
-    /// ints, twelve bytes. The old version answered 8 for any array-of-array
-    /// (it fell through to a catch-all), so `grid[1][0]` read `grid[0][2]`.
-    /// That compiles, runs, and prints a plausible number -- the failure mode
-    /// this compiler's own test bench exists to catch.
-    ///
-    /// It returns `u32` because a row is not small: `gammatable[5][256]` steps
-    /// 256 bytes, and a table of 1024 ints steps 4096. A `u8` here does not
-    /// clamp, it WRAPS, which is the same bug with a bigger table.
-    pub(super) fn pointee_size(&self, base: &TypeSpec) -> u32 {
-        match base {
-            TypeSpec::Char | TypeSpec::UnsignedChar => 1,
-            TypeSpec::Short | TypeSpec::UnsignedShort => 2,
-            TypeSpec::Int | TypeSpec::UnsignedInt => 4,
-            TypeSpec::Float => 4, TypeSpec::Double => 8,
-            TypeSpec::Void => 1,
-            TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => *self.struct_sizes.get(s.as_str()).unwrap_or(&8) as u32,
-            TypeSpec::Array(inner, n) => self.pointee_size(inner).saturating_mul(*n),
-            _ => 8,
-        }
-    }
-
-    pub(super) fn element_size(&self, name: &str) -> u32 {
-        if let Some(typ) = self.var_types.get(name) {
-            match typ {
-                TypeSpec::Char => 1, TypeSpec::UnsignedChar => 1,
-                TypeSpec::Short => 2, TypeSpec::UnsignedShort => 2,
-                TypeSpec::Int => 4, TypeSpec::UnsignedInt => 4,
-                TypeSpec::Long | TypeSpec::UnsignedLong => 8,
-                TypeSpec::Ptr(ref base) => self.pointee_size(base),
-                TypeSpec::Array(ref base, _) => self.pointee_size(base),
-                _ => 8,
-            }
-        } else { 8 }
     }
 
     /// La regla de disposicion **ya no esta aqui**: vive una sola vez en
@@ -222,5 +141,20 @@ impl Parser {
 impl crate::tipos::Ambito for Parser {
     fn tipo_de_variable(&self, nombre: &str) -> Option<TypeSpec> {
         self.var_types.get(nombre).cloned()
+    }
+
+    fn tipo_de_campo(&self, agregado: &str, campo: &str) -> Option<TypeSpec> {
+        self.field_types
+            .get(&(agregado.to_string(), campo.to_string()))
+            .cloned()
+    }
+
+    /// [!] Sale de `var_types` y no de una tabla propia **porque ahi es donde
+    /// esta**: un prototipo anota su tipo de retorno bajo el nombre de la
+    /// funcion, y lo dice su propio comentario en `declarations.rs` --
+    /// *"lo unico que deja es el tipo de retorno anotado, para que una llamada
+    /// anterior a la definicion sepa que recibe"*.
+    fn tipo_de_retorno(&self, funcion: &str) -> Option<TypeSpec> {
+        self.var_types.get(funcion).cloned()
     }
 }

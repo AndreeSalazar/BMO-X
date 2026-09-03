@@ -97,17 +97,17 @@ impl Parser {
             Expr::Call(_, args) | Expr::Comma(args) => {
                 for a in args { Self::check_syscall_args_in_expr(a, line)?; }
             }
-            Expr::Arrow(p,_,_,_) | Expr::AssignArrow(p,_,_,_,_) => Self::check_syscall_args_in_expr(p, line)?,
-            Expr::Assign(_, v) | Expr::AssignField(_,_,_,_,v) => Self::check_syscall_args_in_expr(v, line)?,
+            Expr::Arrow(p,_) | Expr::AssignArrow(p,_,_) => Self::check_syscall_args_in_expr(p, line)?,
+            Expr::Assign(_, v) | Expr::AssignField(_,_,v) => Self::check_syscall_args_in_expr(v, line)?,
             Expr::AssignDeref(a, v) => { Self::check_syscall_args_in_expr(a, line)?; Self::check_syscall_args_in_expr(v, line)?; }
-            Expr::Field(b,_,_,_) => Self::check_syscall_args_in_expr(b, line)?,
+            Expr::Field(b,_) => Self::check_syscall_args_in_expr(b, line)?,
             Expr::Cast(_, a) => Self::check_syscall_args_in_expr(a, line)?,
             Expr::Intrinsic(_, args) => { for a in args { Self::check_syscall_args_in_expr(a, line)?; } }
-            Expr::IndexPtr(b, idx, _) => { Self::check_syscall_args_in_expr(b, line)?; Self::check_syscall_args_in_expr(idx, line)?; }
-            Expr::AssignIndexPtr(b, idx, _, v) => { Self::check_syscall_args_in_expr(b, line)?; Self::check_syscall_args_in_expr(idx, line)?; Self::check_syscall_args_in_expr(v, line)?; }
+            Expr::IndexPtr(b, idx) => { Self::check_syscall_args_in_expr(b, line)?; Self::check_syscall_args_in_expr(idx, line)?; }
+            Expr::AssignIndexPtr(b, idx, v) => { Self::check_syscall_args_in_expr(b, line)?; Self::check_syscall_args_in_expr(idx, line)?; Self::check_syscall_args_in_expr(v, line)?; }
             Expr::CallPtr(c, args) => { Self::check_syscall_args_in_expr(c, line)?; for a in args { Self::check_syscall_args_in_expr(a, line)?; } }
-            Expr::Subscript(_, idx, _) => Self::check_syscall_args_in_expr(idx, line)?,
-            Expr::AssignSubscript(_, idx, _, v) => { Self::check_syscall_args_in_expr(idx, line)?; Self::check_syscall_args_in_expr(v, line)?; }
+            Expr::Subscript(_, idx) => Self::check_syscall_args_in_expr(idx, line)?,
+            Expr::AssignSubscript(_, idx, v) => { Self::check_syscall_args_in_expr(idx, line)?; Self::check_syscall_args_in_expr(v, line)?; }
             Expr::AssignOp(lv, _, v) => { Self::check_syscall_args_in_expr(lv, line)?; Self::check_syscall_args_in_expr(v, line)?; }
             _ => {}
         }
@@ -193,17 +193,17 @@ impl Parser {
                 Self::resolve_syscalls_in_expr(syscalls, t);
                 Self::resolve_syscalls_in_expr(syscalls, f);
             }
-            Expr::Arrow(p,_,_,_) | Expr::AssignArrow(p,_,_,_,_) => Self::resolve_syscalls_in_expr(syscalls, p),
-            Expr::Assign(_, v) | Expr::AssignField(_,_,_,_,v) => Self::resolve_syscalls_in_expr(syscalls, v),
+            Expr::Arrow(p,_) | Expr::AssignArrow(p,_,_) => Self::resolve_syscalls_in_expr(syscalls, p),
+            Expr::Assign(_, v) | Expr::AssignField(_,_,v) => Self::resolve_syscalls_in_expr(syscalls, v),
             Expr::AssignDeref(a, v) => { Self::resolve_syscalls_in_expr(syscalls, a); Self::resolve_syscalls_in_expr(syscalls, v); }
-            Expr::Field(b,_,_,_) => Self::resolve_syscalls_in_expr(syscalls, b),
+            Expr::Field(b,_) => Self::resolve_syscalls_in_expr(syscalls, b),
             Expr::Cast(_, a) => Self::resolve_syscalls_in_expr(syscalls, a),
             Expr::Intrinsic(_, args) => { for a in args { Self::resolve_syscalls_in_expr(syscalls, a); } }
-            Expr::IndexPtr(b, idx, _) => { Self::resolve_syscalls_in_expr(syscalls, b); Self::resolve_syscalls_in_expr(syscalls, idx); }
-            Expr::AssignIndexPtr(b, idx, _, v) => { Self::resolve_syscalls_in_expr(syscalls, b); Self::resolve_syscalls_in_expr(syscalls, idx); Self::resolve_syscalls_in_expr(syscalls, v); }
+            Expr::IndexPtr(b, idx) => { Self::resolve_syscalls_in_expr(syscalls, b); Self::resolve_syscalls_in_expr(syscalls, idx); }
+            Expr::AssignIndexPtr(b, idx, v) => { Self::resolve_syscalls_in_expr(syscalls, b); Self::resolve_syscalls_in_expr(syscalls, idx); Self::resolve_syscalls_in_expr(syscalls, v); }
             Expr::CallPtr(c, args) => { Self::resolve_syscalls_in_expr(syscalls, c); for a in args { Self::resolve_syscalls_in_expr(syscalls, a); } }
-            Expr::Subscript(_, idx, _) => Self::resolve_syscalls_in_expr(syscalls, idx),
-            Expr::AssignSubscript(_, idx, _, v) => { Self::resolve_syscalls_in_expr(syscalls, idx); Self::resolve_syscalls_in_expr(syscalls, v); }
+            Expr::Subscript(_, idx) => Self::resolve_syscalls_in_expr(syscalls, idx),
+            Expr::AssignSubscript(_, idx, v) => { Self::resolve_syscalls_in_expr(syscalls, idx); Self::resolve_syscalls_in_expr(syscalls, v); }
             Expr::AssignOp(lv, _, v) => { Self::resolve_syscalls_in_expr(syscalls, lv); Self::resolve_syscalls_in_expr(syscalls, v); }
             Expr::Comma(v) => { for e in v { Self::resolve_syscalls_in_expr(syscalls, e); } }
             _ => {}

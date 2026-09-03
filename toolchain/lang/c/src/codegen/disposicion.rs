@@ -41,6 +41,7 @@ impl Codegen {
         for m in members {
             let sz = self.type_stack_size(&m.typ);
             layout.push((m.name.clone(), d.coloca(sz, self.type_align(&m.typ)), sz));
+            self.field_types.insert((name.to_string(), m.name.clone()), m.typ.clone());
         }
         self.struct_layouts.insert(name.to_string(), layout);
         self.struct_sizes.insert(name.to_string(), d.total());
@@ -53,6 +54,7 @@ impl Codegen {
         for m in members {
             let sz = self.type_stack_size(&m.typ);
             layout.push((m.name.clone(), d.coloca(sz, self.type_align(&m.typ)), sz));
+            self.field_types.insert((name.to_string(), m.name.clone()), m.typ.clone());
         }
         self.struct_layouts.insert(name.to_string(), layout);
         self.struct_sizes.insert(name.to_string(), d.total());
@@ -120,6 +122,96 @@ impl Codegen {
     /// [!] Un `disposiciones` vacio **no es un fallo**: significa que ese
     /// frontend no declara la suya, y entonces manda la del codegen. Lo que si
     /// es un fallo es declararla y que no cuadre.
+    /// **EL PASO de un subindice sobre `name`**: cuanto avanza `+1`.
+    ///
+    /// ** Vivia DENTRO del nodo `Expr::Subscript`, puesto por el parser. Un
+    /// paso no es informacion del programa --es una consecuencia del tipo--,
+    /// asi que hacerlo viajar obligaba al parser a saber tamanos de agregados,
+    /// que es justo lo que menos sabe. Ahora lo contesta quien tiene la tabla.
+    ///
+    /// [!] El `.max(1)` no es cosmetico: un paso de 0 convierte `a[i]` en
+    /// `a[0]` para todo `i`, y eso no falla -- devuelve el primer elemento
+    /// siempre.
+    pub(super) fn paso_de_elemento(&self, name: &str) -> u32 {
+        self.type_stack_size(&self.elem_type_of(name)).max(1)
+    }
+
+    /// **EL OFFSET de un campo**, preguntado a la tabla y no al nodo.
+    ///
+    /// *** Aqui vivia el fallo del 2026-09-02: el offset se grababa en el
+    /// `Expr::Arrow` al parsear, con un `unwrap_or(0)` detras, y `(tope-1)->next`
+    /// escribia en el campo cero. Vaciar el nodo lo hace imposible por
+    /// construccion -- ya no hay nada que grabar mal.
+    ///
+    /// [!] Y cuando no se sabe, **no se contesta 0 en silencio**: se apunta el
+    /// error y la compilacion falla con el nombre del campo delante. Un offset
+    /// inventado no da un error, da un programa que escribe al lado.
+    pub(super) fn offset_de_campo(&mut self, agregado: Option<String>, campo: &str) -> u32 {
+        let Some(agregado) = agregado else {
+            self.errors.push(format!(
+                "no se sabe de que agregado es el campo `{}`: la expresion de la izquierda no resuelve a un struct o union",
+                campo
+            ));
+            return 0;
+        };
+        match self
+            .struct_layouts
+            .get(&agregado)
+            .and_then(|campos| campos.iter().find(|(n, _, _)| n == campo))
+        {
+            Some((_, off, _)) => *off,
+            None => {
+                self.errors.push(format!(
+                    "`{}` no tiene un campo llamado `{}`",
+                    agregado, campo
+                ));
+                0
+            }
+        }
+    }
+
+    /// **El par que necesita todo el que emite un campo: OFFSET y TIPO.**
+    ///
+    /// [!] Se piden juntos a proposito. Son las dos mitades de la misma
+    /// pregunta --donde cae y cuanto mide-- y pedirlas por separado es como se
+    /// llega a resolver una y no la otra: exactamente lo que pasaba cuando el
+    /// offset caia a 0 y el tipo a `Long` por dos caminos distintos.
+    pub(super) fn campo_de_valor(&mut self, base: &Expr, campo: &str) -> (u32, TypeSpec) {
+        let ag = crate::tipos::agregado_de(self, base);
+        let tipo = self.tipo_de_campo_o_ancho(ag.as_deref(), campo);
+        (self.offset_de_campo(ag, campo), tipo)
+    }
+
+    /// El par de `base->campo`.
+    pub(super) fn campo_por_puntero(&mut self, base: &Expr, campo: &str) -> (u32, TypeSpec) {
+        let ag = crate::tipos::agregado_apuntado(self, base);
+        let tipo = self.tipo_de_campo_o_ancho(ag.as_deref(), campo);
+        (self.offset_de_campo(ag, campo), tipo)
+    }
+
+    /// El tipo del campo, o el ancho por defecto cuando no se sabe.
+    ///
+    /// * No apunta error: el error lo apunta `offset_de_campo`, que se llama
+    /// siempre al lado. Duplicarlo daria dos mensajes por un solo fallo.
+    fn tipo_de_campo_o_ancho(&self, agregado: Option<&str>, campo: &str) -> TypeSpec {
+        use crate::tipos::Ambito;
+        agregado
+            .and_then(|a| self.tipo_de_campo(a, campo))
+            .unwrap_or(TypeSpec::Long)
+    }
+
+    /// El offset de `base.campo`.
+    pub(super) fn offset_de_valor(&mut self, base: &Expr, campo: &str) -> u32 {
+        let ag = crate::tipos::agregado_de(self, base);
+        self.offset_de_campo(ag, campo)
+    }
+
+    /// El offset de `base->campo`.
+    pub(super) fn offset_por_puntero(&mut self, base: &Expr, campo: &str) -> u32 {
+        let ag = crate::tipos::agregado_apuntado(self, base);
+        self.offset_de_campo(ag, campo)
+    }
+
     pub(super) fn cotejar_disposicion(&self, program: &Program) -> Result<()> {
         for (nombre, suya) in &program.disposiciones {
             let mia = match self.struct_layouts.get(nombre) {

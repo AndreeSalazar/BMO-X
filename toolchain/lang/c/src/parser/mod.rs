@@ -5,9 +5,10 @@ pub mod preprocessor;
 /// reparto y para que hicieron GCC, Clang, chibicc, TCC y MSVC con esto mismo.
 mod inicializador;
 
-/// TYPE AND LAYOUT RESOLUTION: what a name refers to and where in a struct it
-/// lives. A type checker's job living inside a parser, because `Expr::Field`
-/// carries its byte offset.
+/// LA DISPOSICION del lado del frontend: cuanto mide cada agregado y donde cae
+/// cada campo. **Ya no resuelve accesos**: desde el 2026-09-02 `Expr::Field`
+/// solo nombra el campo, y eso se llevo por delante los nueve metodos que
+/// hacian de comprobador de tipos dentro del parser.
 mod types;
 /// THE SYSCALL PASS: validate then resolve, walking an already-built tree. Not
 /// grammar -- a check against the frozen kernel surface.
@@ -601,21 +602,21 @@ fn asignacion_con_uno(expr: Expr, op: fn(Box<Expr>, Box<Expr>) -> Expr) -> Optio
             let leer = Box::new(Expr::Var(n.clone()));
             Expr::Assign(n, Box::new(op(leer, uno())))
         }
-        Expr::Field(e, f, off, ft) => {
-            let leer = Box::new(Expr::Field(e.clone(), f.clone(), off, ft.clone()));
-            Expr::AssignField(e, f, off, ft, Box::new(op(leer, uno())))
+        Expr::Field(e, f) => {
+            let leer = Box::new(Expr::Field(e.clone(), f.clone()));
+            Expr::AssignField(e, f, Box::new(op(leer, uno())))
         }
-        Expr::Arrow(e, f, off, ft) => {
-            let leer = Box::new(Expr::Arrow(e.clone(), f.clone(), off, ft.clone()));
-            Expr::AssignArrow(e, f, off, ft, Box::new(op(leer, uno())))
+        Expr::Arrow(e, f) => {
+            let leer = Box::new(Expr::Arrow(e.clone(), f.clone()));
+            Expr::AssignArrow(e, f, Box::new(op(leer, uno())))
         }
-        Expr::Subscript(n, idx, sc) => {
-            let leer = Box::new(Expr::Subscript(n.clone(), idx.clone(), sc));
-            Expr::AssignSubscript(n, idx, sc, Box::new(op(leer, uno())))
+        Expr::Subscript(n, idx) => {
+            let leer = Box::new(Expr::Subscript(n.clone(), idx.clone()));
+            Expr::AssignSubscript(n, idx, Box::new(op(leer, uno())))
         }
-        Expr::IndexPtr(b, idx, ty) => {
-            let leer = Box::new(Expr::IndexPtr(b.clone(), idx.clone(), ty.clone()));
-            Expr::AssignIndexPtr(b, idx, ty, Box::new(op(leer, uno())))
+        Expr::IndexPtr(b, idx) => {
+            let leer = Box::new(Expr::IndexPtr(b.clone(), idx.clone()));
+            Expr::AssignIndexPtr(b, idx, Box::new(op(leer, uno())))
         }
         Expr::Deref(a) => {
             let leer = Box::new(Expr::Deref(a.clone()));

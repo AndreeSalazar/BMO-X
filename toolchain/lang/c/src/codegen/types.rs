@@ -87,8 +87,8 @@ impl Codegen {
         match e {
             Expr::Var(n) => self.var_type_of(n).map_or(false, |t| Self::is_unsigned_ty(&t)),
             Expr::Cast(t, _) => Self::is_unsigned_ty(t),
-            Expr::Field(_, _, _, t) | Expr::Arrow(_, _, _, t) => Self::is_unsigned_ty(t),
-            Expr::IndexPtr(_, _, t) => Self::is_unsigned_ty(t),
+            Expr::Field(_, _) | Expr::Arrow(_, _) => crate::tipos::tipo_de(self, e).map_or(false, |t| Self::is_unsigned_ty(&t)),
+            Expr::IndexPtr(base, _) => self.pointee_type(base).map_or(false, |t| Self::is_unsigned_ty(&t)),
             // En una operacion binaria basta con que UNO sea sin signo: es la
             // conversion aritmetica usual de C, que arrastra el resultado al
             // tipo sin signo.
@@ -120,8 +120,8 @@ impl Codegen {
             Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b) =>
                 self.expr_is_float(a) || self.expr_is_float(b),
             Expr::Neg(a) => self.expr_is_float(a),
-            Expr::Field(_, _, _, t) | Expr::Arrow(_, _, _, t) => Self::is_float_ty(t),
-            Expr::IndexPtr(_, _, t) => Self::is_float_ty(t),
+            Expr::Field(_, _) | Expr::Arrow(_, _) => crate::tipos::tipo_de(self, e).map_or(false, |t| Self::is_float_ty(&t)),
+            Expr::IndexPtr(base, _) => self.pointee_type(base).map_or(false, |t| Self::is_float_ty(&t)),
             Expr::Conditional(_, a, b) => self.expr_is_float(a) || self.expr_is_float(b),
             // * Una LLAMADA es flotante si su funcion devuelve un flotante.
             //
