@@ -11,7 +11,7 @@
 # El numero va solo en la primera linea util. Lo de abajo es el inventario, y es
 # comentario: esta para leerlo, no para juzgarlo.
 
-24
+25
 # NADA      Ultra_kernel_x86-64/kernel/src/ring0/core/autopsy.rs
 # APARATO   Ultra_kernel_x86-64/kernel/src/ring0/core/emergencia.rs
 # NADA      Ultra_kernel_x86-64/kernel/src/ring0/core/gato/masks.rs
@@ -36,3 +36,4 @@
 # APARATO   platform/drivers/net/src/lib.rs
 # MAQUINA   platform/shared/bmo-fisica-juicio/src/lib.rs
 # MAQUINA   platform/shared/bmo-mmio-juicio/src/lib.rs
+# DATO      toolchain/lang/c/src/tipos.rs

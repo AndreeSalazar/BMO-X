@@ -325,64 +325,19 @@ impl Codegen {
     /// aritmetica de punteros (`p + 1`), y un cast explicito. Cuando no se
     /// puede deducir se devuelve `None` y el `deref` lee 8 bytes, que es el
     /// comportamiento anterior.
+    /// A que apunta esta expresion.
+    ///
+    /// ** DELEGA EN EL JUEZ UNICO (`crate::tipos`). Antes era una segunda
+    /// respuesta a la misma pregunta que resolvia `parser/types.rs`, y las dos
+    /// sabian cosas distintas: esta conocia la aritmetica de punteros y la
+    /// decadencia de arrays, y NO conocia `&x`. La cabecera de `tipos.rs` trae
+    /// la tabla entera de lo que sabia cada una.
+    ///
+    /// [!] Los brazos que vivian aqui --y las lecciones que traian: `*p++` es
+    /// `va_arg`, `*tabla[i]` mira dentro, el stride de una fila de matriz-- se
+    /// mudaron con su prosa al juez. Ninguno se perdio.
     pub(super) fn pointee_type(&self, expr: &Expr) -> Option<TypeSpec> {
-        match expr {
-            Expr::Var(name) => match self.var_type_of(name) {
-                Some(TypeSpec::Ptr(inner)) | Some(TypeSpec::Array(inner, _)) => Some(*inner),
-                _ => None,
-            },
-            Expr::Cast(TypeSpec::Ptr(inner), _) => Some((**inner).clone()),
-            Expr::Add(a, b) | Expr::Sub(a, b) => {
-                self.pointee_type(a).or_else(|| self.pointee_type(b))
-            }
-            // * `*tabla[i]` -- la tabla es DE PUNTEROS, y hay que mirar dentro.
-            //
-            // Sin esto el `_ => None` de abajo dejaba caer el deref en el caso
-            // por defecto, que lee OCHO bytes. Y ahi no hay error: `*p` sobre
-            // un `int*` devolvia el entero pedido **y el de al lado en la mitad
-            // alta**, o sea `(20 << 32) | 10` donde tocaba un 10.
-            //
-            // Se ve en cuanto se ejecuta y no se ve nunca mirando el binario,
-            // que es por lo que este banco de pruebas corre los programas.
-            Expr::Subscript(name, _, _) => match self.var_type_of(name) {
-                Some(TypeSpec::Ptr(elem)) | Some(TypeSpec::Array(elem, _)) => match *elem {
-                    TypeSpec::Ptr(dentro) => Some(*dentro),
-                    _ => None,
-                },
-                _ => None,
-            },
-            Expr::IndexPtr(_, _, elem) => match elem {
-                TypeSpec::Ptr(dentro) => Some((**dentro).clone()),
-                _ => None,
-            },
-            // `p->campo` y `p.campo` cuando el campo ES un puntero.
-            Expr::Arrow(_, _, _, ft) | Expr::Field(_, _, _, ft) => match ft {
-                TypeSpec::Ptr(dentro) => Some((**dentro).clone()),
-                _ => None,
-            },
-            // ** `p++` SIGUE SIENDO UN PUNTERO, Y ESTO FALTABA.
-            //
-            // Sin este brazo, `*p++` caia en el `_ => None` de abajo: el `Deref`
-            // no sabia a que apuntaba y leia **ocho bytes** por defecto. Con un
-            // `int *` eso da `(v[1] << 32) | v[0]` -- dos enteros pegados en uno,
-            // que es un numero enorme y perfectamente legitimo.
-            //
-            // [!] Y es EXACTAMENTE la macro `va_arg`. El arreglo de la manana
-            // --que `p++` avanzara un elemento-- se probo con
-            // `unsigned long long *`, donde el tamano por defecto y el real
-            // coinciden en 8: **la prueba pasaba por casualidad**. Lo destapo la
-            // sonda del lenguaje al ejercer la misma casilla con `int *`.
-            //
-            // La leccion, para la proxima: al probar un tamano, **no usar el
-            // tipo cuyo tamano es el valor por defecto**.
-            Expr::PostInc(n) | Expr::PreInc(n) | Expr::PostDec(n) | Expr::PreDec(n) => {
-                match self.var_type_of(n) {
-                    Some(TypeSpec::Ptr(inner)) | Some(TypeSpec::Array(inner, _)) => Some(*inner),
-                    _ => None,
-                }
-            }
-            _ => None,
-        }
+        crate::tipos::apunta_a(self, expr)
     }
 
     /// Cuantos bytes avanza `+1` sobre esta expresion, si es un puntero.
@@ -408,5 +363,15 @@ impl Codegen {
         // siendo la misma direccion escrita de dos formas.
         let size = self.type_stack_size(&self.pointee_type(expr)?);
         if size > 1 { Some(size) } else { None }
+    }
+}
+
+/// El codegen contesta la misma pregunta que el parser, con SU tabla.
+///
+/// * Locales primero y globales despues: es el orden de sombra de C, y es el
+/// mismo `var_type_of` que ya usaban `expr_is_float` y `expr_is_unsigned`.
+impl crate::tipos::Ambito for Codegen {
+    fn tipo_de_variable(&self, nombre: &str) -> Option<TypeSpec> {
+        self.var_type_of(nombre)
     }
 }

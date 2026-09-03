@@ -45,6 +45,25 @@
 //! nada: la division por el tamano acierta por casualidad cuando el tamano es
 //! una potencia de dos pequena.
 
+//! # 2026-09-02 -- LAS CINCO ESTAN EN VERDE, Y ESTE FICHERO CAMBIA DE OFICIO
+//!
+//! Dejo de reproducir bugs abiertos y pasa a ser el GUARDIAN de los dos que
+//! cerro. Las causas eran dos, y las dos eran la misma forma: **la misma
+//! pregunta contestada en dos sitios que no sabian lo mismo**.
+//!
+//! ```text
+//!    CAUSA A   el parser no sabia el tipo de `p - 1`   -> offset 0 al grabar
+//!    CAUSA B   el codegen no veia `&x` como direccion  -> multiplico por 80
+//! ```
+//!
+//! El arreglo no fue anadir dos brazos: fue que `parser/types.rs` y
+//! `codegen/indexing.rs` **dejaran de tener cada uno su respuesta**. Hoy los
+//! dos preguntan a `crate::tipos`, que es el juez unico. Ver su cabecera.
+//!
+//! [!] Si alguna de estas cinco vuelve a ponerse roja, el sitio a mirar NO es
+//! el brazo que falta: es si alguien ha vuelto a contestar esta pregunta por
+//! su cuenta.
+
 use super::*;
 
 /// El mismo molde en todas las casillas: la forma de `vissprite_t`.
@@ -122,14 +141,13 @@ int main() {{
 /// El brazo del codegen divide **con signo** (`cqo` + `idiv`) justo por esto:
 /// una division sin signo convertiria un -5 legal en 230.584.300.921.369.395.
 ///
-/// **ROJA, y reproduce un bug ABIERTO.** Da **-679168**. Y ojo al contraste
+/// ** VERDE desde el 2026-09-02. Daba **-679168**. Y ojo al contraste
 /// con la casilla de arriba, que sale verde: restar dos punteros GUARDADOS EN
 /// VARIABLES acierta; restar el ARRAY (que decae) menos `&arr[5]` no. O sea
 /// que no falla la division por el tamano -- falla lo que se le da a restar.
 /// Ni siquiera son bytes: -400 seria "se olvido de dividir", y -679168 no es
 /// eso. Es un operando que no es el que se pide.
 #[test]
-#[ignore = "reproduce un bug abierto: `arr - &arr[5]` da -679168 en vez de -5"]
 fn la_resta_al_reves_sale_negativa() {
     let salida = run_c(&format!(
         "{MOLDE}
@@ -181,7 +199,7 @@ int main() {{
 /// un global: `&local` de un struct y `&global` de un struct son dos brazos
 /// distintos de `Expr::AddrOf`, y el que usa DOOM es el primero.
 ///
-/// **ROJA, Y ES LA MUERTE DE DOOM REPRODUCIDA SIN ENCENDER LA MAQUINA.**
+/// ** LA MUERTE DE DOOM REPRODUCIDA SIN ENCENDER LA MAQUINA -- y CERRADA.
 ///
 /// Da `8 101`. El `8` es `count`, correcto. El `101` es el tope de seguridad
 /// de este fichero: **el recorrido no vuelve nunca al centinela**. En DOOM no
@@ -205,7 +223,6 @@ int main() {{
 /// posicion MAS ALLA del final -- y el recorrido se va del array sin tocar el
 /// centinela. Encaja con el sintoma sin dejar cabos.
 #[test]
-#[ignore = "reproduce la muerte de DOOM: el recorrido de la lista no vuelve al centinela"]
 fn la_lista_circular_con_centinela_local_se_recorre_entera() {
     let salida = run_c(&format!(
         "{MOLDE}
@@ -312,7 +329,7 @@ int main() {{
 //
 //     calcular la direccion    VERDE
 //     con variable intermedia  VERDE
-//     guardar en linea         ROJA  -- y cae en el campo 0, no en el suyo
+//     guardar en linea         caia en el campo 0 y no en el suyo (cerrado)
 //
 // *** **EL CULPABLE, LOCALIZADO**: `parser/types.rs`,
 // `resolve_arrow_expr_offset`, que acaba en **`.unwrap_or(0)`**. Cuando el
@@ -372,12 +389,11 @@ int main() {{
     assert_eq!(salida, "1", "la variable intermedia si tiene tipo declarado");
 }
 
-/// **PARTE 3: y EN LINEA no.** ROJA.
+/// **PARTE 3: y EN LINEA tampoco, hasta el 2026-09-02.**
 ///
 /// La unica diferencia con la casilla de arriba es que el puntero no pasa por
 /// una variable. Ahi se pierde el tipo, y con el tipo se pierde el offset.
 #[test]
-#[ignore = "bug abierto: la flecha sobre un puntero calculado resuelve offset 0"]
 fn guardar_por_una_flecha_sobre_un_puntero_calculado_cae_en_el_ultimo() {
     let salida = run_c(&format!(
         "{MOLDE}
@@ -394,13 +410,12 @@ int main() {{
     assert_eq!(salida, "1", "la escritura tiene que caer en arr[7].next");
 }
 
-/// **PARTE 4: DONDE cae, que es lo que nombra al culpable.** ROJA.
+/// **PARTE 4: DONDE cae, que es lo que nombro al culpable.**
 ///
 /// Da `1 0`: la escritura fue a `prev` --offset 0-- en vez de a `next`
 /// --offset 8--. Eso no es una direccion mal calculada: es un OFFSET DE CAMPO
 /// que vale cero. Ver la cabecera de esta seccion.
 #[test]
-#[ignore = "bug abierto: da `1 0`, o sea que el campo resuelto fue el offset 0"]
 fn la_flecha_calculada_no_escribe_en_el_campo_cero() {
     let salida = run_c(&format!(
         "{MOLDE}
@@ -419,10 +434,9 @@ int main() {{
 }
 
 /// **PARTE 5: la forma exacta de DOOM** -- guardar la direccion de una LOCAL.
-/// ROJA por lo mismo, y se conserva porque es la linea literal del juego
+/// Caia por lo mismo, y se conserva porque es la linea literal del juego
 /// (`unsorted` es una local de `R_SortVisSprites`).
 #[test]
-#[ignore = "bug abierto: misma causa que las dos de arriba"]
 fn guardar_la_direccion_de_una_local_por_un_puntero_calculado() {
     let salida = run_c(&format!(
         "{MOLDE}
