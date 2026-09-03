@@ -175,3 +175,37 @@ int main() {
     assert_eq!(run_c(src).trim(), "42 121");
 }
 
+/// *** LA TABLA DE PUNTEROS A FUNCION INICIALIZADA -- el muro de DOOM (03-09).
+///
+/// `f_wipe.c` declara dentro de una funcion:
+///
+/// ```c
+///    static int (*wipes[])(int, int, int) =
+///        { wipe_initColorXForm, wipe_doColorXForm, ... };
+///    rc = (*wipes[wipeno*3+1])(width, height, ticks);
+/// ```
+///
+/// El metal contesto con un `#GP` en `wipe_ScreenWipe+0xa8`, `ff d0` = `call
+/// rax`, y el veredicto **PUNTERO NO CANONICO**: se llama a una direccion que
+/// nunca se escribio.
+///
+/// [!] Y el muro **ya estaba documentado desde el otro lado**: el descenso de
+/// C++ dice, para las tablas virtuales, que *"no se pueden emitir como un
+/// inicializador estatico porque las globales de BMO C solo admiten un entero,
+/// y la direccion de una funcion no se conoce hasta emitir el codigo"*. C++ lo
+/// rodea rellenando la tabla al principio de `main`. **DOOM no puede: su tabla
+/// la escribe el programador.**
+#[test]
+#[ignore = "bug abierto: una tabla de punteros a funcion inicializada estaticamente sale a ceros -- es el #GP de wipe_ScreenWipe en el Ryzen (03-09)"]
+fn una_tabla_estatica_de_punteros_a_funcion_se_puede_llamar() {
+    let salida = run_c(
+        "int uno(int a) { return a + 1; }
+         int dos(int a) { return a + 2; }
+         static int (*tabla[])(int) = { uno, dos };
+         int main() {
+             printf(\"%d %d\", (*tabla[0])(10), (*tabla[1])(10));
+             return 0;
+         }",
+    );
+    assert_eq!(salida, "11 12", "la tabla tiene que traer las DOS direcciones");
+}
