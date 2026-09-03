@@ -11,7 +11,7 @@
 
 [TECHOS]
   1869  toolchain/lang/cobol/src/codegen.rs
-  1340  toolchain/lang/c/src/codegen/mod.rs
+  1326  toolchain/lang/c/src/codegen/mod.rs
   1565  toolchain/lang/cobol/src/parser.rs
   1177  toolchain/lang/cpp/src/parser.rs
   1179  platform/abi/bmo-abi/src/bef/validator.rs

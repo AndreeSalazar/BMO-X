@@ -149,6 +149,54 @@ impl Codegen {
         self.code.extend_from_slice(&[0x48, 0x89, 0xF8]); // mov rax, rdi
     }
 
+    /// **Asignar un agregado A TRAVES DE UN PUNTERO**: `*p = origen`.
+    ///
+    /// # En que se diferencia de [`Self::emit_asigna_agregado`]
+    ///
+    /// En de donde sale la direccion del destino, y es toda la diferencia:
+    ///
+    /// ```text
+    ///    a = b     el destino es un LVALUE      -> su direccion
+    ///    *p = b    el destino es un PUNTERO     -> su VALOR
+    /// ```
+    ///
+    /// # *** Por que existe, y es un fallo que me destapo DOOM
+    ///
+    /// `r_bsp.c:122` desplaza la lista de recorte del BSP con
+    /// `*next = *(next-1)`, y `cliprange_t` son dos `int`. Sin este camino, la
+    /// asignacion caia en la ruta escalar:
+    ///
+    /// ```text
+    ///    emit_load_elem   sobre un agregado NO CARGA (la direccion ES el valor)
+    ///    emit_store_elem  sobre 8 bytes guarda `rdx`
+    ///    -> se escribia LA DIRECCION del origen dentro del destino
+    /// ```
+    ///
+    /// [!] Y antes del 2026-09-03 acertaba **por casualidad**: el viejo brazo
+    /// de `Deref` cargaba ocho bytes a pelo para cualquier cosa que no supiera
+    /// nombrar, y un `cliprange_t` mide exactamente ocho. Un struct de doce se
+    /// habria copiado a medias sin que nadie lo viera.
+    ///
+    /// ** El sintoma en el metal fue `Bad R_RenderWallRange: 28 to 27` -- el
+    /// propio `RANGECHECK` de DOOM viendo un rango invertido, porque la lista
+    /// de recorte se habia llenado de direcciones.
+    pub(super) fn emit_asigna_agregado_por_puntero(
+        &mut self,
+        destino_ptr: &Expr,
+        origen: &Expr,
+        bytes: u32,
+    ) {
+        // Mismo orden que la version por lvalue: origen primero y aparcado,
+        // para que evaluar el destino no pueda pisar `rsi`.
+        self.emit_expr_as_ptr(origen);
+        self.code.push(0x50); // push rax
+        self.emit_expr(destino_ptr); // rax = el VALOR del puntero
+        self.code.extend_from_slice(&[0x48, 0x89, 0xC7]); // mov rdi, rax
+        self.code.push(0x5E); // pop rsi
+        self.emit_copia_rsi_rdi(bytes);
+        self.code.extend_from_slice(&[0x48, 0x89, 0xF8]); // mov rax, rdi
+    }
+
     /// **Empujar** un agregado como argumento: sus palabras, en ranuras.
     ///
     /// * De la ULTIMA a la primera. La pila crece hacia abajo, asi que empujar

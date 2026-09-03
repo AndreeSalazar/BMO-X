@@ -58,6 +58,71 @@ impl Codegen {
         }
     }
 
+    // == `*p` -- LEER Y GUARDAR A TRAVES DE UN PUNTERO ====================
+    //
+    // Salieron de `codegen/mod.rs` el 2026-09-03 y los mando L6a: aquel fichero
+    // esta en el trinquete y solo puede encoger.
+    //
+    // ** Pero el sitio ya estaba escrito en la cabecera de ESTE fichero --
+    // *"turning `a[i]`, `*p` and `p + n` into an address"*. La regla no
+    // encontro un hueco: encontro que la pieza llevaba tiempo en la habitacion
+    // de al lado.
+
+        // ** Y la LECTURA usa la misma tabla que la escritura.
+        //
+        // Aqui habia una TERCERA copia a mano del "carga por ancho", con su
+        // propio `match` de siete brazos. Preguntaba bien --el ancho salia
+        // correcto-- pero ser una copia es como se llega a que una crezca y
+        // la otra no: le faltaban los agregados y el `float`.
+        pub(super) fn emit_leer_por_puntero(&mut self, a: &Expr) {
+            let apuntado = self.pointee_type(a).unwrap_or(TypeSpec::Long);
+            self.emit_expr(a); // rax = direccion
+            self.emit_load_elem(&apuntado);
+        }
+
+        // *** `*p = x` CON EL ANCHO DE LO APUNTADO, y no siempre ocho.
+        //
+        // Hasta el 2026-09-03 esto emitia `mov [rax], rdx` a secas: OCHO
+        // bytes, sobre cualquier puntero. `*p = 1` en un `char *` se
+        // llevaba siete vecinos por delante.
+        //
+        // ** Lo encontro DOOM, y por una suma: `I_VideoBuffer` mide 64.000
+        // bytes y acaba justo donde empezaba el bloque pisado del monton.
+        // `r_draw.c` pinta con `*dest = dc_colormap[...]`, o sea que el
+        // ULTIMO pixel de la pantalla escribia siete bytes fuera.
+        //
+        // [!] Y por eso duro meses: DOOM dibuja las columnas de izquierda a
+        // derecha, asi que los siete bytes que cada escritura se lleva los
+        // vuelve a escribir la columna siguiente. Se veia BIEN. Solo
+        // sobrevivia el desperdicio de la ultima, que es la que cae fuera.
+        // **Un fallo que se repara solo el 99,7% de las veces es de los que
+        // no se encuentran mirando la pantalla.**
+        //
+        // * El `unwrap_or(Long)` conserva el comportamiento viejo cuando el
+        // tipo no se resuelve: ocho bytes. No se convierte en error aqui
+        // porque eso es una decision aparte y mas ancha que este arreglo.
+        pub(super) fn emit_guardar_por_puntero(&mut self, addr: &Expr, val: &Expr) {
+            let apuntado = self.pointee_type(addr).unwrap_or(TypeSpec::Long);
+            // *** UN AGREGADO NO CABE EN `rdx`, asi que no va por aqui.
+            //
+            // `*next = *(next-1)` de `r_bsp.c` copia un `cliprange_t`. Por
+            // la ruta escalar se escribia LA DIRECCION del origen dentro
+            // del destino, porque `emit_load_elem` sobre un agregado no
+            // carga -- la direccion ES el valor-- y `emit_store_elem`
+            // guardaba esos ocho bytes tal cual.
+            if self.es_agregado(&apuntado) {
+                let bytes = self.type_stack_size(&apuntado);
+                self.emit_asigna_agregado_por_puntero(addr, val, bytes);
+                return;
+            }
+            self.emit_expr(val); // rax = valor
+            self.code.push(0x50); // push valor
+            self.emit_expr(addr); // rax = direccion
+            self.code.push(0x5A); // pop rdx = valor
+            self.emit_store_elem(&apuntado); // <- el ancho EXACTO
+            self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // rax = valor
+        }
+
     /// **LEER `a.x` o `p->x`**: direccion + offset, y carga con el ancho y el
     /// signo EXACTOS del campo.
     pub(super) fn emit_leer_campo(&mut self, base: &Expr, campo: &str, por: Por) {
