@@ -29,6 +29,10 @@ mod floats;
 /// bytes; leer es ESPERAR, guardar lo que sobra y decidir que significa lo que
 /// alguien tecleo. Tres problemas que la salida no tiene.
 mod entrada;
+/// LA DISPOSICION: donde cae cada campo de un agregado, cuanto mide el
+/// conjunto, y **el cotejo** contra lo que dijo el frontend. Salio de aqui
+/// porque colocar y comprobar la colocacion son el mismo concepto.
+mod disposicion;
 /// El CATALOGO de funciones sintetizadas: nombre -> los bytes que lo
 /// implementan. Salio de aqui porque dentro no se sabe que es una expresion de
 /// C -- solo hay nombres y codigo -- y esa frontera se ve en que ese fichero no
@@ -304,6 +308,7 @@ impl Codegen {
                 _ => {}
             }
         }
+        self.cotejar_disposicion(program)?;
         // Las funciones que ESTA unidad define. Se necesita antes de leer los
         // globales: un nombre suelto en una tabla es la direccion de una
         // funcion solo si la funcion existe aqui -- si solo hay un prototipo,
@@ -647,82 +652,6 @@ impl Codegen {
             return Err(CError::new(0, message.clone()));
         }
         Ok(())
-    }
-
-    /// Segunda de las tres copias que habia de la regla de disposicion. Ahora
-    /// las tres llaman a `bmo_abi::types::disposicion`, que es donde esta
-    /// escrita -- y con sus tests.
-    ///
-    /// Que el codegen la recalcule en vez de recibirla del parser **no es
-    /// duplicacion**: es lo que hace que un frontend distinto (C++) que ya
-    /// calculo offsets para sus nodos `Field` no pueda imponer una
-    /// disposicion propia sin que se note.
-    fn build_struct_layout(&mut self, name: &str, members: &[StructMember]) {
-        let mut layout = Vec::new();
-        let mut d = bmo_abi::types::Disposicion::nueva();
-        for m in members {
-            let sz = self.type_stack_size(&m.typ);
-            layout.push((m.name.clone(), d.coloca(sz, self.type_align(&m.typ)), sz));
-        }
-        self.struct_layouts.insert(name.to_string(), layout);
-        self.struct_sizes.insert(name.to_string(), d.total());
-        self.struct_aligns.insert(name.to_string(), d.alineado());
-    }
-
-    fn build_union_layout(&mut self, name: &str, members: &[StructMember]) {
-        let mut layout = Vec::new();
-        let mut d = bmo_abi::types::DisposicionUnion::nueva();
-        for m in members {
-            let sz = self.type_stack_size(&m.typ);
-            layout.push((m.name.clone(), d.coloca(sz, self.type_align(&m.typ)), sz));
-        }
-        self.struct_layouts.insert(name.to_string(), layout);
-        self.struct_sizes.insert(name.to_string(), d.total());
-        self.struct_aligns.insert(name.to_string(), d.alineado());
-    }
-
-    /// **El alineado de un tipo**, que no es su tamano en cuanto deja de ser
-    /// un escalar.
-    ///
-    /// Las tres filas que no son la trivial son las que importan, y las tres
-    /// aparecen en las estructuras que DOOM lee del WAD:
-    ///
-    /// - un **array** se alinea como su elemento, no como el conjunto. `char
-    ///   name[8]` se alinea a 1, aunque mida 8 igual que un puntero.
-    /// - un **agregado** se alinea como el mas exigente de sus miembros, que
-    ///   es lo que `Disposicion::alineado()` fue acumulando al colocarlos.
-    /// - un **puntero** siempre a 8, mida lo que mida lo apuntado.
-    ///
-    /// [!] El `unwrap_or(8)` de la rama del agregado es el mismo suelo que usa
-    /// [`Self::type_stack_size`]: un struct que todavia no se ha colocado.
-    /// Conservar los dos suelos iguales es lo que evita que tamano y alineado
-    /// se contradigan a mitad de una disposicion.
-    fn type_align(&self, typ: &TypeSpec) -> u32 {
-        match typ {
-            TypeSpec::Array(t, _) => self.type_align(t),
-            TypeSpec::StructRef(name) | TypeSpec::UnionRef(name) => {
-                self.struct_aligns.get(name).copied().unwrap_or(8)
-            }
-            TypeSpec::Ptr(_) => 8,
-            otro => bmo_abi::types::alineado_de(self.type_stack_size(otro)),
-        }
-    }
-
-    fn type_stack_size(&self, typ: &TypeSpec) -> u32 {
-        match typ {
-            TypeSpec::Void => 0,
-            TypeSpec::Char | TypeSpec::UnsignedChar => 1,
-            TypeSpec::Short | TypeSpec::UnsignedShort => 2,
-            TypeSpec::Int | TypeSpec::UnsignedInt => 4,
-            TypeSpec::Long | TypeSpec::UnsignedLong | TypeSpec::LongLong | TypeSpec::UnsignedLongLong => 8,
-            TypeSpec::Float => 4,
-            TypeSpec::Double => 8,
-            TypeSpec::Ptr(_) => 8,
-            TypeSpec::Array(t, n) => self.type_stack_size(t) * n,
-            TypeSpec::StructRef(name) | TypeSpec::UnionRef(name) => {
-                self.struct_sizes.get(name).copied().unwrap_or(8)
-            }
-        }
     }
 
     fn collect_strings(&mut self, program: &Program) {

@@ -296,28 +296,90 @@ vuelto a contestar esta pregunta por su cuenta.*
 
 ---
 
-## 8. LO QUE FALTA DEL 2.0, y por que no se hizo hoy
+## 8. EL 2.0, PASO 2 -- EL COTEJO (2026-09-02)
 
-El juez unico cierra **una** de las seis parejas del censo del punto 4. Las
-otras cinco son todas la misma cosa --**la disposicion**-- y se cierran juntas
-o no se cierran:
+El plan era fusionar las cinco parejas de disposicion que quedaban del censo
+del punto 4. **Al leer el arbol, el plan estaba mal**, y lo dice una cabecera
+que ya estaba escrita en `codegen/mod.rs`:
+
+> *"Que el codegen la recalcule en vez de recibirla del parser **no es
+> duplicacion**: es lo que hace que un frontend distinto (C++) que ya calculo
+> offsets para sus nodos `Field` no pueda imponer una disposicion propia sin
+> que se note."*
+
+*** **El argumento es bueno.** Fusionar habria borrado una defensa a proposito
+por confundirla con un descuido.
+
+### Pero la implementacion no cumplia lo que la cabecera prometia
+
+Se calculaban DOS disposiciones y **no se comparaba ninguna**.
+
+> Dos cuentas que nadie contrasta no son una comprobacion doble: son dos
+> oportunidades de equivocarse.
+
+Y ya habia pasado: el 13-08 divergieron, y lo destapo un bug -- no un guardian.
+
+### Lo que entra
 
 ```
-   compute_struct_layout (parser)  |  build_struct_layout (codegen)
-   compute_union_layout  (parser)  |  build_union_layout  (codegen)
-   type_align            (parser)  |  type_align          (codegen)
-   type_size (parser) | type_stack_size (codegen) | stack_size (ast)
-   pointee_size          (parser)  |  pointer_scale       (codegen)
+   ast/program.rs           `Program.disposiciones` -- lo que el FRONTEND dice
+                            que mide cada agregado y donde cae cada campo
+   parser/mod.rs            lo COPIA de las tablas que ya lleno (no recalcula:
+                            eso seria fabricar un tercer juez)
+   codegen/disposicion.rs   colocar + `cotejar_disposicion`, en su fichero
 ```
 
-** El siguiente paso es **UNA tabla de disposicion**, calculada una vez y
-llevada en el `Program`, que el codegen CONSULTE en vez de reconstruir. Es lo
-que en un compilador de C tipico hace `stor-layout`, y es lo que permite el
-paso final: **vaciar las 8 variantes de `Expr` que hoy cargan datos resueltos**
-(`Subscript`, `AssignSubscript`, `IndexPtr`, `AssignIndexPtr`, `Field`,
-`Arrow`, `AssignField`, `AssignArrow`, de 50 en total) para que el parser
-vuelva a ser un parser.
+** Y el cotejo se prueba por los dos lados. Que un guardian no se queje puede
+significar dos cosas muy distintas --que todo cuadra, o que no mira--, asi que
+`tests/cotejo_de_disposicion.rs` fija las cuatro:
 
-[!] No se hizo hoy a proposito: toca `Program`, el codegen entero y las 46
-casillas que construyen expresiones a mano. Se hace con el banco delante y en
-su propio paso, no colgando de un arreglo de fallos.
+```
+   coinciden -> compila            (sin esta, un cotejo que rechaza SIEMPRE
+                                    tambien pasaria por guardian)
+   un offset movido un byte -> NO, y el mensaje nombra agregado Y campo
+   un tamano que no cuadra  -> NO, y dice que lo que falla es el tamano
+   `disposiciones` vacio    -> compila: ese frontend no declara la suya
+```
+
+Es la misma exigencia que el contrato le hace a sus diecisiete reglas: **saber
+decir que NO.**
+
+### L6a mordio, y tenia razon
+
+Anadir el cotejo hizo crecer `codegen/mod.rs` 34 lineas de codigo, y ese fichero
+esta en la lista del trinquete: **solo puede encoger**. La respuesta no fue
+levantar el techo sino repartir, que es para lo que la regla existe -- colocar
+un agregado y comprobar esa colocacion son **un solo concepto**, y estaban entre
+una funcion sin vecinos y ninguna parte.
+
+```
+   codegen/mod.rs        1398 -> 1352 lineas de CODIGO   (techo sellado abajo)
+   codegen/disposicion.rs                84
+```
+
+[!] Al sellar, `Ultra_kernel_x86-64/build.ps1` **salio de la lista**: mide 559
+lineas (525 de codigo) desde que se partio en `build/`, y ese reparto nunca se
+habia sellado. No es un techo que se afloje: es uno que ya no hace falta.
+
+---
+
+## 9. LO QUE FALTA DEL 2.0
+
+Con el cotejo, las cinco parejas de disposicion **dejan de ser un riesgo**: si
+divergen, ahora se dice. Lo que queda es el paso que devuelve el parser a ser un
+parser:
+
+```
+   vaciar las 8 variantes de `Expr` que cargan datos resueltos
+   (Subscript, AssignSubscript, IndexPtr, AssignIndexPtr,
+    Field, Arrow, AssignField, AssignArrow -- de 50 en total)
+```
+
+Es lo que en un compilador de C tipico separa el front end de la pasada
+semantica: el nodo NOMBRA el campo y el offset lo pone despues quien tiene la
+tabla. Hoy `tipos.rs` ya es ese "despues" para los TIPOS; falta que lo sea
+tambien para los OFFSETS.
+
+[!] No se hizo hoy a proposito: toca `Program`, el codegen entero y las 47
+casillas que construyen expresiones a mano. Va en su propio paso, con el banco
+delante -- no colgando de otro cambio.

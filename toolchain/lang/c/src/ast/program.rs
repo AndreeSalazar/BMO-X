@@ -46,15 +46,34 @@ pub struct Function {
     pub variadica: bool,
 }
 
+/// **La disposicion de UN agregado, tal y como la calculo el frontend.**
+///
+/// Viaja en el `Program` para que el codegen --que la recalcula por su cuenta--
+/// tenga contra que compararla. Ver `codegen::cotejar_disposicion`.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DisposicionAgregado {
+    /// `(nombre, offset, tamano)` de cada campo, en orden de declaracion.
+    pub campos: Vec<(String, u32, u32)>,
+    pub tamano: u32,
+    pub alineado: u32,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
     pub globals: Vec<GlobalDecl>,
     pub functions: Vec<Function>,
     pub exported: Vec<String>,
+    /// **Lo que el frontend dice que mide y donde cae cada campo.**
+    ///
+    /// Vacio significa *"este frontend no lo declara"*, y entonces no hay nada
+    /// que cotejar -- no es un fallo. Lo que SI es un fallo es declararlo y que
+    /// no cuadre con lo que el codegen calcula por su cuenta.
+    pub disposiciones: std::collections::HashMap<String, DisposicionAgregado>,
 }
 
 impl Program {
     pub fn new() -> Self {
-        Self { globals: Vec::new(), functions: Vec::new(), exported: Vec::new() }
+        Self { globals: Vec::new(), functions: Vec::new(), exported: Vec::new(),
+               disposiciones: std::collections::HashMap::new() }
     }
 }

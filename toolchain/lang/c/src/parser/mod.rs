@@ -459,7 +459,25 @@ impl Parser {
             }
         }
         globals.append(&mut self.globales_pendientes);
-        Ok(Program { globals, functions, exported: Vec::new() })
+        // * LO QUE ESTE FRONTEND DICE QUE MIDE CADA AGREGADO.
+        //
+        // No se calcula aqui: se COPIA de las tablas que el parser ya lleno al
+        // colocar cada struct. Recalcularlo seria fabricar un tercer juez.
+        let disposiciones = self
+            .struct_fields
+            .iter()
+            .map(|(nombre, campos)| {
+                (
+                    nombre.clone(),
+                    DisposicionAgregado {
+                        campos: campos.clone(),
+                        tamano: self.struct_sizes.get(nombre).copied().unwrap_or(0),
+                        alineado: self.struct_aligns.get(nombre).copied().unwrap_or(0),
+                    },
+                )
+            })
+            .collect();
+        Ok(Program { globals, functions, exported: Vec::new(), disposiciones })
     }
 
     /// Parse with module resolution. Returns merged Program with all dependency sources.
