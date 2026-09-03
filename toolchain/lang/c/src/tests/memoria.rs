@@ -318,3 +318,47 @@ fn guardar_por_un_puntero_respeta_el_ancho_de_lo_apuntado() {
     );
     assert_eq!(salida, "7 123 8 456", "el vecino de al lado no se toca");
 }
+
+/// *** COPIAR UN STRUCT DE UN PUNTERO A OTRO: `*a = *b`.
+///
+/// Es `cliprange_t` de `r_bsp.c:122` -- `*next = *(next-1)` --, el desplazamiento
+/// de la lista de recorte del BSP de DOOM. Dos `int`, ocho bytes.
+#[test]
+fn copiar_un_struct_de_un_puntero_a_otro() {
+    let salida = run_c(
+        "struct par { int a; int b; };
+         int main() {
+             struct par v[2]; struct par *p;
+             v[0].a = 11; v[0].b = 22;
+             v[1].a = 0;  v[1].b = 0;
+             p = v;
+             *(p + 1) = *p;
+             printf(\"%d %d\", v[1].a, v[1].b);
+             return 0;
+         }",
+    );
+    assert_eq!(salida, "11 22", "la copia tiene que llevar los DOS campos");
+}
+
+/// ** Y uno de DOCE bytes, que es el que estaba roto DESDE ANTES.
+///
+/// El brazo viejo de `Deref` cargaba ocho bytes a pelo, asi que un
+/// `cliprange_t` (dos `int`) acertaba por casualidad. Uno de tres campos se
+/// habria copiado a medias y nadie lo habria visto: los dos primeros bien y el
+/// tercero con lo que hubiera.
+#[test]
+fn copiar_un_struct_de_mas_de_ocho_bytes_por_puntero() {
+    let salida = run_c(
+        "struct tres { int a; int b; int c; };
+         int main() {
+             struct tres v[2]; struct tres *p;
+             v[0].a = 11; v[0].b = 22; v[0].c = 33;
+             v[1].a = 0;  v[1].b = 0;  v[1].c = 0;
+             p = v;
+             *(p + 1) = *p;
+             printf(\"%d %d %d\", v[1].a, v[1].b, v[1].c);
+             return 0;
+         }",
+    );
+    assert_eq!(salida, "11 22 33", "los TRES campos, no los dos primeros");
+}
