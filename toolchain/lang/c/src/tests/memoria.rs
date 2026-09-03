@@ -261,3 +261,60 @@ fn un_double_sin_inicializar_vale_cero() {
     );
     assert_eq!(out, "5\n");
 }
+
+/// *** `*p = x` SOBRE UN `char *` ESCRIBE UN BYTE, NO OCHO.
+///
+/// # De donde sale: los 4 bytes que DOOM pisaba tras su pantalla
+///
+/// El 2026-09-03 el Ryzen enseno esto, con DOOM ya jugandose:
+///
+/// ```text
+///    I_VideoBuffer  en +1825056,  64000 bytes,  ACABA en +1889056
+///    BLOQUE 1336    en +1889056   <- los 4 bytes valen 0
+///    EL CANARIO CAZO EN: R_RenderPlayerView
+/// ```
+///
+/// La suma es exacta --1825056 + 64000 = 1889056-- asi que lo pisado es lo que
+/// hay JUSTO detras del buffer de pantalla. Y `r_draw.c` escribe sus pixeles
+/// con `*dest = dc_colormap[...]`, o sea `Expr::AssignDeref` sobre un `byte *`.
+///
+/// ** El codegen emitia `mov [rax], rdx` --OCHO bytes-- sin preguntar a que
+/// apunta. Escribir el ULTIMO pixel se lleva siete bytes por delante del final.
+///
+/// [!] Y explica por que la pantalla se VEIA bien: DOOM dibuja las columnas de
+/// izquierda a derecha, asi que los siete bytes que cada escritura se lleva los
+/// vuelve a escribir la columna siguiente. **Solo sobrevive el desperdicio de la
+/// ultima**, que es justo la que cae fuera. Un fallo que se repara solo en el
+/// 99,7% de los casos es de los que duran meses.
+#[test]
+fn guardar_por_un_puntero_a_char_escribe_un_solo_byte() {
+    let salida = run_c(
+        "int main() {
+             char buf[8]; char *p;
+             buf[0] = 9; buf[1] = 7; buf[2] = 5; buf[3] = 3;
+             p = buf;
+             *p = 1;
+             printf(\"%d %d %d %d\", buf[0], buf[1], buf[2], buf[3]);
+             return 0;
+         }",
+    );
+    assert_eq!(salida, "1 7 5 3", "`*p = 1` sobre un char* no puede tocar a los vecinos");
+}
+
+/// Gemela: un `short *` escribe DOS, y un `int *` CUATRO.
+#[test]
+fn guardar_por_un_puntero_respeta_el_ancho_de_lo_apuntado() {
+    let salida = run_c(
+        "int main() {
+             int cuatro[2]; int *pi;
+             short dos[4]; short *ps;
+             cuatro[0] = 0; cuatro[1] = 123;
+             pi = cuatro; *pi = 7;
+             dos[0] = 0; dos[1] = 456;
+             ps = dos; *ps = 8;
+             printf(\"%d %d %d %d\", cuatro[0], cuatro[1], dos[0], dos[1]);
+             return 0;
+         }",
+    );
+    assert_eq!(salida, "7 123 8 456", "el vecino de al lado no se toca");
+}
