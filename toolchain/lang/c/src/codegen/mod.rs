@@ -1813,12 +1813,40 @@ impl Codegen {
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]);
             }
             Expr::CallPtr(callee, args) => {
+                // *** `(*f)(x)` ES `f(x)`. Desreferenciar un puntero a funcion
+                // es un NO-OP, y aqui se emitia como una carga de memoria.
+                //
+                // C11 6.5.3.2p4: si el operando de `*` apunta a una funcion, el
+                // resultado es un DESIGNADOR DE FUNCION. Y 6.5.2.2p1 exige que
+                // lo llamado sea un puntero a funcion, asi que ese designador
+                // vuelve a decaer inmediatamente. Las tres formas son la misma:
+                //
+                //     f(x)      (*f)(x)      (**f)(x)
+                //
+                // ** Sin pelar el `*`, `emit_expr` cargaba OCHO BYTES DE LA
+                // DIRECCION DE LA FUNCION --o sea el principio de su codigo-- y
+                // llamaba a eso. El metal lo dijo con todas las letras el
+                // 2026-09-03, con DOOM ya jugandose:
+                //
+                //     #GP  ff d0  -> wipe_ScreenWipe+0xa8
+                //     *** PUNTERO NO CANONICO: bits 63:48 no copian el bit 47
+                //
+                // `f_wipe.c:282` escribe `rc = (*wipes[wipeno*3+1])(w, h, t)`,
+                // que es el estilo K&R de toda la vida. La tabla estaba BIEN
+                // --sus reubicaciones funcionan, `t[0](10)` acierta-- y lo que
+                // fallaba era la estrella.
+                //
+                // [!] Se pela en bucle: `(**f)(x)` es igual de legal.
+                let mut destino: &Expr = callee;
+                while let Expr::Deref(dentro) = destino {
+                    destino = dentro;
+                }
                 // (*fp)(args): args a la pila, callee da la direccion, call rax
                 for arg in args.iter().rev() {
                     self.emit_expr(arg);
                     self.code.push(0x50);
                 }
-                self.emit_expr(callee);                     // rax = direccion de la funcion
+                self.emit_expr(destino);                    // rax = direccion de la funcion
                 self.code.extend_from_slice(&[0xFF, 0xD0]); // call rax
                 let n = args.len() as u32 * 8;
                 if n > 0 {

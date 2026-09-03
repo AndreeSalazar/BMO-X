@@ -189,14 +189,23 @@ int main() {
 /// rax`, y el veredicto **PUNTERO NO CANONICO**: se llama a una direccion que
 /// nunca se escribio.
 ///
-/// [!] Y el muro **ya estaba documentado desde el otro lado**: el descenso de
-/// C++ dice, para las tablas virtuales, que *"no se pueden emitir como un
-/// inicializador estatico porque las globales de BMO C solo admiten un entero,
-/// y la direccion de una funcion no se conoce hasta emitir el codigo"*. C++ lo
-/// rodea rellenando la tabla al principio de `main`. **DOOM no puede: su tabla
-/// la escribe el programador.**
+/// *** Y LA TABLA NO ERA EL PROBLEMA. Se aposto a que faltaban reubicaciones
+/// --el descenso de C++ dice que *"las globales de BMO C solo admiten un
+/// entero"*-- y se midio antes de escribir nada:
+///
+/// ```text
+///    t[0](10)      ACIERTA   la tabla y sus reubicaciones estan BIEN
+///    (*t[0])(10)   #GP       lo que falla es la ESTRELLA
+/// ```
+///
+/// El fallo era `(*f)(x)`: desreferenciar un puntero a funcion es un NO-OP en C
+/// (6.5.3.2p4), y el codegen lo emitia como una carga de memoria de verdad --
+/// o sea que llamaba a los primeros ocho bytes del CODIGO de la funcion. Se
+/// pela en `Expr::CallPtr`. Ver su comentario.
+///
+/// [!] La teoria buena tambien se paga: media hora en un mecanismo que ya
+/// existia. **Medir cual de las dos formas falla costo dos casillas.**
 #[test]
-#[ignore = "bug abierto: una tabla de punteros a funcion inicializada estaticamente sale a ceros -- es el #GP de wipe_ScreenWipe en el Ryzen (03-09)"]
 fn una_tabla_estatica_de_punteros_a_funcion_se_puede_llamar() {
     let salida = run_c(
         "int uno(int a) { return a + 1; }
@@ -208,4 +217,42 @@ fn una_tabla_estatica_de_punteros_a_funcion_se_puede_llamar() {
          }",
     );
     assert_eq!(salida, "11 12", "la tabla tiene que traer las DOS direcciones");
+}
+
+/// ** LAS TRES FORMAS DE LLAMAR A UN PUNTERO A FUNCION SON LA MISMA.
+///
+/// `f(x)`, `(*f)(x)` y `(**f)(x)`. C11 6.5.3.2p4 dice que `*` sobre algo que
+/// apunta a una funcion da un DESIGNADOR de funcion, y 6.5.2.2p1 lo vuelve a
+/// convertir en puntero para llamarlo. Ida y vuelta, cero instrucciones.
+///
+/// [!] La del medio es la que escribe DOOM --`(*wipes[n])(w, h, t)`, estilo
+/// K&R-- y era la unica que fallaba. Se prueban las tres juntas porque lo que
+/// hay que fijar no es que una ande: es que **den lo mismo**.
+#[test]
+fn las_tres_formas_de_llamar_un_puntero_a_funcion_coinciden() {
+    let salida = run_c(
+        "int uno(int a) { return a + 1; }
+         int (*p)(int) = uno;
+         int main() {
+             printf(\"%d %d %d\", p(10), (*p)(10), (**p)(10));
+             return 0;
+         }",
+    );
+    assert_eq!(salida, "11 11 11", "las tres formas son la misma llamada");
+}
+
+/// Y la tabla de DOOM con `static` dentro de una funcion, que es como esta
+/// escrita de verdad en `f_wipe.c`.
+#[test]
+fn una_tabla_static_local_de_punteros_a_funcion_se_llama_con_estrella() {
+    let salida = run_c(
+        "int uno(int a) { return a + 1; }
+         int dos(int a) { return a + 2; }
+         int main() {
+             static int (*t[])(int) = { uno, dos };
+             printf(\"%d %d\", (*t[0])(10), (*t[1])(10));
+             return 0;
+         }",
+    );
+    assert_eq!(salida, "11 12", "la forma literal de `wipe_ScreenWipe`");
 }
