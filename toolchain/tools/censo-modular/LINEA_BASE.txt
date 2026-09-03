@@ -11,10 +11,9 @@
 
 [TECHOS]
   1869  toolchain/lang/cobol/src/codegen.rs
-  1398  toolchain/lang/c/src/codegen/mod.rs
+  1352  toolchain/lang/c/src/codegen/mod.rs
   1565  toolchain/lang/cobol/src/parser.rs
   1177  toolchain/lang/cpp/src/parser.rs
-  1542  Ultra_kernel_x86-64/build.ps1
   1179  platform/abi/bmo-abi/src/bef/validator.rs
 
 # EXENTOS -- un "no" con motivo escrito, que se puede discutir.
