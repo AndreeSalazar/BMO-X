@@ -18,6 +18,7 @@ mod format;
 /// INDEXING AND POINTERS: the five ways of reaching an element are one sum, and
 /// the STRIDE is the number that has failed more often than any other here.
 mod indexing;
+use indexing::Por;
 /// INTRINSICS AND THE DOOR: the system surface as seen from C.
 mod intrinsics;
 /// THE QUESTIONS YOU ASK A TYPE: floating point and signedness, written as
@@ -178,6 +179,14 @@ struct Codegen {
     /// guarda al colocarlo y se consulta cuando ese agregado es a su vez el
     /// miembro de otro.
     struct_aligns: HashMap<String, u32>,
+    /// `(agregado, campo)` -> tipo del campo.
+    ///
+    /// ** Entro el 2026-09-02, al vaciar `Expr::Field` y `Expr::Arrow`. Antes
+    /// el tipo del campo llegaba DENTRO del nodo, o sea que el codegen se fiaba
+    /// de lo que el frontend hubiera resuelto. Ahora lo calcula el, con los
+    /// mismos `members` con los que coloca -- y `cotejar_disposicion` comprueba
+    /// que las dos colocaciones digan lo mismo.
+    field_types: HashMap<(String, String), TypeSpec>,
     label_positions: HashMap<String, usize>,
     goto_relocs: Vec<(usize, String)>,
     entry_offset: usize,
@@ -266,6 +275,7 @@ impl Codegen {
             sin_guarda_float: false,
             ranuras_con_nombre: 0,
             struct_layouts: HashMap::new(), struct_sizes: HashMap::new(),
+            field_types: HashMap::new(),
             struct_aligns: HashMap::new(),
             label_positions: HashMap::new(), goto_relocs: Vec::new(),
             entry_offset: 0, is_entry_function: false,
@@ -398,7 +408,7 @@ impl Codegen {
                     // Es la tercera cara de la misma relocation, ahora con
                     // destino `.data`. El sumando lleva el indice ya
                     // multiplicado por el tamano del elemento.
-                    if let Some((gname, sumando)) = Self::direccion_de_global(&e.valor) {
+                    if let Some((gname, sumando)) = self.direccion_de_global(&e.valor) {
                         self.relocs_a_global.push((off + e.offset, gname, sumando));
                         continue;
                     }
@@ -524,7 +534,7 @@ impl Codegen {
                     // es exactamente esto -- y sin ello el coseno del juego
                     // entero apuntaria a la nada.
                     (Some(otro), _)
-                        if Self::direccion_de_global(otro).is_some()
+                        if self.direccion_de_global(otro).is_some()
                             || matches!(otro, Expr::Var(n)
                                 if arrays.contains(n.as_str()) || funciones.contains(n.as_str())) =>
                     {
@@ -536,7 +546,7 @@ impl Codegen {
                                 self.relocs_a_global.push((off, n.clone(), 0));
                             }
                             _ => {
-                                let (gname, sumando) = Self::direccion_de_global(otro).unwrap();
+                                let (gname, sumando) = self.direccion_de_global(otro).unwrap();
                                 self.relocs_a_global.push((off, gname, sumando));
                             }
                         }
@@ -737,16 +747,16 @@ impl Codegen {
                 for a in args { self.collect_expr_strings(a); }
             }
             Expr::Syscall(_, args) => { for a in args { self.collect_expr_strings(a); } }
-            Expr::Arrow(p,_,_,_) => self.collect_expr_strings(p),
-            Expr::AssignArrow(p,_,_,_,v) => { self.collect_expr_strings(p); self.collect_expr_strings(v); }
-            Expr::Assign(_, v) | Expr::AssignField(_,_,_,_,v) => self.collect_expr_strings(v),
+            Expr::Arrow(p,_) => self.collect_expr_strings(p),
+            Expr::AssignArrow(p,_,v) => { self.collect_expr_strings(p); self.collect_expr_strings(v); }
+            Expr::Assign(_, v) | Expr::AssignField(_,_,v) => self.collect_expr_strings(v),
             Expr::Cast(_, a) => self.collect_expr_strings(a),
             Expr::Intrinsic(_, args) => { for a in args { self.collect_expr_strings(a); } }
-            Expr::IndexPtr(b, idx, _) => { self.collect_expr_strings(b); self.collect_expr_strings(idx); }
-            Expr::AssignIndexPtr(b, idx, _, v) => { self.collect_expr_strings(b); self.collect_expr_strings(idx); self.collect_expr_strings(v); }
+            Expr::IndexPtr(b, idx) => { self.collect_expr_strings(b); self.collect_expr_strings(idx); }
+            Expr::AssignIndexPtr(b, idx, v) => { self.collect_expr_strings(b); self.collect_expr_strings(idx); self.collect_expr_strings(v); }
             Expr::CallPtr(c, args) => { self.collect_expr_strings(c); for a in args { self.collect_expr_strings(a); } }
             Expr::AssignDeref(a, v) => { self.collect_expr_strings(a); self.collect_expr_strings(v); }
-            Expr::Field(b,_,_,_) => self.collect_expr_strings(b),
+            Expr::Field(b,_) => self.collect_expr_strings(b),
             Expr::Comma(v) => { for e in v { self.collect_expr_strings(e); } }
             _ => {}
         }
@@ -807,13 +817,13 @@ impl Codegen {
     ///
     /// El indice tiene que ser constante, y si no lo es se contesta `None` para
     /// que el error salga arriba con el nombre de la tabla delante.
-    fn direccion_de_global(e: &Expr) -> Option<(String, i64)> {
+    fn direccion_de_global(&self, e: &Expr) -> Option<(String, i64)> {
         let Expr::AddrOf(interior) = e else { return None };
         match interior.as_ref() {
             Expr::Var(n) => Some((n.clone(), 0)),
-            Expr::Subscript(n, idx, escala) => {
+            Expr::Subscript(n, idx) => {
                 let i = Self::constante_de(idx)?;
-                Some((n.clone(), i * (*escala as i64)))
+                Some((n.clone(), i * (self.paso_de_elemento(n) as i64)))
             }
             _ => None,
         }
@@ -1718,8 +1728,8 @@ impl Codegen {
                             self.emit_func_addr(name);
                         } else { self.emit_xor_eax(); }
                     }
-                    Expr::Subscript(name, idx, scale) => {
-                        self.emit_subscript_addr(name, idx, *scale);
+                    Expr::Subscript(name, idx) => {
+                        self.emit_subscript_addr(name, idx);
                     }
                     Expr::Deref(ptr) => {
                         self.emit_expr(ptr); // rax = address of the pointed-to data
@@ -1736,14 +1746,17 @@ impl Codegen {
                     // existen mas abajo: `Field`, `Arrow` e `IndexPtr` calculan
                     // la direccion y luego llaman a `emit_load_elem`. Tomar la
                     // direccion es exactamente eso menos el ultimo paso.
-                    Expr::IndexPtr(base, index, elem) => {
+                    Expr::IndexPtr(base, index) => {
+                        let elem = &self.pointee_type(base).unwrap_or(TypeSpec::Long);
                         self.emit_index_ptr_addr(base, index, &elem.clone());
                     }
-                    Expr::Field(base, _campo, offset, _t) => {
+                    Expr::Field(base, _campo) => {
+                        let offset = &self.offset_de_valor(base, _campo);
                         self.emit_expr_as_ptr(base);
                         self.emit_add_offset(*offset);
                     }
-                    Expr::Arrow(ptr, _campo, offset, _t) => {
+                    Expr::Arrow(ptr, _campo) => {
+                        let offset = &self.offset_por_puntero(ptr, _campo);
                         self.emit_expr(ptr);
                         self.emit_add_offset(*offset);
                     }
@@ -1768,29 +1781,31 @@ impl Codegen {
                     }
                 }
             }
-            Expr::Subscript(name, index, scale) => {
+            Expr::Subscript(name, index) => {
                 // direccion exacta (array o puntero) + carga del TAMANO del elemento
-                self.emit_subscript_addr(name, index, *scale);
+                self.emit_subscript_addr(name, index);
                 let elem = self.elem_type_of(name);
                 self.emit_load_elem(&elem);
             }
             // ** `E1 op= E2` con la direccion de `E1` calculada UNA vez.
             Expr::AssignOp(lvalue, kind, rhs) => self.emit_assign_op(lvalue, *kind, rhs),
-            Expr::AssignSubscript(name, index, scale, val) => {
+            Expr::AssignSubscript(name, index, val) => {
                 self.emit_expr(val);          // rax = valor
                 self.code.push(0x50);         // push valor
-                self.emit_subscript_addr(name, index, *scale); // rax = direccion
+                self.emit_subscript_addr(name, index); // rax = direccion
                 self.code.push(0x5A);         // pop rdx = valor
                 let elem = self.elem_type_of(name);
                 self.emit_store_elem(&elem);  // [rax] = rdx (tamano exacto)
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // rax = valor (resultado del assign)
             }
-            Expr::IndexPtr(base, index, elem) => {
+            Expr::IndexPtr(base, index) => {
+                let elem = &self.pointee_type(base).unwrap_or(TypeSpec::Long);
                 // p->arr[i]: direccion = base(puntero) + i*sizeof(elem), luego load
                 self.emit_index_ptr_addr(base, index, elem);
                 self.emit_load_elem(&elem.clone());
             }
-            Expr::AssignIndexPtr(base, index, elem, val) => {
+            Expr::AssignIndexPtr(base, index, val) => {
+                let elem = &self.pointee_type(base).unwrap_or(TypeSpec::Long);
                 self.emit_expr(val);          // rax = valor
                 self.code.push(0x50);         // push valor
                 self.emit_index_ptr_addr(base, index, elem); // rax = direccion
@@ -2000,26 +2015,10 @@ impl Codegen {
                 self.emit_expr(f);
                 self.resolve_label(end_lbl);
             }
-            Expr::Field(base, _field, offset, ftyp) => {
-                // direccion base + offset, carga del TAMANO/SIGNO del campo
-                self.emit_expr_as_ptr(base);
-                self.emit_add_offset(*offset);
-                self.emit_load_elem(&ftyp.clone());
-            }
-            Expr::Arrow(ptr, _field, offset, ftyp) => {
-                self.emit_expr(ptr);
-                self.emit_add_offset(*offset);
-                self.emit_load_elem(&ftyp.clone());
-            }
-            Expr::AssignField(base, _field, offset, ftyp, val) => {
-                self.emit_expr(val);
-                self.code.push(0x50);
-                self.emit_expr_as_ptr(base);
-                self.emit_add_offset(*offset);
-                self.code.push(0x5A);
-                // store del TAMANO exacto: pt.x=10 con x:int ya no pisa a pt.y
-                self.emit_store_elem(&ftyp.clone());
-                self.code.extend_from_slice(&[0x48, 0x89, 0xD0]);
+            Expr::Field(base, campo) => self.emit_leer_campo(base, campo, Por::Valor),
+            Expr::Arrow(ptr, campo) => self.emit_leer_campo(ptr, campo, Por::Puntero),
+            Expr::AssignField(base, campo, val) => {
+                self.emit_guardar_campo(base, campo, Por::Valor, val)
             }
             Expr::AssignDeref(addr, val) => {
                 self.emit_expr(val); // rax = value
@@ -2029,14 +2028,8 @@ impl Codegen {
                 self.code.extend_from_slice(&[0x48, 0x89, 0x10]); // mov [rax], rdx
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // mov rax, rdx (return value)
             }
-            Expr::AssignArrow(ptr, _field, offset, ftyp, val) => {
-                self.emit_expr(val); // rax = value
-                self.code.push(0x50); // push value
-                self.emit_expr(ptr); // rax = pointer
-                self.emit_add_offset(*offset);
-                self.code.push(0x5A); // pop rdx (value)
-                self.emit_store_elem(&ftyp.clone()); // tamano exacto del campo
-                self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // mov rax, rdx
+            Expr::AssignArrow(ptr, campo, val) => {
+                self.emit_guardar_campo(ptr, campo, Por::Puntero, val)
             }
             Expr::Intrinsic(name, args) => self.emit_intrinsic(name, args),
             Expr::Cast(t, inner) => {

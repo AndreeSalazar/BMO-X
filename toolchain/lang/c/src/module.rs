@@ -173,17 +173,17 @@ fn collect_expr_callees(expr: &Expr, callees: &mut Vec<String>) {
             | Expr::BitAnd(a,b) | Expr::BitXor(a,b) | Expr::BitOr(a,b) | Expr::LAnd(a,b) | Expr::LOr(a,b)
             | Expr::Shl(a,b) | Expr::Shr(a,b) => { collect_expr_callees(a, callees); collect_expr_callees(b, callees); }
         Expr::Conditional(c,t,f) => { collect_expr_callees(c, callees); collect_expr_callees(t, callees); collect_expr_callees(f, callees); }
-        Expr::Arrow(p,_,_,_) => collect_expr_callees(p, callees),
-        Expr::AssignArrow(p,_,_,_,v) => { collect_expr_callees(p, callees); collect_expr_callees(v, callees); }
-        Expr::Assign(_, v) | Expr::AssignField(_,_,_,_,v) => collect_expr_callees(v, callees),
-        Expr::Field(b,_,_,_) => collect_expr_callees(b, callees),
+        Expr::Arrow(p,_) => collect_expr_callees(p, callees),
+        Expr::AssignArrow(p,_,v) => { collect_expr_callees(p, callees); collect_expr_callees(v, callees); }
+        Expr::Assign(_, v) | Expr::AssignField(_,_,v) => collect_expr_callees(v, callees),
+        Expr::Field(b,_) => collect_expr_callees(b, callees),
         Expr::Cast(_, a) => collect_expr_callees(a, callees),
         Expr::Intrinsic(_, args) => { for a in args { collect_expr_callees(a, callees); } }
-        Expr::IndexPtr(b, idx, _) => { collect_expr_callees(b, callees); collect_expr_callees(idx, callees); }
-        Expr::AssignIndexPtr(b, idx, _, v) => { collect_expr_callees(b, callees); collect_expr_callees(idx, callees); collect_expr_callees(v, callees); }
+        Expr::IndexPtr(b, idx) => { collect_expr_callees(b, callees); collect_expr_callees(idx, callees); }
+        Expr::AssignIndexPtr(b, idx, v) => { collect_expr_callees(b, callees); collect_expr_callees(idx, callees); collect_expr_callees(v, callees); }
         Expr::CallPtr(c, args) => { collect_expr_callees(c, callees); for a in args { collect_expr_callees(a, callees); } }
-        Expr::Subscript(_, idx, _) => collect_expr_callees(idx, callees),
-        Expr::AssignSubscript(_, idx, _, v) => { collect_expr_callees(idx, callees); collect_expr_callees(v, callees); }
+        Expr::Subscript(_, idx) => collect_expr_callees(idx, callees),
+        Expr::AssignSubscript(_, idx, v) => { collect_expr_callees(idx, callees); collect_expr_callees(v, callees); }
         Expr::AssignOp(lv, _, v) => { collect_expr_callees(lv, callees); collect_expr_callees(v, callees); }
         Expr::Comma(v) => { for e in v { collect_expr_callees(e, callees); } }
         _ => {}

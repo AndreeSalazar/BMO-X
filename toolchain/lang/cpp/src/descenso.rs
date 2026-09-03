@@ -208,8 +208,7 @@ impl<'a> Cuerpo<'a> {
                 if info.vtabla {
                     out.push(c::Stmt::Expr(c::Expr::AssignField(
                         Box::new(c::Expr::Var(name.clone())),
-                        crate::parser::VPTR.into(), 0,
-                        c::TypeSpec::Ptr(Box::new(c::TypeSpec::Void)),
+                        crate::parser::VPTR.into(),
                         Box::new(c::Expr::Var(nombre_vtabla(clase))),
                     )));
                 }
@@ -346,7 +345,7 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
         if cl.vtabla.is_empty() { continue; }
         let n = cl.vtabla.len() as u32;
         out.globals.push(c::GlobalDecl::Var(
-            c::TypeSpec::Array(Box::new(c::TypeSpec::Ptr(Box::new(c::TypeSpec::Void))), n),
+            c::TypeSpec::Array(Box::new(c::TypeSpec::Long), n),
             nombre_vtabla(&cl.name),
             None,
         ));
@@ -354,7 +353,6 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
             relleno.push(c::Stmt::Expr(c::Expr::AssignSubscript(
                 nombre_vtabla(&cl.name),
                 Box::new(c::Expr::Int(i as i64)),
-                8,
                 Box::new(c::Expr::Var(simbolo.clone())),
             )));
         }
@@ -366,8 +364,19 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
         // en el offset 0; aqui solo hay que declararlo para que el codegen de
         // C le reserve su sitio.
         if !cl.vtabla.is_empty() {
+            // ** `long *` y no `void *`, y el motivo es el paso.
+            //
+            // Una tabla virtual es un array de ranuras de OCHO bytes, y desde
+            // que el nodo `IndexPtr` dejo de cargar el tipo del elemento
+            // (2026-09-02) ese ocho sale del tipo del puntero. Con `void *` el
+            // elemento mide 0 --y el suelo lo subiria a 1--, o sea que
+            // `tabla[slot]` leeria el byte `slot` en vez de la ranura `slot`.
+            //
+            // [!] Antes se tapaba forzando `TypeSpec::Long` en el nodo. Tapar
+            // en el sitio de uso es como se llega a tener dos verdades: aqui el
+            // tipo dice lo que la memoria es, y no hace falta corregirlo luego.
             miembros.push(c::StructMember {
-                typ: c::TypeSpec::Ptr(Box::new(c::TypeSpec::Void)),
+                typ: c::TypeSpec::Ptr(Box::new(c::TypeSpec::Long)),
                 name: crate::parser::VPTR.into(),
             });
         }
@@ -587,10 +596,15 @@ fn expr(e: &cpp::Expr) -> Result<c::Expr, CppError> {
         E::Shl(a, b) => bin!(Shl, a, b),
         E::Shr(a, b) => bin!(Shr, a, b),
 
-        E::Subscript(n, idx, esc) =>
-            c::Expr::Subscript(n.clone(), Box::new(expr(idx)?), *esc),
-        E::AssignSubscript(n, idx, esc, v) =>
-            c::Expr::AssignSubscript(n.clone(), Box::new(expr(idx)?), *esc, Box::new(expr(v)?)),
+        // ** El PASO y el OFFSET que C++ resolvio por su cuenta YA NO VIAJAN.
+        // Desde el 2026-09-02 los nodos de C solo nombran, y quien resuelve es
+        // el codegen con su tabla. Eso es literalmente lo que pedia la cabecera
+        // de : que un frontend distinto no pueda imponer
+        // su disposicion. Antes se confiaba; ahora no hay donde ponerla.
+        E::Subscript(n, idx, _) =>
+            c::Expr::Subscript(n.clone(), Box::new(expr(idx)?)),
+        E::AssignSubscript(n, idx, _, v) =>
+            c::Expr::AssignSubscript(n.clone(), Box::new(expr(idx)?), Box::new(expr(v)?)),
         E::AssignDeref(p, v) =>
             c::Expr::AssignDeref(Box::new(expr(p)?), Box::new(expr(v)?)),
         E::Cast(t, e) => c::Expr::Cast(tipo(t)?, Box::new(expr(e)?)),
@@ -615,14 +629,14 @@ fn expr(e: &cpp::Expr) -> Result<c::Expr, CppError> {
         // `this` es un parametro mas, asi que baja a una variable con ese
         // nombre. Ahi acaba toda la magia del puntero implicito de C++.
         E::This => c::Expr::Var("this".into()),
-        E::MemberAccess(b, n, off, t) =>
-            c::Expr::Field(Box::new(expr(b)?), n.clone(), *off, tipo(t)?),
-        E::Arrow(b, n, off, t) =>
-            c::Expr::Arrow(Box::new(expr(b)?), n.clone(), *off, tipo(t)?),
-        E::AssignMember(b, n, off, t, v) =>
-            c::Expr::AssignField(Box::new(expr(b)?), n.clone(), *off, tipo(t)?, Box::new(expr(v)?)),
-        E::AssignArrow(b, n, off, t, v) =>
-            c::Expr::AssignArrow(Box::new(expr(b)?), n.clone(), *off, tipo(t)?, Box::new(expr(v)?)),
+        E::MemberAccess(b, n, _, _) =>
+            c::Expr::Field(Box::new(expr(b)?), n.clone()),
+        E::Arrow(b, n, _, _) =>
+            c::Expr::Arrow(Box::new(expr(b)?), n.clone()),
+        E::AssignMember(b, n, _, _, v) =>
+            c::Expr::AssignField(Box::new(expr(b)?), n.clone(), Box::new(expr(v)?)),
+        E::AssignArrow(b, n, _, _, v) =>
+            c::Expr::AssignArrow(Box::new(expr(b)?), n.clone(), Box::new(expr(v)?)),
         // `objeto.metodo(a, b)` -> `Clase.metodo(&objeto, a, b)`. El parser ya
         // puso el `&` (o lo omitio si la base venia de `->`), asi que aqui no
         // se decide nada: se ordenan los argumentos.
@@ -647,11 +661,8 @@ fn expr(e: &cpp::Expr) -> Result<c::Expr, CppError> {
         // nada mas.
         E::VirtualCall(objeto, _, slot, args) => {
             let obj = expr(objeto)?;
-            let tabla = c::Expr::Arrow(
-                Box::new(obj.clone()), crate::parser::VPTR.into(), 0,
-                c::TypeSpec::Ptr(Box::new(c::TypeSpec::Void)));
-            let destino = c::Expr::IndexPtr(
-                Box::new(tabla), Box::new(c::Expr::Int(*slot as i64)), c::TypeSpec::Long);
+            let tabla = c::Expr::Arrow(Box::new(obj.clone()), crate::parser::VPTR.into());
+            let destino = c::Expr::IndexPtr(Box::new(tabla), Box::new(c::Expr::Int(*slot as i64)));
             let mut a = vec![obj];
             for x in args { a.push(expr(x)?); }
             c::Expr::CallPtr(Box::new(destino), a)

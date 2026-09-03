@@ -363,23 +363,131 @@ habia sellado. No es un techo que se afloje: es uno que ya no hace falta.
 
 ---
 
-## 9. LO QUE FALTA DEL 2.0
-
-Con el cotejo, las cinco parejas de disposicion **dejan de ser un riesgo**: si
-divergen, ahora se dice. Lo que queda es el paso que devuelve el parser a ser un
-parser:
+## 9. EL 2.0, PASO 3 -- LAS 8 VARIANTES, VACIADAS (2026-09-02)
 
 ```
-   vaciar las 8 variantes de `Expr` que cargan datos resueltos
-   (Subscript, AssignSubscript, IndexPtr, AssignIndexPtr,
-    Field, Arrow, AssignField, AssignArrow -- de 50 en total)
+   Subscript(String, Box<Expr>, u32)                  -> (String, Box<Expr>)
+   AssignSubscript(String, Box<Expr>, u32, Box<Expr>) -> (String, Box<Expr>, Box<Expr>)
+   IndexPtr(Box<Expr>, Box<Expr>, TypeSpec)           -> (Box<Expr>, Box<Expr>)
+   AssignIndexPtr(.., TypeSpec, ..)                   -> sin TypeSpec
+   Field(Box<Expr>, String, u32, TypeSpec)            -> (Box<Expr>, String)
+   Arrow(Box<Expr>, String, u32, TypeSpec)            -> (Box<Expr>, String)
+   AssignField(.., u32, TypeSpec, ..)                 -> (Box<Expr>, String, Box<Expr>)
+   AssignArrow(.., u32, TypeSpec, ..)                 -> (Box<Expr>, String, Box<Expr>)
 ```
 
-Es lo que en un compilador de C tipico separa el front end de la pasada
-semantica: el nodo NOMBRA el campo y el offset lo pone despues quien tiene la
-tabla. Hoy `tipos.rs` ya es ese "despues" para los TIPOS; falta que lo sea
-tambien para los OFFSETS.
+**El nodo NOMBRA; quien tiene la tabla RESUELVE.** Es la forma de un compilador
+de C tipico, y es lo que hace que el fallo del 02-09 no pueda volver: aquel
+offset 0 se grababa al parsear, y ya no hay nada que grabar.
 
-[!] No se hizo hoy a proposito: toca `Program`, el codegen entero y las 47
-casillas que construyen expresiones a mano. Va en su propio paso, con el banco
-delante -- no colgando de otro cambio.
+### El juez pasa a tener TRES preguntas
+
+`trait Ambito` es el contrato entero, y cabe en tres lineas:
+
+```rust
+   fn tipo_de_variable(&self, nombre: &str)                 -> Option<TypeSpec>;
+   fn tipo_de_campo(&self, agregado: &str, campo: &str)     -> Option<TypeSpec>;
+   fn tipo_de_retorno(&self, funcion: &str)                 -> Option<TypeSpec>;
+```
+
+Todo lo demas --elementos, literales, aritmetica, indireccion-- sale del propio
+arbol. Por eso el parser y el codegen obtienen **la misma respuesta sin
+compartir una sola tabla**.
+
+### *** LO QUE ESTO DESTAPO: DOOM LLEVABA UN CAMPO MAL
+
+Al vaciar los nodos, `offset_de_campo` dejo de contestar 0 cuando no sabe y paso
+a **apuntar el error**. La primera corrida del banco dijo:
+
+```
+   [doom] error: no se sabe de que agregado es el campo `sector`
+```
+
+Es `p_floor.c:406` -- `getSide(secnum,i,0)->sector`, una **llamada seguida de
+flecha**. El juez no tenia brazo para `Expr::Call`, y el parser tampoco lo tuvo
+nunca: **antes eso no daba error, daba offset 0**. Esa linea llevaba leyendo el
+PRIMER campo de `side_t` donde pedia `sector`.
+
+** Lo destapo el guardian, no una corrida en el Ryzen. Esa es la diferencia
+entre las dos clases de fallo de este compilador: los que se caen, y los que
+aciertan a veces.
+
+### Y el otro frontend: C++
+
+`bmo-cpp-front` baja al AST de C, asi que se entero en el mismo commit. Ahi
+pasa algo que merece leerse dos veces: C++ resolvia sus propios offsets y los
+metia en los nodos de C, **que es exactamente lo que la cabecera de
+`build_struct_layout` decia que no debia poder pasar**. Ahora no hay donde
+ponerlos.
+
+[!] Y salio un tercer arreglo del mismo tiron: el `vptr` se declaraba
+`void *` y el paso del indice se forzaba a `Long` en el sitio de uso. Al quitar
+el tipo forzado, `tabla[slot]` habria avanzado **un byte**. Se arregla donde
+toca -- el `vptr` es un `long *`, porque una tabla virtual ES un array de
+ranuras de ocho bytes:
+
+> Tapar en el sitio de uso es como se llega a tener dos verdades.
+
+### El parser deja de ser un comprobador de tipos
+
+Nueve metodos murieron solos al vaciar los nodos:
+
+```
+   get_field_offset   pointee_struct_of      resolve_struct_type
+   resolve_field_expr_offset                 field_type_via_value
+   field_type_via_pointer                    resolve_arrow_expr_offset
+   pointee_size       element_size
+```
+
+```
+   parser/types.rs    232 -> 139 lineas
+```
+
+** Su cabecera decia *"That is a type checker's job living inside a parser"*.
+Era el diagnostico correcto de un problema que nadie habia arreglado. **Estos
+nueve eran ese comprobador**, y la cabecera esta reescrita para no mentir.
+
+### L6a, otra vez, y otra vez con razon
+
+`codegen/mod.rs` volvio a crecer -- por once lineas. Y al mirar por que, las
+cuatro ramas de acceso a campo eran **la misma secuencia con dos interruptores**
+(base por valor o por puntero; leer o guardar). Se unifican en
+`emit_leer_campo` / `emit_guardar_campo` con un `enum Por`, en `indexing.rs`,
+cuya cabecera ya decia que las formas de llegar a un elemento son una sola suma.
+
+```
+   codegen/mod.rs   1352 -> 1340 lineas de codigo   (techo sellado)
+```
+
+### Medido
+
+```
+   461 filas en bmo-c-front (0 ignoradas), 22 en bmo-cpp-front
+   bmo.ps1 exit 0 -- 17 reglas, L6a verde, ascii clean, DOOM construye
+```
+
+Y DOOM cambia de binario **en cada uno de los tres arreglos**, con el mismo
+tamano de siempre:
+
+```
+   antes de todo   B72EAC9AA44337C9...
+   tras el juez    E2B9AAC1203BBB00...
+   tras vaciar     7A725F96CA18A620...
+```
+
+---
+
+## 10. LO QUE QUEDA
+
+El 2.0 esta hecho: el nodo nombra, un juez de tres preguntas resuelve, y hay un
+cotejo que sabe decir que no. Lo que queda no es del 2.0 sino de la maquina:
+
+```
+   [ ] arrancar el Ryzen: DOOM lleva TRES arreglos que ningun CPU ha ejecutado
+   [ ] `ray.bex` sigue esperando decir sus numeros
+```
+
+[!] Y un aviso del banco que no es de C: **`[X] DOOM no compilo` NO tumba el
+build** -- es opcional por ser GPL y vivir fuera del arbol. La corrida que lo
+destapo salio con `exit 0`. Un guardian que avisa y deja pasar solo sirve si
+alguien lee la linea.

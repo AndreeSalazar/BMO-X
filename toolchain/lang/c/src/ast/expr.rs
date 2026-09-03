@@ -52,24 +52,24 @@ pub enum Expr {
     Comma(Vec<Expr>),
     Deref(Box<Expr>),
     AddrOf(Box<Expr>),
-    Subscript(String, Box<Expr>, u32),
+    Subscript(String, Box<Expr>),
     /// arr[i] = val -- antes la asignacion a subscript se DESCARTABA en silencio.
-    AssignSubscript(String, Box<Expr>, u32, Box<Expr>),
+    AssignSubscript(String, Box<Expr>, Box<Expr>),
     /// base[i] donde base es una EXPRESION que da un puntero (p->arr[i],
     /// (a+1)[i]): (base, indice, tipo del elemento). Antes se rechazaba.
-    IndexPtr(Box<Expr>, Box<Expr>, TypeSpec),
+    IndexPtr(Box<Expr>, Box<Expr>),
     /// base[i] = val para bases compuestas.
-    AssignIndexPtr(Box<Expr>, Box<Expr>, TypeSpec, Box<Expr>),
+    AssignIndexPtr(Box<Expr>, Box<Expr>, Box<Expr>),
     /// (*fp)(args) -- llamada a traves de un puntero a funcion CALCULADO
     /// (no una simple variable). callee da la direccion; args por la pila.
     CallPtr(Box<Expr>, Vec<Expr>),
     /// base.campo -- (base, nombre, offset, TIPO del campo).
     /// El tipo viaja en el AST para que codegen cargue/guarde el tamano EXACTO:
     /// antes pt.x=10 con x:int escribia 8 bytes y pisaba al campo siguiente.
-    Field(Box<Expr>, String, u32, TypeSpec),
-    Arrow(Box<Expr>, String, u32, TypeSpec),
-    AssignField(Box<Expr>, String, u32, TypeSpec, Box<Expr>),
-    AssignArrow(Box<Expr>, String, u32, TypeSpec, Box<Expr>),
+    Field(Box<Expr>, String),
+    Arrow(Box<Expr>, String),
+    AssignField(Box<Expr>, String, Box<Expr>),
+    AssignArrow(Box<Expr>, String, Box<Expr>),
     AssignDeref(Box<Expr>, Box<Expr>),
     /// **`E1 op= E2` con `E1` evaluado UNA SOLA VEZ.**
     ///

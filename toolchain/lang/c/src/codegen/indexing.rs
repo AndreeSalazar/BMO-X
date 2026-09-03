@@ -28,7 +28,65 @@
 
 use super::*;
 
+/// **Como se llega a la base de un campo**: `a.x` y `p->x` son la misma suma.
+///
+/// La unica diferencia entre las dos es de donde sale la direccion base: de la
+/// DIRECCION de un agregado que ya esta ahi, o del VALOR de un puntero. Todo lo
+/// demas --sumar el offset, cargar o guardar con el ancho del campo-- es igual.
+#[derive(Clone, Copy, PartialEq)]
+pub(super) enum Por {
+    /// `a.x` -- la base es la direccion del propio agregado.
+    Valor,
+    /// `p->x` -- la base es el valor del puntero.
+    Puntero,
+}
+
 impl Codegen {
+    /// El par `(offset, tipo)` de un campo, por la via que toque.
+    fn campo(&mut self, base: &Expr, campo: &str, por: Por) -> (u32, TypeSpec) {
+        match por {
+            Por::Valor => self.campo_de_valor(base, campo),
+            Por::Puntero => self.campo_por_puntero(base, campo),
+        }
+    }
+
+    /// La direccion base de un acceso a campo, en `rax`.
+    fn base_de_campo(&mut self, base: &Expr, por: Por) {
+        match por {
+            Por::Valor => self.emit_expr_as_ptr(base),
+            Por::Puntero => self.emit_expr(base),
+        }
+    }
+
+    /// **LEER `a.x` o `p->x`**: direccion + offset, y carga con el ancho y el
+    /// signo EXACTOS del campo.
+    pub(super) fn emit_leer_campo(&mut self, base: &Expr, campo: &str, por: Por) {
+        let (offset, ftyp) = self.campo(base, campo, por);
+        self.base_de_campo(base, por);
+        self.emit_add_offset(offset);
+        self.emit_load_elem(&ftyp);
+    }
+
+    /// **GUARDAR en `a.x` o `p->x`**, y devolver el valor guardado.
+    ///
+    /// [!] El valor se emite ANTES que la direccion y se guarda en la pila: si
+    /// se calculara la direccion primero, cualquier efecto dentro de `val`
+    /// correria con la direccion ya en `rax` y se la llevaria por delante.
+    ///
+    /// ** Y el store va con el ancho EXACTO del campo: `pt.x = 10` con `x:int`
+    /// escribe cuatro bytes. Con ocho se llevaba a `pt.y` por delante, y eso no
+    /// da un error -- da otro numero.
+    pub(super) fn emit_guardar_campo(&mut self, base: &Expr, campo: &str, por: Por, val: &Expr) {
+        let (offset, ftyp) = self.campo(base, campo, por);
+        self.emit_expr(val);
+        self.code.push(0x50); // push valor
+        self.base_de_campo(base, por);
+        self.emit_add_offset(offset);
+        self.code.push(0x5A); // pop rdx = valor
+        self.emit_store_elem(&ftyp);
+        self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // rax = valor
+    }
+
     /// `name` es un array (su memoria vive en el slot) o un puntero (el slot
     /// guarda una direccion)? La distincion que antes no existia y corrompia.
     pub(super) fn var_is_array(&self, name: &str) -> bool {
@@ -73,7 +131,8 @@ impl Codegen {
 
     /// rax = direccion de name[idx]. Array -> base = lea del slot;
     /// puntero -> base = VALOR del slot. Local o global.
-    pub(super) fn emit_subscript_addr(&mut self, name: &str, index: &Expr, scale: u32) {
+    pub(super) fn emit_subscript_addr(&mut self, name: &str, index: &Expr) {
+        let scale = self.paso_de_elemento(name);
         self.emit_expr(index);
         self.emit_scale_index(scale);
         self.code.push(0x50); // push indice escalado
@@ -207,19 +266,22 @@ impl Codegen {
     /// emisores que el resto del fichero: aqui no hay un segundo camino.
     fn emit_lvalue_addr(&mut self, lvalue: &Expr) {
         match lvalue {
-            Expr::Subscript(name, index, scale) => {
-                self.emit_subscript_addr(name, index, *scale)
+            Expr::Subscript(name, index) => {
+                self.emit_subscript_addr(name, index)
             }
-            Expr::IndexPtr(base, index, elem) => {
-                self.emit_index_ptr_addr(base, index, elem)
+            Expr::IndexPtr(base, index) => {
+                let elem = self.pointee_type(base).unwrap_or(TypeSpec::Long);
+                self.emit_index_ptr_addr(base, index, &elem)
             }
-            Expr::Field(base, _, off, _) => {
+            Expr::Field(base, campo) => {
+                let off = self.offset_de_valor(base, campo);
                 self.emit_expr_as_ptr(base);
-                self.emit_add_offset(*off);
+                self.emit_add_offset(off);
             }
-            Expr::Arrow(base, _, off, _) => {
+            Expr::Arrow(base, campo) => {
+                let off = self.offset_por_puntero(base, campo);
                 self.emit_expr(base);
-                self.emit_add_offset(*off);
+                self.emit_add_offset(off);
             }
             Expr::Deref(inner) => self.emit_expr(inner),
             // Una variable suelta no llega aqui: no tiene efectos que duplicar,
@@ -229,16 +291,13 @@ impl Codegen {
     }
 
     /// El tipo del elemento al que apunta un lvalue.
-    fn tipo_del_lvalue(&self, lvalue: &Expr) -> TypeSpec {
-        match lvalue {
-            Expr::Subscript(name, _, _) => self.elem_type_of(name),
-            Expr::IndexPtr(_, _, elem) => elem.clone(),
-            Expr::Field(_, _, _, ty) | Expr::Arrow(_, _, _, ty) => ty.clone(),
-            Expr::Deref(inner) => self
-                .pointee_type(inner)
-                .unwrap_or(TypeSpec::Long),
-            _ => TypeSpec::Long,
-        }
+    ///
+    /// ** DELEGA EN EL JUEZ UNICO. Era una TERCERA copia de la misma pregunta
+    /// --con sus propios brazos y sus propios huecos-- y se fue con las otras
+    /// dos. El `unwrap_or` se queda aqui, que es donde hay que elegir un ancho
+    /// para emitir: el juez no inventa, el llamante decide.
+    pub(super) fn tipo_del_lvalue(&self, lvalue: &Expr) -> TypeSpec {
+        crate::tipos::tipo_de(self, lvalue).unwrap_or(TypeSpec::Long)
     }
 
     /// Los bytes de cada operacion, con `rdx` = izquierdo y `rax` = derecho,
@@ -309,11 +368,12 @@ impl Codegen {
                     self.global_fixups.push((self.code.len() - 4, name.clone()));
                 } else { self.emit_xor_eax(); }
             }
-            Expr::Subscript(name, index, scale) => {
-                self.emit_subscript_addr(name, index, *scale);
+            Expr::Subscript(name, index) => {
+                self.emit_subscript_addr(name, index);
             }
-            Expr::IndexPtr(base, index, elem) => {
-                self.emit_index_ptr_addr(base, index, elem);
+            Expr::IndexPtr(base, index) => {
+                let elem = self.pointee_type(base).unwrap_or(TypeSpec::Long);
+                self.emit_index_ptr_addr(base, index, &elem);
             }
             _ => self.emit_expr(expr),
         }
@@ -373,5 +433,18 @@ impl Codegen {
 impl crate::tipos::Ambito for Codegen {
     fn tipo_de_variable(&self, nombre: &str) -> Option<TypeSpec> {
         self.var_type_of(nombre)
+    }
+
+    fn tipo_de_campo(&self, agregado: &str, campo: &str) -> Option<TypeSpec> {
+        self.field_types
+            .get(&(agregado.to_string(), campo.to_string()))
+            .cloned()
+    }
+
+    /// * La misma tabla que ya usaban `expr_is_float` y `expr_is_unsigned` para
+    /// esto mismo. Aqui el codegen sabe MAS que el parser: `firmas` lleva todas
+    /// las funciones, definidas y prototipadas.
+    fn tipo_de_retorno(&self, funcion: &str) -> Option<TypeSpec> {
+        self.firmas.get(funcion).map(|(_, ret)| ret.clone())
     }
 }
