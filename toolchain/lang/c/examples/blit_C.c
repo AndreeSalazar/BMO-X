@@ -35,6 +35,40 @@
  * arreglo esta nombrado. Si no, el limite es el bus y entonces si hace falta
  * una GPU.
  *
+ * ============================================================================
+ * *** LO QUE CONTESTO EL RYZEN (2026-09-04), en cuatro corridas seguidas
+ * ============================================================================
+ *
+ *    1. memcpy a RAM         154 ciclos/KiB
+ *    2. memcpy al FB (WC)   3140 ciclos/KiB     20x peor que RAM
+ *    3. bucle de 8B al FB  29950 ciclos/KiB     10x PEOR que memcpy
+ *
+ * ** LA FILA 3 NO GANA: PIERDE DIEZ VECES. `rep movsb` es lo MEJOR que hay
+ * para escribir en la pantalla, no lo peor. La sospecha con la que se escribio
+ * este programa queda desmentida por el programa mismo, que es para lo que se
+ * escribio asi.
+ *
+ * [!] Y la fila 3 no midio lo que su nombre dice. Un bucle de C compilado sin
+ * optimizar --cada variable en la pila, cada indice un `imul` -- mide sobre todo
+ * AL COMPILADOR. La fila 2 se acerca al bus porque `rep movsb` es UNA
+ * instruccion y no lleva bucle encima.
+ *
+ * ============================================================================
+ * *** Y LA CUENTA QUE ABRE ESTO, que es lo que de verdad valia la medida
+ * ============================================================================
+ *
+ *    ancho medido del framebuffer   1,47 GB/s
+ *    los 6,4 MB de un fotograma     4,36 ms       <- lo que DEBERIA costar
+ *    lo que DOOM mide                25,49 ms
+ *    SIN EXPLICAR                    21,13 ms  (83%)
+ *
+ * O sea que **el bus no es el cuello**: da tres veces mas de lo que DOOM le
+ * pide. El 83% del blit se va en otro sitio, y el sospechoso es la EXPANSION de
+ * la fila -- 320.000 escrituras por fotograma, a 297 ciclos cada una.
+ *
+ * Eso se arregla sin comprar nada, y no con SIMD: con un bucle que no pague
+ * un `imul` y tres accesos a pila por pixel.
+ *
  * [!] NO DIBUJA NADA UTIL. Escribe negro en una banda de la pantalla, la mide,
  * y sale. Es un instrumento, no una demo.
  */
