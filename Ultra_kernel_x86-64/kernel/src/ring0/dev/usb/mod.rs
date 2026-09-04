@@ -303,6 +303,34 @@ static mut MOUSE_WHEEL: i32 = 0;
 static mut HID_EVENTS: u32 = 0;     // no TOTAL de InputEvents de hid.poll (kbd+mouse)
 
 
+/// **EL PUNTERO EMPIEZA EN EL CENTRO.**
+///
+/// # Por que no basta con inicializar los estaticos
+///
+/// `MOUSE_X` y `MOUSE_Y` nacen a cero porque en `.bss` no hay otra cosa, y cero
+/// es la esquina de arriba a la izquierda. El centro **no se puede escribir en
+/// el fichero**: depende de `FB_WIDTH`, que no existe hasta que el firmware
+/// entrega el panel.
+///
+/// [!] Y tampoco vale hacerlo al primer movimiento. Eso centraria el puntero
+/// **cuando el dueno ya lo esta moviendo**, o sea un salto en la cara. El sitio
+/// es cuando aparece el escritorio, que es cuando el puntero se ve por primera
+/// vez y todavia no lo ha tocado nadie.
+///
+/// ** Si el panel no esta, no se hace nada y se dice: centrar sobre un ancho de
+/// cero pondria el puntero en la esquina y lo llamaria centro.
+pub fn centrar_puntero() {
+    let (w, h) = unsafe { (crate::info::FB_WIDTH, crate::info::FB_HEIGHT) };
+    if w == 0 || h == 0 {
+        crate::ring0::cabina::warn("usb", "sin panel: el puntero se queda donde estaba", 0);
+        return;
+    }
+    unsafe {
+        MOUSE_X = (w / 2) as i32;
+        MOUSE_Y = (h / 2) as i32;
+    }
+}
+
 /// Se inicializo un teclado USB?
 pub fn is_ready() -> bool {
     unsafe { READY }
