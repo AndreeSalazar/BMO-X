@@ -12,7 +12,34 @@ use crate::desktop::{Desktop, Ventana};
 use crate::scene::{self};
 use crate::{erase_window, uncover};
 
-pub(crate) fn on_key(dsk: &mut Desktop, p: &bmo::Pantalla, c: u8, _alt_alone: bool) -> Key {
+pub(crate) fn on_key(dsk: &mut Desktop, p: &bmo::Pantalla, c: u8, alt_alone: bool) -> Key {
+// == ALT+F4: CERRAR LO DE DELANTE ====================================
+//
+// Lo pidio el dueno con estas palabras: *"agregar esa ventanita para cerrar
+// y todo eso como tipico Alt+F4, que es para cerrar cualquier app"*.
+//
+// Va ANTES que nada por lo mismo que F12: un atajo que solo funciona si ya
+// estas dentro de la ventana no sirve para cerrarla.
+//
+// ** Y usa el MISMO camino que la X del marco --`cerrar_app`-- porque cerrar
+// tiene que significar lo mismo se pida como se pida. Dos cierres distintos
+// para el mismo gesto es como se llega a que uno mate el proceso y el otro no.
+//
+// [!] LO QUE NO ALCANZA, dicho por delante: una app a PANTALLA COMPLETA. Con
+// DOOM delante el escritorio esta dormido en `lend_screen` y no lee teclas --
+// no hay a quien mandarle este atajo. Para esas sigue siendo `Ctrl+Alt+Esc`,
+// que vive en Ring 0 justamente porque es el unico sitio por donde pasan
+// TODAS las teclas. Un atajo de escritorio no puede rescatar de algo que se
+// llevo el escritorio.
+// 0x8C = F4, con el mismo criterio que el 0x94 de F12 doce lineas mas abajo:
+// el codigo crudo, porque asi esta escrito el resto de este fichero.
+if c == 0x8C && alt_alone {
+    if let Some(Ventana::App(i)) = dsk.win.focus.actual() {
+        crate::desktop::mouse::apps::cerrar_app(dsk, p, i as usize);
+        return Key::Taken;
+    }
+}
+
 // -- F12 es del SISTEMA, no de una ventana --
 //
 // Se atiende ANTES de preguntar por el foco, y tiene que ser

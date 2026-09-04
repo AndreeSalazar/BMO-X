@@ -67,32 +67,7 @@ pub(crate) fn on_pointer(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Golpe) -> boo
                     // ** El orden importa: primero la caja, despues el
                     // proceso. Al reves, `revoke_all` correria mientras esta
                     // vuelta todavia puede leer su superficie.
-                    Some(Button::Close) => {
-                        // El tid ANTES de soltar: `close` se lleva la
-                        // superficie, y con ella la unica forma de saber de
-                        // quien era esa ventana.
-                        let tid = dsk.table.get_mut(i).map(|s| s.tid);
-                        if let Some((vx, vy, va, vl)) = dsk.table.close(i) {
-                            erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
-                            uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
-                            for s in dsk.table.iter_mut() {
-                                s.repaint_all();
-                            }
-                        }
-                        // Una app en ventana puede no tener entrada --hoy
-                        // ninguna la tiene-- asi que pedirle que se vaya
-                        // seria pedirselo a alguien que no escucha. Sin
-                        // esto, cerrar dejaba un proceso dibujando para
-                        // nadie hasta reiniciar.
-                        if let Some(tid) = tid {
-                            if let Some(h) = bmo::Hijo::por_tid(tid) {
-                                h.cerrar();
-                            }
-                        }
-                        // Y el foco deja de conocerla. Sin esto, Alt+Tab
-                        // seguiria parando en una caja que ya no existe.
-                        dsk.win.focus.close(Ventana::App(i as u8));
-                    }
+                    Some(Button::Close) => cerrar_app(dsk, &p, i),
                     Some(Button::Minimize) => {
                         if let Some(s) = dsk.table.get_mut(i) {
                             let (vx, vy, va, vl) =
@@ -160,4 +135,42 @@ pub(crate) fn on_pointer(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Golpe) -> boo
     }
 
     false
+}
+
+/// **CERRAR LA APP DE LA CAJA `i`.** Un solo sitio, y por eso existe.
+///
+/// Lo llaman DOS gestos --la X del marco y Alt+F4-- y copiarlo seria el patron
+/// 26 de la casa: dos copias del mismo cierre que se arreglan una vez cada una.
+///
+/// ** El orden importa: primero la CAJA, despues el PROCESO. Al reves,
+/// `revoke_all` correria mientras el compositor todavia puede leer su
+/// superficie.
+///
+/// [!] Y esto NO es autoridad de `root`. El DIRECTOR no cierra *porque es el
+/// DIRECTOR*: cierra porque **tiene el handle de haberla lanzado**.
+/// `Hijo::por_tid` solo encuentra lo que `EJECUTAR` concedio, asi que sobre una
+/// app que lanzo otro esto no hace nada -- y esa es toda la politica que hay.
+pub(crate) fn cerrar_app(dsk: &mut Desktop, p: &bmo::Pantalla, i: usize) {
+    // El tid ANTES de soltar: `close` se lleva la superficie, y con ella la
+    // unica forma de saber de quien era esa ventana.
+    let tid = dsk.table.get_mut(i).map(|s| s.tid);
+    if let Some((vx, vy, va, vl)) = dsk.table.close(i) {
+        erase_window(p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+        uncover(p, &dsk.run_box, &dsk.launcher, dsk.win.visible,
+                &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+        for s in dsk.table.iter_mut() {
+            s.repaint_all();
+        }
+    }
+    // Una app en ventana puede no tener entrada --hoy ninguna la tiene-- asi
+    // que pedirle que se vaya seria pedirselo a alguien que no escucha. Sin
+    // esto, cerrar dejaba un proceso dibujando para nadie hasta reiniciar.
+    if let Some(tid) = tid {
+        if let Some(h) = bmo::Hijo::por_tid(tid) {
+            h.cerrar();
+        }
+    }
+    // Y el foco deja de conocerla. Sin esto, Alt+Tab seguiria parando en una
+    // caja que ya no existe.
+    dsk.win.focus.close(Ventana::App(i as u8));
 }
