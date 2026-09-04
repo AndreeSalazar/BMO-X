@@ -97,6 +97,11 @@ pub(crate) static mut DESKTOP_ATTEMPTS: u32 = 0;
 pub(crate) const DESKTOP_MAX_ATTEMPTS: u32 = 2;
 
 pub(crate) fn start_desktop() {
+    // ** EL PUNTERO, AL CENTRO. Aqui y no antes: es el instante en que la
+    // pantalla pasa a tener escritorio, o sea la primera vez que el puntero se
+    // VE. Nace en (0,0) porque `.bss` no sabe de otra cosa, y esa esquina es un
+    // sitio de nadie. Ver `dev::usb::centrar_puntero`.
+    crate::ring0::dev::usb::centrar_puntero();
     use crate::ring0::task::launch;
 
     unsafe { DESKTOP_ATTEMPTS += 1 };
