@@ -616,6 +616,12 @@ pub(crate) fn shell_smp_tabla() {
             "THREAD" => threads += 1,
             _ => {}
         }
+        // ** Y LO QUE LLEVA HECHO, que es lo que convierte una foto en un
+        // instrumento. `estado_de` dice si el nucleo contesto; la ficha dice si
+        // esta TRABAJANDO ahora y cuanto ha trabajado. Un nucleo en pie sin un
+        // solo encargo y uno atascado dentro de una faena se ven igual en la
+        // columna de la izquierda y DISTINTO en esta.
+        let f = smp::ficha::por_apic(id);
         row("cpu", |l| {
             l.dec(id as u64);
             l.txt("  ");
@@ -626,8 +632,33 @@ pub(crate) fn shell_smp_tabla() {
             l.txt(e.nombre());
             l.txt("   ");
             l.txt(e.motivo());
+            if let Some(r) = f {
+                l.txt("   ");
+                l.txt(smp::ficha::nombre_estado(r.estado));
+                l.txt("  ");
+                l.dec(r.encargos as u64);
+                l.txt(" encargos  ");
+                l.dec(r.ciclos);
+                l.txt(" ciclos");
+            }
         });
     }
+    // *** UN OBRERO POR NUCLEO: la lista que pidio el dueno el 03-09.
+    //
+    // No es lo mismo que `cores`, y por eso se pinta aparte: aquella cuenta
+    // cuantos IDs son primer hilo de su nucleo; esta dice cuantos de esos
+    // LLEGARON a presentarse. Un nucleo que no arranco no es un obrero.
+    let mut porn = [0u32; 32];
+    let n_por_nucleo = smp::ficha::primeros_de_cada_nucleo(&mut porn);
+    row("por nucleo", |l| {
+        if n_por_nucleo == 0 {
+            l.txt("ninguno todavia (o el perfil no dice quien comparte nucleo)");
+        } else {
+            l.dec(n_por_nucleo as u64);
+            l.txt(" obreros, uno por nucleo fisico -- es el reparto de una faena");
+            l.txt(" que va a MEMORIA");
+        }
+    });
     row("reparto", |l| {
         l.dec(cores as u64);
         l.txt(" CORE + ");

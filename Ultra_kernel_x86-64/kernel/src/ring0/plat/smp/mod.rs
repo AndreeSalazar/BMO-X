@@ -42,6 +42,10 @@ pub mod lapic;
 pub mod map;
 /// El reparto de trabajo. Sin esto, los nucleos despiertos no sirven de nada.
 pub mod banda;
+/// LA FICHA DE CADA OBRERO: quien es --nucleo y hilo-- y que lleva hecho
+/// ahora mismo. Es lo que separa "doce partes iguales" de un reparto que
+/// sabe que dos hilos comparten un nucleo.
+pub mod ficha;
 pub mod crew;
 pub mod tramp;
 
@@ -423,31 +427,47 @@ pub fn estado_de(id: u32) -> Estado {
 /// de unidades de ejecucion de las que hay. Lo correcto seria leer
 /// `CPUID.8000001E`, y hasta que exista una maquina donde probarlo, esto se
 /// calla en vez de adivinar.
-pub fn tipo_de(id: u32) -> &'static str {
-    let Some(t) = (crate::ring0::cpu_vendor::profile::active().nucleos)() else {
-        return "?";
-    };
+/// **DONDE VIVE UN APIC ID: en que nucleo y en que hilo de ese nucleo.**
+///
+/// `None` cuando no se puede saber, y esa es la respuesta honesta: sin perfil,
+/// o con un reparto de hilos que este juez no sabe leer, **no se inventa**.
+///
+/// # *** Por que esta pregunta esta AQUI y no en `ficha`
+///
+/// Porque `tipo_de` ya la contestaba a medias --*"CORE o THREAD"*-- y escribir
+/// la version entera en otro fichero habria dejado **dos jueces del mismo
+/// numero**, que es el patron 55 de este arbol y el que mas caro ha salido.
+/// Ahora `tipo_de` es un caso de esto, no su gemelo.
+///
+/// [!] Y por eso lo llama el BSP y nunca un obrero: leer el perfil es tocar
+/// estado del kernel, y el contrato de `crew` es que un AP no toca nada. La
+/// ficha guarda el APIC --un numero suyo-- y la identidad se resuelve al
+/// MIRARLA, que pasa en el BSP.
+pub fn donde_vive(id: u32) -> Option<(u8, u8)> {
+    let t = (crate::ring0::cpu_vendor::profile::active().nucleos)()?;
     let (nucleos, hilos) = (t.nucleos as u32, t.hilos as u32);
-    if nucleos == 0 || hilos == 0 {
-        return "?";
+    if nucleos == 0 || hilos == 0 || id >= 32 {
+        return None;
     }
-    // Sin SMT no hay hermanos: todos son nucleos.
+    // Sin SMT no hay hermanos: cada hilo es su propio nucleo.
     if hilos == nucleos {
-        return "CORE";
+        return Some((id as u8, 0));
     }
-    if hilos != nucleos * 2 {
-        // Ni uno ni dos hilos por nucleo: no se sabe repartirlos por el ID.
-        return "?";
+    let por_nucleo = hilos / nucleos;
+    // Ni uno ni dos hilos por nucleo: este juez no sabe repartirlo por el ID, y
+    // lo dice en vez de dividir igual.
+    if por_nucleo != 2 || hilos != nucleos * 2 {
+        return None;
     }
-    // El censo solo cubre 32; mas alla el propio ID ya no es de fiar aqui
-    // tampoco. Ver `estado_de`.
-    if id >= 32 {
-        return "?";
-    }
-    if id & 1 == 0 {
-        "CORE"
-    } else {
-        "THREAD"
+    Some(((id / por_nucleo) as u8, (id % por_nucleo) as u8))
+}
+
+pub fn tipo_de(id: u32) -> &'static str {
+    // ** Un caso del juez de arriba, no una segunda cuenta.
+    match donde_vive(id) {
+        Some((_, 0)) => "CORE",
+        Some((_, _)) => "THREAD",
+        None => "?",
     }
 }
 
