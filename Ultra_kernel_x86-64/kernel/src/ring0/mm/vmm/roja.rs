@@ -206,6 +206,39 @@ pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
     crate::ring0::core::desmontaje::entra(17, 0);
     let mut hojas = 0u64;
     let mut tablas = 0u64;
+    let mut ya_libres = 0u64;
+    // *** SE DESTRUYE DOS VECES? La pregunta que dejo servida el 04-09.
+    //
+    // Al morir DOOM, este recorrido encontro TRECE casillas malas EN LA MISMA
+    // tabla (`4D2000`), y la cabecera de `amarilla::caminable` ya tenia escrito
+    // lo que eso significa:
+    //
+    // > tres casillas malas en LA MISMA tabla -> ese marco NO es una tabla
+    //
+    // Y las entradas eran MAQUINA, no direcciones: `5053544156415741` leido en
+    // little-endian es `41 57 41 56 41 54 53 50`, o sea
+    // `push r15; push r14; push r12; push rbx; push rax`. Un prologo de
+    // funcion. Ese marco tiene CODIGO dentro, y `phys` dijo ademas que ya
+    // estaba libre: se solto, se volvio a entregar, alguien cargo un programa
+    // encima, y este recorrido seguia teniendolo por una tabla.
+    //
+    // ** De las dos explicaciones posibles, esta linea elige:
+    //
+    //    el PML4 ya esta LIBRE  -> el espacio se destruye DOS VECES, y lo que
+    //                              se camina la segunda vez es memoria de otro
+    //    el PML4 esta OCUPADO   -> el arbol es suyo, y quien suelta tablas sin
+    //                              desenlazarlas es OTRO
+    //
+    // [!] Y NO ES SOLO UNA SONDA. La segunda vuelta llama a `zero_frame` sobre
+    // cada hoja que pase `caminable`, y `caminable` solo comprueba que la
+    // direccion CABE en el espejo. Una hoja de basura que caiga dentro de los
+    // 16 GiB **le borra 4 KiB a un proceso vivo**. Cortar aqui deja de hacer
+    // eso, se descubra lo que se descubra despues.
+    if let Some(true) = phys::esta_libre(pml4) {
+        crate::ring0::cabina::fault(
+            "vmm", "PML4 YA estaba LIBRE: el espacio se destruye DOS VECES", pml4);
+        return (hojas, tablas);
+    }
     // *** LA UNICA DIRECCION QUE ENTRA DE FUERA, Y ERA LA UNICA SIN JUEZ.
     //
     // ** Los cuatro niveles de abajo --PDPT, PD, PT y la hoja-- pasan por
@@ -229,6 +262,13 @@ pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
         if !caminable(pdpt_phys, "PML4: entrada fuera del physmap", e0, pml4, 0) {
             return (hojas, tablas);
         }
+        // ** CABER EN EL ESPEJO NO ES SER UNA TABLA. `caminable` contesta lo
+        // primero; esto lo segundo. Un marco LIBRE que sigue enlazado como
+        // tabla es el hallazgo entero, y caminarlo es leer lo de otro.
+        if let Some(true) = phys::esta_libre(pdpt_phys) {
+            crate::ring0::cabina::fault("vmm", "PDPT enlazado pero YA LIBRE", pdpt_phys);
+            return (hojas, tablas);
+        }
         let pdpt = table(pdpt_phys);
         for i3 in 1..512 {
             let e = pdpt[i3];
@@ -237,6 +277,10 @@ pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
             }
             let pd_phys = e & ADDR_MASK;
             if !caminable(pd_phys, "PDPT: entrada fuera del physmap", e, pdpt_phys, i3) {
+                continue;
+            }
+            if let Some(true) = phys::esta_libre(pd_phys) {
+                crate::ring0::cabina::fault("vmm", "PD enlazado pero YA LIBRE", pd_phys);
                 continue;
             }
             let pd = table(pd_phys);
@@ -250,6 +294,12 @@ pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
                 if !caminable(pt_phys, "PD: entrada fuera del physmap", e2, pd_phys, i2) {
                     continue;
                 }
+                // *** ESTE es el nivel donde el Ryzen enseno el codigo: la
+                // tabla `4D2000` del 04-09 era un PT.
+                if let Some(true) = phys::esta_libre(pt_phys) {
+                    crate::ring0::cabina::fault("vmm", "PT enlazado pero YA LIBRE", pt_phys);
+                    continue;
+                }
                 let pt = table(pt_phys);
                 for i1 in 0..512 {
                     let hoja = pt[i1];
@@ -260,6 +310,20 @@ pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
                     // ** La hoja tambien: `zero_frame` escribe por el physmap, y
                     // una hoja con basura mata igual que una tabla.
                     if !caminable(marco, "HOJA: entrada fuera del physmap", hoja, pt_phys, i1) {
+                        continue;
+                    }
+                    // ** UNA HOJA QUE YA ESTABA LIBRE NO SE BORRA.
+                    //
+                    // Se CUENTA en vez de decirse una por una: a 512 casillas
+                    // por tabla, un arbol pisado llenaria CABINA de renglones
+                    // iguales y taparia su propio mensaje --la leccion del cepo
+                    // del 30-08--. El total sale al final, en una linea.
+                    //
+                    // [!] Y lo que se evita es lo caro: `zero_frame` sobre un
+                    // marco que ya es de otro le borra 4 KiB a un proceso vivo.
+                    // Ese es el sintoma que aparece tres arranques despues.
+                    if let Some(true) = phys::esta_libre(marco) {
+                        ya_libres += 1;
                         continue;
                     }
                     // Se limpia por el mismo motivo que en `obj::memory`: el
@@ -280,6 +344,12 @@ pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
     }
     phys::free_frame(pml4);
     tablas += 1;
+    // ** Y el total de hojas que ya estaban libres. CERO tambien es respuesta:
+    // dice que el arbol era suyo entero y que el problema no es este recorrido.
+    if ya_libres != 0 {
+        crate::ring0::cabina::fault(
+            "vmm", "hojas enlazadas y YA LIBRES (NO borradas)", ya_libres);
+    }
     (hojas, tablas)
 }
 

@@ -287,6 +287,22 @@ pub fn free_frame(phys: u64) {
             // > documentacion avisa de este bug exacto.
             crate::ring0::cabina::fault(
                 "phys", "se devuelve un marco que YA estaba libre", phys);
+            // ** Y EN QUE ESTACION DEL DESMONTAJE IBA. (2026-09-04)
+            //
+            // Ese dia este renglon salio dos veces --`841000` y `4D2000`-- y no
+            // decia QUIEN devolvia. Desmontar un proceso son diecisiete pasos
+            // en un orden portante, asi que "alguien lo devolvio dos veces"
+            // mandaba a auditar los diecisiete.
+            //
+            // [!] La pantalla azul ya sabia preguntarlo, y aquel dia NO HUBO
+            // pantalla azul: el kernel se recupero con la patada y el hallazgo
+            // se quedo solo en CABINA. **Un instrumento que unicamente habla en
+            // la azul se calla justo cuando el kernel sobrevive** -- que es la
+            // mayoria de las veces, y son las veces que se pueden investigar
+            // con la maquina todavia encendida.
+            if let Some((n, nombre, _pid, _)) = crate::ring0::core::desmontaje::donde() {
+                crate::ring0::cabina::fault("phys", nombre, n as u64);
+            }
         }
     }
 }
