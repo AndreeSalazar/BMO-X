@@ -31,12 +31,49 @@ pub(crate) fn on_key(dsk: &mut Desktop, p: &bmo::Pantalla, c: u8, alt_alone: boo
 // que vive en Ring 0 justamente porque es el unico sitio por donde pasan
 // TODAS las teclas. Un atajo de escritorio no puede rescatar de algo que se
 // llevo el escritorio.
-// 0x8C = F4, con el mismo criterio que el 0x94 de F12 doce lineas mas abajo:
-// el codigo crudo, porque asi esta escrito el resto de este fichero.
+// 0x8C = F4, con el mismo criterio que el 0x94 de F12 mas abajo: el codigo
+// crudo, porque asi esta escrito el resto de este fichero.
+//
+// *** CIERRA LO QUE HAYA DELANTE, SEA LO QUE SEA (corregido el 05-09).
+//
+// La primera version solo cerraba `Ventana::App`, y el dueno lo probo y dijo
+// *"el Alt+F4 no me funciona"*. Tenia razon, y el fallo era de diseno: el
+// atajo se llamaba *cerrar cualquier app* y solo cerraba una CLASE de ventana.
+// Con Ejecutar delante --que es lo que hay en cuanto no tienes una app
+// abierta-- no hacia nada Y NO DECIA NADA, que es la peor de las dos mitades.
+//
+// ** Un atajo que a veces no hace nada y nunca lo explica se lee como roto,
+// aunque este haciendo exactamente lo que se le escribio. Es la misma familia
+// que lleva toda la semana: algo correcto que se entiende como otra cosa.
 if c == 0x8C && alt_alone {
-    if let Some(Ventana::App(i)) = dsk.win.focus.actual() {
-        crate::desktop::mouse::apps::cerrar_app(dsk, p, i as usize);
-        return Key::Taken;
+    match dsk.win.focus.actual() {
+        // Una app: se cierra de verdad, por el MISMO camino que la X.
+        Some(Ventana::App(i)) => {
+            crate::desktop::mouse::apps::cerrar_app(dsk, p, i as usize);
+            return Key::Taken;
+        }
+        // Los paneles del propio escritorio se esconden, que es lo que
+        // significa cerrar para algo que no es un proceso.
+        Some(Ventana::Data) => {
+            dsk.win.data_open = false;
+            dsk.win.focus.close(Ventana::Data);
+            erase_window(p, &dsk.run_box, dsk.win.data.x(), dsk.win.data.y(),
+                         dsk.win.data.width(), dsk.win.data.height(), dsk.win.visible);
+            dsk.win.top_before = Ventana::Run;
+            uncover(p, &dsk.run_box, &dsk.launcher, dsk.win.visible,
+                    &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+            return Key::Taken;
+        }
+        // [!] Y aqui NO se cierra nada, pero SE DICE. Ejecutar es la casa: si
+        // Alt+F4 la cerrara no quedaria donde escribir. Callar seria dejar al
+        // dueno pensando que el atajo esta roto -- que es exactamente lo que
+        // paso el 05-09.
+        _ => {
+            dsk.out.grid.text(b"  Alt+F4 cierra la ventana de delante. Esta es la casa.
+");
+            dsk.tick.repaint_field = true;
+            return Key::Taken;
+        }
     }
 }
 

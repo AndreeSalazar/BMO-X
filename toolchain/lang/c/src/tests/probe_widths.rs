@@ -286,3 +286,34 @@ fn el_menos_unario_envuelve_igual_que_la_resta() {
         "`-a` y `0 - a` tienen que dar lo MISMO sobre un `unsigned int`"
     );
 }
+
+/// **UN ARRAY GLOBAL DE PUNTEROS, indexado y escrito.** La forma de
+/// `marknums[i] = W_CacheLumpName(...)` en `am_map.c`.
+///
+/// Nacio como SONDA de un `#PF` en metal --el 05-09, con un `rip` que caia en
+/// `AM_loadPics`-- y **exonero al compilador**: los tres punteros vuelven donde
+/// se guardaron. Se queda en el banco porque la pregunta es cara de volver a
+/// hacer y la respuesta vale para siempre.
+///
+/// [!] El paso del elemento de un array de PUNTEROS son 8 bytes, no el tamano
+/// de lo apuntado. Es el mismo error que `p + 1` sobre un `struct T *`, que en
+/// esta casa ya se pago tres veces -- por eso se prueba con una estructura
+/// GRANDE (72 bytes): si el paso fuera el del apuntado, el fallo saltaria a la
+/// vista en vez de esconderse en el ruido.
+#[test]
+fn un_array_global_de_punteros_guarda_donde_toca() {
+    let out = run_c(
+        "typedef struct { int a; int b; char relleno[64]; } patch_t;
+         patch_t uno; patch_t dos; patch_t tres;
+         static patch_t *marcas[10];
+         patch_t *dame(int i) { if (i == 0) return &uno; if (i == 1) return &dos; return &tres; }
+         int main() {
+          int i;
+          for (i = 0; i < 10; i = i + 1) { marcas[i] = 0; }
+          for (i = 0; i < 3; i = i + 1) { marcas[i] = dame(i); }
+          printf(\"%d%d%d\n\", marcas[0] == &uno, marcas[1] == &dos, marcas[2] == &tres);
+          return 0;
+        }",
+    );
+    assert_eq!(out.trim(), "111", "un array global de punteros no guarda donde toca");
+}
