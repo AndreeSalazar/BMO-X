@@ -75,6 +75,10 @@ bmo-firmware = { path = "../../platform/shared/bmo-firmware" }
 # El juez de la CESION. Vive fuera del kernel por lo mismo que `bmo-bex-gate`:
 # ceder una pagina de mas no da un fault, da una ventana -- y eso no se puede
 # comprobar arrancando la maquina.
+# LA PARTITURA: el catalogo de partes y el corte del reparto. Vive fuera del
+# kernel porque un reparto mal cortado no falla, CONTESTA -- y eso se prueba
+# en el anfitrion, no con una camara delante de una pantalla azul.
+bmo-orquesta = { path = "../../platform/shared/bmo-orquesta" }
 bmo-mmio-juicio = { path = "../../platform/shared/bmo-mmio-juicio" }
 # El juez del physmap. Ver `ring0/critic/amarilla.rs`: nacio de dos pantallas
 # azules seguidas por el mismo techo escrito a mano en el sitio equivocado.

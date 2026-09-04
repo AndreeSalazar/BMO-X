@@ -47,6 +47,34 @@
 
 use super::*;
 
+/// **PONER UN NUMERO EN EL ATRIL.** Ver `plat::smp::atril`.
+///
+/// De uno en uno porque por la puerta caben dos numeros y un encargo lleva
+/// cuatro -- el mismo idioma que `OP_RUTA` antes de `OP_EJECUTAR`.
+pub(crate) fn atril(campo: u64, valor: u64) -> BmoStatus {
+    if campo >= crate::ring0::plat::smp::atril::CAMPOS {
+        return BmoStatus::ok_value(0);
+    }
+    BmoStatus::ok_value(u64::from(crate::ring0::plat::smp::atril::poner(campo, valor)))
+}
+
+/// **TOCAD.** `parte` es un numero del catalogo de `bmo-orquesta`, `pedidos` un
+/// maximo de atriles (`0` = los que convengan).
+///
+/// *** Es la primera operacion del sistema que pone a TRABAJAR a mas de un
+/// nucleo con datos de Ring 3. Se apunta en CABINA antes y despues por el mismo
+/// motivo que las otras tres de este fichero: **lo que cambia el estado de la
+/// maquina no puede ser silencioso ni cuando funciona**.
+pub(crate) fn tocar(parte: u64, pedidos: u64) -> BmoStatus {
+    let pid = crate::ring0::task::scheduler::current_pid();
+    let n = crate::ring0::plat::smp::atril::tocar(pid, parte, pedidos);
+    if n == crate::ring0::plat::smp::atril::NO_HAY_ORQUESTA {
+        return BmoStatus::ok_value(0);
+    }
+    crate::ring0::cabina::info("orquesta", "atriles que tocaron", n);
+    BmoStatus::ok_value(n)
+}
+
 /// **Los nucleos**: despertarlos, pararlos, o medir el reparto.
 pub(super) fn smp_despertar(arg0: u64, arg1: u64) -> BmoStatus {
         use crate::ring0::plat::smp::{self, crew};

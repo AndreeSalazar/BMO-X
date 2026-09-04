@@ -120,6 +120,9 @@ pub const OP_ES_NODO: u32 = 0x19;
 pub const OP_ES_TEXTO: u32 = 0x1A;
 /// **Despierta los otros nucleos.** Ver [`crate::sys::smp_despertar`].
 pub const OP_SMP_DESPERTAR: u32 = 0x1B;
+/// **La puerta de la ORQUESTA.** Ver `orquesta.rs` y `bmo-orquesta`.
+pub const OP_ATRIL: u32 = 0x31;
+pub const OP_TOCAR: u32 = 0x32;
 /// ** **ADMINISTRAR EL DISCO.** `arg0` es la orden (`DISCO_OP_*`).
 ///
 /// La segunda operacion del userland que cambia el estado del almacen --la

@@ -28,6 +28,13 @@ members = [
     # veredicto comprobado -- y este es de los que no avisan al equivocarse,
     # porque ceder una pagina de mas no da un fault: da una ventana.
     "platform/shared/bmo-mmio-juicio",
+    # LA PARTITURA: que partes existen y como se reparte una entre n atriles.
+    # Vive aqui por la MISMA frase que `bmo-mmio-juicio` un poco mas arriba:
+    # levantar doce nucleos es del kernel, pero decidir QUE LE TOCA A CADA UNO
+    # es aritmetica -- y un reparto mal cortado no falla, CONTESTA: deja un
+    # trozo sin hacer o dos nucleos escribiendo el mismo byte. Eso se ve tres
+    # arranques despues, y por eso se prueba en el anfitrion.
+    "platform/shared/bmo-orquesta",
     # El juez del physmap. Nacio el 2026-08-30, de dos pantallas azules
     # seguidas por el mismo techo escrito a mano en el sitio equivocado.
     "platform/shared/bmo-carga-juicio",
