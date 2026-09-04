@@ -234,6 +234,13 @@ pub fn contar(p: &Parte) {
     l2.dec(p.marcos_despues);
     l2.txt("   VOLVIERON ");
     l2.dec(p.vueltos);
+    // ** Y CUANTOS DESMONTAJES SE TERMINARON. `marcos` dice cuanto volvio;
+    // esto dice **cuantos procesos llegaron al final de `revoke_all`**, y son
+    // preguntas distintas: una purga puede devolver muchos marcos y haberse
+    // parado a la mitad de uno. Ver `core::desmontaje`, que es el mismo
+    // contador que la pantalla azul usa para nombrar la estacion.
+    l2.txt("   desmontajes ");
+    l2.dec(crate::ring0::core::desmontaje::desmontajes() as u64);
     dashboard_log(l2.as_str());
 
     let mut l3 = Buf::new();
