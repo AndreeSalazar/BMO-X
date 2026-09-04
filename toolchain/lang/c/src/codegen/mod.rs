@@ -1860,6 +1860,7 @@ impl Codegen {
                 } else {
                     self.emit_binop(a, b, &[0x48, 0x01, 0xD0]);
                 }
+                self.recortar_a_32(expr);
             }
             // `a - b`. Antes: `sub rax, rdx` = b - a, o sea al reves.
             // `10 - 3` daba -7.
@@ -1898,8 +1899,12 @@ impl Codegen {
                     }
                     _ => self.emit_binop(a, b, SUB),
                 }
+                self.recortar_a_32(expr);
             }
-            Expr::Mul(a, b) => self.emit_binop(a, b, &[0x48, 0x0F, 0xAF, 0xC2]),
+            Expr::Mul(a, b) => {
+                self.emit_binop(a, b, &[0x48, 0x0F, 0xAF, 0xC2]);
+                self.recortar_a_32(expr);
+            }
             // `a / b` CON SIGNO. Antes hacia dos `pop` habiendo empujado una
             // sola vez --se llevaba un valor de la pila que no era suyo-- y
             // ademas dividia sin signo. `10 / 3` daba 0.
@@ -1987,20 +1992,8 @@ impl Codegen {
             // instruccion. A la derecha si -- `sar` copia el bit de signo y
             // `shr` mete ceros -- y **manda el operando IZQUIERDO**, no la
             // conversion usual: `1u >> x` es sin signo aunque `x` sea `int`.
-            Expr::Shl(a, b) => self.emit_binop(a, b, &[
-                0x48, 0x89, 0xC1, // mov rcx, rax   -> cuenta = b
-                0x48, 0x89, 0xD0, // mov rax, rdx   -> valor  = a
-                0x48, 0xD3, 0xE0, // shl rax, cl
-            ]),
-            Expr::Shr(a, b) => {
-                let logico = self.expr_is_unsigned(a);
-                self.emit_binop(a, b, &[
-                    0x48, 0x89, 0xC1, // mov rcx, rax
-                    0x48, 0x89, 0xD0, // mov rax, rdx
-                    // shr rax,cl (/5) sin signo, sar rax,cl (/7) con el
-                    0x48, 0xD3, if logico { 0xE8 } else { 0xF8 },
-                ])
-            }
+            Expr::Shl(a, b) => self.emit_desplazamiento(a, b, true, expr),
+            Expr::Shr(a, b) => self.emit_desplazamiento(a, b, false, expr),
             // `&&` y `||` valen 0 o 1, no "el operando que quedo". Antes
             // `0 || 3` daba 3: cortocircuitaba bien pero devolvia el valor
             // crudo, y el estandar dice que el resultado es `int` 0/1.
@@ -2081,7 +2074,6 @@ impl Codegen {
         self.code.push(0x5A);
         self.code.extend_from_slice(op);
     }
-
     /// Comparacion entera `a <op> b` -> 0 o 1 en `rax`.
     ///
     /// `setcc` es el segundo byte del opcode: `0x94`=sete, `0x95`=setne,

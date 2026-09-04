@@ -169,6 +169,26 @@ pub(crate) fn tipo_de<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<TypeSpec>
             amb.tipo_de_campo(&agregado_apuntado(amb, base)?, campo)
         }
 
+        // ** LOS OTROS DOS QUE SE PUEDEN PASAR DE 32 BITS.
+        //
+        // `Mul` porque dos numeros de 32 dan uno de 64, y `Shl` porque desplazar
+        // saca bits por arriba. `Div`, `Mod` y los bit a bit no pueden producir
+        // mas bits de los que entraron, asi que no necesitan recorte y no se
+        // les pregunta.
+        //
+        // [!] En C el tipo de `a << b` es el de A SOLAS --el operando derecho
+        // no participa--, que es distinto de todas las demas.
+        Expr::Mul(a, b) => conversion_usual(tipo_de(amb, a), tipo_de(amb, b)),
+        Expr::Shl(a, _) | Expr::Shr(a, _) => {
+            let t = tipo_de(amb, a)?;
+            if ancho(&t) < 4 {
+                // Promocion a `int`: un `short` desplazado es un `int`.
+                Some(if es_sin_signo(&t) { TypeSpec::UnsignedInt } else { TypeSpec::Int })
+            } else {
+                Some(t)
+            }
+        }
+
         // -- lo que se dice a si mismo -------------------------------------
         Expr::Cast(t, _) => Some(t.clone()),
         Expr::Int(_) => Some(TypeSpec::Int),
@@ -192,12 +212,14 @@ pub(crate) fn tipo_de<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<TypeSpec>
                 // `1 + p` es tan legal como `p + 1`.
                 return Some(decaido(tb?));
             }
-            None
+            // ** Y SI NINGUNO ES PUNTERO, ES UNA CUENTA. Decir `None` aqui era
+            // lo que dejaba al codegen sin el ancho, y sin ancho no hay recorte.
+            conversion_usual(ta, tb)
         }
         Expr::Sub(a, b) => {
             let ta = tipo_de(amb, a);
             if !es_direccion(&ta) {
-                return None;
+                return conversion_usual(ta, tipo_de(amb, b));
             }
             // [!] PUNTERO MENOS PUNTERO NO ES UN PUNTERO: es un indice.
             // Decir aqui que sigue siendo puntero haria que `(p - q)->campo`
@@ -205,6 +227,9 @@ pub(crate) fn tipo_de<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<TypeSpec>
             // apunta a ningun sitio.
             if es_direccion(&tipo_de(amb, b)) {
                 return Some(TypeSpec::Long);
+            }
+            if ta.is_none() || !es_direccion(&ta) {
+                return conversion_usual(ta, tipo_de(amb, b));
             }
             Some(decaido(ta?))
         }
@@ -250,5 +275,79 @@ pub(crate) fn agregado_apuntado<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option
     match apunta_a(amb, e)? {
         TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => Some(s),
         _ => None,
+    }
+}
+
+/// **El tipo de una cuenta entre enteros**, o sea las conversiones aritmeticas
+/// usuales de C recortadas a lo que este compilador tiene.
+///
+/// # *** POR QUE ESTO NO PODIA SEGUIR CONTESTANDO `None`
+///
+/// Este juez nacio para encontrar PUNTEROS, asi que a `entero + entero` decia
+/// "no se" y con eso bastaba. El 04-09 dejo de bastar.
+///
+/// DOOM hace, en una sola expresion:
+///
+/// ```c
+///    angle2 = (angle2 + ANG90) >> ANGLETOFINESHIFT;
+/// ```
+///
+/// La suma de dos `unsigned int` **tiene que envolver a 32 bits**, y el codegen
+/// la hacia en registros de 64 sin recortar. El `>>` veia un numero de treinta y
+/// tres bits y devolvia 9212 donde tocaba 1020. Ese numero es un indice de
+/// `viewangletox[]`, que tiene 4096 entradas.
+///
+/// ** Y el codegen no podia recortar porque no sabia el ancho: preguntaba aqui
+/// y se le contestaba `None`. **El recorte que faltaba no era una instruccion:
+/// era una respuesta.**
+///
+/// [!] Se para en `Long` y no distingue `long long`: este compilador no tiene
+/// mas anchos que 32 y 64, y un juez que finge saber mas de lo que el codegen
+/// puede emitir es peor que uno corto.
+fn conversion_usual(ta: Option<TypeSpec>, tb: Option<TypeSpec>) -> Option<TypeSpec> {
+    let (a, b) = (ta?, tb?);
+    if ancho(&a) == 8 || ancho(&b) == 8 {
+        // Uno de los dos ya es de 64: manda el ancho, y el signo lo pone quien
+        // lo aporta. No hay recorte que hacer.
+        return Some(if ancho(&a) == 8 { a } else { b });
+    }
+    // Los dos caben en 32: promocion a `int`, y si alguno no lleva signo, el
+    // resultado tampoco. Es la regla de C y es la que decide si el recorte del
+    // codegen ensancha con ceros o con el bit de signo.
+    if es_sin_signo(&a) || es_sin_signo(&b) {
+        Some(TypeSpec::UnsignedInt)
+    } else {
+        Some(TypeSpec::Int)
+    }
+}
+
+/// El ancho en bytes de lo que este compilador sabe emitir. 8 para todo lo que
+/// no quepa en 32, que incluye los punteros.
+fn ancho(t: &TypeSpec) -> u32 {
+    match t {
+        TypeSpec::Char | TypeSpec::UnsignedChar => 1,
+        TypeSpec::Short | TypeSpec::UnsignedShort => 2,
+        TypeSpec::Int | TypeSpec::UnsignedInt => 4,
+        _ => 8,
+    }
+}
+
+fn es_sin_signo(t: &TypeSpec) -> bool {
+    matches!(
+        t,
+        TypeSpec::UnsignedChar | TypeSpec::UnsignedShort | TypeSpec::UnsignedInt
+    )
+}
+
+/// **Cabe el resultado de `e` en 32 bits?** `Some(sin_signo)` si si.
+///
+/// Es lo unico que el codegen necesita saber para decidir si recorta, y con
+/// que: con ceros o con el bit de signo.
+pub(crate) fn recorte_de<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<bool> {
+    let t = tipo_de(amb, e)?;
+    if ancho(&t) == 4 {
+        Some(es_sin_signo(&t))
+    } else {
+        None
     }
 }
