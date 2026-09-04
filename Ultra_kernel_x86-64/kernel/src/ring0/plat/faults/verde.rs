@@ -90,6 +90,42 @@ impl Line {
             self.byte(tmp[i]);
         }
     }
+    /// **UN ORDINAL, en base diez.**
+    ///
+    /// *** POR QUE HIZO FALTA (2026-09-04)
+    ///
+    /// La pantalla azul es casi toda direcciones, asi que todo se escribia con
+    /// `hex`. El 04-09 salio este renglon:
+    ///
+    /// ```text
+    ///    DESMONTANDO pid=00 estacion 11 destroy_address_space (van 02)
+    /// ```
+    ///
+    /// La estacion 11 de la tabla es `console`, y el nombre decia
+    /// `destroy_address_space`, que es la 17. **Los dos tenian razon**: `11` era
+    /// hexadecimal, o sea 17. Nadie miente y aun asi el renglon se lee mal.
+    ///
+    /// ** Una direccion en base 16 es lo correcto; un ORDINAL en base 16 es una
+    /// trampa. Es la misma familia que todo lo de este mes -- algo que dice una
+    /// cosa cierta de una forma que se entiende como otra-- y esta vez cayo el
+    /// que escribio el instrumento.
+    pub(super) fn dec(&mut self, mut v: u64) {
+        if v == 0 {
+            self.byte(b'0');
+            return;
+        }
+        let mut tmp = [0u8; 20];
+        let mut n = 0;
+        while v > 0 {
+            tmp[n] = b'0' + (v % 10) as u8;
+            v /= 10;
+            n += 1;
+        }
+        while n > 0 {
+            n -= 1;
+            self.byte(tmp[n]);
+        }
+    }
     pub(super) fn as_str(&self) -> &str {
         core::str::from_utf8(&self.b[..self.n]).unwrap_or("")
     }

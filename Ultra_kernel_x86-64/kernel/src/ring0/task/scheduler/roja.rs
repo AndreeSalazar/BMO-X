@@ -642,7 +642,13 @@ pub fn spawn_kernel(entry: u64, arg: u64, priority: u8) -> Option<u32> {
     // Contiguous: the stack is addressed linearly through the physmap, and
     // `reap` frees it as `stack_phys + p*PAGE` -- both are only sound when
     // the frames really are physical neighbors.
-    let stack_base = phys::alloc_frames_contig(TASK_STACK_PAGES)?;
+    // ** LA PILA SE PIDE DICIENDO QUE ES UNA PILA (2026-09-04).
+    //
+    // La azul del 04-09 decia `pila de HILO DEL KERNEL -- de NADIE VIVO, marco
+    // OCUPADO` y **ninguna tabla la reclamaba**. Con la etiqueta, el renglon
+    // pasa de *contabilidad rota* a decir en que se convirtio el marco -- que
+    // es el nombre de quien se lo llevo.
+    let stack_base = phys::alloc_frames_contig_de(TASK_STACK_PAGES, phys::Duenno::Pila)?;
     // *** LA OTRA MITAD DEL TESTIGO. Ver `reap`.
     //
     // ** La cabecera de `reap` lleva escrito desde el 14-08 COMO se cobra una

@@ -339,6 +339,20 @@ pub fn alloc_frame_de(quien: duenno::Duenno) -> Option<u64> {
 /// sin etiqueta no puede producir un rechazo, asi que una cobertura a medias no
 /// puede provocar una fuga -- que es lo que hace que esto se pueda encender hoy
 /// en vez de despues de convertir los 34 sitios.
+/// **Pedir un TRAMO contiguo diciendo para que.** La version de
+/// `alloc_frames_contig` que si deja rastro.
+///
+/// Se etiqueta marco a marco --no solo el primero-- porque quien se encuentra
+/// una pila pisada tiene en la mano un `rsp` de EN MEDIO, no su base. Etiquetar
+/// solo la base dejaria mudo justo el caso que esto viene a resolver.
+pub fn alloc_frames_contig_de(count: u64, quien: duenno::Duenno) -> Option<u64> {
+    let base = alloc_frames_contig(count)?;
+    for i in 0..count {
+        duenno::marcar(base + i * PAGE, quien);
+    }
+    Some(base)
+}
+
 pub fn free_frame_de(phys: u64, quien: duenno::Duenno) -> bool {
     match duenno::puede_soltar(phys, quien) {
         duenno::Veredicto::NoEsTuyo(tiene, suelta) => {
