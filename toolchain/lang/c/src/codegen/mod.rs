@@ -1643,7 +1643,7 @@ impl Codegen {
                     self.emit_store_var(name);
                 }
             }
-            Expr::Neg(a) => { self.emit_expr(a); self.code.extend_from_slice(&[0x48, 0xF7, 0xD8]); }
+            Expr::Neg(a) => self.emit_unario(a, 0xD8, expr),
             // ** `!x` -- Y AQUI FALTABA EL `movzx`, QUE NO ES DECORATIVO.
             //
             // Era `test eax,eax` + `sete al`, y nada mas. `setcc` **solo escribe
@@ -1674,7 +1674,7 @@ impl Codegen {
                 self.code.extend_from_slice(&[0x0F, 0x94, 0xC0]); // sete al
                 self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
             }
-            Expr::BitNot(a) => { self.emit_expr(a); self.code.extend_from_slice(&[0x48, 0xF7, 0xD0]); }
+            Expr::BitNot(a) => self.emit_unario(a, 0xD0, expr),
             Expr::PreInc(name) => {
                 self.emit_inc_var(name);
                 // rax already has new value

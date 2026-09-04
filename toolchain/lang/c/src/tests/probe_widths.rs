@@ -253,3 +253,36 @@ fn la_misma_suma_sin_guardarla_tambien_envuelve() {
         "la suma de 32 bits no se recorto antes del `>>`: es el 9215 de DOOM"
     );
 }
+/// **EL MENOS UNARIO TAMBIEN ENVUELVE.** El agujero que dejo el barrido de ayer.
+///
+/// La misma cuenta escrita de dos maneras daba dos resultados distintos:
+///
+/// ```text
+///    (0 - a) >> 19    1028                    correcto
+///    (-a)    >> 19    18446744073709544452
+/// ```
+///
+/// `Sub` se recortaba desde el 04-09 y `Neg` no, porque el juez de tipos no
+/// tenia brazo para el menos unario y contestaba `None`. **Un arreglo que cubre
+/// una forma de escribir la operacion y no la otra no es un arreglo: es una
+/// coincidencia.**
+///
+/// [!] Y no es teorico en DOOM: `R_AddLine` hace `angle2 = -clipangle;`. Ahi se
+/// salvaba de milagro --guardar en un `unsigned int` recorta-- pero el mismo
+/// `-x` dentro de una expresion mas larga no se salva.
+#[test]
+fn el_menos_unario_envuelve_igual_que_la_resta() {
+    let out = run_c(
+        "int main() {
+          unsigned int a;
+          a = 3755999232;
+          printf(\"%u %u\n\", (0 - a) >> 19, (-a) >> 19);
+          return 0;
+        }",
+    );
+    assert_eq!(
+        out.trim(),
+        "1028 1028",
+        "`-a` y `0 - a` tienen que dar lo MISMO sobre un `unsigned int`"
+    );
+}

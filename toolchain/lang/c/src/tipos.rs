@@ -169,6 +169,33 @@ pub(crate) fn tipo_de<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<TypeSpec>
             amb.tipo_de_campo(&agregado_apuntado(amb, base)?, campo)
         }
 
+        // *** EL MENOS UNARIO Y EL COMPLEMENTO, que el barrido del 04-09 no
+        // cubrio y la verificacion del dia siguiente encontro.
+        //
+        // ```text
+        //    (0 - a) >> 19    1028   correcto -- `Sub` si se recortaba
+        //    (-a)    >> 19    18446744073709544452
+        // ```
+        //
+        // ** La misma cuenta escrita de dos maneras daba dos resultados. `-a`
+        // sobre un `unsigned int` es `0 - a` **en 32 bits**: da un numero
+        // grande y positivo, no un negativo de 64. Sin este brazo el juez
+        // contestaba `None` y el codegen dejaba pasar el signo entero.
+        //
+        // [!] Y esto NO es teorico en DOOM: `R_AddLine` hace `angle2 =
+        // -clipangle;`. Ahi se salvaba de milagro --guardar en un `unsigned
+        // int` recorta-- pero el mismo `-x` dentro de una expresion mas larga
+        // no se salva. **Un arreglo que solo funciona cuando hay una asignacion
+        // en medio es el mismo bug con otro traje.**
+        Expr::Neg(a) | Expr::BitNot(a) => {
+            let t = tipo_de(amb, a)?;
+            if ancho(&t) < 4 {
+                Some(if es_sin_signo(&t) { TypeSpec::UnsignedInt } else { TypeSpec::Int })
+            } else {
+                Some(t)
+            }
+        }
+
         // ** LOS OTROS DOS QUE SE PUEDEN PASAR DE 32 BITS.
         //
         // `Mul` porque dos numeros de 32 dan uno de 64, y `Shl` porque desplazar
