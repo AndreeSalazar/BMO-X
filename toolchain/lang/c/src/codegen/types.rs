@@ -263,4 +263,30 @@ impl Codegen {
         // `recortar_a_32`, y un sitio que decide es mejor que dos que suponen.
         self.recortar_a_32(entero);
     }
+
+    /// **`-x` y `~x`: las dos unarias cuyo ANCHO importa.**
+    ///
+    /// Comparten `F7 /r` y comparten el motivo de vivir aqui: las dos producen
+    /// un valor cuyo ancho hay que preguntar, y ninguna de las dos lo hacia.
+    ///
+    /// ```text
+    ///    (0 - a) >> 19    1028                    correcto desde el 04-09
+    ///    (-a)    >> 19    18446744073709544452
+    /// ```
+    ///
+    /// ** La misma cuenta escrita de dos maneras daba dos resultados. `Sub` se
+    /// recortaba y `Neg` no, porque el juez de tipos no tenia brazo para el
+    /// menos unario. **Un arreglo que cubre una forma de escribir la operacion
+    /// y no la otra no es un arreglo: es una coincidencia** -- y esta se
+    /// encontro verificando, no fallando.
+    ///
+    /// [!] `-x` sobre un `unsigned int` es `0 - x` EN 32 BITS: un numero grande
+    /// y POSITIVO, no un negativo de 64. Y no es teorico en DOOM: `R_AddLine`
+    /// hace `angle2 = -clipangle;`.
+    pub(super) fn emit_unario(&mut self, a: &Expr, reg: u8, entero: &Expr) {
+        self.emit_expr(a);
+        // F7 /3 = neg rax  (0xD8),  F7 /2 = not rax  (0xD0)
+        self.code.extend_from_slice(&[0x48, 0xF7, reg]);
+        self.recortar_a_32(entero);
+    }
 }

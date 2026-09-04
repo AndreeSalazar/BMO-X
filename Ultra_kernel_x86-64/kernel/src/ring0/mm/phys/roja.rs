@@ -184,6 +184,26 @@ pub fn init(ctx: &BootContext) {
 /// Allocate one 4 KiB frame. Returns its physical address, or `None` if the
 /// pool is exhausted. Contents are unspecified; use `zero_frame` if the frame
 /// will back page tables or user memory.
+/// **UN MARCO ENTREGADO NUNCA SE QUEDA EN `Nadie`.**
+///
+/// *** El hueco que encontro la verificacion del 05-09, un dia despues de dar
+/// el byte de dueno por bueno.
+///
+/// `free_frame` borra la etiqueta a `Nadie`, que significa LIBRE. Si al
+/// entregarlo nadie la vuelve a poner, el marco queda **entregado y etiquetado
+/// como libre**, y ahi `es_tabla` --que acepta `Tabla` y `Anonimo`-- lo
+/// RECHAZA. O sea que un arbol de paginas perfectamente sano se dejaria de
+/// desmontar: una fuga a cambio de nada.
+///
+/// ** `Anonimo` y `Nadie` parecen lo mismo y son opuestos: uno es *"lo tiene
+/// alguien que no dijo quien"* y el otro *"no lo tiene nadie"*. La tercera fila
+/// de la regla de `duenno` --sin opinion-- solo funciona si esa diferencia se
+/// mantiene, y se mantiene AQUI.
+fn marcar_entregado(f: u64) -> u64 {
+    duenno::marcar(f, duenno::Duenno::Anonimo);
+    f
+}
+
 pub fn alloc_frame() -> Option<u64> {
     let _g = LOCK.lock();
     unsafe {
@@ -199,7 +219,7 @@ pub fn alloc_frame() -> Option<u64> {
                 bm[i] = w | (1 << bit);
                 FREE_FRAMES -= 1;
                 HINT = i;
-                return Some((i * 64 + bit) as u64 * PAGE);
+                return Some(marcar_entregado((i * 64 + bit) as u64 * PAGE));
             }
             i = (i + 1) % FRAME_SLOTS;
         }
@@ -245,6 +265,13 @@ pub fn alloc_frames_contig(count: u64) -> Option<u64> {
                     }
                     FREE_FRAMES -= count;
                     HINT = start / 64;
+                    // ** Y el tramo entero deja de estar etiquetado como LIBRE.
+                    // Marco a marco, por lo mismo que `alloc_frames_contig_de`:
+                    // quien se encuentra una pila pisada tiene un `rsp` de EN
+                    // MEDIO, no la base.
+                    for f in start..start + count as usize {
+                        marcar_entregado(f as u64 * PAGE);
+                    }
                     return Some(start as u64 * PAGE);
                 }
             } else {
@@ -313,7 +340,7 @@ pub fn free_frame(phys: u64) {
 }
 
 
-/// **Pedir un marco DICIENDO PARA QUE.** Ver `phys::duenno`.
+/// **Pedir un marco DICIENDO PARA QUE.** Ver `mm::duenno`.
 ///
 /// `alloc_frame` sigue existiendo y equivale a pedirlo como `Anonimo`, o sea
 /// SIN OPINION. Los 34 sitios que llaman al asignador no se convierten de
@@ -346,6 +373,7 @@ pub fn alloc_frame_de(quien: duenno::Duenno) -> Option<u64> {
 /// una pila pisada tiene en la mano un `rsp` de EN MEDIO, no su base. Etiquetar
 /// solo la base dejaria mudo justo el caso que esto viene a resolver.
 pub fn alloc_frames_contig_de(count: u64, quien: duenno::Duenno) -> Option<u64> {
+    // `alloc_frames_contig` ya dejo cada marco en `Anonimo`; esto lo concreta.
     let base = alloc_frames_contig(count)?;
     for i in 0..count {
         duenno::marcar(base + i * PAGE, quien);
