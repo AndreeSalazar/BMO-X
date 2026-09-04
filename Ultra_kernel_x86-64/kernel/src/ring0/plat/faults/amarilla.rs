@@ -288,7 +288,27 @@ pub(super) extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u6
             // [!] Y esto es una respuesta, no un hueco: un marco que el
             // asignador da por entregado y que ninguna tabla reclama es
             // CONTABILIDAD ROTA, no un dueno que falta.
-            l.s("  y NINGUNA tabla reclama ese marco: contabilidad rota");
+            // *** Y AHORA HAY UNA TABLA QUE SI SABE RECLAMARLO.
+            //
+            // `KIND_MEMORIA` y los ficheros contestan de quien es un marco
+            // **si alguien lo tiene por un objeto**. Una PILA no es un objeto:
+            // no la reclama ninguna de las dos, y por eso este renglon se
+            // rendia diciendo "contabilidad rota" cuando la contabilidad estaba
+            // bien y lo que faltaba era la pregunta.
+            //
+            // `mm::duenno` guarda PARA QUE se pidio cada marco, que es otra
+            // cosa que de quien es. Con las pilas etiquetadas, este renglon
+            // pasa de *no lo sabe nadie* a **"ahora es una TABLA de paginas"**
+            // -- o sea el nombre de quien se la llevo.
+            let q = crate::ring0::mm::duenno::duenno_de(fisica);
+            if q == crate::ring0::mm::duenno::Duenno::Nadie
+                || q == crate::ring0::mm::duenno::Duenno::Anonimo
+            {
+                l.s("  y NINGUNA tabla reclama ese marco: contabilidad rota");
+            } else {
+                l.s("  ese marco se pidio como: ");
+                l.s(q.nombre());
+            }
         }
         inf.push(l);
     }
@@ -309,12 +329,15 @@ pub(super) extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u6
     if let Some((n, nombre, pid, hechos)) = crate::ring0::core::desmontaje::donde() {
         let mut l = Line::new();
         l.s("DESMONTANDO pid="); l.hex(pid as u64, 2);
-        l.s(" estacion "); l.hex(n as u64, 2);
+        // ** EN BASE DIEZ. La primera version uso `hex` como el resto de la
+        // pantalla, y la 17 salio como `11` -- que en la tabla es `console`.
+        // Una direccion en base 16 esta bien; un ordinal en base 16 miente.
+        l.s(" estacion "); l.dec(n as u64);
         l.s(" "); l.s(nombre);
         // ** Cero significa "el PRIMERO ya falla": el fallo es del desmontaje.
         // Un numero alto significa que sobrevivio a esos y lo que falla es la
         // ACUMULACION. Son dos bugs distintos y este es el digito que los parte.
-        l.s(" (van "); l.hex(hechos as u64, 2); l.s(")");
+        l.s(" (van "); l.dec(hechos as u64); l.s(")");
         inf.push(l);
     }
 
