@@ -536,11 +536,24 @@ fn lend_screen(
         // recuperar y punto.
         return recover();
     }
-    if bmo::ejecutar_en(target, consola).is_err() {
-        // El programa no arranco, asi que nadie va a tomar la pantalla: se
-        // recupera YA en vez de esperar los 500 ms de la fase 1.
-        return recover();
-    }
+    // *** EL TID DEL HIJO SE GUARDA, y hasta hoy se tiraba.
+    //
+    // `ejecutar_en` devuelve el tid y aqui se leia con `.is_err()`, o sea que
+    // el numero que da DERECHO A CERRARLO se descartaba en la misma linea que
+    // lo recibia. `Hijo` --con `vive`, `cerrar` y `delante`-- lleva escrito y
+    // documentado desde el paso 3 del PLAN_DIRECTOR **y no lo llamaba nadie**.
+    //
+    // Tener el handle ES el permiso: no hay forma de conseguir uno de un
+    // proceso que no lanzaste. Cerrar una app no es una autoridad del DIRECTOR,
+    // es una consecuencia de haberla lanzado.
+    let hijo = match bmo::ejecutar_en(target, consola) {
+        Ok(tid) => bmo::Hijo::por_tid(tid as u32),
+        Err(_) => {
+            // El programa no arranco, asi que nadie va a tomar la pantalla: se
+            // recupera YA en vez de esperar los 500 ms de la fase 1.
+            return recover();
+        }
+    };
     // ** FASE 1: SE ESPERA A QUE ESTE VIVO, NO A QUE SEA RAPIDO.
     //
     // Aqui habia un cronometro de **500 ms**, y ese numero es la razon de que
@@ -613,6 +626,34 @@ fn lend_screen(
         // cuando lo lanza el escritorio y no el shell.
         while bmo::info(bmo::INFO_PANTALLA_DUENO) != 0 {
             dormir_un_rato();
+        }
+    }
+
+    // == *** FASE 3: DEVOLVER LA PANTALLA TERMINA EL PRESTAMO ================
+    //
+    // ** El dueno lo dijo asi: *"no me deja cerrar el juego"*, *"la pantalla no
+    // tengo control cuando entro"*.
+    //
+    // Y no le faltaba una tecla: le faltaba ESTO. `Ctrl+Alt+Esc` en Ring 0
+    // devuelve la pantalla, el bucle de arriba termina... **y la app sigue
+    // viva**, sin pantalla, con la entrada suelta y sin ninguna forma de que el
+    // usuario la alcance. Un zombi. Por eso la unica salida de verdad era la
+    // SEGUNDA pulsacion --la purga de Ring 3 entero-- que es justo el camino
+    // que revienta el desmontaje.
+    //
+    // *** O sea que la salida limpia no existia, y la sucia rompia el kernel.
+    //
+    // El contrato de `lend_screen` es *te presto la pantalla ENTERA*; devolverla
+    // es el final del prestamo. Si a estas alturas sigue vivo, no es un
+    // programa de fondo: es alguien a quien ya nadie puede llegar.
+    //
+    // [!] Si murio solo --la salida normal-- `vive()` contesta `false` y aqui no
+    // pasa nada. Cerrar algo ya cerrado devuelve `false` y tampoco es un fallo.
+    if let Some(h) = hijo {
+        if h.vive() {
+            h.cerrar();
+            bmo::consola("la app devolvio la pantalla y seguia viva: cerrada
+");
         }
     }
     recover()
