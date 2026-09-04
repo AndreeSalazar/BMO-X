@@ -24,6 +24,7 @@
 //! the `movsx`, these 16 rows say so in 0.2 seconds instead of three reflashes.
 
 use super::census::{sweep, Cell};
+use super::run_c;
 
 fn census() -> [Cell; 16] {
     [
@@ -155,3 +156,100 @@ negative division truncates to 0 GOOD
 right shift keeps the sign     GOOD
 short as parameter and return  GOOD
 ";
+
+/// **UN `unsigned int` TIENE QUE ENVOLVER A 32 BITS**, y el Ryzen dijo que no.
+///
+/// # *** De donde sale este numero
+///
+/// El 04-09, DOOM imprimio esto justo antes de morir:
+///
+/// ```text
+///    [bmo] R_AddLine AL REVES: x1=7 x2=0 | fino1=2957 fino2=9215
+/// ```
+///
+/// `fino2` es el indice con el que `R_AddLine` entra en `viewangletox[]`, y sale
+/// de una sola linea de C:
+///
+/// ```c
+///    angle2 = (angle2 + ANG90) >> ANGLETOFINESHIFT;   /* >> 19 */
+/// ```
+///
+/// `angle2` es `angle_t`, o sea `unsigned int`. **Un `unsigned int` desplazado 19
+/// bits no puede pasar de 8191**, porque 0xFFFFFFFF >> 19 = 8191. Y salio 9215.
+///
+/// 9215 << 19 = 0x1_1FE0_0000: **treinta y tres bits**. O sea que la suma
+/// `angle2 + ANG90` se hizo en 64 bits y NO se recorto a 32 antes de desplazar.
+///
+/// # Por que esto es peor que un fallo
+///
+/// La aritmetica de angulos de DOOM ES envolvente: sumar 270 grados a 180 tiene
+/// que dar 90, y eso es exactamente el acarreo que se pierde. Con ella rota,
+/// `viewangletox[9215]` lee **fuera de un array de 4096**, y devuelve un numero
+/// que no es una columna de pantalla. De ahi `x1=7 x2=0` --al reves-- y de ahi
+/// el `Bad R_RenderWallRange` que lleva una semana matando la partida.
+///
+/// Un desbordamiento que no envuelve no da un error: da otro numero. Es la
+/// sexta vez este mes que un ANCHO mal elegido contesta en silencio.
+#[test]
+fn un_unsigned_int_envuelve_a_32_bits() {
+    let out = run_c(
+        "int main() {\n\
+        \x20 unsigned int a; unsigned int b; unsigned int c;\n\
+        \x20 a = 4160749568;\n\
+        \x20 b = 1073741824;\n\
+        \x20 c = a + b;\n\
+        \x20 printf(\"%u %u\n\", c, c >> 19);\n\
+        \x20 return 0;\n\
+        }",
+    );
+    // 0xF8000000 + 0x40000000 = 0x138000000, que en 32 bits es 0x38000000
+    // (939524096), y desplazado 19 son 1792. Si NO envuelve salen 5234491392
+    // y 9984 -- los dos con mas de 32 bits, como el 9215 del Ryzen.
+    assert_eq!(
+        out.trim(),
+        "939524096 1792",
+        "la suma de dos `unsigned int` no envolvio a 32 bits"
+    );
+}
+/// **Y LA MISMA SUMA SIN GUARDARLA NO ENVUELVE.** Este es el bug.
+///
+/// La de arriba pasa porque el resultado se GUARDA en un `unsigned int`, y
+/// guardar en 32 bits trunca. DOOM no guarda -- lo hace en una sola expresion:
+///
+/// ```c
+///    angle2 = (angle2 + ANG90) >> ANGLETOFINESHIFT;
+/// ```
+///
+/// ** El `>>` ve el resultado de la suma **todavia en 64 bits**, sin recortar.
+/// Con `a = 0xDFE00000` la suma da `0x1_1FE0_0000` --treinta y tres bits-- y el
+/// desplazamiento devuelve 9212 en vez de 1020.
+///
+/// El Ryzen imprimio **9215** el 04-09 con el angulo de verdad. Mismo sitio,
+/// mismo tamano, un pixel de diferencia.
+///
+/// # Por que esto mataba la partida
+///
+/// Ese numero es el indice de `viewangletox[]`, que tiene **4096 entradas**.
+/// 9212 lee fuera del array y devuelve algo que no es una columna. De ahi salio
+/// `x1=7 x2=0` --al reves-- y de ahi el `Bad R_RenderWallRange` que lleva una
+/// semana matando a DOOM.
+///
+/// [!] Y fijate en lo que NO fallaba: la suma. La suma esta bien. Lo que falta
+/// es el RECORTE A 32 BITS entre ella y el siguiente operador, y solo se nota
+/// cuando no hay una asignacion en medio que lo haga por accidente.
+#[test]
+fn la_misma_suma_sin_guardarla_tambien_envuelve() {
+    let out = run_c(
+        "int main() {
+          unsigned int a;
+          a = 3755999232;
+          printf(\"%u\n\", (a + 1073741824) >> 19);
+          return 0;
+        }",
+    );
+    assert_eq!(
+        out.trim(),
+        "1020",
+        "la suma de 32 bits no se recorto antes del `>>`: es el 9215 de DOOM"
+    );
+}

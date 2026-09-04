@@ -11,6 +11,28 @@
 //! the same file. **The third axis that shows up gets written the same way and
 //! right next to them.**
 //!
+//! === *** Y EL TERCER EJE LLEGO: EL ANCHO (2026-09-04) ===
+//!
+//! Esta cabecera lo dejo escrito y se cumplio al pie de la letra. El eje nuevo
+//! es **cuantos BITS ocupa el resultado**, y llego por donde llegan todos aqui:
+//! una operacion que se comportaba distinta segun el tipo y no lo preguntaba.
+//!
+//! Todas las cuentas se emiten con `REX.W`, o sea en 64 bits. Para una cuenta
+//! que se GUARDA en un `unsigned int` da igual --guardar en 32 recorta-- pero
+//! DOOM la hace de una vez:
+//!
+//! ```c
+//!    angle2 = (angle2 + ANG90) >> ANGLETOFINESHIFT;
+//! ```
+//!
+//! El `>>` veia la suma todavia en 64 bits, con el acarreo que tenia que
+//! haberse perdido, y devolvia **9212** donde tocaba 1020. Ese numero entra en
+//! `viewangletox[]`, que tiene 4096 entradas: de ahi `x1=7 x2=0` --al reves-- y
+//! de ahi el `Bad R_RenderWallRange` que estuvo una semana matando la partida.
+//!
+//! ** El eje del ancho se distingue de los otros dos en una cosa: los dos
+//! primeros eligen QUE INSTRUCCION emitir, y este elige si emitir UNA MAS.
+//!
 //! === ** Why they are together, with a name and a date ===
 //!
 //! `expr_is_float` had been written forever. When it turned out on 2026-08-13
@@ -150,5 +172,95 @@ impl Codegen {
                 .map_or(false, |d| d.returns.as_deref() == Some("xmm0")),
             _ => false,
         }
+    }
+
+    /// **EL RECORTE A 32 BITS, entre un operador y el siguiente.**
+    ///
+    /// # *** El bug que costo una semana de DOOM
+    ///
+    /// Todas las cuentas se emiten con `REX.W`, o sea en registros de 64 bits.
+    /// Para una cuenta que se GUARDA en un `unsigned int` da igual: guardar en
+    /// 32 bits recorta. Pero DOOM no guarda -- lo hace de una vez:
+    ///
+    /// ```c
+    ///    angle2 = (angle2 + ANG90) >> ANGLETOFINESHIFT;
+    /// ```
+    ///
+    /// El `>>` veia la suma **todavia en 64 bits**, con el acarreo que tenia
+    /// que haberse perdido. Con `0xDFE00000 + 0x40000000` eso da un numero de
+    /// treinta y tres bits, y el desplazamiento devolvia **9212** donde tocaba
+    /// 1020. Ese numero entra en `viewangletox[]`, que tiene 4096 entradas: de
+    /// ahi salio `x1=7 x2=0` --al reves-- y de ahi el `Bad R_RenderWallRange`.
+    ///
+    /// ** La aritmetica de angulos de DOOM **es** envolvente: sumar 270 grados a
+    /// 180 tiene que dar 90. Sin el recorte, no hay angulos.
+    ///
+    /// # Por que solo en cuatro operadores
+    ///
+    /// `Add`, `Sub`, `Mul` y `Shl` son los unicos que pueden producir mas bits
+    /// de los que entraron. `Div`, `Mod` y los bit a bit no pueden, y meterles
+    /// un recorte seria pagar dos instrucciones por una imposibilidad.
+    ///
+    /// [!] Y el signo importa: `mov eax,eax` rellena de ceros y `movsxd` con el
+    /// bit de signo. Elegir mal aqui convierte un `-1` en cuatro mil millones,
+    /// que es el mismo fallo con otro traje. Quien lo decide es `tipos.rs`, que
+    /// es el UNICO juez de tipos de este compilador.
+    pub(super) fn recortar_a_32(&mut self, e: &Expr) {
+        match crate::tipos::recorte_de(self, e) {
+            // `mov eax, eax`: escribir en un registro de 32 bits pone a cero la
+            // mitad de arriba. Es el idioma de x86-64 para "olvida el acarreo".
+            Some(true) => self.code.extend_from_slice(&[0x89, 0xC0]),
+            // `movsxd rax, eax`: ensancha con el bit de signo.
+            Some(false) => self.code.extend_from_slice(&[0x48, 0x63, 0xC0]),
+            // 64 bits, un puntero, o un tipo que el juez no sabe nombrar. No se
+            // recorta: recortar lo que no cabe en 32 seria PERDER datos, que es
+            // el bug contrario y peor.
+            None => {}
+        }
+    }
+
+    /// **UN DESPLAZAMIENTO, que toca los TRES ejes de este fichero a la vez.**
+    ///
+    /// Por eso vive aqui y no en el despachador: es la unica operacion que
+    /// pregunta por el signo Y por el ancho en la misma linea.
+    ///
+    /// ```text
+    ///    el SIGNO del izquierdo   ->  `sar` (copia el bit) o `shr` (ceros)
+    ///    el ANCHO del resultado   ->  si hay que recortar despues
+    /// ```
+    ///
+    /// [!] Y en las dos preguntas **manda el operando IZQUIERDO a solas**: en C
+    /// el tipo de `a << b` no depende de `b`. `1u >> x` es sin signo aunque `x`
+    /// sea `int`. Es la unica operacion binaria que se salta la conversion
+    /// usual, y por eso es la que mas veces se ha emitido mal.
+    ///
+    /// ** A la izquierda no hay dos versiones: `shl` y `sal` son la misma
+    /// instruccion. A la derecha si.
+    pub(super) fn emit_desplazamiento(
+        &mut self,
+        a: &Expr,
+        b: &Expr,
+        izquierda: bool,
+        entero: &Expr,
+    ) {
+        // shr rax,cl (/5) sin signo, sar rax,cl (/7) con el.
+        let cola = if izquierda {
+            0xE0
+        } else if self.expr_is_unsigned(a) {
+            0xE8
+        } else {
+            0xF8
+        };
+        self.emit_binop(a, b, &[
+            0x48, 0x89, 0xC1, // mov rcx, rax   -> cuenta = b
+            0x48, 0x89, 0xD0, // mov rax, rdx   -> valor  = a
+            0x48, 0xD3, cola,
+        ]);
+        // Desplazar a la izquierda saca bits por arriba, y en un registro de 64
+        // esos bits SOBREVIVEN. `1 << 31` en un `int` es negativo; sin recorte
+        // salia positivo y valia dos mil millones. A la derecha no hace falta
+        // --no se pueden ganar bits-- pero se pregunta igual: quien decide es
+        // `recortar_a_32`, y un sitio que decide es mejor que dos que suponen.
+        self.recortar_a_32(entero);
     }
 }
