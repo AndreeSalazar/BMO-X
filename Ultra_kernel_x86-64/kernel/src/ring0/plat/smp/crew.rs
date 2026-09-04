@@ -107,17 +107,21 @@ pub type Faena = fn(u32, u32);
 /// `indice` es 0..n-1 entre los APs; su parte es `indice + 1` porque la parte
 /// `0` se la queda el BSP, que tambien trabaja -- tener un nucleo mirando como
 /// trabajan los otros es desperdiciar justo el mas caliente de cache.
-pub fn obrero(indice: u32) -> ! {
+pub fn obrero(indice: u32, apic: u32) -> ! {
     // Lo primero que hace un obrero es decir que existe. Antes el unico
     // testigo era `VIVOS`, y ese se incrementa en el trampolin -- o sea, dice
     // que el nucleo arranco, no que llegara hasta aqui.
     ENTRARON.fetch_add(1, Ordering::SeqCst);
+    // Y de paso deja dicho QUIEN es: el indice es orden de llegada, el
+    // APIC es domicilio. Ver `ficha`.
+    super::ficha::alta(indice, apic);
     let mut vista = 0u32;
     loop {
         if PARAR.load(Ordering::SeqCst) {
             // Punto de no retorno: sin IPI no hay quien lo despierte, y volver
             // a llamarlo es un INIT+SIPI entero. Esta bien asi -- es la forma
             // honesta de "desactivar" con lo que hay.
+            super::ficha::marcar(indice, super::ficha::PARADO);
             loop {
                 unsafe { core::arch::asm!("cli; hlt", options(nomem, nostack)) };
             }
@@ -133,8 +137,16 @@ pub fn obrero(indice: u32) -> ! {
                 // diferencia entre `VIERON` y `HECHOS` es exactamente cuantos
                 // se quedaron por el camino.
                 VIERON.fetch_add(1, Ordering::SeqCst);
+                // ** El estado se pone ANTES y el reloj se lee ANTES: un
+                // obrero que se cuelga dentro de la faena se queda en
+                // TRABAJANDO, que en el panel se distingue de ESPERANDO.
+                // Apuntar solo al terminar haria que colgarse y no tener
+                // trabajo se vieran igual.
+                super::ficha::marcar(indice, super::ficha::TRABAJANDO);
+                let t0 = super::ficha::ciclos();
                 let faena: Faena = unsafe { core::mem::transmute(f) };
                 faena(mia, partes);
+                super::ficha::apuntar(indice, super::ficha::ciclos().wrapping_sub(t0));
                 HECHOS.fetch_add(1, Ordering::SeqCst);
             }
         }

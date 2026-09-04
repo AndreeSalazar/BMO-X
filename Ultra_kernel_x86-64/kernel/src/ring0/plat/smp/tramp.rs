@@ -203,5 +203,9 @@ pub extern "C" fn smp_ap_entrada() -> ! {
     // Y de aqui al bucle de trabajo. Antes esto era `cli; hlt` para siempre: un
     // nucleo despierto al que no se le puede dar una tarea sirve exactamente lo
     // mismo que uno dormido.
-    super::crew::obrero(indice)
+    // ** El APIC ID viaja CON el indice desde el 2026-09-03. El indice dice
+    // el orden de llegada; el APIC dice DONDE VIVE. Sin el segundo, un
+    // reparto no puede saber que dos obreros comparten nucleo -- que es
+    // justo lo que hace que doce partes iguales sean una mentira.
+    super::crew::obrero(indice, id)
 }
