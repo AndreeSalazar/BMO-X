@@ -530,6 +530,88 @@ pub(crate) fn smp(dsk: &mut Desktop, p: &bmo::Pantalla, arg: &[u8]) -> After {
     // alias cuesta cuatro bytes y evita el unico
     // fallo de una orden bien escrita: no acordarse
     // de como se llamaba.
+    // == `smp orquesta`: LA PRIMERA FAENA DE VERDAD ======================
+    //
+    // *** Que prueba esto, y que NO prueba.
+    //
+    // El reparto --que la union de los rangos sea el total y que no se solapen--
+    // ya esta demostrado a lo bruto en `bmo-orquesta`, sobre 70x14 combinaciones
+    // y en el anfitrion. Repetirlo aqui seria pagar un arranque por una
+    // respuesta que ya se tiene.
+    //
+    // Lo que SOLO se puede preguntar en metal es lo otro: **que los obreros
+    // arranquen de verdad, lleguen a la memoria del que pidio, y que la barrera
+    // se cierre.**
+    //
+    // El metodo es un CENTINELA: se llena el bloque con un numero, se manda
+    // llenarlo con otro, y se cuentan los que se quedaron con el primero. Uno
+    // solo que sobreviva es un HUECO -- un trozo que ningun atril toco.
+    //
+    // [!] Y un SOLAPE no se ve asi, a proposito: con un relleno uniforme, dos
+    // obreros escribiendo el mismo sitio dan el mismo resultado que uno. Decirlo
+    // en pantalla es lo que impide creerse que esta orden lo comprueba todo.
+    if arg == b"orquesta" {
+        const CUANTOS: u64 = 4096;
+        const CENTINELA: u32 = 0xDEAD_BEEF;
+        const NUEVO: u32 = 0x0BAD_CAFE;
+        let mut b = [0u8; 10];
+        match bmo::Memoria::request(CUANTOS * 4) {
+            None => {
+                dsk.out.grid.text(b"  orquesta: sin memoria para el ensayo
+");
+            }
+            Some(m) => {
+                let d = m.base() as *mut u32;
+                for i in 0..CUANTOS {
+                    unsafe { d.add(i as usize).write_volatile(CENTINELA) };
+                }
+                bmo::atril(bmo::ATRIL_DESTINO, m.base() as u64);
+                bmo::atril(bmo::ATRIL_TOTAL, CUANTOS);
+                bmo::atril(bmo::ATRIL_DATO, NUEVO as u64);
+                let atriles = bmo::tocar(bmo::PARTE_LLENAR, 0);
+                if atriles == 0 {
+                    dsk.out.grid.with_ink(INK_ERR);
+                    dsk.out.grid.text(b"  orquesta: la puerta dijo que NO (el motivo, en CABINA)
+");
+                } else {
+                    let mut huecos = 0u64;
+                    for i in 0..CUANTOS {
+                        if unsafe { d.add(i as usize).read_volatile() } == CENTINELA {
+                            huecos += 1;
+                        }
+                    }
+                    dsk.out.grid.text(b"  atriles que tocaron: ");
+                    let k = decimal(atriles, &mut b);
+                    dsk.out.grid.text(&b[..k]);
+                    dsk.out.grid.text(b"
+  huecos (tienen que ser CERO): ");
+                    let k = decimal(huecos, &mut b);
+                    dsk.out.grid.text(&b[..k]);
+                    dsk.out.grid.with_ink(if huecos == 0 { INK_GOOD } else { INK_ERR });
+                    if huecos == 0 {
+                        dsk.out.grid.text(b"
+  las 4096 casillas las toco alguien
+");
+                    } else {
+                        dsk.out.grid.text(b"
+  un hueco es un trozo que NINGUN atril toco
+");
+                    }
+                    dsk.out.grid.text(b"  [!] un SOLAPE no se ve asi: con relleno uniforme, dos
+");
+                    dsk.out.grid.text(b"      obreros escribiendo lo mismo dan el mismo resultado
+");
+                    dsk.out.grid.text(b"      que uno. Eso lo prueba `bmo-orquesta` en el anfitrion.
+");
+                }
+            }
+        }
+        paint_output(&p, &dsk.run_box, &dsk.out.grid);
+        paint_status(&p, &dsk.run_box, "orquesta", INK_DIM);
+        dsk.field.n = 0;
+        dsk.field.cur = 0;
+        return After::NextKey;
+    }
     if arg == b"parar" || arg == b"para" || arg == b"stop" {
         bmo::smp_parar();
         dsk.out.grid.text(b"  obreros parados (vuelven a hlt)\n");

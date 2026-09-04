@@ -482,6 +482,46 @@ pub fn smp_parar() {
     let _ = invoke(CURRENT_TASK, OP_SMP_DESPERTAR, 0, 1, 0);
 }
 
+// == LA ORQUESTA ===========================================================
+//
+// Dos llamadas y seis nombres. Van AQUI --y no en un modulo propio-- por lo
+// mismo que `smp_parar` y `smp_prueba` estan aqui: son operaciones de la
+// maquina, y un fichero nuevo por cada par de funciones es como se llega a
+// tener veinte ficheros de tres lineas.
+
+/// Los campos del atril. El indice viaja por la puerta, asi que se nombran: un
+/// `atril(2, n)` suelto en el codigo de una app no lo lee nadie.
+pub const ATRIL_DESTINO: u64 = 0;
+pub const ATRIL_ORIGEN: u64 = 1;
+pub const ATRIL_TOTAL: u64 = 2;
+pub const ATRIL_DATO: u64 = 3;
+
+/// Las partes escritas. **El numero es contrato**: el catalogo vive en
+/// `bmo-orquesta` y no se renumera nunca.
+pub const PARTE_LLENAR: u64 = 1;
+pub const PARTE_EXPANDIR: u64 = 2;
+
+/// **Poner un numero en el atril**, antes de decir *tocad*.
+///
+/// De uno en uno porque por la puerta caben dos numeros y un encargo lleva
+/// cuatro -- el mismo idioma que la ruta antes de `EJECUTAR`.
+pub fn atril(campo: u64, valor: u64) -> bool {
+    invoke(CURRENT_TASK, OP_ATRIL, campo, valor, 0).value != 0
+}
+
+/// **TOCAD.** Devuelve cuantos atriles tocaron, o `0` si el encargo no paso.
+///
+/// `atriles = 0` deja que decida el perfil de la maquina, que es lo normal:
+/// pedir un numero fijo es suponer cuantos nucleos tiene el que te ejecuta.
+///
+/// [!] BLOQUEA hasta que la barrera se cierra. Al volver, el trabajo esta
+/// hecho -- y si devuelve `0`, **el buffer NO vale**: falta el trozo de
+/// alguien, y eso no se ve mirandolo.
+pub fn tocar(parte: u64, atriles: u64) -> u64 {
+    invoke(CURRENT_TASK, OP_TOCAR, parte, atriles, 0).value
+}
+
+
 /// **La prueba de reparto.** Devuelve la aceleracion **x100**: `842` son 8,42x.
 ///
 /// Corre la misma cuenta pura con un nucleo y con todos. Es el caso MAS
