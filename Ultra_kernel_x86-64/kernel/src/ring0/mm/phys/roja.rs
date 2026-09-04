@@ -23,6 +23,7 @@
 
 use boot_context::BootContext;
 
+use super::super::duenno;
 use super::super::PAGE;
 use crate::ring0::plat::spin::SpinLock;
 
@@ -270,6 +271,10 @@ pub fn free_frame(phys: u64) {
         if bm[w] & (1 << b) != 0 {
             bm[w] &= !(1 << b);
             FREE_FRAMES += 1;
+            // La etiqueta se borra CON el bit y no antes: mientras el marco
+            // siga entregado tiene que poder decirse de quien es, y eso incluye
+            // el instante en que la pantalla azul lo pregunta.
+            duenno::marcar(phys, duenno::Duenno::Nadie);
         } else {
             // ** UN MARCO QUE SE DEVUELVE DOS VECES YA NO ES MUDO (2026-09-01).
             //
@@ -303,6 +308,54 @@ pub fn free_frame(phys: u64) {
             if let Some((n, nombre, _pid, _)) = crate::ring0::core::desmontaje::donde() {
                 crate::ring0::cabina::fault("phys", nombre, n as u64);
             }
+        }
+    }
+}
+
+
+/// **Pedir un marco DICIENDO PARA QUE.** Ver `phys::duenno`.
+///
+/// `alloc_frame` sigue existiendo y equivale a pedirlo como `Anonimo`, o sea
+/// SIN OPINION. Los 34 sitios que llaman al asignador no se convierten de
+/// golpe: se convierten los que tienen algo que declarar, y el juez nunca
+/// opina sobre lo que no sabe.
+pub fn alloc_frame_de(quien: duenno::Duenno) -> Option<u64> {
+    let f = alloc_frame()?;
+    duenno::marcar(f, quien);
+    Some(f)
+}
+
+/// **Devolver un marco DICIENDO QUIEN ERES.** Devuelve `false` si se rehusa.
+///
+/// *** LA UNICA FUNCION DEL KERNEL QUE SABE DECIR "ESE MARCO NO ES TUYO".
+///
+/// `free_frame` solo sabia decir *"ya estaba libre"*, y el 04-09 eso no
+/// alcanzo: el marco `4D2000` se solto, se volvio a entregar, alguien cargo un
+/// programa encima --sus entradas eran `push r15; push r14; ...`-- y el
+/// desmontaje seguia teniendolo por una tabla de paginas. El asignador lo
+/// acepto todo porque no tenia con que objetar.
+///
+/// [!] Rehusar SOLO ocurre cuando los dos lados declararon y difieren. Un marco
+/// sin etiqueta no puede producir un rechazo, asi que una cobertura a medias no
+/// puede provocar una fuga -- que es lo que hace que esto se pueda encender hoy
+/// en vez de despues de convertir los 34 sitios.
+pub fn free_frame_de(phys: u64, quien: duenno::Duenno) -> bool {
+    match duenno::puede_soltar(phys, quien) {
+        duenno::Veredicto::NoEsTuyo(tiene, suelta) => {
+            crate::ring0::cabina::fault("phys", "ESE MARCO NO ES TUYO", phys);
+            crate::ring0::cabina::fault("phys", tiene.nombre(), 0);
+            crate::ring0::cabina::fault("phys", suelta.nombre(), 1);
+            // ** Y la estacion del desmontaje, si venia de ahi. Es el mismo
+            // enganche que el doble `free`: sin el, "no es tuyo" manda a
+            // auditar las diecisiete.
+            if let Some((n, nombre, _pid, _)) = crate::ring0::core::desmontaje::donde() {
+                crate::ring0::cabina::fault("phys", nombre, n as u64);
+            }
+            false
+        }
+        _ => {
+            free_frame(phys);
+            true
         }
     }
 }

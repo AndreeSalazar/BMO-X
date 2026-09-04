@@ -56,7 +56,7 @@ pub fn init() {
     let kernel = table(kernel_pml4());
     for i in 256..512 {
         if kernel[i] & PTE_PRESENT == 0 {
-            match phys::alloc_frame() {
+            match phys::alloc_frame_de(phys::Duenno::Tabla) {
                 Some(f) => {
                     phys::zero_frame(f);
                     // Supervisor-only on purpose: no PTE_USER at any level of
@@ -112,11 +112,14 @@ pub(super) fn table(phys: u64) -> &'static mut [u64; 512] {
 
 /// half starts empty except for the copied identity entry.
 pub fn new_address_space() -> Option<u64> {
-    let pml4 = phys::alloc_frame()?;
-    let pdpt = match phys::alloc_frame() {
+    // ** LAS TABLAS SE PIDEN DICIENDO QUE SON TABLAS. Desde aqui, el
+    // asignador puede contestar *"ese marco no es tuyo"* en vez de solo
+    // *"ya estaba libre"*. Ver `phys::duenno`.
+    let pml4 = phys::alloc_frame_de(phys::Duenno::Tabla)?;
+    let pdpt = match phys::alloc_frame_de(phys::Duenno::Tabla) {
         Some(f) => f,
         None => {
-            phys::free_frame(pml4);
+            phys::free_frame_de(pml4, phys::Duenno::Tabla);
             return None;
         }
     };
@@ -151,7 +154,7 @@ pub(super) fn get_or_create(t: &mut [u64; 512], idx: usize, flags: u64) -> Resul
         }
         return Ok(e & ADDR_MASK);
     }
-    let f = phys::alloc_frame().ok_or(())?;
+    let f = phys::alloc_frame_de(phys::Duenno::Tabla).ok_or(())?;
     phys::zero_frame(f);
     t[idx] = (f & ADDR_MASK) | flags;
     Ok(f)
@@ -198,6 +201,35 @@ pub(super) fn get_or_create(t: &mut [u64; 512], idx: usize, flags: u64) -> Resul
 /// AMARILLO de al lado, con su gemela `phys::zero_frame`: las dos juzgan el
 /// mismo numero, y cambiar una sin la otra fue el bug del 30-08.
 use super::amarilla::caminable;
+
+
+/// **Es esto una tabla de paginas, de verdad?** El juez que faltaba ANTES de
+/// bajar un nivel.
+///
+/// *** `caminable` contesta *cabe en el espejo?*, y se estaba usando como
+/// *esto es una tabla?*. Son preguntas VECINAS y no la misma, y el 04-09 la
+/// diferencia costo un arbol entero: el marco `4D2000` cabia perfectamente en
+/// el espejo y lo que tenia dentro era `push r15; push r14; push r12`.
+///
+/// ** Y comprobar al SOLTAR llega tarde. Para cuando `free_frame_de` puede
+/// objetar, este recorrido ya bajo por la tabla falsa, ya leyo 512 casillas de
+/// codigo como si fueran direcciones y ya llamo a `zero_frame` sobre las que
+/// cayeron dentro de los 16 GiB. **El unico sitio donde la pregunta evita el
+/// dano es antes de bajar.**
+///
+/// [!] `Anonimo` pasa. Las tablas de un espacio creado antes de que existiera
+/// la etiqueta no llevan ninguna, y rechazarlas dejaria de desmontar espacios
+/// buenos -- una fuga a cambio de una sospecha. Solo se corta cuando la tabla
+/// dice ser OTRA COSA, que es el caso que no tiene explicacion inocente.
+fn es_tabla(fisica: u64, nivel: &'static str) -> bool {
+    let q = phys::duenno_de(fisica);
+    if q == phys::Duenno::Tabla || q == phys::Duenno::Anonimo {
+        return true;
+    }
+    crate::ring0::cabina::fault("vmm", nivel, fisica);
+    crate::ring0::cabina::fault("vmm", q.nombre(), 0);
+    false
+}
 
 pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
     // La estacion 17, y la unica que no vive en `revoke_all`: el espacio se
@@ -269,6 +301,9 @@ pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
             crate::ring0::cabina::fault("vmm", "PDPT enlazado pero YA LIBRE", pdpt_phys);
             return (hojas, tablas);
         }
+        if !es_tabla(pdpt_phys, "PDPT que NO es una tabla") {
+            return (hojas, tablas);
+        }
         let pdpt = table(pdpt_phys);
         for i3 in 1..512 {
             let e = pdpt[i3];
@@ -281,6 +316,9 @@ pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
             }
             if let Some(true) = phys::esta_libre(pd_phys) {
                 crate::ring0::cabina::fault("vmm", "PD enlazado pero YA LIBRE", pd_phys);
+                continue;
+            }
+            if !es_tabla(pd_phys, "PD que NO es una tabla") {
                 continue;
             }
             let pd = table(pd_phys);
@@ -298,6 +336,10 @@ pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
                 // tabla `4D2000` del 04-09 era un PT.
                 if let Some(true) = phys::esta_libre(pt_phys) {
                     crate::ring0::cabina::fault("vmm", "PT enlazado pero YA LIBRE", pt_phys);
+                    continue;
+                }
+                // *** EL SITIO EXACTO DEL 04-09: `4D2000` era un PT.
+                if !es_tabla(pt_phys, "PT que NO es una tabla") {
                     continue;
                 }
                 let pt = table(pt_phys);
@@ -333,16 +375,16 @@ pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
                     phys::free_frame(marco);
                     hojas += 1;
                 }
-                phys::free_frame(pt_phys);
+                phys::free_frame_de(pt_phys, phys::Duenno::Tabla);
                 tablas += 1;
             }
-            phys::free_frame(pd_phys);
+            phys::free_frame_de(pd_phys, phys::Duenno::Tabla);
             tablas += 1;
         }
-        phys::free_frame(pdpt_phys);
+        phys::free_frame_de(pdpt_phys, phys::Duenno::Tabla);
         tablas += 1;
     }
-    phys::free_frame(pml4);
+    phys::free_frame_de(pml4, phys::Duenno::Tabla);
     tablas += 1;
     // ** Y el total de hojas que ya estaban libres. CERO tambien es respuesta:
     // dice que el arbol era suyo entero y que el problema no es este recorrido.
