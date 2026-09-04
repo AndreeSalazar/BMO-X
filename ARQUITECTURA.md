@@ -77,7 +77,7 @@ kernel's `_start`.
 
 ```
 +------------------------------------------------------------+
-|                    Ring 3 -- Applications                   |
+|                    Ring 3 -- Applications                  |
 |  +----------+ +----------+ +----------+ +----------+       |
 |  |Compositor| |  COBOL   | |    C     | |   Ada    |       |
 |  |  d.bex   | | programs | | programs | | programs |       |
@@ -85,7 +85,7 @@ kernel's `_start`.
 |       +------------+-------+----+------------+             |
 |                            |  SYSCALL / SYSRET             |
 +----------------------------+-------------------------------+
-|                    Ring 0 -- Kernel                         |
+|                    Ring 0 -- Kernel                        |
 |  +----------+ +----------+ +----------+ +----------+       |
 |  |Capability| |Scheduler | |  Memory  | | ESTRATOS |       |
 |  |  Engine  | |preemptive| | demand pg| | + FAT32  |       |
