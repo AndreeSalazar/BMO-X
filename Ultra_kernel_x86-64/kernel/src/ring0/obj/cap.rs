@@ -364,6 +364,11 @@ pub fn revoke(pid: u32, handle: u64) -> bool {
 /// clientes bloqueados para siempre -- el fallo que hace inservible cualquier
 /// IPC bloqueante.
 pub fn revoke_all(pid: u32) {
+    // ** EL TESTIGO. Diecisiete estaciones en un orden portante es la forma
+    // exacta que produce "uno toca lo que otro ya libero", y la pantalla azul
+    // no sabia decir en cual iba. Ver `core::desmontaje`; los numeros de aqui
+    // abajo son SU tabla de nombres, asi que mover una linea es mover las dos.
+    crate::ring0::core::desmontaje::entra(1, pid);
     // *** LA AUTORIDAD SE OLVIDA LA PRIMERA, y por el mismo motivo que el
     // contador de peticiones dos parrafos mas abajo: **un pid reutilizado
     // heredaria la del muerto.**
@@ -372,11 +377,14 @@ pub fn revoke_all(pid: u32) {
     // su hueco lo coja un `.bex` cualquiera, y que ese nazca pudiendo reiniciar
     // la maquina. No se ve hasta que la maquina lleva horas encendida.
     crate::ring0::task::autoridad::olvidar(pid);
+    crate::ring0::core::desmontaje::entra(2, pid);
     crate::ring0::obj::endpoint::process_died(pid);
     // Si tenia la pantalla, el kernel la recupera aqui. Corre en TODAS las
     // salidas --EXIT voluntario y muerte por fault-- asi que un compositor que
     // revienta no deja la maquina ciega.
+    crate::ring0::core::desmontaje::entra(3, pid);
     crate::ring0::obj::fb::process_died(pid);
+    crate::ring0::core::desmontaje::entra(4, pid);
     crate::ring0::obj::input::process_died(pid);
     // ** Y la ventana de un aparato, por el mismo motivo exacto. Sin esta linea,
     // un driver de Ring 3 que reventara dejaria su aparato marcado como ocupado
@@ -384,16 +392,19 @@ pub fn revoke_all(pid: u32) {
     //
     // Es `R-APP6` --*muere sin llevarse a nadie*-- y aqui el "nadie" es el
     // proximo que lo pida. Ver `obj/mmio.rs`.
+    crate::ring0::core::desmontaje::entra(5, pid);
     crate::ring0::obj::mmio::process_died(pid);
     // Y el sonido, que ademas hay que CALLAR: un proceso que muere en mitad de
     // un tono deja el bit del altavoz puesto y no queda nadie vivo a quien
     // pedirle que lo quite. Un pitido continuo que solo para reiniciando es la
     // maquina de rehen, igual que el teclado secuestrado, con otro aparato.
+    crate::ring0::core::desmontaje::entra(6, pid);
     crate::ring0::obj::audio::process_died(pid);
     // ** Y el bufer que le hubiera prestado al tubo de audio. Sin esto, el
     // aparato seguiria leyendo por DMA marcos de un proceso que ya no existe --
     // que es peor que un fallo: es un ruido que no para y que no tiene dueno a
     // quien pedirle que pare.
+    crate::ring0::core::desmontaje::entra(7, pid);
     crate::ring0::dev::usb::audio::soltar(pid);
     // Sus bloques de memoria no hay que desmapearlos --el espacio entero se
     // destruye--, pero SI hay que soltar el contador de peticiones: sin esto un
@@ -410,28 +421,39 @@ pub fn revoke_all(pid: u32) {
     // `TAREA_OP_CERRAR` el que llama es el PADRE, asi que `read_cr3()` seria el
     // espacio del padre y `undo` desmapearia paginas del que cierra en vez de
     // las del cerrado. Compila, y se lleva por delante al DIRECTOR.
+    crate::ring0::core::desmontaje::entra(8, pid);
     let aspace = crate::ring0::task::scheduler::cr3_de_pid(pid)
         .unwrap_or_else(crate::ring0::mm::vmm::read_cr3);
+    crate::ring0::core::desmontaje::entra(9, pid);
     crate::ring0::obj::loan::process_died(pid, aspace);
+    crate::ring0::core::desmontaje::entra(10, pid);
     crate::ring0::obj::memory::process_died(pid);
     // Si era el LECTOR de una consola, se libera; si solo escribia en ella, su
     // salida vuelve al panel del kernel. Ver `ring0/consola.rs`.
+    crate::ring0::core::desmontaje::entra(11, pid);
     crate::ring0::obj::console::process_died(pid);
+    crate::ring0::core::desmontaje::entra(12, pid);
     crate::ring0::obj::directory::process_died(pid);
     // Un archivo de ESCRITURA a medias se descarta: lo acumulado no llega al
     // disco. Guardarlo seria inventar un archivo que su autor nunca dio por
     // terminado, y medio fichero de movimientos es peor que ninguno.
+    crate::ring0::core::desmontaje::entra(13, pid);
     crate::ring0::obj::file::process_died(pid);
     // Y de donde salio. Sin esto un pid reutilizado heredaria la ruta del
     // muerto, y `MI_PAQUETE` le entregaria **la imagen de otro programa** -- que
     // ademas cargaria y leeria perfectamente, porque es un `.bex` valido.
+    crate::ring0::core::desmontaje::entra(14, pid);
     crate::ring0::task::package::process_died(pid);
     // Y quien lo lanzo. Las dos puntas: sin limpiar las filas donde este pid era
     // el PADRE, un pid reutilizado heredaria los hijos del muerto y `MI_PADRE`
     // mandaria una superficie a un proceso que no la pidio -- que ademas la
     // tomaria sin quejarse, porque el prestamo no sabe que lleva pixeles dentro.
+    crate::ring0::core::desmontaje::entra(15, pid);
     crate::ring0::task::family::process_died(pid);
-    revoke_all_slots(pid)
+    crate::ring0::core::desmontaje::entra(16, pid);
+    let r = revoke_all_slots(pid);
+    crate::ring0::core::desmontaje::sale();
+    r
 }
 
 /// Cuantas capabilities siguen VIVAS a nombre de `pid`.

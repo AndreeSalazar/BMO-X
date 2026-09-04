@@ -167,6 +167,10 @@ pub mod core {
     pub mod desktop;
     /// La PURGA: devolver Ring 3 a como estaba al arrancar, y demostrarlo.
     pub mod purga;
+    /// **EL TESTIGO DEL DESMONTAJE**: en cual de las 17 estaciones de
+    /// `revoke_all` iba la purga cuando reviento. La pantalla azul sabia
+    /// muchisimo del MARCO y nada del MOMENTO. Ver la cabecera del modulo.
+    pub mod desmontaje;
     pub mod phase;
     /// **Las ordenes del shell de Ring 0**, repartidas por lo que preguntan.
     /// `phase.rs` llevaba 27 dentro y ocupaban dos tercios del fichero del

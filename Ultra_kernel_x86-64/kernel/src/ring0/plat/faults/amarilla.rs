@@ -299,6 +299,25 @@ pub(super) extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u6
     l.s(if es_user { "  (Ring 3)" } else { "  (Ring 0)" });
     inf.push(l);
 
+    // *** EN QUE ESTACION DEL DESMONTAJE IBA. Esta pantalla sabia muchisimo del
+    // MARCO --de quien fue, si el asignador lo da por entregado, quien lo tiene
+    // ahora-- y nada del MOMENTO, y desmontar un proceso son diecisiete pasos
+    // en un orden portante.
+    //
+    // [!] Que NO haya linea tambien es el veredicto: el fallo no fue
+    // desmontando, y eso exonera a las diecisiete de golpe.
+    if let Some((n, nombre, pid, hechos)) = crate::ring0::core::desmontaje::donde() {
+        let mut l = Line::new();
+        l.s("DESMONTANDO pid="); l.hex(pid as u64, 2);
+        l.s(" estacion "); l.hex(n as u64, 2);
+        l.s(" "); l.s(nombre);
+        // ** Cero significa "el PRIMERO ya falla": el fallo es del desmontaje.
+        // Un numero alto significa que sobrevivio a esos y lo que falla es la
+        // ACUMULACION. Son dos bugs distintos y este es el digito que los parte.
+        l.s(" (van "); l.hex(hechos as u64, 2); l.s(")");
+        inf.push(l);
+    }
+
     // Ultimo cambio a tarea de usuario: el contexto que entrego el
     // planificador, su back-pointer EN ESE INSTANTE, y la misma ranura releida
     // AHORA. b valido + n cero => lo pisaron entre el cambio y el epilogo.

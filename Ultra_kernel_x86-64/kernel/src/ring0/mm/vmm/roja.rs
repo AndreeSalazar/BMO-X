@@ -200,6 +200,10 @@ pub(super) fn get_or_create(t: &mut [u64; 512], idx: usize, flags: u64) -> Resul
 use super::amarilla::caminable;
 
 pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
+    // La estacion 17, y la unica que no vive en `revoke_all`: el espacio se
+    // destruye despues, en `reap`. Se apunta con pid 0 porque aqui ya no hay
+    // pid -- solo un PML4 y un cadaver.
+    crate::ring0::core::desmontaje::entra(17, 0);
     let mut hojas = 0u64;
     let mut tablas = 0u64;
     // *** LA UNICA DIRECCION QUE ENTRA DE FUERA, Y ERA LA UNICA SIN JUEZ.
