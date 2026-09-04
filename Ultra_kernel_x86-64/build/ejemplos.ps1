@@ -199,7 +199,10 @@ $cEjemplos = @(
     # porque el temporizador expropia y una media se puede inflar. Decide si
     # algo puede pasar por la superficie o tiene que ser codigo enlazado --
     # empezando por el runtime de Python. Ver `docs/maestro/PYTHON_MAESTRO.md`.
-    @{ src = 'toolchain\lang\c\examples\coste_C.c';     out = 'coste.bex'  ; dir = 'c' }
+    @{ src = 'toolchain\lang\c\examples\coste_C.c';     out = 'coste.bex'  ; dir = 'c' },
+    # LA MEDIDA DEL BLIT: memcpy a RAM contra memcpy al framebuffer (WC), y
+    # un bucle de 8 bytes como tercera fila. Ver su cabecera.
+    @{ src = 'toolchain\lang\c\examples\blit_C.c';      out = 'blit.bex'   ; dir = 'c' }
 )
 
 # * LOS RECURSOS QUE VAN DENTRO DE UN `.bex`.
