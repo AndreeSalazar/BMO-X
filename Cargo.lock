@@ -235,6 +235,7 @@ dependencies = [
  "bmo-input",
  "bmo-mmio-juicio",
  "bmo-net",
+ "bmo-orquesta",
  "bmo-particiones",
  "bmo-rtc",
  "bmo-trim",
@@ -337,6 +338,10 @@ dependencies = [
 
 [[package]]
 name = "bmo-net"
+version = "0.1.0"
+
+[[package]]
+name = "bmo-orquesta"
 version = "0.1.0"
 
 [[package]]

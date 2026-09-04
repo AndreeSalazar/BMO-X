@@ -506,6 +506,58 @@ pub const PLACA_OP_ECAM: u64 = 0x03;
 pub const PLACA_OP_IOMMU: u64 = 0x04;
 
 
+// == LA PUERTA DE LA ORQUESTA ==============================================
+//
+// *** BMO-X no es un sistema operativo: es Bare Metal ORQUESTAL. Un SO
+// multiplexa --finge que cada programa esta solo y le deja improvisar-- y una
+// orquesta COORDINA: cada atril sabe su parte, su entrada y lo que cuesta.
+//
+// Hasta hoy la maquina sabia repartir una faena entre doce nucleos --
+// `smp::crew`, probado en metal-- y **nadie le habia dado nunca una de verdad**:
+// el unico que llamaba a `repartir` era un banco de pruebas. Estas dos
+// operaciones son el gesto de entrada del director.
+//
+// ** LO QUE NO SE HACE, Y ES LA DECISION MAS IMPORTANTE DE LAS DOS:
+//
+//    lo que NO   Ring 3 manda un PUNTERO A FUNCION y el nucleo lo llama
+//    lo que SI   Ring 3 NOMBRA una parte del catalogo y manda los datos
+//
+// La primera es una escalada de privilegios con otro nombre: codigo de Ring 3
+// corriendo con el privilegio del kernel, en un nucleo que ni siquiera tiene
+// TSS propia. No hay forma de hacerla segura y no se intenta.
+//
+// Y la segunda no es un apano: **es lo que hace una orquesta**. A una orquesta
+// se le dan partituras escritas. BMO-X ya hace exactamente esto dos veces --dos
+// syscalls con un opcode, y los 62 intrinsecos de `sem-asm` en una tabla-- asi
+// que el catalogo es el mismo concepto un piso mas arriba. El catalogo vive en
+// `bmo-orquesta`, y ahi se prueba.
+
+/// **PONER UN NUMERO EN EL ATRIL**, antes de decir *tocad*.
+///
+/// `arg0` = que campo (0 destino, 1 origen, 2 total, 3 dato), `arg1` = el valor.
+///
+/// ** De uno en uno porque por la puerta caben DOS numeros por llamada y un
+/// encargo lleva cuatro. Es el mismo idioma que `OP_RUTA` antes de
+/// `OP_EJECUTAR`: se acumula y despues se ejecuta. Inventar aqui una convencion
+/// nueva seria tener dos formas de pasar argumentos largos en el mismo sistema.
+///
+/// [!] `destino` y `origen` son direcciones **de Ring 3**, las que devolvio
+/// `MEM_OP_BASE`. La traduccion a fisica la hace el kernel, y por eso una app no
+/// puede nombrar memoria que no sea suya: `memory::fisica_de` solo traduce
+/// dentro de sus propios bloques.
+pub const TASK_OP_ATRIL: u64 = 0x31;
+
+/// **TOCAD.** `arg0` = numero de parte del catalogo, `arg1` = cuantos atriles
+/// como mucho (`0` = los que el perfil crea convenientes).
+///
+/// Devuelve cuantos atriles tocaron de verdad, o un error si el encargo no pasa
+/// el juez de `bmo_orquesta::se_puede_tocar`.
+///
+/// ** BLOQUEA hasta que la barrera se cierra. Es lo correcto: quien reparte
+/// tiene que poder contar con que al volver el trabajo esta hecho -- y los
+/// obreros giran en `pause`, asi que no hay a quien avisar despues.
+pub const TASK_OP_TOCAR: u64 = 0x32;
+
 /// Ocho bytes del nombre del hijo `arg0`; `arg1` numera el trozo.
 ///
 /// De ocho en ocho porque la superficie congelada no acepta punteros, y es el

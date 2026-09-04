@@ -47,6 +47,11 @@ pub mod banda;
 /// sabe que dos hilos comparten un nucleo.
 pub mod ficha;
 pub mod crew;
+/// **EL ATRIL**: donde Ring 3 deja el encargo antes de decir *tocad*. `crew`
+/// sabia repartir desde el 08-08 y nadie le habia dado nunca una faena de
+/// verdad; esto es lo que faltaba, y no era el reparto: era **como se le dicen
+/// los numeros**. Ver la cabecera del modulo.
+pub mod atril;
 pub mod tramp;
 
 use core::sync::atomic::Ordering;

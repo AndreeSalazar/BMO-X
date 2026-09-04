@@ -376,6 +376,10 @@ pub(crate) const DISCO_TRIM_MOTIVO_SHIFT: u64 = 56;
 pub(crate) const DISCO_TRIM_SECTORES_MASK: u64 = (1 << 56) - 1;
 /// Despertar los otros nucleos. Espejo de `bmo_abi::...::TASK_OP_SMP_DESPERTAR`.
 pub(crate) const TASK_OP_SMP_DESPERTAR: u64 = 0x1B;
+/// Poner un numero en el atril de la orquesta. Espejo de `TASK_OP_ATRIL`.
+pub(crate) const TASK_OP_ATRIL: u64 = 0x31;
+/// Tocad. Espejo de `TASK_OP_TOCAR`. Ver `plat::smp::atril`.
+pub(crate) const TASK_OP_TOCAR: u64 = 0x32;
 /// **El censo de audio, pedido desde Ring 3.**
 ///
 /// El 2026-08-12 la orden `audio` se anadio SOLO al shell de Ring 0, y el dueno

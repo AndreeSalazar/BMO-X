@@ -303,6 +303,11 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         // pregunta, y porque medir el estado compartido de este despachador
         // dio CERO -- ver la cabecera de ese fichero.
         TASK_OP_SMP_DESPERTAR => op_maquina::smp_despertar(arg0, arg1),
+        // ** LA PUERTA DE LA ORQUESTA. La maquina sabia repartir desde el
+        // 08-08 y nadie le habia dado nunca una faena de verdad: el unico que
+        // llamaba a `crew::repartir` era un banco de pruebas.
+        TASK_OP_ATRIL => op_maquina::atril(arg0, arg1),
+        TASK_OP_TOCAR => op_maquina::tocar(arg0, arg1),
         TASK_OP_ESTRATOS_SELLAR => op_maquina::estratos_sellar(arg0, arg1),
         TASK_OP_DISCO => op_maquina::disco(arg0, arg1),
         // ** LOS DOS QUE LE DEVUELVEN AL DUENO SU MAQUINA (2026-08-24).
