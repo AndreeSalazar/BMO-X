@@ -662,3 +662,84 @@ int main(void)
         salida
     );
 }
+
+// == SONDA `R_AddLine`: la aritmetica de angulos, que es TODA sin signo =====
+//
+// `typedef unsigned angle_t`, y el recorte de la vista se apoya en que la resta
+// ENVUELVE y en que las comparaciones son SIN SIGNO con el bit 31 puesto.
+
+#[test] fn a1_comparar_sin_signo_con_el_bit_31_puesto() {
+    assert_eq!(run_c("typedef unsigned angle_t;
+int main(){ angle_t span; angle_t ANG180;
+ ANG180 = 0x80000000; span = 0x80000000;
+ printf(\"%d %d %d\", (int)(span >= ANG180), (int)(span > ANG180),
+        (int)(0x7FFFFFFF >= ANG180));
+ return 0; }"), "1 0 0");
+}
+
+#[test] fn a2_la_resta_de_angulos_ENVUELVE() {
+    assert_eq!(run_c("typedef unsigned angle_t;
+int main(){ angle_t a; angle_t b; angle_t span;
+ a = 10; b = 20; span = a - b;
+ printf(\"%u %d\", span, (int)(span >= 0x80000000));
+ return 0; }"), "4294967286 1");
+}
+
+#[test] fn a3_negar_un_unsigned() {
+    assert_eq!(run_c("typedef unsigned angle_t;
+int main(){ angle_t clip; angle_t neg;
+ clip = 0x20000000; neg = -clip;
+ printf(\"%u\", neg); return 0; }"), "3758096384");
+}
+
+#[test] fn a4_dos_por_un_angulo_que_desborda() {
+    assert_eq!(run_c("typedef unsigned angle_t;
+int main(){ angle_t clip; angle_t dos;
+ clip = 0x60000000; dos = 2*clip;
+ printf(\"%u %d\", dos, (int)(dos > clip));
+ return 0; }"), "3221225472 1");
+}
+
+/// *** EL RECORTE DE LA VISTA ENTERO, y la casilla que me cazo a MI.
+///
+/// La primera version esperaba "1 1 0" y BMO C dio "1 0 1". Antes de tocar el
+/// compilador se hizo la cuenta a mano, y **la equivocada era la expectativa**:
+///
+/// ```text
+///    caso 2   tspan = 0x90000000 + 0x20000000 = 0xB0000000 > 0x40000000
+///             tspan -= 0x40000000  ->  0x70000000 >= span (0x01000000)
+///             -> return 0                    <- BMO C acierta
+///    caso 3   span = 0 - 0xF0000000 = 0x10000000 (envuelve)
+///             ningun tspan pasa del tope
+///             -> return 1                    <- BMO C acierta
+/// ```
+///
+/// [!] Se deja escrito porque es la tercera vez en dos dias que una teoria
+/// razonable resulta falsa al medirla. **Una casilla roja no dice quien se
+/// equivoco; solo dice que dos cuentas no coinciden.**
+#[test] fn a5_el_recorte_de_la_vista_entero() {
+    assert_eq!(run_c("typedef unsigned angle_t;
+angle_t clipangle;
+int recorta(angle_t a1, angle_t a2);
+int main(){ clipangle = 0x20000000;
+ printf(\"%d %d %d\", recorta(0x10000000, 0x0F000000),
+        recorta(0x90000000, 0x8F000000), recorta(0x00000000, 0xF0000000));
+ return 0; }
+int recorta(angle_t angle1, angle_t angle2){
+ angle_t span; angle_t tspan;
+ span = angle1 - angle2;
+ if (span >= 0x80000000) return 0;
+ tspan = angle1 + clipangle;
+ if (tspan > 2*clipangle) {
+   tspan = tspan - 2*clipangle;
+   if (tspan >= span) return 0;
+   angle1 = clipangle;
+ }
+ tspan = clipangle - angle2;
+ if (tspan > 2*clipangle) {
+   tspan = tspan - 2*clipangle;
+   if (tspan >= span) return 0;
+   angle2 = -clipangle;
+ }
+ return 1; }"), "1 0 1");
+}
