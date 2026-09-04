@@ -332,6 +332,28 @@ pub fn process_died(pid: u32) {
         if cur != kpml4 {
             crate::ring0::mm::vmm::switch_to(kpml4);
         }
+        // *** Y LA PANTALLA SE LIMPIA, QUE ES LO QUE ESTA LINEA YA PROMETIA.
+        //
+        // Dos lineas mas arriba, en CABINA, pone:
+        //
+        // > *el dueno de la pantalla MURIO: **se vuelve al panel del kernel***
+        //
+        // Y nadie repintaba el panel. El framebuffer se quedaba con **el ultimo
+        // fotograma del muerto** --DOOM pinta 1600x1000 de un panel de
+        // 1920x1080-- y encima de esa imagen se escribian estas lineas del
+        // kernel. De ahi la interfaz "corrompida" que se ve al volver: no habia
+        // memoria pisada, habia pixeles de otro que nadie borro.
+        //
+        // ** Es la misma silueta que este mes ya se pago cuatro veces: un
+        // mensaje que dice lo que se pretendia y no lo que paso. Un
+        // `#[cfg(test)]` que no se ejecuta, un instrumento que solo habla en la
+        // azul, `caminable` contestando la pregunta de al lado, y este.
+        //
+        // `splash_dashboard_init` rellena la pantalla entera y repinta cabecera,
+        // pie, marco y corchetes -- es lo mismo que hace la patada en
+        // `emergencia.rs`, y por el mismo motivo: quien recibe la pantalla la
+        // recibe LIMPIA o no la ha recibido.
+        crate::ring0::core::splash::splash_dashboard_init();
         crate::ring0::core::dashboard::dashboard_log("  -- lo ULTIMO que dijo el dueno de la pantalla --");
         if crate::ring0::uconsole::hubo_palabras(pid) {
             crate::ring0::uconsole::ultimas_palabras(pid, |linea| {
