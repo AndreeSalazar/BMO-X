@@ -454,3 +454,211 @@ par_t *dame(int i){ return &v[i]; }"), "8 9");
     ).expect_err("hoy no se soporta");
     assert!(e.message.contains("aun no soportada"), "tiene que decirlo: {}", e.message);
 }
+
+// == SONDA `R_ClearClipSegs`: la lista de recorte del BSP, literal ==========
+
+#[test] fn r1_constantes_negativas_en_campos_de_un_array_de_structs() {
+    assert_eq!(run_c("struct cr { int first; int last; };
+struct cr seg[4];
+int w = 320;
+int main(){
+  seg[0].first = -0x7fffffff; seg[0].last = -1;
+  seg[1].first = w;           seg[1].last = 0x7fffffff;
+  printf(\"%d %d %d %d\", seg[0].first, seg[0].last, seg[1].first, seg[1].last);
+  return 0; }"), "-2147483647 -1 320 2147483647");
+}
+
+#[test] fn r2_leer_por_puntero_mas_uno() {
+    assert_eq!(run_c("struct cr { int first; int last; };
+struct cr seg[4];
+int main(){
+  struct cr *p;
+  seg[0].first = 10; seg[0].last = 11;
+  seg[1].first = 20; seg[1].last = 21;
+  p = seg;
+  printf(\"%d %d %d %d\", p->first, p->last, (p+1)->first, (p+1)->last);
+  return 0; }"), "10 11 20 21");
+}
+
+/// `newend = solidsegs+2; newend++;` -- el puntero global que lleva la cabeza
+/// de la lista de recorte.
+///
+/// [!] Va con `typedef` PORQUE ASI LO ESCRIBE DOOM (`cliprange_t* newend;`).
+/// La forma cruda --`struct cr *fin;` a nivel de fichero-- no parsea hoy, y eso
+/// tiene su propia casilla debajo: es un hueco declarado, no un fallo mudo.
+#[test] fn r3_puntero_global_a_struct_que_avanza() {
+    assert_eq!(run_c("struct cr { int first; int last; };
+typedef struct cr cr_t;
+cr_t seg[8];
+cr_t *fin;
+int main(){
+  fin = seg + 2;
+  fin->first = 7; fin->last = 8;
+  fin++;
+  fin->first = 9;
+  printf(\"%d %d %d %d\", seg[2].first, seg[2].last, seg[3].first, (int)(fin - seg));
+  return 0; }"), "7 8 9 3");
+}
+
+/// [!] LIMITE DECLARADO, gemelo del de `s7`: un puntero GLOBAL a `struct X`
+/// sin alias no parsea. Se fija para que siga siendo un "no" y no se convierta
+/// un dia en un cero callado.
+#[test] fn r3b_puntero_global_a_struct_crudo_se_rechaza_diciendolo() {
+    let e = crate::compile_source_to_bef(
+        "struct cr { int first; int last; };
+         struct cr *fin;
+         int main() { return 0; }",
+    ).expect_err("hoy no se parsea");
+    assert!(e.message.contains("expected type"), "tiene que decir QUE no entiende: {}", e.message);
+}
+
+#[test] fn r4_el_bucle_de_busqueda_del_recorte() {
+    assert_eq!(run_c("struct cr { int first; int last; };
+struct cr seg[4];
+int main(){
+  struct cr *start; int first;
+  seg[0].first = -2147483647; seg[0].last = -1;
+  seg[1].first = 320;         seg[1].last = 2147483647;
+  first = 7;
+  start = seg;
+  while (start->last < first-1) start++;
+  printf(\"%d %d\", (int)(start - seg), start->first);
+  return 0; }"), "1 320");
+}
+
+/// *** `R_ClipSolidWallSegment` DE DOOM, PORTADO TAL CUAL.
+///
+/// # Por que existe
+///
+/// El metal contesto `Bad R_RenderWallRange: 7 to -1` -- el `RANGECHECK` del
+/// propio DOOM viendo `start > stop`. Antes decia `28 to 27`, o sea que el
+/// arreglo de la copia de struct **cambio el sintoma sin cerrarlo**.
+///
+/// ** Esta casilla parte la duda en dos, y esa es toda su gracia:
+///
+/// ```text
+///    si produce un rango invertido AQUI   -> el fallo es del compilador
+///    si no lo produce                     -> el fallo esta en lo que le ENTRA
+/// ```
+///
+/// [!] No compara contra un compilador de referencia --no hay ninguno a mano--
+/// sino contra una PROPIEDAD: un rango guardado nunca puede tener el principio
+/// despues del final. Eso no depende de quien compile.
+#[test]
+fn el_recorte_del_bsp_de_doom_no_produce_rangos_invertidos() {
+    let salida = run_c(
+        "/* R_ClipSolidWallSegment de `r_bsp.c`, portado tal cual.
+ *
+ * El unico cambio es que `R_StoreWallRange` no dibuja: CUENTA los rangos
+ * invertidos, que es lo que el RANGECHECK de DOOM detecta en el metal.
+ */
+
+struct cliprange { int first; int last; };
+typedef struct cliprange cliprange_t;
+
+cliprange_t solidsegs[40];
+cliprange_t *newend;
+int viewwidth = 320;
+
+int malos = 0;
+int guardados = 0;
+int ult_a = 0;
+int ult_b = 0;
+
+void R_StoreWallRange(int start, int stop)
+{
+    guardados = guardados + 1;
+    if (start > stop) {
+        malos = malos + 1;
+        ult_a = start;
+        ult_b = stop;
+    }
+}
+
+void R_ClearClipSegs(void)
+{
+    solidsegs[0].first = -0x7fffffff;
+    solidsegs[0].last = -1;
+    solidsegs[1].first = viewwidth;
+    solidsegs[1].last = 0x7fffffff;
+    newend = solidsegs + 2;
+}
+
+void R_ClipSolidWallSegment(int first, int last)
+{
+    cliprange_t *next;
+    cliprange_t *start;
+
+    start = solidsegs;
+    while (start->last < first - 1)
+        start++;
+
+    if (first < start->first) {
+        if (last < start->first - 1) {
+            R_StoreWallRange(first, last);
+            next = newend;
+            newend++;
+            while (next != start) {
+                *next = *(next - 1);
+                next--;
+            }
+            next->first = first;
+            next->last = last;
+            return;
+        }
+        R_StoreWallRange(first, start->first - 1);
+        start->first = first;
+    }
+
+    if (last <= start->last)
+        return;
+
+    next = start;
+    while (last >= (next + 1)->first - 1) {
+        R_StoreWallRange(next->last + 1, (next + 1)->first - 1);
+        next++;
+        if (last <= next->last) {
+            start->last = next->last;
+            goto crunch;
+        }
+    }
+
+    R_StoreWallRange(next->last + 1, last);
+    start->last = last;
+
+crunch:
+    if (next == start)
+        return;
+    while (next++ != newend)
+        start++[1] = next[0];
+    newend = start + 1;
+}
+
+int main(void)
+{
+    int i;
+    R_ClearClipSegs();
+    /* Unas cuantas paredes, en el orden en que las da un BSP. */
+    R_ClipSolidWallSegment(100, 150);
+    R_ClipSolidWallSegment(10, 40);
+    R_ClipSolidWallSegment(200, 260);
+    R_ClipSolidWallSegment(45, 90);
+    R_ClipSolidWallSegment(160, 190);
+    R_ClipSolidWallSegment(0, 300);
+
+    printf(\"guardados %d  invertidos %d  ultimo %d a %d\\n\",
+           guardados, malos, ult_a, ult_b);
+    printf(\"lista (%d):\", (int)(newend - solidsegs));
+    for (i = 0; i < (int)(newend - solidsegs); i++)
+        printf(\" [%d,%d]\", solidsegs[i].first, solidsegs[i].last);
+    printf(\"\\n\");
+    return 0;
+}
+",
+    );
+    assert!(
+        salida.contains("invertidos 0"),
+        "el recorte produjo un rango invertido: {}",
+        salida
+    );
+}
