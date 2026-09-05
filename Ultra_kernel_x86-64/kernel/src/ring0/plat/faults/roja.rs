@@ -340,7 +340,7 @@ extern "C" fn fault_dispatch(
         // tira: `let _ = (error, cr2, ...)`. O sea que la pantalla daba la
         // conclusion y se quedaba con la prueba.
         //
-        // ** Y eso costo un dia entero. El 05-09 el mismo `rip` salio dos veces
+        // ** Y eso costo un dia entero. El 04-09 el mismo `rip` salio dos veces
         // --`0x004000725C`-- y al desmontar el `.bex` en ese offset habia
         // `0F 9C C0`, que es `setl al`: **una instruccion que no toca memoria y
         // no puede dar un #PF**. Sin `cr2` no habia forma de saber si el `rip`
@@ -377,7 +377,7 @@ extern "C" fn fault_dispatch(
             }
             // == *** LA PANTALLA QUE YA NO ES SUYA ==========================
             //
-            // El 05-09 esta linea recien puesta contesto a la primera:
+            // El 04-09 esta linea recien puesta contesto a la primera:
             //
             //     cr2=0x00D015C278 err=0x06 ESCRIB NO-presente
             //
@@ -390,7 +390,7 @@ extern "C" fn fault_dispatch(
             // ** Y eso NO es un fallo de nadie: es el rescate haciendo su
             // trabajo. Quitar la pantalla es DESMAPEARLA, y un programa que
             // sigue pintando se lleva un `#PF`. Muere feo, pero muere -- y
-            // desde el 05-09 el DIRECTOR lo iba a cerrar un milisegundo
+            // desde el 04-09 el DIRECTOR lo iba a cerrar un milisegundo
             // despues de todas formas.
             //
             // Lo que se arregla aqui no es la muerte: es que **el renglon rojo
