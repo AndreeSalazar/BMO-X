@@ -75,12 +75,20 @@
 //! como lo que es: si se promete lo otro, se esta prometiendo Denuvo, que es
 //! justo lo que este sistema no puede ni quiere hacer.
 //!
-//! ### Por que encaja con la licencia Techne
+//! ### Por que encaja con la licencia Simbiosis
 //!
-//! Techne v2.0 ya es un modelo de **buena fe con auditoria** --libre para
-//! individuos y por debajo de USD 1M/ano, comercial por encima--, no de
-//! prevencion. Nunca dependio de impedir copias: depende de que se pueda
-//! **demostrar** que corre y de quien es.
+//! [!] AQUI DECIA "Techne v2.0 ... libre por debajo de USD 1M/ano, comercial
+//! por encima". **Ese umbral ya no existe**: desde Simbiosis v1.0 el uso no
+//! cuesta dinero a nadie, de ningun tamano, y lo que se pide a cambio es un
+//! recurso en especie. Ver `LICENSE.txt`.
+//!
+//! Lo que NO cambia --y es lo unico que este modulo necesitaba de la
+//! licencia-- es que sigue siendo un modelo de **buena fe con auditoria** y
+//! no de prevencion. Nunca dependio de impedir copias: depende de que se
+//! pueda **demostrar** que corre y de quien es. Si acaso, ahora depende MAS:
+//! sin royalty que cobrar, la firma deja de ser un instrumento de cobro y se
+//! queda solo con el oficio que siempre tuvo -- decir la verdad sobre un
+//! binario.
 //!
 //! Esto hace real esa parte. Y el comprador que mas lo paga no es el que teme
 //! la pirateria: es el banco o el organismo publico que necesita decir *"puedo

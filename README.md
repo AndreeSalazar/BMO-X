@@ -13,7 +13,8 @@ and INTI -- compiled by its own toolchain. No LLVM. No GCC. No QEMU.**
 ![syscalls](https://img.shields.io/badge/syscalls-2_frozen-1f6feb)
 ![languages](https://img.shields.io/badge/native_languages-COBOL_-_C_-_Ada_-_INTI-8957e5)
 ![inti](https://img.shields.io/badge/system_language-INTI-f0883e)
-![license](https://img.shields.io/badge/license-Techne_v2.0-d29922)
+![license](https://img.shields.io/badge/license-Simbiosis_v1.0-d29922)
+![cost](https://img.shields.io/badge/cost-none-2ea043)
 
 Written from scratch in Rust -- the boot chain, the kernel, the drivers, the
 filesystem, and three native compilers. It boots on an AMD Ryzen 5 5600X and
@@ -346,7 +347,21 @@ because the reason a decision was made is worth more than the decision.
 
 ## License
 
-**Techne v2.0.** Read it before assuming: it is not MIT and it is not GPL.
+**Simbiosis v1.0 -- it costs nothing.** No royalty, no subscription, no
+per-seat fee, no revenue threshold. Not for individuals, not for banks.
+
+What it asks instead is a **barter**: if you use BMO-X seriously, give back
+one resource -- hardware this project has never profiled, an audit by your
+own security team, the shape of a real workload, code, or permission to say
+you use it. One is enough, it is never priced, and if you cannot give any,
+you say so and use it anyway.
+
+It is not OSI open source: the source is public and auditable in full, the
+rights stay with the author, and **the Base -- two syscalls, BEF, the Ring 0
+kernel -- does not fork.** That last clause protects licensees from each
+other, not the author from them: with the Base fixed, one audit is worth
+something to everyone.
+
 See **[LICENSE.txt](LICENSE.txt)**.
 
 ---

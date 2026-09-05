@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["BMO Project"]
 description = "El rasterizador de referencia y el LIENZO: un solo recorte para Ring 0, Ring 3 y el previsualizador"
-license = "Techne"
+license = "Simbiosis"
 
 # Sin dependencias, y aqui eso no es una virtud declarada sino un requisito: lo
 # comparten un kernel que no tiene `std`, un proceso de Ring 3 que no comparte

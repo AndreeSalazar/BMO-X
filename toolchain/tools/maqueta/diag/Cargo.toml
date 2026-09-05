@@ -3,7 +3,7 @@ name = "bmo-maqueta-diag"
 version = "0.1.0"
 edition = "2021"
 description = "MAQUETA: the shape of a rejection. Shared vocabulary, not a generation -- nobody's parent and nobody's child."
-license = "Techne"
+license = "Simbiosis"
 
 # No dependencies. This sits BELOW the whole L7 chain, the way `bmo-abi` sits
 # below the kernel and the toolchain: a contract owned by nobody.

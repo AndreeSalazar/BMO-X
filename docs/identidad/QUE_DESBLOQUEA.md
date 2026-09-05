@@ -180,7 +180,7 @@ una verdad mas pequena: informa de otra.**
 
 El banco de sonda (cabeceras de sistema minimas y el guion) vive **fuera del
 repo**, en `BMO-externo/doom-port/`: codigo GPL y un WAD no entran en un arbol
-con licencia Techne.
+con licencia Simbiosis.
 
 ## Nivel 1 -- C++ acotado + lo que ya hay
 

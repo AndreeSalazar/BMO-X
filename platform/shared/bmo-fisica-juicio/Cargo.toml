@@ -3,7 +3,7 @@ name = "bmo-fisica-juicio"
 version = "0.1.0"
 edition = "2021"
 description = "El juez del physmap: se puede caminar por esta direccion fisica?"
-license = "Techne"
+license = "Simbiosis"
 
 [lib]
 

@@ -3,7 +3,7 @@ name = "bmo-orquesta"
 version = "0.1.0"
 edition = "2021"
 description = "La PARTITURA: que partes existen, y como se reparte una entre n atriles"
-license = "Techne"
+license = "Simbiosis"
 
 [lib]
 
