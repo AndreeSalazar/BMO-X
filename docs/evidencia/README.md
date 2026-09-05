@@ -185,23 +185,76 @@ A system that only ever reports good news is not reporting anything.
 
 ---
 
+## 11. And one that shows a bug, on purpose
+
+![DOOM with unpainted columns](11-doom-columnas-sin-pintar.jpg)
+
+2026-09-04. DOOM at 1600x1000 with the status bar and the full view width --
+and vertical bands where the **title screen from an earlier frame is still
+showing through**. Those columns were never painted: a wall segment that enters
+`R_AddLine` with `x1 > x2` is dropped in silence, and what stays on screen is
+whatever was there before.
+
+The cause was found in the compiler, not in DOOM: `(angle + ANG90) >> 19` was
+not being truncated to 32 bits, so one carry escaped and an index into
+`viewangletox[4096]` came out as **9215** -- 5.119 integers past the end of the
+table. `9215 = 1023 + 8192`, and `8192 * 2^19` is exactly `2^32`.
+
+It is here because the rule of this folder cuts both ways: a folder that only
+ever shows good news is not showing anything.
+
+---
+
 ## How this folder works
 
 These are **progress markers, one batch per milestone**. When something starts
 running on the Ryzen, it gets photographed and lands here with a name that says
 what it shows. Nothing is added because it should work.
 
-Deliberately no video in the repository: a video is heavy, git never forgets a
-blob, and a still that can be read beats a moving shot that cannot. Recordings
-go on the channel and get linked from here.
+### Video: the rule, corrected
 
-### Still worth recording
+This section used to say **"deliberately no video in the repository"**. The rule
+was sound and only half of it was: git never forgets a blob, so an *unbounded*
+video is a permanent cost -- but a short clip is not. So it becomes a **ceiling**
+instead of a ban:
 
-One continuous take: power on -> BMO-X -> launch `batch.bex` -> **hold on the
-output for ten seconds**. The stills already prove it; an unbroken shot proves
-it to someone who suspects the stills.
+> A clip **under 5 MB** may live here. Anything longer goes on the channel and
+> gets linked from this file.
+
+[!] **And there is a file sitting in this folder that no rule covers.**
+`15.mp4` (1,7 MB) has been on disk since 2026-08-18, is **in no commit**, and is
+**cited by nobody** -- not here, not anywhere in the tree. Nobody reading this
+repository can tell what it shows.
+
+A recording without a caption is evidence of nothing. Either it gets one line
+saying what it shows and on what date -- and then it is committed under the
+ceiling above -- or it does not belong here. **That decision has not been made
+and is not made by this file.**
+
+### The two recordings are different jobs -- do not merge them
+
+|  | THE EVIDENCE TAKE | THE PRESENTATION |
+|---|---|---|
+| for | the sceptic who thinks the stills are faked | somebody who has never heard of this |
+| shape | one continuous take, **no cuts** | intro, title, narration, edits |
+| content | power on -> BMO-X -> `batch.bex` -> hold ten seconds on the output | the boot, and what is happening while it happens |
+| lives | here, or linked here | the README, at the top |
+
+The rules below apply to **the evidence take only**. An intro on that one
+destroys the very thing it exists to prove -- a cut is what people suspect. On
+the presentation an intro is not a flaw; it is the point.
 
 - Camera on the physical screen, never a screen capture
-- One take, no cuts -- a cut is what people suspect
+- One take, no cuts
 - Phone quality is fine; **steadiness matters more than resolution**
 - No intro, no music, no narration
+
+### What the boot proves, and it is worth saying out loud
+
+The firmware's own picker lists `BMO-X` next to `Windows Boot Manager` -- see
+photo 1. **BMO-X is not booted through Ventoy, GRUB, or any other loader**: it
+is a UEFI boot entry on its own partition, chosen by the motherboard.
+
+That distinction is not decoration. A system launched from inside a multi-boot
+loader can always be waved away as a payload. One the firmware itself boots
+cannot.
