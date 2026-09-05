@@ -183,9 +183,8 @@ testing yesterday's kernel without noticing.
 
 ### 2b. Or skip the script entirely -- copy two things onto a stick.
 
-**You do not need Windows or PowerShell for this part.** The build leaves a
-folder that *is* the layout of a bootable stick, so any OS that can copy files
-can deploy BMO-X:
+The build leaves a folder that *is* the layout of a bootable stick, so **copying
+it needs nothing but a file manager** -- Linux, macOS or Windows:
 
 ```text
 Ultra_kernel_x86-64/staging/
@@ -199,6 +198,22 @@ Ultra_kernel_x86-64/staging/
    stick ends up with `EFI\BOOT\BOOTX64.EFI` and `BMO-DATA\` at its top level.
 3. That is the whole deployment. There is no bootloader to install, no
    `grub.cfg`, no initrd, no kernel command line, and nothing to configure.
+
+> **[!] Where `staging/` comes from, said straight.** It is produced by
+> `build.ps1`, and **that script only runs on Windows today** -- it looks for
+> `llvm-objcopy.exe` under `%USERPROFILE%\.rustup` and hardcodes `.exe` paths.
+> So *copying* needs no Windows and *producing* still does, and saying only the
+> first half would be a half-truth.
+>
+> The fix is a prebuilt archive, and it is small enough to be silly:
+> **718 KB zipped** for the whole system, the desktop and 28 programs. It goes
+> on the **[Releases](https://github.com/AndreeSalazar/BMO-X/releases)** page.
+> If that page is empty when you read this, the archive is not up yet and
+> building on Windows is the only path -- which is worth knowing before you
+> plan an evening around it.
+>
+> Making the build itself run on Linux is a small job nobody has done: the Rust
+> side is already cross-platform, it is the PowerShell around it that is not.
 
 **Why it is that simple**: UEFI firmware looks for `EFI\BOOT\BOOTX64.EFI` on any
 FAT volume and runs it. BMO-X *is* that file -- boot chain, kernel and drivers

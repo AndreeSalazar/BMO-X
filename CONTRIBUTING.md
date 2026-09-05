@@ -25,6 +25,12 @@ If it does not -- **that is the more useful result.** Photograph the screen wher
 it stops and open an issue. A panic message from unknown hardware is worth more
 to me than a pull request.
 
+[!] **You need Windows to build it today.** `build.ps1` is PowerShell and hunts
+for `llvm-objcopy.exe` under `%USERPROFILE%\.rustup`, so there is currently no
+way to produce a bootable image on Linux or macOS. A prebuilt archive on the
+Releases page fixes that for people who only want to *run* it -- and making the
+build itself portable is a genuinely useful contribution that needs no hardware.
+
 [!] **Check Secure Boot before you report it.** `BOOTX64.EFI` is self-signed, so
 a machine with Secure Boot on refuses to load it and the firmware never runs a
 single instruction. That looks exactly like "it does not boot" and is not a bug.
