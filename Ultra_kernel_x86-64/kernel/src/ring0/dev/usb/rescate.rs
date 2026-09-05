@@ -153,7 +153,7 @@ fn rescue_owner() -> bool {
 /// la que no asume.
 fn segunda_pulsacion() -> bool {
     use crate::ring0::task::scheduler;
-    // == *** SIN UN SOLTAR DE POR MEDIO NO ES OTRA PULSACION (2026-09-05) ====
+    // == *** SIN UN SOLTAR DE POR MEDIO NO ES OTRA PULSACION (2026-09-04) ====
     //
     // ** El dueno pulso `Ctrl+Alt+Esc` para volver del juego y se le murio
     // Ring 3 entero. No fue la purga: fue que la purga se PIDIO sola.
@@ -189,7 +189,7 @@ fn segunda_pulsacion() -> bool {
     let ahora = scheduler::rdtsc();
     let hz = scheduler::tsc_freq();
     let anterior = unsafe { PRIMER_INTENTO };
-    // ** EL SUELO SIGUE, PERO CAMBIA DE OFICIO (2026-09-05).
+    // ** EL SUELO SIGUE, PERO CAMBIA DE OFICIO (2026-09-04).
     //
     // Nacio el 01-09 para que mantener el atajo apretado no reiniciara Ring 3.
     // **No lo conseguia**: solo tapaba los primeros 100 ms de una pulsacion que

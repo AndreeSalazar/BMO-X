@@ -334,7 +334,7 @@ extern "C" fn fault_dispatch(
         //
         // Se hace DESPUES de CABINA a proposito: si esto se colgara --no puede,
         // pero el orden es una decision-- la linea roja ya estaria puesta.
-        // == *** Y LOS DOS NUMEROS QUE LO DECIDEN TODO (2026-09-05) =========
+        // == *** Y LOS DOS NUMEROS QUE LO DECIDEN TODO (2026-09-04) =========
         //
         // El veredicto de arriba se calcula CON `cr2` y `error`... y despues los
         // tira: `let _ = (error, cr2, ...)`. O sea que la pantalla daba la
