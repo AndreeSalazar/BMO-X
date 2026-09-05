@@ -375,6 +375,45 @@ extern "C" fn fault_dispatch(
                 // instruccion se ven igual en el `rip`. Esto los separa.
                 n.s(" (cr2 == rip)");
             }
+            // == *** LA PANTALLA QUE YA NO ES SUYA ==========================
+            //
+            // El 05-09 esta linea recien puesta contesto a la primera:
+            //
+            //     cr2=0x00D015C278 err=0x06 ESCRIB NO-presente
+            //
+            // `FRAMEBUFFER_VA_BASE` es `0xD000_0000`, asi que eso es el
+            // framebuffer + 1.426.552 bytes -- **la fila 185 de la pantalla**.
+            // DOOM murio a mitad de un volcado, escribiendo donde ya no habia
+            // nada, porque el dueno le habia quitado la pantalla con
+            // `Ctrl+Alt+Esc`.
+            //
+            // ** Y eso NO es un fallo de nadie: es el rescate haciendo su
+            // trabajo. Quitar la pantalla es DESMAPEARLA, y un programa que
+            // sigue pintando se lleva un `#PF`. Muere feo, pero muere -- y
+            // desde el 05-09 el DIRECTOR lo iba a cerrar un milisegundo
+            // despues de todas formas.
+            //
+            // Lo que se arregla aqui no es la muerte: es que **el renglon rojo
+            // no lo explicaba**. Una direccion en hexadecimal manda a leer el
+            // kernel entero; esta frase se lee y se acabo. Es la leccion de la
+            // estacion 11, otra vez, en el sitio donde mas asusta.
+            let fb0 = crate::ring0::mm::vmm::FRAMEBUFFER_VA_BASE;
+            if cr2 >= fb0 && cr2 < fb0 + 64 * 1024 * 1024 {
+                let mut f = Line::new();
+                f.s("    ESCRIBIA EN LA PANTALLA QUE YA NO ES SUYA");
+                let ancho = unsafe { crate::info::FB_WIDTH } as u64;
+                if ancho != 0 {
+                    f.s(" -- fila ");
+                    f.dec((cr2 - fb0) / (ancho * 4));
+                }
+                serial_write("[fault] ");
+                serial_write(f.as_str());
+                serial_write("
+");
+                if crate::info::has_fb() {
+                    crate::ring0::core::dashboard::dashboard_log(f.as_str());
+                }
+            }
             serial_write("[fault] ");
             serial_write(n.as_str());
             serial_write("
