@@ -3,7 +3,7 @@ name = "bmo-mmio-juicio"
 version = "0.1.0"
 edition = "2021"
 description = "El juez de la cesion: se puede dar este rango fisico a un proceso de Ring 3?"
-license = "Techne"
+license = "Simbiosis"
 
 [lib]
 

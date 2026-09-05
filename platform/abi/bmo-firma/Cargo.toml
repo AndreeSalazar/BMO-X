@@ -3,7 +3,7 @@ name = "bmo-firma"
 version = "1.0.0"
 edition = "2021"
 description = "La DECISION de si un .bex esta firmado por alguien en quien confio. Sin alloc."
-license = "Techne"
+license = "Simbiosis"
 
 # ** UNA sola dependencia, y es la aritmetica.
 #

@@ -3,7 +3,7 @@ name = "bmo-maqueta"
 version = "0.1.0"
 edition = "2021"
 description = "El binario `maqueta`: compila un .maqueta a Rust. Un CONSUMIDOR de la cadena, no una generacion."
-license = "Techne"
+license = "Simbiosis"
 
 [[bin]]
 name = "maqueta"

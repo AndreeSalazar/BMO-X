@@ -4,7 +4,7 @@ version = "1.0.0"
 edition = "2021"
 authors = ["BMO Project"]
 description = "USB Audio Class 1.0 -- control del aparato (volumen y mute) por control transfer"
-license = "Techne"
+license = "Simbiosis"
 
 [dependencies]
 # Independiente a proposito: aqui no se toca hardware. Este crate SOLO lee

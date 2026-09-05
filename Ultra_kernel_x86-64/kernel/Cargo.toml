@@ -4,7 +4,7 @@ version = "2.0.0"
 edition = "2021"
 authors = ["BMO Project"]
 description = "BMO kernel — Ring 0 base (UEFI pure, no external deps)"
-license = "Techne"
+license = "Simbiosis"
 
 [dependencies]
 boot-context = { path = "../boot_context" }

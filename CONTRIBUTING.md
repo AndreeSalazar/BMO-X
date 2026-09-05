@@ -142,10 +142,11 @@ oversights and asking for them will not change them.
 
 ## Licensing, said plainly
 
-BMO-X is under the [Techne License v2.0](LICENSE.txt). The source is public and
-you may read, build and audit all of it without asking anyone. It is **not OSI
-open source** -- the rights stay with the author and commercial use above the
-threshold is licensed.
+BMO-X is under the [Simbiosis License v1.0](LICENSE.txt). The source is public
+and you may read, build and audit all of it without asking anyone. **Using it
+costs nothing, for anyone, at any size** -- what it asks of serious users is a
+contribution in kind, never money. It is still **not OSI open source**: the
+rights stay with the author, and the Base does not fork.
 
 What that means for you as a contributor: **by opening a pull request you are
 offering your contribution under that same licence**, and the rights to it sit

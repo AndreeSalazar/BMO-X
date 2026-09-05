@@ -3,7 +3,7 @@ name = "bmo-maqueta-emit"
 version = "0.1.0"
 edition = "2021"
 description = "MAQUETA: turns a settled layout into something usable. A CONSUMER, not a generation -- nobody in the chain knows it exists."
-license = "Techne"
+license = "Simbiosis"
 
 [dependencies]
 bmo-maqueta-layout = { path = "../layout" }
