@@ -17,6 +17,11 @@ out its memory map differently.
 That is the single most valuable thing anyone can give this project right now,
 and it costs you a USB stick and ten minutes.
 
+> It is also, literally, item **(a) PERFIL** of the barter in
+> [LICENSE.txt](LICENSE.txt). If you ever use BMO-X seriously, a boot report from
+> hardware I do not own settles what the licence asks of you -- in full, once, on
+> a machine you already have.
+
 If it boots -- say so, with your CPU and motherboard.
 If it does not -- **that is the more useful result.** Photograph the screen where
 it stops and open an issue. A panic message from unknown hardware is worth more
@@ -41,9 +46,14 @@ This project has a floor and a building. They have different rules.
 
 These are frozen **on purpose**. A system aiming at critical sectors is only
 auditable if the thing being audited stops changing -- the point is that **one
-audit serves everyone**. A pull request that adds a fourth syscall, or a field
+audit serves everyone**. A pull request that adds a **third** syscall, or a field
 to BEF, will be declined no matter how good it is. That is not a judgement of
 the code.
+
+<!-- Decia "a fourth syscall" y son DOS. El mismo fallo estaba en LICENSE.txt,
+     que decia "tres syscalls" en cuatro sitios dentro del articulo que declara
+     inmutable la Base. Corregido el 2026-09-05 en los dos. Un documento que
+     cuenta mal aquello que congela no congela nada. -->
 
 If you think the Base is genuinely wrong, open an issue and argue it. That
 conversation is welcome. A patch is not the way to have it.
@@ -89,10 +99,10 @@ get a contribution rejected on principle.
 ## Before you open a pull request
 
 1. **`cargo test` passes.** The test bench is described in the README under
-   *How it is verified*, including what it cannot prove.
+   *How to be suspicious of it*, including what it cannot prove.
 2. **Any emitted `.bex` goes through `bmo-verify`.** Since 2 August no frontend
-   may write an executable that has not been validated. Do not add a fifth path
-   around it.
+   may write an executable that has not been validated. Do not add another path
+   around it -- whichever number of frontends there happen to be that week.
 3. **State the colour.** 🟢 with evidence, or 🟡 honestly.
 4. **One concern per PR.** A driver and a refactor in the same patch is two
    patches.
@@ -105,8 +115,7 @@ get a contribution rejected on principle.
    letter in a C string literal once grew a `.bex` from 512 bytes to 492.032,
    and the kernel console is Latin-1 by design -- one byte per character, no
    decoder -- while Rust strings are UTF-8 and every print path hands them over
-   raw. Two encodings that never agreed. The README explains it under *The
-   sources are ASCII*.
+   raw. Two encodings that never agreed.
 
    New identifiers go in **English**. Roughly 900 Spanish ones are still being
    migrated batch by batch (`rename_to_english.py`), so you will meet both --
@@ -133,10 +142,15 @@ Also good:
 > The README marks X as 🟢 but I built it and it does not do what that line
 > says.
 
-Less useful: feature requests for things the roadmap explicitly declines. The
-README has a section called *What it deliberately does not do* -- network stack,
-GPU acceleration, a full libc, Wine, a mainframe migration path. Those are not
-oversights and asking for them will not change them.
+Less useful: feature requests for things the roadmap declines outright -- a full
+libc, Wine, a mainframe migration path. Those are not oversights and asking for
+them will not change them.
+
+[!] Networking and the GPU used to be on that list and **no longer are**: both
+are queued with a written plan, and the README's *What is next, and what blocks
+it* says what each one waits on. This paragraph contradicted that table for
+weeks. If you find another place where these two documents disagree, that is a
+bug worth an issue -- the README is the one that gets updated.
 
 ---
 

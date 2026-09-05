@@ -17,10 +17,32 @@ and INTI -- compiled by its own toolchain. No LLVM. No GCC. No QEMU.**
 ![cost](https://img.shields.io/badge/cost-none-2ea043)
 
 Written from scratch in Rust -- the boot chain, the kernel, the drivers, the
-filesystem, and three native compilers. It boots on an AMD Ryzen 5 5600X and
+filesystem, and **four native compilers**. It boots on an AMD Ryzen 5 5600X and
 occupies **5.4 MiB of 14.8 GiB of RAM**.
 
-**1.596 commits - 1.064 files - 17 April to 23 August 2026 - one developer.**
+**1.792 commits - 1.204 files - 17 April to 5 September 2026 - one developer.**
+
+<details>
+<summary><b>En espanol</b> -- que es esto, en un parrafo</summary>
+
+BMO-X no es un sistema operativo de proposito general y no aspira a serlo. Un
+sistema operativo **multiplexa**: le miente a cada programa diciendole que esta
+solo en la maquina. BMO-X **orquesta**: cada programa sabe su parte, su entrada
+y lo que cuesta. Por eso la frontera entera con el sistema son **dos syscalls**
+--`INVOKE` y `WAIT`-- y no trescientas.
+
+Esta escrito desde cero en Rust, en Lima, por una persona: la cadena de
+arranque, el kernel, los drivers, el sistema de ficheros y cuatro compiladores
+nativos (C, COBOL, Ada e INTI) que no usan LLVM ni GCC. Arranca en un AMD Ryzen
+5 5600X **de verdad**, no en QEMU.
+
+La documentacion tecnica esta en espanol --`BITACORA.md`, `ARQUITECTURA.md`,
+`AVANCES.md` y todo `docs/`-- y este README en ingles a proposito: es la puerta
+de entrada, y la conversacion de fuera ocurre en ingles. Lo que el sistema
+IMPRIME en pantalla es espanol sin acentos, y eso tiene su propio motivo tecnico
+(ver `CONTRIBUTING.md`).
+
+</details>
 
 ---
 
@@ -65,6 +87,9 @@ under it is a slogan.
 | 12 cores | SMP bring-up, `12 of 12` |
 | Ring 3 isolation | a fault kills the task; the kernel takes the screen back and prints its last four lines |
 | Traps its own undefined behaviour | INTI `llano` on the Ryzen: overflow, divide-by-zero and bad conversion all caught **in metal** |
+| Plays DOOM | full width with the status bar, 1600x1000 scaled x5, **27 fps** -- every pixel expanded and blitted by the CPU, no GPU |
+| 12 cores doing real work | a kernel-side workload measured at **11,52x** over one core |
+| Explains its own crashes in Spanish | a page fault inside the framebuffer prints `ESCRIBIA EN LA PANTALLA QUE YA NO ES SUYA -- fila 231`, not just an address |
 
 **The rescue that makes the rest safe**: `Ctrl+Alt+ESC` returns keyboard *and*
 screen to the kernel from any program, checked at the one point in Ring 0 every
@@ -83,8 +108,10 @@ because a trade-off with only one side written down is advertising.
 **Two syscalls, frozen.** `INVOKE` and `WAIT`. Everything else -- opening a file,
 reading the mouse, claiming the screen -- is an *operation* on a capability. The
 API grows inside the pair (object kind, operation); the ABI does not move. The
-proof it works is a number: **the operations went 22 -> 40 while the doors went
-3 -> 2.** The system grew and the surface shrank.
+proof it works is a number: **the doors went 3 -> 2 while the operations went
+22 -> 127.** The system grew and the surface shrank -- and the build prints that
+second number on every run (`operaciones kernel<->ABI: 127 comprobadas, ninguna
+a mano`), so it is checked, not claimed.
 *Cost*: every new ability needs a handle kind to hang from, so there is no quick
 way to add "just one syscall".
 
@@ -277,7 +304,7 @@ row below is **work on top of something that already runs**, except the last one
 | | | blocked by |
 |---|---|---|
 | 🟡 | **Receive an Ethernet frame** -- the ring is written, the NIC is profiled and its MAC was read on metal | one boot |
-| 🟡 | **Give the 12 cores work from Ring 3** -- they already run a kernel-side workload, `12 of 12` | an ABI operation, and one photo first |
+| 🟡 | **Give the 12 cores work from Ring 3** -- the door is built (`ATRIL` / `TOCAR`, two operations, a closed catalogue of parts) and the kernel side already measured **11,52x** | one boot: `smp orquesta` has never been executed |
 | ⚪ | **A LAN that works and is measured** -- `ping`, files, banking terminals against a local server | the transmit ring, then a TCP stack |
 | ⚪ | **Sound** -- volume already reaches the USB headset by control transfer | isochronous transfers in xHCI |
 | ⚪ | **A local assistant**, running as a Ring 3 app over your own files | `exp`, and the core door |
@@ -288,8 +315,19 @@ piece that is an *invention*. X25519, AES-GCM, SHA-256, X.509 -- written wrong i
 does not fail, it **works and does not protect**.
 
 And it is the same debt twice: the elliptic curve HTTPS needs is the one a signed
-`.bex` needs. Today `verify_ed25519` says yes to a signature of zeros, and
-nothing calls it yet. **Paying it once collects twice.**
+`.bex` needs. **Paying it once collects twice.**
+
+> **[!] This paragraph used to say** *"today `verify_ed25519` says yes to a
+> signature of zeros, and nothing calls it yet"*. **That has been false since
+> 2026-08-24**, when that function was deleted, and real Ed25519 landed the day
+> after. `bmo-firma` verifies against a trust anchor and refuses without one.
+>
+> The accurate statement is narrower and still uncomfortable: **the machinery
+> works and nothing signed ships through it.** Every `.bex` this repository
+> produces goes out with `sig_algo = 0` -- integrity, not authorship -- and the
+> trust anchor is empty. The gap is no longer the algorithm; it is the key
+> ceremony and the anchor, and until those exist a bank cannot use this to prove
+> who built a binary.
 
 The full reasoning, with what each piece costs and why:
 **[PLAN_EL_PERFIL_TOTAL.md](docs/plan/PLAN_EL_PERFIL_TOTAL.md)** (what this
@@ -309,13 +347,17 @@ machine gives without buying anything) and
 The claim worth checking is not "it works" -- it is that the things marked 🟢
 were seen on the real machine and the things marked 🟡 say so.
 
-- `Ultra_kernel_x86-64\build.ps1 -BuildOnly` builds everything and runs the
-  guards: sources are ASCII, and the syscall contract is compared across the
-  kernel, the ABI and the userland runtime -- 49 operations, none by hand.
-- `cargo test --workspace --exclude bmo-kernel` -- **2.167 tests**.
-- `cargo test -p bmo-c-front probe_` -- **nine axes, 143 cells, half a second**:
-  the census of what the C compiler actually supports, including the rows that
-  are still broken. A census that hides its red rows is worth nothing.
+- `.\bmo.ps1` builds everything and runs the guards **without touching any
+  disk**: seventeen compatibility rules over 82 cases, sources are ASCII, 1.033
+  document citations resolve, no module grew past its ceiling, and the syscall
+  contract is compared across the kernel, the ABI and the userland runtime --
+  **127 kernel operations and 94 userland ones, none by hand**. Deploying to a
+  USB stick is a separate command, `.\desplegar.ps1`, on purpose.
+- `.\limpiar.ps1` says what the build trees weigh before you delete them.
+- `cargo test --workspace --exclude bmo-kernel` -- **2.433 tests, 0 failures**.
+- `cargo test -p bmo-c-front probe_` -- **15 axes in 0,61 s**: the census of what
+  the C compiler actually supports, including the rows that are still broken. A
+  census that hides its red rows is worth nothing.
 
 **[CONTRIBUTING.md](CONTRIBUTING.md)** explains the bar for a change, and it is
 mostly one rule: nothing that compiles and does not do what it says.
@@ -339,7 +381,7 @@ because the reason a decision was made is worth more than the decision.
 | **[CONTRIBUTING.md](CONTRIBUTING.md)** | The bar, and what is frozen |
 | [Ultra_kernel_x86-64](Ultra_kernel_x86-64/README.md) | Ring 0: boot chain, drivers, filesystems |
 | [Ultra_userspace](Ultra_userspace/README.md) | Ring 3: the runtime and the compositor |
-| [toolchain](toolchain/README.md) | The three compilers and the shared backend |
+| [toolchain](toolchain/README.md) | The four native compilers (C, COBOL, Ada, INTI) and the shared backend |
 | [platform](platform/README.md) | The ABI, the `.bex` container, the drivers as crates |
 | [docs/](docs/) | The master plans: audio, network, SMP, self-healing, DOOM, RAM |
 
@@ -368,4 +410,11 @@ See **[LICENSE.txt](LICENSE.txt)**.
 
 Built from scratch in Lima, Peru, by **Eddi Salazar**.
 
-<!-- TODO Eddi: enlaces a tu web, correo y al video -->
+- **Repository**: [github.com/AndreeSalazar](https://github.com/AndreeSalazar)
+- **Contact**: eddi.salazar.dev@gmail.com
+- **Boot report from your own hardware**: see
+  **[CONTRIBUTING.md](CONTRIBUTING.md)** -- it is the single most useful thing
+  anyone can send, and it settles the licence barter in one email.
+
+<!-- TODO Eddi: el enlace al video del Ryzen arrancando va aqui. Sin el, quien
+     lea esto va a asumir QEMU -- que es exactamente lo que el proyecto no es. -->
