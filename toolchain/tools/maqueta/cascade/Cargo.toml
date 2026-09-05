@@ -3,7 +3,7 @@ name = "bmo-maqueta-cascade"
 version = "0.1.0"
 edition = "2021"
 description = "MAQUETA, son generation: Node x Rule -> a box whose style is settled. Does not know what a screen is."
-license = "Simbiosis"
+license = "Apache-2.0"
 
 # The generation below and the shared error vocabulary. Nothing else, ever: a
 # dependency here on `layout` or `verdict` would mean the cut is wrong (L7a).

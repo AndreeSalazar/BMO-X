@@ -3,7 +3,7 @@ name = "bmo-maqueta-cara"
 version = "1.0.0"
 edition = "2021"
 description = "El FORMATO de una cara maquetada que VIAJA. Sin E/S, sin alloc, sin dependencias."
-license = "Simbiosis"
+license = "Apache-2.0"
 
 # ** CERO DEPENDENCIAS, Y POR EL MISMO MOTIVO QUE `bmo-bex-gate`.
 #

@@ -1,0 +1,35 @@
+BMO-X
+Copyright 2026 Eddi Andree Salazar Matos
+Lima, Peru
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not
+use this file except in compliance with the License. You may obtain a copy of
+the License in the LICENSE file at the root of this repository, or at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+License for the specific language governing permissions and limitations under
+the License.
+
+---
+
+TRADEMARKS
+
+Section 6 of the License grants no trademark rights. "BMO-X", "ESTRATOS",
+"BEF", "BEX", "CABINA" and "INTI" are names of this project. The code is
+yours to use, modify and redistribute under the terms above; naming your own
+product after this one is not covered by that grant.
+
+---
+
+THIRD-PARTY
+
+The DOOM port under BMO-externo/ is not part of this repository and is not
+covered by this license: it is GPL, it lives outside the tree, and the build
+skips it when it is absent.
+
+doom1.wad, when present, is id Software's shareware data and is redistributed
+under its own terms.

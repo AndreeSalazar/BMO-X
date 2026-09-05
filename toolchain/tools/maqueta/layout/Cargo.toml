@@ -3,7 +3,7 @@ name = "bmo-maqueta-layout"
 version = "0.1.0"
 edition = "2021"
 description = "MAQUETA, grandson generation: box x box -> final rects. Never reads a colour and holds no opinion."
-license = "Simbiosis"
+license = "Apache-2.0"
 
 # `diag` is not here, and that is worth noticing: this generation cannot fail.
 # Everything it could complain about is a judgement about a finished layout, and

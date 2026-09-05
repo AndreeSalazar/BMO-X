@@ -3,7 +3,7 @@ name = "bmo-maqueta-verdict"
 version = "0.1.0"
 edition = "2021"
 description = "MAQUETA, great-grandson generation: the only one with an opinion. Reads finished rects and repeats no arithmetic."
-license = "Simbiosis"
+license = "Apache-2.0"
 
 # It reads what the two below produced. It is a crate of its own because it is
 # the piece that changes most often: every new rule about what counts as wrong

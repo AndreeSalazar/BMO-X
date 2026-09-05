@@ -3,7 +3,7 @@ name = "bmo-bex-gate"
 version = "1.0.0"
 edition = "2021"
 description = "La DECISION de si un BEX es admisible. Sin alloc, sin dependencias, sin opinion."
-license = "Simbiosis"
+license = "Apache-2.0"
 
 # ** CERO DEPENDENCIAS, Y ES EL PUNTO ENTERO.
 #

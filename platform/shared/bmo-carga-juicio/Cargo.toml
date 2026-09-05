@@ -3,7 +3,7 @@ name = "bmo-carga-juicio"
 version = "0.1.0"
 edition = "2021"
 description = "El juez de la admision: cabe lo que este programa DECLARA que va a pedir?"
-license = "Simbiosis"
+license = "Apache-2.0"
 
 [lib]
 

@@ -547,4 +547,4 @@ Named by the author, and the names stuck:
 ---
 
 Built from scratch in Lima, Peru, by **Eddi Salazar**.
-Licensed under [Simbiosis License v1.0](LICENSE.txt).
+Licensed under the [Apache License 2.0](LICENSE).
