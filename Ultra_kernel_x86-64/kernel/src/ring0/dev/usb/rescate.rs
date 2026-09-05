@@ -153,20 +153,52 @@ fn rescue_owner() -> bool {
 /// la que no asume.
 fn segunda_pulsacion() -> bool {
     use crate::ring0::task::scheduler;
+    // == *** SIN UN SOLTAR DE POR MEDIO NO ES OTRA PULSACION (2026-09-05) ====
+    //
+    // ** El dueno pulso `Ctrl+Alt+Esc` para volver del juego y se le murio
+    // Ring 3 entero. No fue la purga: fue que la purga se PIDIO sola.
+    //
+    // `watch_rescue` corre en el hilo del bus **cada 4 ms** y dispara mientras
+    // la tecla sigue pulsada. El suelo de 100 ms tapaba los primeros
+    // veinticinco disparos... y al vigesimosexto, `d >= hz/10` se cumple y esto
+    // devolvia `true`. **Una pulsacion humana normal dura de 100 a 200 ms**, o
+    // sea que casi cualquier uso del atajo pedia la purga en el primer intento.
+    //
+    // *** Y el fichero llevaba escrita una proteccion que ya no protegia:
+    //
+    // > lo que impide que el rescate dispare sesenta veces por segundo mientras
+    // > el combo sigue pulsado es que `fb::rescue()` devuelve `None` en cuanto
+    // > no queda dueno
+    //
+    // Eso era verdad hasta el 01-09, cuando la ventana se movio DELANTE de la
+    // pantalla para que la segunda llamada dejara de depender de quien fuera el
+    // dueno. Aquel arreglo fue bueno **y dejo la rama de la purga por delante
+    // del unico freno que tenia.** El comentario se quedo describiendo un muro
+    // que ya no estaba en el camino.
+    //
+    // ** LA LECCION, y es la de toda la semana: **un TIEMPO no distingue lo que
+    // un FLANCO si distingue.** "Dos pulsaciones" no es una cuestion de reloj:
+    // es que entre una y otra hay que SOLTAR. Medirlo con un plazo es medir la
+    // sombra de la pregunta.
+    if !unsafe { SOLTADA } {
+        return false;
+    }
+    // Se consume: una pulsacion fisica se evalua UNA vez, pase lo que pase
+    // debajo. Sin esto, los disparos de los 4 ms volverian a contar.
+    unsafe { SOLTADA = false };
     let ahora = scheduler::rdtsc();
     let hz = scheduler::tsc_freq();
     let anterior = unsafe { PRIMER_INTENTO };
-    // ** LA VENTANA TIENE SUELO Y TECHO, y el suelo es nuevo (2026-09-01).
+    // ** EL SUELO SIGUE, PERO CAMBIA DE OFICIO (2026-09-05).
     //
-    // `watch_rescue` corre en el bucle del hilo del bus y **dispara mientras la
-    // tecla sigue pulsada**: no limpia `HELD_CODE`, lo limpia el KeyUp. Con solo
-    // el techo de tres segundos, dos vueltas de ese bucle --separadas por
-    // microsegundos-- contarian como dos pulsaciones, y **mantener el atajo
-    // apretado reiniciaria Ring 3 sin querer**.
+    // Nacio el 01-09 para que mantener el atajo apretado no reiniciara Ring 3.
+    // **No lo conseguia**: solo tapaba los primeros 100 ms de una pulsacion que
+    // dura el doble. Ese trabajo lo hace ahora el flanco de aqui arriba.
     //
-    // Eso tiraria por tierra lo unico que la doble pulsacion compra: que sea
-    // deliberada. Cien milisegundos separan dos dedos de un bucle de kernel por
-    // tres ordenes de magnitud, y ningun humano pulsa dos veces mas rapido.
+    // Lo que si hace, y por eso se queda: **REBOTE**. Un contacto fisico que
+    // hace doble en unos milisegundos entregaria dos pulsaciones de verdad --
+    // con su soltar y todo-- y ningun dedo humano pulsa dos veces en menos de
+    // una decima. El numero era bueno; el oficio era otro.
     //
     // > Una confirmacion que se puede dar sin querer no confirma nada.
     let d = ahora.wrapping_sub(anterior);
@@ -227,6 +259,16 @@ const SC1_ESC: u8 = 0x01;
 /// unpaired event is the kind of thing that costs an afternoon to find.
 static mut SWALLOW_ESC_RELEASE: bool = false;
 
+/// **Se solto el atajo desde la ultima vez que conto?**
+///
+/// Empieza en `true` porque al arrancar no hay nada pulsado, y la primera
+/// pulsacion tiene que contar.
+///
+/// Es lo que convierte "dos pulsaciones" en una pregunta con respuesta: un
+/// plazo mide cuanto ha pasado, y lo que hacia falta saber es si el dedo se
+/// levanto. Ver `segunda_pulsacion`.
+static mut SOLTADA: bool = true;
+
 /// [`rescue_owner`] seen from the RAW door. Counterpart of [`tecla_del_dueno`].
 pub(super) fn raw_key_from_owner(t: Option<(u8, bool)>) -> Option<(u8, bool)> {
     let (sc, pressed) = t?;
@@ -268,15 +310,29 @@ pub(super) fn raw_key_from_owner(t: Option<(u8, bool)>) -> Option<(u8, bool)> {
 pub(super) fn watch_rescue() {
     let held = unsafe { HELD_CODE };
     if held != SC1_ESC {
+        // *** AQUI ES DONDE SE SABE QUE SE SOLTO, y es el unico sitio.
+        //
+        // `HELD_CODE` lo pone el KeyDown y lo limpia el KeyUp; este hilo pasa
+        // por aqui cada 4 ms. Que la tecla no este es el FLANCO que separa dos
+        // pulsaciones de una sostenida, y sin el la ventana de tres segundos no
+        // distingue una cosa de la otra. Ver `segunda_pulsacion`.
+        unsafe { SOLTADA = true };
         return;
     }
     let m = modificadores();
     if m & MOD_CTRL == 0 || m & MOD_ALT == 0 {
         return;
     }
-    // `HELD_CODE` is not cleared here: the KeyUp clears it. What keeps the rescue
-    // from firing sixty times a second while the combo is still held is that
-    // `fb::rescue()` returns `None` as soon as there is no owner left.
+    // `HELD_CODE` is not cleared here: the KeyUp clears it.
+    //
+    // [!] AQUI DECIA que lo que impedia disparar sesenta veces por segundo era
+    // que `fb::rescue()` devuelve `None` en cuanto no queda dueno. **Eso dejo
+    // de ser cierto el 01-09**, cuando la ventana de la segunda llamada se
+    // movio DELANTE de esa comprobacion: desde entonces la rama de la purga se
+    // alcanzaba sin pasar por ella. Un comentario que describe un muro que ya
+    // no esta en el camino es peor que ninguno.
+    //
+    // Lo que lo impide hoy es el FLANCO: `SOLTADA` arriba.
     if rescue_owner() {
         unsafe { SWALLOW_ESC_RELEASE = true };
     }
