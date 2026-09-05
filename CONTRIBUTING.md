@@ -17,10 +17,8 @@ out its memory map differently.
 That is the single most valuable thing anyone can give this project right now,
 and it costs you a USB stick and ten minutes.
 
-> It is also, literally, item **(a) PERFIL** of the barter in
-> [LICENSE.txt](LICENSE.txt). If you ever use BMO-X seriously, a boot report from
-> hardware I do not own settles what the licence asks of you -- in full, once, on
-> a machine you already have.
+> The licence asks nothing of you in return -- it is Apache 2.0. This is a
+> request, not a condition, and it is the only one in this file.
 
 If it boots -- say so, with your CPU and motherboard.
 If it does not -- **that is the more useful result.** Photograph the screen where
@@ -50,10 +48,10 @@ audit serves everyone**. A pull request that adds a **third** syscall, or a fiel
 to BEF, will be declined no matter how good it is. That is not a judgement of
 the code.
 
-<!-- Decia "a fourth syscall" y son DOS. El mismo fallo estaba en LICENSE.txt,
-     que decia "tres syscalls" en cuatro sitios dentro del articulo que declara
-     inmutable la Base. Corregido el 2026-09-05 en los dos. Un documento que
-     cuenta mal aquello que congela no congela nada. -->
+<!-- Decia "a fourth syscall" y son DOS. El mismo fallo estaba en la licencia
+     vieja, que decia "tres syscalls" en cuatro sitios dentro del articulo que
+     declaraba inmutable la Base. Corregido el 2026-09-05 en los dos, y la
+     licencia se sustituyo entera por Apache-2.0 el 2026-09-06. -->
 
 If you think the Base is genuinely wrong, open an issue and argue it. That
 conversation is welcome. A patch is not the way to have it.
@@ -156,22 +154,31 @@ bug worth an issue -- the README is the one that gets updated.
 
 ## Licensing, said plainly
 
-BMO-X is under the [Simbiosis License v1.0](LICENSE.txt). The source is public
-and you may read, build and audit all of it without asking anyone. **Using it
-costs nothing, for anyone, at any size** -- what it asks of serious users is a
-contribution in kind, never money. It is still **not OSI open source**: the
-rights stay with the author, and the Base does not fork.
+BMO-X is under the **[Apache License 2.0](LICENSE)**. Real OSI open source:
+use it, fork it, ship it, sell it, patent grant included, no fee. See
+**[NOTICE](NOTICE)** for the copyright and the trademark line.
 
 What that means for you as a contributor: **by opening a pull request you are
-offering your contribution under that same licence**, and the rights to it sit
-with the project the way they do for the rest of the code.
-
-If that does not work for you, that is a legitimate position and no hard
-feelings -- the boot reports above are still enormously useful and carry none of
-this.
+offering your contribution under Apache 2.0**, which is exactly section 5 of the
+licence and needs no separate agreement from you. There is no CLA.
 
 If you are contributing on behalf of an employer, please check with them first.
 I would rather sort that out before a patch than after.
+
+### And the one thing the licence no longer says
+
+The previous licence made *"the Base does not fork"* a binding term. **Apache
+2.0 does not, and I am not going to pretend otherwise.** You may fork the
+kernel, add a third syscall, and change BEF, and the licence permits all three.
+
+The reason not to has not changed and now has to stand on its own:
+
+> With the Base fixed, **one audit is worth something to everyone**. Forked,
+> every audit is worth something to one person.
+
+So a pull request that adds a third syscall or a field to BEF will still be
+declined here -- that is a decision about *this* repository, which is a thing a
+maintainer gets to make. It is no longer a decision about yours.
 
 ---
 

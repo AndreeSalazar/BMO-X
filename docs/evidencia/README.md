@@ -228,7 +228,11 @@ machine powering up, the firmware's own boot picker, and BMO-X coming up. It has
 a title card, which is why it is *this* recording and not the evidence take
 described below -- the two are different jobs and the table says which is which.
 
-Committed on 2026-09-05 under the ceiling above, at 1,67 MB. Before that it sat
+Committed on 2026-09-05 under the ceiling above, at 1,67 MB. `15-arranque.gif`
+(2,1 MB, 480 px, 10 fps, no sound) is the same seven seconds as an animated GIF,
+and it exists for one reason: **GitHub does not play a repository `.mp4` inside a
+README.** A markdown link opens the file's own page; a GIF plays where it sits.
+So the GIF is the one in the README and the MP4 is the one worth watching. Before that it sat
 in this folder for two and a half weeks **uncommitted and cited by nobody**,
 which is the state this caption exists to end: a recording without a caption is
 evidence of nothing.

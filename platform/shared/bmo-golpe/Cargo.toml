@@ -3,7 +3,7 @@ name = "bmo-golpe"
 version = "0.1.0"
 edition = "2021"
 description = "La resta que convierte un clic de pantalla en un clic de la app. Hijo de L7: relaciona la caja con el punto, y no sabe que significa el resultado."
-license = "Simbiosis"
+license = "Apache-2.0"
 
 # Sin dependencias, y aqui eso es un requisito y no un alarde: este crate existe
 # para poder PROBARSE en el anfitrion. Una sola dependencia de Ring 3 lo ataria

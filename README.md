@@ -13,8 +13,7 @@ and INTI -- compiled by its own toolchain. No LLVM. No GCC. No QEMU.**
 ![syscalls](https://img.shields.io/badge/syscalls-2_frozen-1f6feb)
 ![languages](https://img.shields.io/badge/native_languages-COBOL_-_C_-_Ada_-_INTI-8957e5)
 ![inti](https://img.shields.io/badge/system_language-INTI-f0883e)
-![license](https://img.shields.io/badge/license-Simbiosis_v1.0-d29922)
-![cost](https://img.shields.io/badge/cost-none-2ea043)
+![license](https://img.shields.io/badge/license-Apache_2.0-d29922)
 
 Written from scratch in Rust -- the boot chain, the kernel, the drivers, the
 filesystem, and **four native compilers**. It boots on an AMD Ryzen 5 5600X and
@@ -114,10 +113,15 @@ under it is a slogan.
      justo lo que no quieres el dia que publiques.
      =================================================================== -->
 
-**[> Watch it boot (7 s, with sound)](https://github.com/AndreeSalazar/BMO-X/blob/main/docs/evidencia/15.mp4)** -- a short edited
-piece: title card, then the machine coming up, from the firmware's own boot
-picker to BMO-X. The unbroken take for the sceptic is a different recording and
-is **[described here](docs/evidencia/)** -- it has not been shot yet.
+![BMO-X booting](docs/evidencia/15-arranque.gif)
+
+A short edited piece: title card, then the machine coming up, from the
+firmware's own boot picker to BMO-X. **[Same thing as video, with sound and at
+full size](https://github.com/AndreeSalazar/BMO-X/blob/main/docs/evidencia/15.mp4)**
+(7 s, 848x480).
+
+The unbroken take for the sceptic is a different recording and is
+**[described here](docs/evidencia/)** -- it has not been shot yet.
 
 > **Booted by the firmware, not by a loader.** The motherboard's own boot picker
 > lists `BMO-X` next to `Windows Boot Manager` -- no Ventoy, no GRUB, no
@@ -133,6 +137,102 @@ key passes through. A program that holds both cannot keep the machine hostage --
 whether the cause is malice or a missing `if`.
 
 Photographs, telemetry and the exact dates: **[AVANCES.md](AVANCES.md)**.
+
+---
+
+## Try it yourself -- two commands
+
+### 1. Build it. This touches no disk.
+
+```powershell
+.\bmo.ps1
+```
+
+That is the whole thing: seventeen compatibility rules, the ASCII sweep, the
+syscall contract across kernel/ABI/userland, four compilers, the kernel, the
+desktop, and thirty programs. About a minute, and **it cannot write to any
+drive** -- deploying is a separate command on purpose. Add `-Rapido` to skip the
+test bench while you iterate.
+
+### 2. Put it on a USB stick and boot it.
+
+```powershell
+.\desplegar.ps1 -Arranque E -Datos E
+```
+
+**Those two letters are Windows drive letters of the stick you are writing to.**
+Nothing else. They are separate because BMO-X deploys two different things:
+
+| flag | what lands there | what it must be |
+|---|---|---|
+| `-Arranque` | `EFI\BOOT\BOOTX64.EFI` -- **the entire operating system, one file** | a **FAT32** partition the firmware can boot (an ESP) |
+| `-Datos` | `BMO-DATA\` -- the desktop and the programs | any FAT32 volume BMO-X can read |
+
+On a normal USB stick with one FAT32 partition **both are the same letter**, and
+that is the usual case. They stay separate because they are two different risks:
+`-Arranque` decides what the firmware runs, `-Datos` only decides what is on the
+menu. Getting the first wrong and the second right is how you spend an evening
+testing yesterday's kernel without noticing.
+
+> [!] **Check the letter twice.** Whatever is on that drive gets overwritten.
+> `.\bmo.ps1` with no flags is always safe; `.\desplegar.ps1` is the one that
+> writes. That split is the only reason it exists.
+>
+> The script refuses an NTFS volume rather than reporting a false success, so
+> pointing it at a Ventoy payload partition fails loudly instead of quietly.
+
+Then reboot, pick `BMO-X` in the firmware's boot menu, and you are in. Click the
+DOOM icon, or type `info`, `cpu`, `mem`, `ls` in the launcher. `Ctrl+Alt+ESC`
+always takes the machine back from whatever is running.
+
+### What actually gets written
+
+Measured from a real build, not estimated:
+
+| | bytes | what it is |
+|---|---:|---|
+| `BOOTX64.EFI` | **1.218.048** | boot chain + 2 stages + the Ring 0 kernel. **This one file is the OS** |
+| `sys/d.bex` | 623.448 | the desktop and compositor -- Ring 3, loaded from disk |
+| 28 more programs | 271.264 | C, COBOL, Ada and INTI examples, all compiled here |
+| `apps/doom.bex` | 912.512 | optional, GPL, built only if the port is present |
+| `apps/doom1.wad` | 4.196.020 | id Software's shareware data, not ours |
+
+**The operating system is 1,16 MiB.** Not the kernel -- the boot chain, the
+kernel, the drivers, the filesystems, USB, AHCI and the capability engine, in a
+single file the firmware loads. It uses **5,4 MiB of RAM** once running.
+
+### Why it is that small, and it is not cleverness
+
+It is the same rule that shows up everywhere else in this repository:
+
+```text
+   hardware   ->  PROFILED   named exactly; swapping it swaps a table
+   software   ->  CONTRACT   names nobody, so it works for everyone
+```
+
+`amdgpu` is millions of lines because it supports fifteen years of cards:
+runtime block discovery, dozens of firmware sets, a register map per generation.
+**That is the price of being generic, and it is not paid here.** BMO-X carries
+one CPU profile, one xHCI, one AHCI. Add no libc, no dynamic linker, no LLVM
+runtime and no POSIX layer, and 1,16 MiB is just what is left.
+
+The cost is written down and it is real: **this has been verified on exactly one
+machine** -- an AMD Ryzen 5 5600X on an MSI A320M PRO MAX. On yours it may not
+boot at all.
+
+> **If it does not boot, that is the single most useful thing you can send me.**
+> Photograph the screen where it stops, with your CPU and motherboard, and open
+> an issue. A panic from unknown hardware is worth more than a pull request.
+> See **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+
+### And one command that only reads
+
+```powershell
+.\limpiar.ps1
+```
+
+Says what the build trees weigh before you delete anything. Cargo leaves about
+5,7 GB across four workspaces. It deletes nothing unless you add `-Borrar`.
 
 ---
 
@@ -425,22 +525,25 @@ because the reason a decision was made is worth more than the decision.
 
 ## License
 
-**Simbiosis v1.0 -- it costs nothing.** No royalty, no subscription, no
-per-seat fee, no revenue threshold. Not for individuals, not for banks.
+**Apache License 2.0.** Use it, fork it, ship it, sell it. Patent grant
+included, and no fee of any kind.
 
-What it asks instead is a **barter**: if you use BMO-X seriously, give back
-one resource -- hardware this project has never profiled, an audit by your
-own security team, the shape of a real workload, code, or permission to say
-you use it. One is enough, it is never priced, and if you cannot give any,
-you say so and use it anyway.
+Two things it does *not* hand over, and both are in the licence itself:
 
-It is not OSI open source: the source is public and auditable in full, the
-rights stay with the author, and **the Base -- two syscalls, BEF, the Ring 0
-kernel -- does not fork.** That last clause protects licensees from each
-other, not the author from them: with the Base fixed, one audit is worth
-something to everyone.
+- **The name.** Section 6 grants no trademark rights. "BMO-X", "ESTRATOS",
+  "BEF", "CABINA" and "INTI" are this project's names -- the code is yours,
+  naming your product after this one is not.
+- **A warranty.** Sections 7 and 8. It is free, it is not guaranteed, and
+  both are true at once.
 
-See **[LICENSE.txt](LICENSE.txt)**.
+> **The Base still should not fork -- and that is now a request, not a
+> clause.** Two syscalls, BEF, the Ring 0 kernel. Apache 2.0 lets you change
+> all three, and the reason not to has not changed: with the Base fixed, one
+> audit is worth something to everyone; forked, every audit is worth
+> something to one person. That argument now has to stand on its own, which
+> is the honest place for it. See **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+
+See **[LICENSE](LICENSE)** and **[NOTICE](NOTICE)**.
 
 ---
 

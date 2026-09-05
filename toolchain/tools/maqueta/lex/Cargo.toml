@@ -3,7 +3,7 @@ name = "bmo-maqueta-lex"
 version = "0.1.0"
 edition = "2021"
 description = "MAQUETA, grandfather generation: raw bytes -> tokens. Knows nothing about trees, rules or validity."
-license = "Simbiosis"
+license = "Apache-2.0"
 
 # No dependencies, and here that is a requirement rather than a boast: this is
 # the bottom of an L7 chain. A grandfather that pulls in a crate is a grandfather

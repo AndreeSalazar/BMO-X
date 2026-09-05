@@ -75,20 +75,21 @@
 //! como lo que es: si se promete lo otro, se esta prometiendo Denuvo, que es
 //! justo lo que este sistema no puede ni quiere hacer.
 //!
-//! ### Por que encaja con la licencia Simbiosis
+//! ### Por que encaja con la licencia
 //!
-//! [!] AQUI DECIA "Techne v2.0 ... libre por debajo de USD 1M/ano, comercial
-//! por encima". **Ese umbral ya no existe**: desde Simbiosis v1.0 el uso no
-//! cuesta dinero a nadie, de ningun tamano, y lo que se pide a cambio es un
-//! recurso en especie. Ver `LICENSE.txt`.
+//! [!] Este parrafo ha cambiado de premisa DOS VECES en tres dias -- Techne
+//! v2.0 (royalty del 7%), Simbiosis v1.0 (trueque), y desde el 2026-09-06
+//! **Apache-2.0**. Que haya sobrevivido a las tres dice algo util: lo que
+//! este modulo necesitaba de la licencia no era ninguna de ellas.
 //!
-//! Lo que NO cambia --y es lo unico que este modulo necesitaba de la
-//! licencia-- es que sigue siendo un modelo de **buena fe con auditoria** y
-//! no de prevencion. Nunca dependio de impedir copias: depende de que se
-//! pueda **demostrar** que corre y de quien es. Si acaso, ahora depende MAS:
-//! sin royalty que cobrar, la firma deja de ser un instrumento de cobro y se
-//! queda solo con el oficio que siempre tuvo -- decir la verdad sobre un
-//! binario.
+//! Lo que hace falta es que el modelo sea de **buena fe con auditoria** y no
+//! de prevencion. Nunca dependio de impedir copias --Apache-2.0 las permite
+//! todas explicitamente-- sino de que se pueda **demostrar** que corre y de
+//! quien es. Bajo Apache eso no se debilita: se vuelve lo unico que queda.
+//! Cualquiera puede bifurcar este arbol y firmar sus binarios con SU clave;
+//! lo que no puede es firmarlos con la del dueno. La firma dejo de ser un
+//! instrumento de cobro y se quedo con el oficio que siempre tuvo -- decir la
+//! verdad sobre un binario. Ver `LICENSE` y `NOTICE`.
 //!
 //! Esto hace real esa parte. Y el comprador que mas lo paga no es el que teme
 //! la pirateria: es el banco o el organismo publico que necesita decir *"puedo
