@@ -91,6 +91,39 @@ under it is a slogan.
 | 12 cores doing real work | a kernel-side workload measured at **11,52x** over one core |
 | Explains its own crashes in Spanish | a page fault inside the framebuffer prints `ESCRIBIA EN LA PANTALLA QUE YA NO ES SUYA -- fila 231`, not just an address |
 
+### Watch it boot
+
+<!-- ===================================================================
+     EL VIDEO DE ARRANQUE VA AQUI.
+
+     Como se pone, en GitHub y sin equivocarse:
+
+       1. Abre una issue nueva en el repo (no hace falta enviarla).
+       2. Arrastra el .mp4 dentro de la caja de texto.
+       3. GitHub lo sube y te devuelve una URL que empieza por
+          https://github.com/user-attachments/assets/...
+       4. SUSTITUYE con esa url la linea que empieza por **The recording
+          is not up yet** -- la url sola, en su propia linea.
+          GitHub la convierte en un reproductor dentro del README.
+       5. Cierra la issue sin enviarla. El fichero ya vive en GitHub.
+
+     [!] NO funciona ![](docs/evidencia/algo.mp4): eso no reproduce nada,
+     sale un enlace roto. Y un <video src="..."> tampoco: GitHub lo filtra.
+
+     Si el video pasa de ~10 MB, ponlo en el canal y deja aqui la
+     miniatura enlazada en vez del reproductor.
+     =================================================================== -->
+
+**The recording is not up yet.** Until it is, the stills below are the evidence -- a camera pointed at a physical monitor, never a screen capture.
+
+> **Booted by the firmware, not by a loader.** The motherboard's own boot picker
+> lists `BMO-X` next to `Windows Boot Manager` -- no Ventoy, no GRUB, no
+> hypervisor, no QEMU. A system launched from inside a multi-boot loader can be
+> dismissed as a payload; one the firmware itself boots cannot.
+>
+> The stills, the test bench and what each one proves:
+> **[docs/evidencia/](docs/evidencia/)**.
+
 **The rescue that makes the rest safe**: `Ctrl+Alt+ESC` returns keyboard *and*
 screen to the kernel from any program, checked at the one point in Ring 0 every
 key passes through. A program that holds both cannot keep the machine hostage --
