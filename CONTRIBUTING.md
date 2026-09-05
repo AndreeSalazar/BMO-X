@@ -84,11 +84,11 @@ conversation is welcome. A patch is not the way to have it.
 The README labels every claim 🟢 / 🟡 / ⚪, and that system is the most valuable
 thing in this repository. It only works if nobody bends it.
 
-| | State | Meaning |
-|:--:|---|---|
-| 🟢 | **Runs on metal** | You watched it work on a real CPU, and you have a photo or a telemetry line |
-| 🟡 | **Written, never executed** | It compiles, it links, it passes its tests -- and no CPU has run it |
-| ⚪ | **Design only** | Documented, not built |
+| State | Meaning |
+|---|---|
+| 🟢 **Runs on metal** | You watched it work on a real CPU, and you have a photo or a telemetry line |
+| 🟡 **Written, never executed** | It compiles, it links, it passes its tests -- and no CPU has run it |
+| ⚪ **Design only** | Documented, not built |
 
 If your patch compiles and passes tests but you never booted it, it is 🟡. Say
 so in the PR. **That is not a weaker contribution -- it is an honest one**, and it

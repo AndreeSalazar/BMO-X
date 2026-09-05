@@ -64,11 +64,11 @@ under it is a slogan.
 
 ## Read this first: the three states
 
-| | State | Meaning |
-|:--:|---|---|
-| 🟢 | **Runs on metal** | Seen working on the real Ryzen, with a photo or a telemetry line |
-| 🟡 | **Written, never executed** | Compiles, links, passes its tests -- and no CPU has ever run it |
-| ⚪ | **Design only** | Documented, not built |
+| State | Meaning |
+|---|---|
+| 🟢 **Runs on metal** | Seen working on the real Ryzen, with a photo or a telemetry line |
+| 🟡 **Written, never executed** | Compiles, links, passes its tests -- and no CPU has ever run it |
+| ⚪ **Design only** | Documented, not built |
 
 **Only 🟢 counts as done.** Nothing is green because it *should* work.
 
@@ -181,6 +181,35 @@ testing yesterday's kernel without noticing.
 > The script refuses an NTFS volume rather than reporting a false success, so
 > pointing it at a Ventoy payload partition fails loudly instead of quietly.
 
+### 2b. Or skip the script entirely -- copy two things onto a stick.
+
+**You do not need Windows or PowerShell for this part.** The build leaves a
+folder that *is* the layout of a bootable stick, so any OS that can copy files
+can deploy BMO-X:
+
+```text
+Ultra_kernel_x86-64/staging/
+    EFI/BOOT/BOOTX64.EFI      <- the whole operating system
+    EFI/BOOT/BMO-MANIFEST.TXT <- sizes and SHA-256, for checking
+    BMO-DATA/                 <- the desktop and the programs
+```
+
+1. Format a USB stick as **FAT32** (not exFAT, not NTFS -- UEFI reads FAT).
+2. Copy **the contents of `staging/`** to the root of the stick, so that the
+   stick ends up with `EFI\BOOT\BOOTX64.EFI` and `BMO-DATA\` at its top level.
+3. That is the whole deployment. There is no bootloader to install, no
+   `grub.cfg`, no initrd, no kernel command line, and nothing to configure.
+
+**Why it is that simple**: UEFI firmware looks for `EFI\BOOT\BOOTX64.EFI` on any
+FAT volume and runs it. BMO-X *is* that file -- boot chain, kernel and drivers
+in one binary -- so there is nothing left for a bootloader to do. Ventoy, GRUB
+and rEFInd all exist to choose between things and hand off; here there is
+nothing to hand off to.
+
+That also means the firmware's own boot menu lists it directly, next to
+`Windows Boot Manager`, which is what photo 1 in
+**[docs/evidencia/](docs/evidencia/)** shows.
+
 ### 3. Turn Secure Boot off first.
 
 **This is the one that will waste your evening otherwise.** `BOOTX64.EFI` is not
@@ -201,7 +230,12 @@ way as long as it was not installed in a mode you are changing.
 
 ### 4. Reboot and pick it.
 
-Pick `BMO-X` in the firmware's boot menu, and you are in. Click the
+Open the firmware's boot menu -- it is a key pressed right after power-on, and
+which key depends on the board: **F11** on MSI, **F12** on Gigabyte and Lenovo,
+**F8** on ASUS, **F9** on HP, **Esc** on many others. If you miss it, the BIOS
+setup itself (**Del** or **F2**) has a boot-order page that does the same thing.
+
+Pick `BMO-X` and you are in. Click the
 DOOM icon, or type `info`, `cpu`, `mem`, `ls` in the launcher. `Ctrl+Alt+ESC`
 always takes the machine back from whatever is running.
 
