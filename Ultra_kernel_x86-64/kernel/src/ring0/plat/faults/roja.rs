@@ -334,8 +334,57 @@ extern "C" fn fault_dispatch(
         //
         // Se hace DESPUES de CABINA a proposito: si esto se colgara --no puede,
         // pero el orden es una decision-- la linea roja ya estaria puesta.
+        // == *** Y LOS DOS NUMEROS QUE LO DECIDEN TODO (2026-09-05) =========
+        //
+        // El veredicto de arriba se calcula CON `cr2` y `error`... y despues los
+        // tira: `let _ = (error, cr2, ...)`. O sea que la pantalla daba la
+        // conclusion y se quedaba con la prueba.
+        //
+        // ** Y eso costo un dia entero. El 05-09 el mismo `rip` salio dos veces
+        // --`0x004000725C`-- y al desmontar el `.bex` en ese offset habia
+        // `0F 9C C0`, que es `setl al`: **una instruccion que no toca memoria y
+        // no puede dar un #PF**. Sin `cr2` no habia forma de saber si el `rip`
+        // apuntaba a la instruccion que fallo o al sitio al que intento SALTAR.
+        //
+        // En un fallo de pagina, `cr2` no es un dato mas: **es la respuesta**.
+        // Es la direccion que no estaba. Y el bit 4 del codigo de error dice si
+        // el CPU la queria para EJECUTAR, que es justo lo que distingue las dos
+        // lecturas del mismo `rip`.
+        //
+        // Los bits van en PALABRAS y no en hexadecimal, por la leccion de la
+        // estacion 11: un numero en una foto tomada con una camara no lo
+        // descifra nadie a las once de la noche.
+        {
+            let mut n = Line::new();
+            n.s("    cr2=0x");
+            n.hex(cr2, 10);
+            n.s(" err=0x");
+            n.hex(error, 2);
+            n.s(" ");
+            if error & 0x10 != 0 {
+                // *** Si esto sale, el `rip` NO es donde fallo: es adonde iba.
+                n.s("FETCH");
+            } else if error & 0x02 != 0 {
+                n.s("ESCRIB");
+            } else {
+                n.s("LEE");
+            }
+            n.s(if error & 0x01 != 0 { " protegida" } else { " NO-presente" });
+            if cr2 == rip {
+                // Saltar a una direccion que no existe y fallar leyendo la
+                // instruccion se ven igual en el `rip`. Esto los separa.
+                n.s(" (cr2 == rip)");
+            }
+            serial_write("[fault] ");
+            serial_write(n.as_str());
+            serial_write("
+");
+            if crate::info::has_fb() {
+                crate::ring0::core::dashboard::dashboard_log(n.as_str());
+            }
+        }
         crate::ring0::core::autopsy::registrar(vector, error, rip, cr2, fault_rsp, pid, tid, &cap);
-        let _ = (error, cr2, fault_rsp);
+        let _ = fault_rsp;
         // schedule() below loads the NEXT task's CR3 itself.
         return crate::ring0::task::scheduler::kill_current_and_pick();
     }
