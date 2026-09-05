@@ -2,6 +2,8 @@
 #
 # `.\bmo.ps1`              comprueba y construye TODO. No toca ningun disco.
 # `.\bmo.ps1 -Desplegar`   ademas lo lleva al Kingston.
+# `.\desplegar.ps1`        lo mismo, en una palabra. Ver su cabecera: la
+#                          seguridad se queda y la molestia se va.
 # `.\bmo.ps1 -Rapido`      se salta el banco de pruebas (para iterar).
 #
 # == Por que existe, siendo que `build.ps1` ya construye ==
@@ -18,8 +20,20 @@
 param(
     [switch]$Desplegar,
     [switch]$Rapido,
-    # A que unidades va, si se despliega. Se piden EXPLICITAS y sin valor por
-    # defecto util: ver la nota de abajo.
+    # A que unidades va, si se despliega.
+    #
+    # [!] AQUI DECIA "se piden EXPLICITAS y sin valor por defecto util", y es
+    # FALSO desde que estan escritas dos lineas mas abajo: `D` y `A` son
+    # valores por defecto perfectamente utiles. El comentario describia una
+    # politica que el codigo de su propia linea no cumple.
+    #
+    # ** Lo que de verdad protege el NVMe no son estas letras: es que
+    # `-Desplegar` sea OPCIONAL. Un `bmo.ps1` suelto --tecleado por quien sea,
+    # o por un script de comprobacion-- no toca ningun disco, y eso vale mas
+    # que obligar a escribir dos letras que siempre son las mismas.
+    #
+    # Corregido el 2026-09-04, el mismo dia en que un comentario sobre una
+    # proteccion ya retirada --en `usb/rescate.rs`-- costo tres dias.
     [string]$Arranque = 'D',
     [string]$Datos = 'A',
     # ** EL KERNEL DE MEDIDA. Devuelve los dos `rdtsc` a `dispatch`, o sea el
@@ -260,5 +274,5 @@ if ($LASTEXITCODE -ne 0) { Muere 'fallo el build' }
 $seg = [int]((Get-Date) - $t0).TotalSeconds
 Write-Host "`nlisto en $seg s" -ForegroundColor Green
 if (-not $Desplegar) {
-    Write-Host "   (no se toco ningun disco -- para desplegar: .\bmo.ps1 -Desplegar)" -ForegroundColor DarkGray
+    Write-Host "   (no se toco ningun disco -- para desplegar: .\desplegar.ps1)" -ForegroundColor DarkGray
 }
