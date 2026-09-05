@@ -27,11 +27,11 @@ Ring 0.
 Everything below is labelled with one of three states. Confusing them is how a
 project loses track of itself -- and how it starts lying to its own author.
 
-| | State | Meaning |
-|:--:|---|---|
-| 🟢 | **Runs on metal** | Seen on the Ryzen, with a photo or a CABINA telemetry line |
-| 🟡 | **Written, never executed** | Compiles, links, passes its tests -- and no CPU has run it |
-| ⚪ | **Design only** | Documented, not built |
+| State | Meaning |
+|---|---|
+| 🟢 **Runs on metal** | Seen on the Ryzen, with a photo or a CABINA telemetry line |
+| 🟡 **Written, never executed** | Compiles, links, passes its tests -- and no CPU has run it |
+| ⚪ **Design only** | Documented, not built |
 
 **Only 🟢 counts as done.** The list of what is waiting for a boot lives in
 [AVANCES.md](AVANCES.md).
