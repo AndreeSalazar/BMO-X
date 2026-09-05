@@ -54,6 +54,14 @@ se compra con dinero.** Le falta hardware que perfilar, ojos ajenos
 sobre el Ring 0, y casos reales de los que aprender. Un cheque no trae
 nada de eso. Un trueque, si.
 
+    ** Y que no se cobre no lo convierte en un regalo. Un regalo no
+    necesita seguir existiendo; esto si. Lo que se pide es lo justo
+    para mantenerlo vivo, y lo unico que no se admite es callar.
+
+Por eso la obligacion del Articulo 3 es RESPONDER, no entregar. Quien
+escribe y dice que hoy no puede aportar nada esta en regla. Quien usa
+esto en produccion y no contesta nunca, no.
+
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -167,19 +175,45 @@ nada de eso. Un trueque, si.
          trueque tiene precio, vuelve a ser dinero -- y entonces esta
          licencia no habria servido de nada.
 
-    3.4  COMO
-         Un correo. Se acuerda por escrito, se cumple una vez, y ahi
-         acaba la obligacion para ese producto.
+    3.4  COMO Y CUANDO
+         Un correo, dentro de los NOVENTA (90) dias siguientes al inicio
+         del Uso Serio. Se acuerda por escrito, se cumple, y ahi acaba
+         la obligacion para ese producto.
 
          No hay reportes trimestrales. No hay auditoria de cuentas. No
          hay que declarar ventas ni unidades. **Nada de eso hace falta
          cuando no se cobra**, y la mitad de la licencia anterior existia
          unicamente para vigilar un porcentaje.
 
-    3.5  SI NO PUEDEN
-         Se dice, y se usa igual. Un trueque arrancado a la fuerza no es
-         simbiosis: es un peaje con otro nombre. La obligacion es de
-         buena fe, y su unico incumplimiento posible es el silencio.
+    3.5  LO QUE SE DEBE ES LA CONVERSACION, NO LA MERCANCIA
+
+         ** Aqui esta la linea entera de esta licencia, y conviene que se
+         entienda antes de firmarla:
+
+              La obligacion es RESPONDER. No es entregar.
+
+         Nadie tiene que dar lo que no tiene. Si un licenciatario escribe
+         y dice "hoy no podemos aportar nada", **ha cumplido el Articulo
+         3** -- se anota, se agradece y se sigue. Puede escribir dentro
+         de un ano ofreciendo algo, o no escribir nunca mas.
+
+         Lo que NO se admite es el silencio. Usar esto en serio, en
+         produccion, ganando dinero o prestando un servicio, y no haber
+         contestado nunca a nadie, no es simbiosis: es tomar.
+
+    3.6  POR QUE NO SE REGALA
+
+         El Autor no cobra, y eso no lo convierte en un regalo.
+
+         Un regalo no espera nada y no necesita seguir existiendo. Este
+         Software si: hay que mantenerlo, perfilarlo en maquinas nuevas,
+         auditarlo y arreglarlo, y eso lo hace una persona con tiempo
+         finito. **Lo que el trueque compra no es el uso pasado: es que
+         el proyecto siga vivo para el uso siguiente.**
+
+         Por eso la lista del 3.2 no son detalles amables. Son,
+         literalmente, las cuatro cosas sin las cuales esto se para:
+         hardware que perfilar, ojos ajenos, casos reales y manos.
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -387,9 +421,23 @@ nada de eso. Un trueque, si.
          Software como creacion propia (7.3), y no lo subsana en
          treinta (30) dias desde el aviso escrito del Autor.
 
-    12.2 NO se termina por no haber hecho el trueque. El Articulo 3 es
-         de buena fe y no tiene sancion. Si tuviera sancion seria un
-         precio, y ya no seria un trueque.
+    12.2 EL TRUEQUE Y LA TERMINACION -- donde esta la raya
+
+         NO se termina por no haber APORTADO. Quien escribe y dice que
+         hoy no puede dar nada esta en regla, indefinidamente, y no debe
+         explicaciones a nadie.
+
+         SI se termina por no haber RESPONDIDO: Uso Serio durante mas de
+         noventa (90) dias sin haberse dirigido nunca al Autor, y sin
+         subsanarlo en los treinta (30) dias siguientes al aviso escrito.
+
+         ** La diferencia importa y es deliberada. Sancionar el no
+         aportar convertiria el trueque en un precio, y esta licencia
+         dejaria de decir la verdad sobre si misma. Sancionar el no
+         responder no pone precio a nada: solo exige que exista alguien
+         al otro lado.
+
+         > El silencio si rompe. La pobreza no.
 
     12.3 Terminada la licencia, no se exige destruir copias del codigo:
          es publico, y exigirlo seria teatro. Lo que termina es el
@@ -429,7 +477,12 @@ nada de eso. Un trueque, si.
     │   Cuanto vale ese recurso?     No se valora. En cuanto tiene │
     │                                precio vuelve a ser dinero.   │
     │                                                              │
-    │   Y si no puedo devolver nada? Se dice, y se usa igual.      │
+    │   Y si no puedo devolver nada? Escribes y lo dices. Con      │
+    │                               eso ya cumpliste.              │
+    │                                                              │
+    │   Y si no escribo nunca?      Ahi si se rompe. Lo que se     │
+    │                               debe es la conversacion,       │
+    │                               no la mercancia.               │
     │                                                              │
     │   Hay que reportar ventas?     No. No se cobra: no hay nada  │
     │                                que vigilar.                  │
