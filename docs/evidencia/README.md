@@ -221,15 +221,22 @@ instead of a ban:
 > A clip **under 5 MB** may live here. Anything longer goes on the channel and
 > gets linked from this file.
 
-[!] **And there is a file sitting in this folder that no rule covers.**
-`15.mp4` (1,7 MB) has been on disk since 2026-08-18, is **in no commit**, and is
-**cited by nobody** -- not here, not anywhere in the tree. Nobody reading this
-repository can tell what it shows.
+### `15.mp4` -- the boot, edited, with an intro
 
-A recording without a caption is evidence of nothing. Either it gets one line
-saying what it shows and on what date -- and then it is committed under the
-ceiling above -- or it does not belong here. **That decision has not been made
-and is not made by this file.**
+**2026-08-18. 7,3 s, 848x480, with sound.** An edited presentation piece: the
+machine powering up, the firmware's own boot picker, and BMO-X coming up. It has
+a title card, which is why it is *this* recording and not the evidence take
+described below -- the two are different jobs and the table says which is which.
+
+Committed on 2026-09-05 under the ceiling above, at 1,67 MB. Before that it sat
+in this folder for two and a half weeks **uncommitted and cited by nobody**,
+which is the state this caption exists to end: a recording without a caption is
+evidence of nothing.
+
+> [!] **What it is not.** Seven seconds with a title card is a *teaser*, and at
+> 848x480 nobody can read a kernel log line off it. It is the right file for the
+> top of the README and **the wrong one for the sceptic** -- who is the person
+> the next section is written for, and whose take has not been shot yet.
 
 ### The two recordings are different jobs -- do not merge them
 
