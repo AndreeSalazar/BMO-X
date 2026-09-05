@@ -25,6 +25,11 @@ If it does not -- **that is the more useful result.** Photograph the screen wher
 it stops and open an issue. A panic message from unknown hardware is worth more
 to me than a pull request.
 
+[!] **Check Secure Boot before you report it.** `BOOTX64.EFI` is self-signed, so
+a machine with Secure Boot on refuses to load it and the firmware never runs a
+single instruction. That looks exactly like "it does not boot" and is not a bug.
+Turn it off, try again, and only then is the report interesting.
+
 See [docs/evidencia/](docs/evidencia/) for what a working boot looks like, so
 you can tell how far you got.
 

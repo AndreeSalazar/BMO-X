@@ -140,7 +140,7 @@ Photographs, telemetry and the exact dates: **[AVANCES.md](AVANCES.md)**.
 
 ---
 
-## Try it yourself -- two commands
+## Try it yourself
 
 ### 1. Build it. This touches no disk.
 
@@ -181,7 +181,27 @@ testing yesterday's kernel without noticing.
 > The script refuses an NTFS volume rather than reporting a false success, so
 > pointing it at a Ventoy payload partition fails loudly instead of quietly.
 
-Then reboot, pick `BMO-X` in the firmware's boot menu, and you are in. Click the
+### 3. Turn Secure Boot off first.
+
+**This is the one that will waste your evening otherwise.** `BOOTX64.EFI` is not
+signed by a key your firmware trusts, so a machine with Secure Boot enabled --
+which is most machines shipped in the last decade -- **refuses to load it** and
+says something like `Security Violation`. That is not a bug in BMO-X and there
+is nothing to debug: the firmware never ran a single instruction of it.
+
+It is in the BIOS setup, usually under *Boot* or *Security*, and it is one
+toggle. Turn it back on afterwards if you want -- Windows does not care either
+way as long as it was not installed in a mode you are changing.
+
+> Signing the boot chain properly is on the roadmap and blocked behind the same
+> thing everything else is: **cryptography**. Until then, "turn it off" is the
+> honest instruction and not an oversight. See
+> **[SEGURIDAD_MAESTRO.md](docs/maestro/SEGURIDAD_MAESTRO.md)** section 4.3 for
+> why measured boot is *refused* rather than pending.
+
+### 4. Reboot and pick it.
+
+Pick `BMO-X` in the firmware's boot menu, and you are in. Click the
 DOOM icon, or type `info`, `cpu`, `mem`, `ls` in the launcher. `Ctrl+Alt+ESC`
 always takes the machine back from whatever is running.
 
