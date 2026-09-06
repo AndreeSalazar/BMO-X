@@ -428,7 +428,7 @@ CABECERA_COBERTURA = """# EL SUELO DE R16 -- cuantas constantes del ABI tienen c
 # la respuesta honesta no es "se expone todo": es **el hueco es este numero, y
 # no puede crecer**.
 #
-# ** El denominador sale de `FRONTERA_REX.txt`, no del ABI entero. Un
+# ** El denominador sale de `VALKYRIE-ABI/FRONTERA.txt`, no del ABI entero. Un
 # porcentaje contra las constantes enteras contaria como pendiente cosas que
 # nunca van a estar -- y eso no es una medida, es una excusa que se ve bien.
 #
@@ -879,7 +879,7 @@ def comprobar():
     # ** El sello se GANA, no se imprime. Tres cosas tienen que ser verdad, y
     # cada una falla distinto a proposito:
     #
-    #    sin VALKYRIE.txt      no hay version que sellar -> no se emite nada
+    #    sin VERSION.txt       no hay version que sellar -> no se emite nada
     #    R13-R16 con quejas    ya se murio arriba        -> no se llega aqui
     #    R13-R16 limpias       se emite con SUS numeros, que es lo que lo hace
     #                          falsable: un `Compliant` sin cifras al lado es
@@ -894,7 +894,7 @@ def comprobar():
               "%d numero(s) inventados por una app" % (len(par), cub, sup, len(q14)))
     elif not v:
         print("  [i] V-ABI SIN SELLAR: falta o esta mal escrito "
-              "toolchain/tools/contrato/VALKYRIE.txt")
+              "VALKYRIE-ABI/VERSION.txt")
     return 0
 
 
