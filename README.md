@@ -30,6 +30,15 @@ solo en la maquina. BMO-X **orquesta**: cada programa sabe su parte, su entrada
 y lo que cuesta. Por eso la frontera entera con el sistema son **dos syscalls**
 --`INVOKE` y `WAIT`-- y no trescientas.
 
+La palabra es **BMO: Bare Metal Orquestal**, y no es un SO, un RTOS ni ninguna
+otra caja prestada -- porque una categoria es una promesa que se hace sola, y
+una expectativa que no se cumple es un informe de fallo que no se puede cerrar.
+Multiplexar es ser generoso: un SO lo da todo por defecto y comprueba despues.
+Orquestar es ser **celoso**: aqui no se da nada, se **presta**, y el prestamo
+se acaba cuando el dueno quiere. Los ocho sitios del arbol donde eso esta
+escrito --y las tres cosas que cuesta-- estan en
+[`docs/identidad/EL_ORQUESTAL.md`](docs/identidad/EL_ORQUESTAL.md).
+
 Esta escrito desde cero en Rust, en Lima, por una persona: la cadena de
 arranque, el kernel, los drivers, el sistema de ficheros y cuatro compiladores
 nativos (C, COBOL, Ada e INTI) que no usan LLVM ni GCC. Arranca en un AMD Ryzen
