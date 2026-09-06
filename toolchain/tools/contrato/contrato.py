@@ -779,21 +779,28 @@ def comprobar():
     vias_rex = carpetas_de_carriles_rex()
     quejas += [("R12 L6g los carriles de REX", q)
                for q in r12_los_carriles_de_rex(vias_rex, rex)]
+    # -- R13 a R16: LAS CUATRO DE VALKYRIE ------------------------------------
+    #
+    # Se recogen aparte de `quejas` porque son las unicas que el SELLO de V-ABI
+    # afirma. Que el build muera igual con cualquier otra regla no las hace
+    # intercambiables: el sello dice `R13-R16 Compliant` y tiene que poder ser
+    # falso sin que lo sea el resto.
     abi_c = constantes_del_abi()
     rex_c = constantes_de_rex()
     par = parejas_de_rex(abi_c, rex_c)
-    quejas += [("R13 el espejo de REX", q)
-               for q in r13_el_espejo_de_rex(abi_c, rex_c, par, espejo_leer())]
+    quejas_vabi = [("R13 el espejo de REX", q)
+                   for q in r13_el_espejo_de_rex(abi_c, rex_c, par, espejo_leer())]
     q14, n14 = r14_ninguna_app_inventa_un_numero(fuentes_de_apps(), rex_c)
-    quejas += [("R14 una app inventa un numero del kernel", q) for q in q14]
+    quejas_vabi += [("R14 una app inventa un numero del kernel", q) for q in q14]
     notas += n14
     q15, n15 = r15_el_abi_no_repite_numero(abi_c)
-    quejas += [("R15 el ABI repite un numero", q) for q in q15]
+    quejas_vabi += [("R15 el ABI repite un numero", q) for q in q15]
     notas += n15
     frontera = frontera_leer()
     cub, sup = cobertura_de_rex(abi_c, espejo_leer(), frontera)
-    quejas += [("R16 la cobertura de REX bajo", q)
-               for q in r16_la_cobertura_solo_sube(cub, sup, _suelo(COBERTURA))]
+    quejas_vabi += [("R16 la cobertura de REX bajo", q)
+                    for q in r16_la_cobertura_solo_sube(cub, sup, _suelo(COBERTURA))]
+    quejas += quejas_vabi
     fund = ficheros_de_fundamentals()
     quejas += [("R17 el semaforo de fundamentals", q)
                for q in r17_el_semaforo_de_fundamentals(fund)]
@@ -866,6 +873,28 @@ def comprobar():
                 colores[m.group(1)] += 1
         print("clean: el semaforo cubre los %d ficheros de Ring 0 -- %s"
               % (len(r0), "  ".join("%s %d" % (c, colores[c]) for c in SEMAFORO)))
+
+    # -- EL SELLO DE VALKYRIE -------------------------------------------------
+    #
+    # ** El sello se GANA, no se imprime. Tres cosas tienen que ser verdad, y
+    # cada una falla distinto a proposito:
+    #
+    #    sin VALKYRIE.txt      no hay version que sellar -> no se emite nada
+    #    R13-R16 con quejas    ya se murio arriba        -> no se llega aqui
+    #    R13-R16 limpias       se emite con SUS numeros, que es lo que lo hace
+    #                          falsable: un `Compliant` sin cifras al lado es
+    #                          un eslogan, y L0 dice que un eje sin juez es prosa
+    #
+    # `bmo.ps1` recoge esta linea. Si no sale, el build lo dice en voz alta en
+    # vez de suponer que paso -- que es la mitad que casi siempre se olvida.
+    v = valkyrie_version()
+    if v and not quejas_vabi:
+        print("sello: BMO-X Engine [V-ABI v%s / R13-R16 Compliant]" % v)
+        print("sello-detalle: %d pareja(s) ABI<->REX, %d de %d constantes de app, "
+              "%d numero(s) inventados por una app" % (len(par), cub, sup, len(q14)))
+    elif not v:
+        print("  [i] V-ABI SIN SELLAR: falta o esta mal escrito "
+              "toolchain/tools/contrato/VALKYRIE.txt")
     return 0
 
 

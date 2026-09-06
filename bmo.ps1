@@ -98,6 +98,11 @@ if ($py) {
     $salida = & $py.Source $contrato --check
     if ($LASTEXITCODE -ne 0) { $salida | ForEach-Object { Write-Host "   $_" -ForegroundColor Red }; Muere 'algo entro en la superficie sin pagar el peaje' }
     $salida | Where-Object { $_ -match 'clean:|\[i\]' } | ForEach-Object { Bien ($_ -replace '^clean: ','') }
+    # EL SELLO DE VALKYRIE. Se GUARDA aqui y se imprime al final, no aqui:
+    # una firma va debajo de lo que firma. Si el guardian no lo emitio, esto
+    # se queda vacio y el final lo dice -- no se fabrica.
+    $sello  = ($salida | Where-Object { $_ -match '^sello: ' })         -replace '^sello: ',''
+    $selloD = ($salida | Where-Object { $_ -match '^sello-detalle: ' }) -replace '^sello-detalle: ',''
 } else {
     Write-Host '   [!] python no encontrado: el contrato NO se comprueba' -ForegroundColor Yellow
 }
@@ -275,4 +280,20 @@ $seg = [int]((Get-Date) - $t0).TotalSeconds
 Write-Host "`nlisto en $seg s" -ForegroundColor Green
 if (-not $Desplegar) {
     Write-Host "   (no se toco ningun disco -- para desplegar: .\desplegar.ps1)" -ForegroundColor DarkGray
+}
+
+# -- EL SELLO DE VALKYRIE, LO ULTIMO QUE SE VE -------------------------------
+#
+# ** Y las tres ramas son el punto entero. Un `Compliant` que sale siempre no
+# informa de nada: informa de que la linea existe. Aqui la ausencia del sello
+# es RUIDOSA, porque el dia que alguien rompa R13-R16 el build muere antes --
+# pero el dia que falte `python`, el build PASA y no ha comprobado nada, y esa
+# es justo la tarde en la que un sello mentiroso se cuela en una captura.
+if ($sello) {
+    Write-Host "`n   $sello" -ForegroundColor Magenta
+    if ($selloD) { Write-Host "   $selloD" -ForegroundColor DarkGray }
+} elseif ($py) {
+    Write-Host "`n   [!] V-ABI SIN SELLAR -- el contrato paso y no emitio sello" -ForegroundColor Yellow
+} else {
+    Write-Host "`n   [!] V-ABI SIN SELLAR -- sin python no hay nada que sellar" -ForegroundColor Yellow
 }
