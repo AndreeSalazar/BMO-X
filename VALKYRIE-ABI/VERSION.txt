@@ -1,0 +1,29 @@
+# V-ABI -- LA VERSION SELLADA DEL ESTANDAR.
+#
+# Este fichero guarda UN numero y nada mas. El porque del nombre esta en
+# `README.md`, las cuatro reglas en `LEY.md`, y aqui no se repiten: una sola
+# fuente de verdad por cosa (`R-REX4`), y la prosa duplicada se queda vieja
+# sola.
+#
+# Lo unico que SI se repite aqui, porque se malinterpreta justo en el sitio
+# donde se lee el numero:
+#
+#    BMO_ABI_VERSION (2,0)   el BINARIO, en platform/abi/bmo-abi/src/lib.rs
+#    V-ABI (abajo)           el ESTANDAR, esto
+#
+# Son dos ejes distintos, como POSIX.1-2017 no es el `soname` de la libc que lo
+# implementa. Que uno vaya por 2.0 y este arranque en 1.0 NO es una
+# incoherencia: es que uno lleva contando desde antes.
+#
+#    1.0 -> 1.1   entra una cabecera nueva en REX. Aditivo, no rompe a nadie.
+#    1.x -> 2.0   se borra o cambia de significado algo ya publicado. Rompe a un
+#                 tercero, y por eso cuesta un major.
+#
+# ** Lo lee `valkyrie_version()` en `toolchain/tools/contrato/contrato_rex.py`,
+# y devuelve None si esta linea no es `major.minor` exacto -- un `1.0-rc` NO es
+# una version sellada, y un valor por defecto en el codigo haria que el build
+# sellara con un numero que nadie escribio.
+#
+# El numero va solo en la primera linea util, como en los trinquetes vecinos.
+
+1.0

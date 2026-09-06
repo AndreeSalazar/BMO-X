@@ -49,20 +49,40 @@ from contrato_ley import *  # noqa: F401,F403 -- el vocabulario cerrado
 # --`AJENO ESPEJO AJENO: los offsets...`-- y un juez que adivina da permiso con
 # autoridad.
 REX_DIR = "toolchain/forge/sem-asm/tables/bmo"
-ESPEJO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "REX_ESPEJO.txt")
+# -- DONDE VIVE V-ABI, Y POR QUE NO ES AQUI ---------------------------------
+#
+# Los cuatro ficheros que DEFINEN la superficie prometida se mudaron a
+# `VALKYRIE-ABI/` en la raiz. Los jueces se quedaron aqui, y el corte no es
+# estetico: **este modulo juzga R11-R16, y solo R13-R16 son el estandar.**
+# R11 y R12 son el semaforo y los carriles de REX, que son L6g --modularidad--
+# y valen igual para Ring 0. Meterlos en la carpeta del estandar diria que
+# forman parte de lo que se le promete a un tercero, y es falso.
+#
+#    VALKYRIE-ABI/     lo que se PROMETE     version, frontera, espejo, cobertura
+#    contrato/         lo que lo COMPRUEBA   los jueces, que juzgan R1-R17
+#
+# ** Y por eso la carpeta esta en la RAIZ y no dentro de `toolchain/`: un
+# estandar que vive dentro de la herramienta que lo comprueba se lee como una
+# salida de esa herramienta. Es al reves -- el juez sirve al estandar.
+VABI_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__))))),
+    "VALKYRIE-ABI")
+
+ESPEJO = os.path.join(VABI_DIR, "ESPEJO.txt")
 
 # Las constantes cuyo valor este juez NO sabe evaluar exacto. Se llevan a la
 # vista a proposito: una lista vacia dice "lo lei todo", y una con nombres dice
 # "estas no las juzgo" -- que es una respuesta, y esconderla no lo seria.
 SIN_EVALUAR = []
 
-FRONTERA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "FRONTERA_REX.txt")
-COBERTURA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "COBERTURA.txt")
+FRONTERA = os.path.join(VABI_DIR, "FRONTERA.txt")
+COBERTURA = os.path.join(VABI_DIR, "COBERTURA.txt")
 
 # VALKYRIE-ABI: el nombre y la version del ESTANDAR que R13-R16 comprueban.
 # El porque del nombre esta dentro del fichero, no aqui: una sola fuente de
 # verdad (`R-REX4`), y este modulo solo la lee.
-VALKYRIE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "VALKYRIE.txt")
+VALKYRIE = os.path.join(VABI_DIR, "VERSION.txt")
 
 
 def valkyrie_version():
@@ -460,7 +480,7 @@ def parejas_de_rex(abi, rex):
 
 
 def espejo_leer():
-    """`{nombre_abi: {"c":.., "valor":.., "nota":..}}` de `REX_ESPEJO.txt`."""
+    """`{nombre_abi: {"c":.., "valor":.., "nota":..}}` de `VALKYRIE-ABI/ESPEJO.txt`."""
     fuera = {}
     if not os.path.exists(ESPEJO):
         return fuera
@@ -481,7 +501,7 @@ def espejo_leer():
 
 
 def espejo_escribir(abi, parejas, previa):
-    """Reescribe `REX_ESPEJO.txt`. **Conserva la nota** de lo que no cambia.
+    """Reescribe `VALKYRIE-ABI/ESPEJO.txt`. **Conserva la nota** de lo que no cambia.
 
     ** La nota es lo unico de este fichero que no puede regenerarse, porque es
     lo unico que no sale del arbol: dice POR QUE dos nombres distintos son la
@@ -679,7 +699,7 @@ def r15_el_abi_no_repite_numero(abi):
 
 
 def frontera_leer():
-    """`[(prefijo, motivo)]` de `FRONTERA_REX.txt`. Lo que NO es de REX."""
+    """`[(prefijo, motivo)]` de `VALKYRIE-ABI/FRONTERA.txt`. Lo que NO es de REX."""
     fuera = []
     if not os.path.exists(FRONTERA):
         return fuera
