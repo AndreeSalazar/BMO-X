@@ -1,0 +1,72 @@
+# VALKYRIE-ABI (V-ABI) -- el NOMBRE y el NUMERO de la superficie de una app.
+#
+# Esto no es un trinquete como sus vecinos: `COBERTURA.txt` y `CUESTAS.txt`
+# guardan un numero que solo puede subir. Este guarda **la version del ESTANDAR**
+# que R13-R16 comprueban, y solo la mueve una mano.
+#
+#
+# ## POR QUE "VALKYRIE", y no es decoracion
+#
+# En la mitologia nordica la valquiria **no pelea: elige**. Recorre el campo
+# despues de la batalla y decide quien cae y quien es llevado -- no aporta
+# fuerza, aporta CRITERIO, y su criterio no se negocia con el caido.
+#
+# Eso es exactamente lo que hacen R13 a R16. No escriben una linea de codigo ni
+# hacen mas rapido nada:
+#
+#    R13   el espejo        una constante que REX y el ABI escriben dos veces
+#                           tiene que decir el MISMO numero
+#    R14   ninguna app inventa un numero del kernel que REX no publique
+#    R15   el ABI no repite un numero consigo mismo
+#    R16   la cobertura de REX solo SUBE, contra un denominador honesto
+#
+# Las cuatro son porteras. Deciden que cruza a la superficie de los terceros y
+# que se queda fuera -- y lo que se queda fuera no es "todavia no": es que no.
+# **Un ejecutor sin piedad con el codigo defectuoso o redundante**, y las dos
+# palabras importan por separado: R13 y R15 cazan lo REDUNDANTE (el mismo numero
+# dicho dos veces), R14 y R16 cazan lo DEFECTUOSO (el numero inventado, la
+# cobertura que baja).
+#
+# ** Y por eso el nombre va aqui y no en un README: la ley L1 de
+# `META-KERNEL_HARD.md` dice que toda regla nombra a su componente y su numero.
+# V-ABI nombra su componente --`toolchain/tools/contrato`, R13-R16-- y su numero
+# esta abajo. Un nombre sin juez seria prosa, que es lo que prohibe L0.
+#
+#
+# ## [!] V-ABI NO ES `BMO_ABI_VERSION`, Y CONFUNDIRLOS CUESTA CARO
+#
+#    BMO_ABI_VERSION (2,0)   platform/abi/bmo-abi/src/lib.rs
+#                            el BINARIO: contra que enlaza un `.bex`, y que
+#                            major incompatible lo rechaza al cargar
+#
+#    V-ABI v1.0              este fichero
+#                            el ESTANDAR: que superficie se le PROMETE a un
+#                            tercero, y con que suite se comprueba
+#
+# Son dos ejes distintos y se mueven por motivos distintos, igual que POSIX.1-2017
+# (la edicion del estandar) no es el `soname` de la libc que lo implementa. El
+# binario puede ir por 2.0 mientras el estandar arranca en 1.0 -- eso NO es una
+# incoherencia, es que uno lleva contando desde antes.
+#
+#
+# ## LO QUE V-ABI v1.0 PROMETE, Y LO QUE NO
+#
+#   PROMETE   que toda constante que REX publica dice el mismo numero que el ABI
+#             que ninguna app del arbol cruza la puerta con un numero desnudo
+#             que la cobertura publicada no baja nunca
+#             y que las cuatro reglas SABEN DECIR QUE NO (`--autoprueba`)
+#
+#   NO PROMETE  que la cabecera sea BUENA. Mide que exista y que cuadre.
+#   NO PROMETE  estabilidad de los numeros: v1.0 congela la FORMA, no los valores.
+#   NO PROMETE  nada sobre lo que la frontera deja fuera. Ver `FRONTERA_REX.txt`.
+#
+#
+# ## COMO SE MUEVE
+#
+#   1.0 -> 1.1   entra una cabecera nueva en REX; la cobertura sube. Aditivo.
+#   1.x -> 2.0   se BORRA o cambia de significado algo que ya se publicaba.
+#                Eso rompe a un tercero, y por eso cuesta un major.
+#
+# El numero va solo en la primera linea util, como en sus vecinos.
+
+1.0

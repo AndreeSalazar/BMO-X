@@ -59,6 +59,32 @@ SIN_EVALUAR = []
 FRONTERA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "FRONTERA_REX.txt")
 COBERTURA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "COBERTURA.txt")
 
+# VALKYRIE-ABI: el nombre y la version del ESTANDAR que R13-R16 comprueban.
+# El porque del nombre esta dentro del fichero, no aqui: una sola fuente de
+# verdad (`R-REX4`), y este modulo solo la lee.
+VALKYRIE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "VALKYRIE.txt")
+
+
+def valkyrie_version():
+    """La version de V-ABI, o None si el fichero falta o no dice una.
+
+    ** Devuelve None en vez de un valor por defecto A PROPOSITO. Un `1.0`
+    inventado aqui haria que el build siguiera sellando con un numero que
+    nadie escribio -- que es exactamente la clase de mentira comoda que L4
+    prohibe. Sin fichero no hay sello.
+    """
+    if not os.path.exists(VALKYRIE):
+        return None
+    with open(VALKYRIE, "r", encoding="utf-8") as f:
+        for linea in f:
+            linea = linea.strip()
+            if linea and not linea.startswith("#"):
+                # major.minor y nada mas: un `1.0-rc` no es una version sellada.
+                if re.match(r"^\d+\.\d+$", linea.split()[0]):
+                    return linea.split()[0]
+                return None
+    return None
+
 # -- R14: las APPS del arbol propio. -----------------------------------------
 #
 # No cubre `mods/` ni `$BMO_MODS`: **un tercero TIENE DERECHO a redefinir un
