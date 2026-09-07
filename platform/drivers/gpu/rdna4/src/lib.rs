@@ -119,6 +119,10 @@
 
 #![no_std]
 
+/// **EL PSP**: la secuencia de arranque como maquina de estados JUZGABLE, sin
+/// tocar MMIO y sin tarjeta. Medida leyendo `amdgpu` -- ver `PSP_MEDIDO.md`.
+pub mod psp;
+
 /// GPU profile descriptor, mirroring the CPU profile philosophy.
 pub struct GpuProfile {
     pub vendor: &'static str,
