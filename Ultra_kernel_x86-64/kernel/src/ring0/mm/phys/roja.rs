@@ -147,10 +147,30 @@ pub fn init(ctx: &BootContext) {
         }
         while base < end {
             let frame = (base / PAGE) as usize;
-            bm[frame / 64] &= !(1 << (frame % 64));
-            unsafe {
-                TOTAL_FRAMES += 1;
-                FREE_FRAMES += 1;
+            let (w, b) = (frame / 64, frame % 64);
+            // ** SOLO SE CUENTA SI ESTABA COGIDO (2026-09-07).
+            //
+            // Este bucle sumaba a los dos contadores SIN mirar el bit, y
+            // `reserve_range` --doce lineas mas abajo, sobre el mismo bitmap--
+            // ya llevaba el guardia puesto con su motivo escrito: *"counters
+            // stay exact because double-reserving is a no-op by design"*.
+            //
+            // *** La asimetria era el bug. Dos tramos `kind == 1` que se solapen
+            // --y quien escribe el mapa es el firmware, no nosotros-- contaban
+            // el mismo marco dos veces, y `FREE_FRAMES` nacia mas grande que
+            // los huecos que hay. Un contador inflado no da un marco de mas:
+            // hace que `alloc_frame` crea que queda sitio cuando no queda.
+            //
+            // [!] Y hasta hoy eso era el CUELGUE de arriba, no un `None`. Las
+            // dos correcciones son la misma de los dos lados: que el contador no
+            // pueda inflarse, y que aunque se infle nadie se quede dando
+            // vueltas por creerselo.
+            if bm[w] & (1 << b) != 0 {
+                bm[w] &= !(1 << b);
+                unsafe {
+                    TOTAL_FRAMES += 1;
+                    FREE_FRAMES += 1;
+                }
             }
             base += PAGE;
         }
@@ -204,6 +224,21 @@ fn marcar_entregado(f: u64) -> u64 {
     f
 }
 
+/// **Cuenta los marcos libres LEYENDO EL BITMAP**, que es la unica fuente que
+/// no se puede desincronizar de si misma.
+///
+/// Se llama **con `LOCK` en la mano** y solo desde el camino de fallo de
+/// [`alloc_frame`]: son 65.536 palabras, barato una vez y caro 4.000 veces por
+/// segundo. `init` deja TODO el bitmap a unos antes de liberar nada, asi que un
+/// bit a cero es un marco libre y no hay que saber donde acaba la RAM.
+fn contar_de_nuevo() -> u64 {
+    let mut libres = 0u64;
+    for w in bitmap().iter() {
+        libres += w.count_zeros() as u64;
+    }
+    libres
+}
+
 pub fn alloc_frame() -> Option<u64> {
     let _g = LOCK.lock();
     unsafe {
@@ -212,7 +247,33 @@ pub fn alloc_frame() -> Option<u64> {
         }
         let bm = bitmap();
         let mut i = HINT % FRAME_SLOTS;
-        loop {
+        // == *** LA VUELTA SE ACOTA, Y ANTES NO (2026-09-07) =================
+        //
+        // ** Esto era un `loop` sin salida. Su unico terminador era `FREE_FRAMES
+        // != 0`, comprobado ARRIBA: si el contador decia que quedaban marcos y
+        // el bitmap estaba lleno, este bucle daba vueltas **para siempre, con
+        // `LOCK` en la mano**.
+        //
+        // Y ese cerrojo lo pide todo el mundo:
+        //
+        // ```text
+        //    el hilo del bus USB   -> teclado y raton mudos
+        //    el planificador       -> ninguna tarea vuelve a arrancar
+        //    la pantalla azul      -> ni siquiera se puede contar lo que paso
+        // ```
+        //
+        // O sea: la maquina entera muerta, sin fault, sin azul y sin una sola
+        // linea. El fallo mas caro de este fichero no era repartir mal la RAM:
+        // era **no terminar**.
+        //
+        // *** Y el de al lado ya estaba bien. `alloc_frames_contig` recorre
+        // `while frame < total` y devuelve `None` al caer por el final: no se
+        // fia del contador, se fia del recorrido. Aqui faltaba lo mismo.
+        //
+        // > Un asignador cuya terminacion depende de un contador escrito a mano
+        // > en cinco sitios no tiene un riesgo de fuga: tiene un riesgo de
+        // > cuelgue, que es peor porque no deja nada que leer.
+        for _ in 0..FRAME_SLOTS {
             let w = bm[i];
             if w != !0 {
                 let bit = (!w).trailing_zeros() as usize;
@@ -223,6 +284,22 @@ pub fn alloc_frame() -> Option<u64> {
             }
             i = (i + 1) % FRAME_SLOTS;
         }
+        // ** VUELTA COMPLETA SIN UN HUECO, y el contador decia que si habia.
+        //
+        // Llegar aqui NO es quedarse sin memoria --eso lo contesta el `if` de
+        // arriba con un `None` limpio--: es que **el contador miente**. Se dice
+        // con el numero que afirmaba, porque ese numero es la pista.
+        let decia = FREE_FRAMES;
+        crate::ring0::cabina::fault(
+            "phys", "el contador de marcos libres MIENTE: bitmap lleno", decia);
+        // *** Y SE REPARA, ademas de gritarse. El bitmap es la fuente; el
+        // contador es una copia. Dejar la copia mintiendo significa que la
+        // siguiente peticion vuelve a dar la vuelta entera y a gritar otra vez,
+        // 4.000 veces por segundo, hasta tapar el renglon que explica la causa.
+        FREE_FRAMES = contar_de_nuevo();
+        crate::ring0::cabina::warn(
+            "phys", "marcos libres RECONTADOS desde el bitmap", FREE_FRAMES);
+        None
     }
 }
 
