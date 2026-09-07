@@ -238,6 +238,83 @@ las dos respuestas valen.
 
 ---
 
+## 1.6 ⭐⭐ EL TECLADO Y EL RATON SE CAYERON -- y es la MISMA pista, por el otro lado
+
+El dueno lo conto la madrugada del 07-09, y con la frase justa:
+
+> *"me fui a dormir un rato porque mi teclado y mouse no respondieron bien"*
+
+**Los dos a la vez.** Y eso no es un detalle de color: `dev/usb/salud.rs` ya
+tiene escrito como se lee, en el comentario del bit del raton:
+
+> *"la asimetria teclado/raton es medio diagnostico -- lo que le pasa a uno y no
+> al otro no puede ser del hilo, del CR3 ni de la enumeracion"*
+
+Dado la vuelta: **lo que les pasa a los dos de golpe si puede ser el
+controlador**. Y el estado que dice eso ya existia -- `USB_SALUD_XHC_AVERIADO`,
+o sea HSE/HCE en `USBSTS`, que el mismo fichero define asi:
+
+> *"HSE (bit 2, error de sistema -- **tipicamente un DMA a memoria que no puede
+> tocar**)"*
+
+### ★ Por que esto es la 1.5 y no una pista nueva
+
+Es la misma frase desde el otro extremo. La 1.5 dice que AHCI, NIC y xHCI piden
+al mismo asignador que da las pilas, y que la purga devuelve marcos. Si un marco
+que el xHC todavia tiene programado como destino de DMA vuelve al asignador y se
+entrega a otro, el xHC escribe donde ya no puede: **eso es HSE**, y HSE mata el
+teclado y el raton **en el mismo instante**, que es exactamente lo que se vio.
+
+```text
+   1.5   se mira desde la RAM      se entrego dos veces un marco?
+   1.6   se mira desde el APARATO  se quejo el xHC de escribir donde no debia?
+```
+
+Si las dos dicen que si, no hay dos fallos: hay uno, y ya tiene nombre.
+
+### Lo que le faltaba, y se arreglo el 07-09
+
+El bit se encendia 250 veces por segundo y **no lo leia nadie de Ring 0**. Sus
+dos unicos lectores estan los dos al otro lado de la frontera:
+
+```text
+   scene/testigo.rs        la luz             <- la pinta el ESCRITORIO
+   commands/reports.rs     la orden `usb`     <- hay que TECLEARLA
+```
+
+Y las dos cosas que hacen falta para verlo --un escritorio vivo y un teclado que
+escriba-- son las dos que ya no estan cuando pasa. **El unico aviso de que el
+teclado ha muerto solo se podia leer con el teclado.**
+
+Desde el 07-09 `salud::refrescar` levanta un `fault` de CABINA en el flanco
+0->1, y un `info` cuando vuelve. Por flanco y no por nivel: a 250 Hz un aviso
+por nivel llena el anillo con la misma linea y tapa la que explica la causa.
+
+⚠ **Y esto NO resucita el controlador.** `R-USB7` resucita ENDPOINTS; para un
+xHC entero en HSE no hay camino de vuelta escrito, y no se invento uno hoy. Lo
+unico que cambia es que deja de ser mudo -- que es el requisito para poder
+investigarlo, no el arreglo.
+
+### Que mirar
+
+```text
+   [ ] 1.6a  con el teclado ya muerto, mirar el panel de CABINA
+             busca:  xhci  el controlador SE MURIO en marcha (USBSTS HSE/HCE)
+             si SALE      -> el xHC se cayo, y con el valor de USBSTS al lado
+             si NO SALE   -> el controlador esta vivo y el mudo es otro:
+                             el hilo del bus, un endpoint, o la enumeracion
+   [ ] 1.6b  si arranca sin teclado, mirar el arranque
+             antes solo se comprobaba HSE/HCE si el teclado habia enumerado,
+             o sea nunca en el caso que importa. Ahora sale siempre
+   [ ] 1.6c  `usb` (si hay teclado con que teclearlo) -> los cuatro contadores
+             perdidos / fallidas / recuperaciones / barridos utiles
+```
+
+★ **1.6a es la que decide.** Con esa linea, "no responde el teclado" deja de ser
+un sintoma y pasa a ser dos causas separables. Sin ella eran la misma cosa.
+
+---
+
 ---
 
 # 2. ⚠ LOS DOS DEFECTOS QUE YA SE ENCONTRARON LEYENDO, SIN ARRANCAR
@@ -359,7 +436,12 @@ cuestan si salen mal:
    6.  `smp orquesta`                        primera ejecucion de verdad
    7.  ★ LA PURGA, seccion 1.4               reproduce, y APUNTA LOS NUMEROS
    8.  DOOM y `ray`                          lo que revienta despues de 7
+   9.  ★ 1.6a -- SI el teclado se muere    mira CABINA antes de reiniciar
 ```
+
+⭐ **La 9 no se planifica: se atiende.** No es un paso que se teclea, es lo
+que hay que mirar el dia que pase lo del 07-09. Y va escrita aqui para que la
+proxima vez la respuesta este en la pantalla en vez de en la memoria de nadie.
 
 ★ **La 7 va casi al final a proposito**: se sabe que rompe la maquina, asi que
 todo lo que se pueda mirar antes hay que mirarlo antes. Una azul en el paso 3
