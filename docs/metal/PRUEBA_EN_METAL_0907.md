@@ -130,6 +130,114 @@ hilo hace `ret` sobre basura, salta a cero, y el `#PF` mata la maquina.
 la maquina rota despues** significa que el fallo no es que falte limpiar, sino
 que se limpio **de mas** -- que es exactamente lo que dice `marco OCUPADO`.
 
+## 1.4b ⭐⭐ EL 07-09 SE EJECUTO, Y EL FALLO BAJO DE CLASE
+
+**BMO sobrevivio las dos veces.** Con el kernel del 07-09 --el que lleva el
+cerrojo y el libro de dobles-- la misma receta ya no da pantalla azul:
+
+```text
+   *** ring3 fault vec=0x0E rip=0x004000725C tid=03 -- task killed, BMO alive
+   *** SIN MAPEAR: puntero basura o indice fuera de rango
+```
+
+Y en la segunda vuelta:
+
+```text
+   ESCRIBIA EN LA PANTALLA QUE YA NO ES SUYA -- fila 321
+   cr2=0x00D025A5F8  err=0x06  ESCRIB NO-presente
+```
+
+...con el escritorio **vivo detras**, y su barra intacta.
+
+### Lo que eso cambia, y no es poco
+
+```text
+   ANTES   #PF desde el KERNEL, rip=0      la maquina muere
+   AHORA   #PF de RING 3, rip=0x004000725C la TAREA muere, BMO sigue
+```
+
+** El `rip` es la fila que lo dice todo: `0x004000725C` esta **dentro del rango
+de Ring 3**, o sea codigo de DOOM. Antes era `0x0` --se habia saltado a cero
+desde una pila con basura-- y eso solo pasa en Ring 0.
+
+★ Y `ESCRIBIA EN LA PANTALLA QUE YA NO ES SUYA` es el instrumento del 04-09
+contestando a la primera: **la purga le quito la pantalla y el programa siguio
+escribiendo en ella.** Eso es lo que hay debajo del sintoma que el dueno
+describio como *"estoy encima del servidor que ya mate"*.
+
+[!] **Esto NO significa que este arreglado.** Significa que el fallo se
+contiene: lo que antes se llevaba el kernel ahora se lleva una tarea. La
+contabilidad rota sigue ahi debajo -- solo que ya no mata la maquina, y por eso
+**ahora se puede investigar con el Ryzen encendido**, que es la diferencia
+entera.
+
+---
+
+## 1.5 ⚠⚠ LA PISTA DEL DMA -- el segundo orquestador que nadie eligio
+
+La pregunta la hizo el dueno: *"DMA y orquestador se sienten muy parecidos, solo
+que muy diferente"*. Y no es filosofia: **es la pista que le faltaba al caso.**
+
+### Los tres aparatos piden al MISMO asignador que da las pilas
+
+```text
+   dev/disk/mod.rs:126    alloc_frames_contig    <- AHCI
+   dev/net/mod.rs:325     alloc_frames_contig    <- la NIC
+   dev/usb/mod.rs:156     alloc_frames_contig    <- xHCI
+```
+
+### Y en que se diferencian el DMA y el orquestador
+
+```text
+   el ORQUESTADOR   PRESTA. Y puede QUITAR lo prestado
+   el DMA           no pide, no declara, y no se le puede decir que no
+```
+
+Una tarjeta con DMA escribe en RAM **fisica** directa: sin tablas de paginas,
+sin capability, sin handle, sin anillo. **Es el unico actor de la maquina que no
+obedece al orquestador**, y no por falta de codigo -- el hardware es asi.
+
+`docs/identidad/EL_AISLAMIENTO.md` seccion 4.2 ya lo tiene, y es una de las dos
+unicas filas con ⛔:
+
+> *"una TARJETA que escribe donde no debe (DMA) -- **NADIE. Hace falta una
+> IOMMU**"*
+
+### ★★ Y LA CABECERA DE `reap` YA LO HABIA PREDICHO, CON NOMBRE
+
+> *"revienta cuando el siguiente `alloc_frames_contig` --una pila nueva, **un
+> bufer de DMA del AHCI**-- escribe encima"*
+
+La cadena, y encaja con la receta paso por paso:
+
+```text
+   1.  la purga libera marcos
+   2.  se lanza DOOM
+   3.  DOOM lee su WAD del disco
+   4.  el AHCI pide un bufer CONTIGUO       <- alloc_frames_contig
+   5.  le toca un marco que todavia tiene una pila dentro
+   6.  la tarjeta escribe ahi SIN QUE EL KERNEL SE ENTERE
+```
+
+** Eso explica lo que ninguna otra hipotesis explicaba: **por que el fallo sale
+al VOLVER A LANZAR y no al purgar.** Entre los dos momentos tiene que ocurrir
+una lectura de disco.
+
+### Que mirar para confirmarlo o tumbarlo
+
+```text
+   [ ] 1.5a  purgar y lanzar `ray` (que NO lee un WAD)   si NO revienta, es el disco
+   [ ] 1.5b  purgar y lanzar `c/leer.bex` (que SI lee)   si revienta, es el disco
+   [ ] 1.5c  purgar y NO lanzar nada, mirar `mem`        la contabilidad, sin DMA de por medio
+```
+
+★ **1.5a y 1.5b juntas son el experimento**: dos programas, uno que toca el
+disco y otro que no, con la misma purga delante. Si solo revienta el que lee,
+el DMA queda nombrado. Si revientan los dos, el DMA queda **descartado** -- y
+las dos respuestas valen.
+
+---
+
 ---
 
 # 2. ⚠ LOS DOS DEFECTOS QUE YA SE ENCONTRARON LEYENDO, SIN ARRANCAR
