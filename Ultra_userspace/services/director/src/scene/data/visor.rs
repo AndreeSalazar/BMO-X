@@ -109,10 +109,23 @@ impl Visor {
         let Some(m) = bloque() else {
             return true;
         };
-        // SAFETY: el bloque son TOPE bytes y `mide` no lo pasa -- se acaba de
-        // comprobar. Es memoria de este proceso y esta mapeada.
-        let dst = unsafe { core::slice::from_raw_parts_mut(m.base(), self.mide as usize) };
-        self.leidos = a.read(dst);
+        // *** **DEL DISCO AL BLOQUE, DE UNA LLAMADA** (06-09).
+        //
+        // Esto era `a.read(dst)` sobre un slice fabricado con
+        // `from_raw_parts_mut`, y `read` mueve **siete bytes por syscall**: un
+        // fichero de 64 KiB --el TOPE de aqui-- son **9.363 puertas**, a 969
+        // ciclos cada una. Ahora es UNA.
+        //
+        // ** Y el bloque YA ESTABA: `bloque()` lo pide al kernel desde el primer
+        // dia. Lo unico que faltaba era decirle al kernel *"escribe ahi"* en vez
+        // de traerse los bytes de siete en siete para copiarlos nosotros al
+        // mismo sitio. La operacion existia en el ABI y la cara de Rust no la
+        // llamaba -- ver `Archivo::leer_en`.
+        //
+        // [!] Y se lleva por delante un `unsafe`: ya no hay que fabricar un
+        // slice sobre `m.base()` para leer. El kernel escribe en el bloque por
+        // su HANDLE, que es justo lo que hace innecesario tocar el puntero.
+        self.leidos = a.leer_en(m, 0, self.mide) as usize;
         true
     }
 
