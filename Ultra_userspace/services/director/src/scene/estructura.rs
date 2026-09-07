@@ -95,20 +95,34 @@ pub(crate) fn paint(p: &bmo::Pantalla, c: &EstructuraWindow) {
 
     // ** EL CUERPO CONFIESA EL ESCALON. Ver la cabecera: una ventana vacia y
     // una rota se ven igual, y lo unico que las separa es que esta lo diga.
-    p.texto(tx, ty, "escalon 1 de 7: la ventana abre, y eso es todo.", INK);
+    //
+    // *** Y ESTA LISTA YA SE QUEDO VIEJA UNA VEZ, EN HORAS.
+    //
+    // La primera version decia "2 bmo-rt gana archivo, paquete, superficie,
+    // entrada y scroll". Salio en la foto del Ryzen del 06-09 **siendo ya
+    // falsa**: la superficie de Rust no es `bmo-rt` sino `bmo-userland`, y de
+    // los cinco modulos solo faltaba `paquete`, que se escribio esa tarde.
+    //
+    // La cabecera de este fichero predijo justo eso --*"el dia que esto se
+    // quede atras, la pantalla lo delata sola"*-- y funciono. Por eso ahora los
+    // hechos van MARCADOS y no borrados: una lista que solo ensena lo que falta
+    // no deja ver si alguien la esta manteniendo.
+    p.texto(tx, ty, "escalon 2 de 7. la ventana abre y ya lee su propia caja.", INK);
     ty += salto + 6;
 
-    p.texto(tx, ty, "lo que falta, en orden:", INK_DIM);
-    ty += salto;
-    for linea in [
-        "  2  bmo-rt gana archivo, paquete, superficie, entrada y scroll",
-        "  3  dibujar la rejilla y el cursor",
-        "  4  leer teclas por el buzon, con historial",
-        "  5  los comandos que la frontera permite",
-        "  6  compilar hola.ada, aqui dentro",
-        "  7  exportar a ESTRATOS o a FAT32",
+    for (marca, linea, hecho) in [
+        ("[x]", " 1  F1 abre esta ventana", true),
+        ("[x]", " 2  paquete: leer la seccion 0x0B del propio .bex", true),
+        ("[ ]", " 2b scroll como modulo, para el historial", false),
+        ("[ ]", " 3  dibujar la rejilla y el cursor", false),
+        ("[ ]", " 4  leer teclas por el buzon", false),
+        ("[ ]", " 5  los comandos que la frontera permite", false),
+        ("[ ]", " 6  compilar aqui dentro", false),
+        ("[ ]", " 7  exportar a ESTRATOS o a FAT32", false),
     ] {
-        p.texto(tx, ty, linea, INK_DIM);
+        let tinta = if hecho { EST_TITLE } else { INK_DIM };
+        let px = p.texto(tx, ty, marca, tinta);
+        p.texto(px, ty, linea, if hecho { INK } else { INK_DIM });
         ty += salto;
     }
 
