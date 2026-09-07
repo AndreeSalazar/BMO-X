@@ -64,6 +64,78 @@ static mut BUS_TURNS: u64 = 0;
 /// failure: it is the thread and a syscall asking at the same time.
 static mut PUMP_OVERLAPS: u64 = 0;
 
+// == *** EL RITMO SE MIDE CONTRA UN RELOJ, NO CONTRA EL TRABAJO (2026-09-07) ==
+//
+// # Lo que estaba mal, y es una linea
+//
+// ```text
+//    let wake_at = rdtsc() + 4 ms;      <- 4 ms DESPUES DE ACABAR
+// ```
+//
+// Eso no es *"late cada 4 ms"*: es *"duerme 4 ms cuando termine"*. El periodo de
+// verdad era **trabajo + 4 ms**, y el trabajo de una vuelta no es constante:
+// adoptar un puerto lleva hasta seis reintentos de 50 ms, el barrido cae cada
+// 500, el audio encola varias tramas. Una vuelta cara alarga el periodo de todas
+// las siguientes, y nadie se enteraba.
+//
+// ** Y peor: un retraso se ABSORBIA. Si el planificador no le daba turno en 40
+// ms, el hilo despertaba, hacia su vuelta y volvia a dormir 4 ms mas. El retraso
+// no se recuperaba, no se contaba, y `ULTIMO_LATIDO` solo anotaba una hora mas
+// tarde. **Nadie sabia nunca que el latido se habia saltado.**
+//
+// # Como lo hacen Windows y Linux, que es de donde sale esto
+//
+// En los dos, quien pregunta al aparato **es el controlador, en hardware**, en
+// el `Interval` que se le programo al endpoint. El driver no marca el ritmo: su
+// trabajo es que SIEMPRE haya un sitio donde dejar el informe --una URB
+// reenviada desde el propio handler en Linux, un lector continuo en Windows--.
+//
+// Asi que el reparto de BMO-X, dicho entero, es este:
+//
+// ```text
+//    preguntar al aparato        su bInterval      EL xHC, en hardware
+//    volver a armar el TRB       al llegar el evento   bmo_uhid
+//    VACIAR el anillo            4 ms              este hilo   <- el que se retrasa
+//    la red por si se perdio     500 ms            el barrido
+// ```
+//
+// [!] Por eso un latido tarde **no pierde una tecla directamente**: el xHC sigue
+// preguntando y dejando informes. Lo que cuesta es LATENCIA --se nota en la
+// mano-- y riesgo de desborde del aparcadero, que ya tiene su propio contador
+// (`evt_park_stats().perdidos`). Decirlo asi y no *"se pierden teclas"* es la
+// diferencia entre un instrumento y un susto.
+//
+// # Y NO se recupera en rafaga, a proposito
+//
+// Al llegar tarde se **re-ancla** y se cuenta lo que no se dio. Dar de golpe los
+// cinco turnos que se perdieron es empeorar el atasco que los provoco -- y es lo
+// mismo que decide Linux con `URB_ISO_ASAP`: saltar al siguiente hueco, no
+// repetir los que ya pasaron.
+
+/// **Cuando VENCE el proximo latido**, en TSC absoluto. Cero mientras no se haya
+/// anclado el reloj, que ocurre en la primera vuelta.
+static mut PROXIMO: u64 = 0;
+/// Latidos que llegaron DESPUES de su hora.
+static mut LATIDOS_TARDE: u64 = 0;
+/// Turnos ENTEROS que cabian en el retraso y no se dieron. Esta es la fila que
+/// duele: `LATIDOS_TARDE` dice que hubo retraso, esta dice cuanto bus se perdio.
+static mut LATIDOS_PERDIDOS: u64 = 0;
+/// El peor retraso visto, en milisegundos. Un maximo y no una media: una media
+/// de latencias esconde justo el pico que el dueno nota con la mano.
+static mut PEOR_RETRASO_MS: u64 = 0;
+
+/// A partir de aqui un retraso deja de ser ruido y se dice en CABINA.
+///
+/// Veinte milisegundos son CINCO latidos, y mas del doble de lo que pide un
+/// teclado boot (8-10 ms). Por debajo no lo nota una mano; por encima, el
+/// aparcadero de eventos empieza a ser lo unico que sostiene el teclado.
+const RETRASO_QUE_SE_DICE_MS: u64 = 20;
+
+/// `(latidos tarde, turnos perdidos, peor retraso en ms)`.
+pub fn ritmo() -> (u64, u64, u64) {
+    unsafe { (LATIDOS_TARDE, LATIDOS_PERDIDOS, PEOR_RETRASO_MS) }
+}
+
 /// **TSC del final de la ultima vuelta del hilo**, y cero mientras no haya dado
 /// ninguna.
 ///
@@ -185,7 +257,45 @@ pub extern "C" fn bus_thread(_arg: u64) -> ! {
             scheduler::yield_current();
             continue;
         }
-        let wake_at = scheduler::rdtsc() + hz / 1000 * BUS_PERIOD_MS;
+        // ** LA HORA DEL PROXIMO LATIDO SALE DE LA DEL ANTERIOR, no de ahora.
+        // Ver la nota de `PROXIMO`: con esto el periodo es 4 ms de verdad y no
+        // "4 ms mas lo que haya costado la vuelta".
+        let por_ms = hz / 1000;
+        let periodo = por_ms * BUS_PERIOD_MS;
+        let ahora = scheduler::rdtsc();
+        let mut aviso = 0u64;
+        let wake_at = unsafe {
+            if PROXIMO == 0 {
+                // La primera vuelta ancla el reloj. Sin esto el primer latido
+                // saldria "tarde" por todo lo que tardo el arranque.
+                PROXIMO = ahora;
+            }
+            PROXIMO = PROXIMO.saturating_add(periodo);
+            if PROXIMO <= ahora {
+                // Su hora ya paso mientras trabajabamos o mientras no nos daban
+                // turno.
+                let retraso = ahora - PROXIMO;
+                LATIDOS_TARDE = LATIDOS_TARDE.wrapping_add(1);
+                LATIDOS_PERDIDOS = LATIDOS_PERDIDOS.wrapping_add(retraso / periodo);
+                let ms = retraso / por_ms;
+                if ms > PEOR_RETRASO_MS {
+                    PEOR_RETRASO_MS = ms;
+                    // Solo en un PEOR NUEVO, y solo pasado el umbral. Un aviso
+                    // por cada retraso llenaria CABINA en el primer atasco y
+                    // taparia la linea que lo explica.
+                    if ms >= RETRASO_QUE_SE_DICE_MS {
+                        aviso = ms;
+                    }
+                }
+                // Re-anclar, NO recuperar en rafaga. Ver la nota de arriba.
+                PROXIMO = ahora + periodo;
+            }
+            PROXIMO
+        };
+        if aviso != 0 {
+            crate::ring0::cabina::warn(
+                "usb", "el latido del bus llego TARDE (peor caso, en ms)", aviso);
+        }
         scheduler::park_until(wake_at);
     }
 }
