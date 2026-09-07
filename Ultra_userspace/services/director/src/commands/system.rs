@@ -516,6 +516,48 @@ pub(crate) fn banda(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     After::NextKey
 }
 
+
+/// **El bloque donde ensaya la orquesta.** Se pide UNA vez y se reusa.
+///
+/// *** POR QUE NO SE PIDE CADA VEZ (corregido el 2026-09-07, ANTES de estrenarlo)
+///
+/// `bmo::Memoria` **no tiene `Drop`**: un bloque pedido no se devuelve al salir
+/// del ambito. Y el kernel da **cuatro por proceso** --`MAX_PETICIONES` en
+/// `obj/memory.rs`-- que en el escritorio ya estan casi gastadas:
+///
+/// ```text
+///    pantalla.rs   el doble bufer          se pide al arrancar, SIEMPRE
+///    consola.rs    el volcado              al volcar la consola
+///    visor.rs      el fichero que se mira  al abrir F12
+///    ------------------------------------------------------------
+///    aqui          el ensayo               <- el CUARTO
+/// ```
+///
+/// ** Asi que pidiendolo cada vez, `smp orquesta` funcionaba **una vez** y a la
+/// segunda contestaba *"sin memoria para el ensayo"* -- un mensaje que ademas
+/// MIENTE: no es que no haya RAM, es que este proceso gasto su cuota y no
+/// devuelve nada. Un fallo que se lee como otro es peor que un fallo.
+///
+/// El patron no se inventa aqui: es el mismo `static mut` con `Option` que ya
+/// usan `scene/consola.rs` y `scene/data/visor.rs`, y por el mismo motivo.
+///
+/// [!] Cazado LEYENDO, antes del primer arranque. `smp orquesta` no se ha
+/// ejecutado nunca en el Ryzen -- ver `docs/metal/PRUEBA_EN_METAL_0907.md` 3.2.
+static mut ENSAYO: Option<bmo::Memoria> = None;
+
+fn ensayo() -> Option<&'static bmo::Memoria> {
+    // `addr_of_mut!` y no `&mut ENSAYO`, igual que en `consola.rs`: tomar una
+    // referencia a un `static mut` es lo que el compilador rechaza con razon.
+    let slot = core::ptr::addr_of_mut!(ENSAYO);
+    unsafe {
+        if (*slot).is_none() {
+            *slot = bmo::Memoria::request(4096 * 4);
+        }
+        (*slot).as_ref()
+    }
+}
+
+
 pub(crate) fn smp(dsk: &mut Desktop, p: &bmo::Pantalla, arg: &[u8]) -> After {
     // * El CONTROL, y el reparto de quien decide:
     // aqui solo se traduce lo que el dueno escribio
@@ -555,7 +597,7 @@ pub(crate) fn smp(dsk: &mut Desktop, p: &bmo::Pantalla, arg: &[u8]) -> After {
         const CENTINELA: u32 = 0xDEAD_BEEF;
         const NUEVO: u32 = 0x0BAD_CAFE;
         let mut b = [0u8; 10];
-        match bmo::Memoria::request(CUANTOS * 4) {
+        match ensayo() {
             None => {
                 dsk.out.grid.text(b"  orquesta: sin memoria para el ensayo
 ");
