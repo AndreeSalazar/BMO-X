@@ -136,6 +136,62 @@ pub fn ritmo() -> (u64, u64, u64) {
     unsafe { (LATIDOS_TARDE, LATIDOS_PERDIDOS, PEOR_RETRASO_MS) }
 }
 
+// == ** Y QUIEN SE COMIO EL TURNO ===========================================
+//
+// `ritmo()` dice que el latido llego tarde. No dice POR QUIEN, y sin eso el
+// numero manda a auditar los cinco trabajos de la vuelta.
+//
+// ** Se mide el PEOR de cada uno y no la media, por lo mismo que el retraso: una
+// media de 40 us con un pico de 90 ms se lee como "todo bien" y el pico es
+// justo lo que se nota en la mano.
+//
+// [!] Y `purga` va a salir alta SIEMPRE, porque cede el CPU hasta ocho veces
+// esperando a `reap`. Eso no es un fallo suyo: es lo que hace. Se anota igual
+// --tapar un numero porque se sabe explicar es como se pierden los datos-- pero
+// se lee sabiendolo.
+
+/// Los trabajos de una vuelta, EN ORDEN.
+///
+/// El orden no es de gusto y ya estaba escrito en el bucle: el rescate va justo
+/// detras del bombeo porque su tecla acaba de entrar en la cola, y la purga
+/// detras de la emergencia porque son dos motivos distintos por el mismo camino.
+const NOMBRES: [&str; 5] = ["bombeo", "rescate", "emergencia", "purga", "radar"];
+
+/// Lo peor que ha tardado cada uno, en microsegundos.
+static mut PEOR_US: [u64; 5] = [0; 5];
+
+/// `(nombre del que mas tardo alguna vez, sus microsegundos)`.
+pub fn peor_trabajo() -> (&'static str, u64) {
+    unsafe {
+        let p = &*core::ptr::addr_of!(PEOR_US);
+        let mut cual = 0usize;
+        for i in 1..p.len() {
+            if p[i] > p[cual] {
+                cual = i;
+            }
+        }
+        (NOMBRES[cual], p[cual])
+    }
+}
+
+/// Anota lo que tardo el trabajo `i` y devuelve el TSC de ahora, para encadenar.
+///
+/// `por_us` en cero --sin TSC medido-- solo devuelve la hora: medir contra un
+/// reloj sin frecuencia daria un numero con cara de dato.
+fn anota(i: usize, desde: u64, por_us: u64) -> u64 {
+    let ahora = crate::ring0::task::scheduler::rdtsc();
+    if por_us != 0 {
+        let us = ahora.wrapping_sub(desde) / por_us;
+        unsafe {
+            let p = &mut *core::ptr::addr_of_mut!(PEOR_US);
+            if us > p[i] {
+                p[i] = us;
+            }
+        }
+    }
+    ahora
+}
+
 /// **TSC del final de la ultima vuelta del hilo**, y cero mientras no haya dado
 /// ninguna.
 ///
@@ -219,8 +275,15 @@ const BUS_PERIOD_MS: u64 = 4;
 pub extern "C" fn bus_thread(_arg: u64) -> ! {
     use crate::ring0::task::scheduler;
     loop {
+        // ** El reloj de la vuelta. `por_us` se saca ANTES de trabajar para que
+        // los cinco trabajos se midan contra el mismo, y en cero cuando no hay
+        // TSC medido: entonces se hace la vuelta igual y no se mide nada.
+        let por_us = scheduler::tsc_freq() / 1_000_000;
+        let mut t = scheduler::rdtsc();
         pump_bus();
+        t = anota(0, t, por_us);
         watch_rescue();
+        t = anota(1, t, por_us);
         // ** LA PATADA, en el mismo sitio y por la misma razon que el rescate.
         //
         // Este hilo es el unico que despierta solo, cada 4 ms, y **sin ningun
@@ -228,10 +291,12 @@ pub extern "C" fn bus_thread(_arg: u64) -> ! {
         // cerrojo del planificador puesto y no puede hacer el trabajo alli.
         // Ver `core/emergencia.rs`.
         crate::ring0::core::emergencia::atender();
+        t = anota(2, t, por_us);
         // Y la purga que haya pedido la tecla. Aqui se puede ceder el CPU:
         // este es un hilo de KERNEL, asi que la limpieza de Ring 3 no se lo
         // lleva por delante. Ver `core/purga.rs`.
         crate::ring0::core::purga::atender();
+        t = anota(3, t, por_us);
         // ** Y EL RITMO DEL RADAR, en el mismo turno y por la misma razon.
         //
         // Cerrar la ventana son 40 restas UNA VEZ POR SEGUNDO -- este hilo late
@@ -241,6 +306,7 @@ pub extern "C" fn bus_thread(_arg: u64) -> ! {
             scheduler::rdtsc(),
             scheduler::tsc_freq(),
         );
+        anota(4, t, por_us);
         unsafe {
             BUS_TURNS = BUS_TURNS.wrapping_add(1);
             // El latido se sella DESPUES de la vuelta, no antes: lo que

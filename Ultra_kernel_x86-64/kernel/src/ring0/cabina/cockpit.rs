@@ -283,6 +283,12 @@ pub fn render_hud() {
     r.txt(" ritmo="); r.dec(r_tarde);
     r.txt(":"); r.dec(r_perd);
     r.txt(":"); r.dec(r_peor);
+    // ** Y QUIEN se comio el turno. `ritmo` dice que llego tarde; sin esto, el
+    // numero manda a auditar los cinco trabajos de la vuelta.
+    // [!] `purga` sale alta a proposito: cede el CPU hasta ocho veces.
+    let (peor_q, peor_us) = crate::ring0::dev::usb::peor_trabajo();
+    r.txt(" peor="); r.txt(peor_q);
+    r.txt(":"); r.dec(peor_us); r.txt("us");
     // ** `puertas=esperando:PERDIDOS:barridos:reparados` -- QUE LAS PUERTAS SIGAN
     // ABIERTAS.
     //
