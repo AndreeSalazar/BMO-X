@@ -19,6 +19,12 @@
 
 param(
     [switch]$Desplegar,
+    # **No preguntes, escribe.** Se lo pidio el dueno --*"da flojera"*-- y se
+    # puede dar porque la pregunta NO es lo que protege: lo que protege son las
+    # tres comprobaciones de `build/discos.ps1`, que siguen intactas. Y el `-Si`
+    # tiene techo: por encima de 64 GiB se pregunta igual, porque ahi si hay
+    # algo que perder. Ver la cabecera de `TECHO_SIN_PREGUNTA_GIB`.
+    [switch]$Si,
     [switch]$Rapido,
     # A que unidades va, si se despliega.
     #
@@ -267,10 +273,13 @@ if ($Desplegar) {
     # identidad de ESTRATOS protege el volumen de datos, pero la letra la pone
     # una persona.
     Write-Host "   se va a ESCRIBIR en $Arranque y en $Datos" -ForegroundColor Yellow
+    if ($Si) {
+        Write-Host "   -Si: sin preguntar (las comprobaciones duras siguen)" -ForegroundColor DarkGray
+    }
     if ($Metro) {
         Write-Host "   y va el KERNEL DE MEDIDA: acuerdate de volver sin -Metro" -ForegroundColor Yellow
     }
-    & $build -Todo -Drive $Arranque -Data $Datos -Metro:$Metro
+    & $build -Todo -Drive $Arranque -Data $Datos -Metro:$Metro -Yes:$Si
 } else {
     & $build -BuildOnly -Metro:$Metro
 }

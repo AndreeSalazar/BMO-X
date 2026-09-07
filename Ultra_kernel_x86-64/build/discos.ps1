@@ -22,6 +22,28 @@
 # cambio de sitio es el fichero.
 
 # -- Flash --------------------------------------------------------
+# -- EL TECHO DEL `-Si`, Y POR QUE NO ES UN CHEQUE EN BLANCO ------------------
+#
+# El dueno pidio quitar la pregunta: *"da flojera"*. Y la pregunta se puede
+# quitar porque **no es ella la que protege** -- lo que protege son las tres
+# comprobaciones duras que ya estaban y que NO se tocan:
+#
+#     rechaza la unidad del SISTEMA   ($env:SystemDrive)
+#     exige FAT / FAT32              un ESP no es otra cosa
+#     exige que la unidad exista
+#
+# ** Pero queda un hueco que ninguna de las tres cierra: **teclear la letra de
+# OTRO volumen que tambien es FAT32**. Contra eso la pregunta si servia.
+#
+# Asi que en vez de quitarla del todo, el `-Si` **se gana el derecho a no
+# preguntar**: vale mientras el destino sea pequeno. Un ESP y un pendrive estan
+# muy por debajo; un disco de datos, muy por encima. Windows ni siquiera
+# formatea FAT32 por encima de 32 GiB sin herramientas de terceros, asi que
+# nada legitimo llega a este techo.
+#
+# > La pregunta no desaparece. Deja de hacerse cuando no hay mucho que perder.
+$TECHO_SIN_PREGUNTA_GIB = 64
+
 if ($Flash -or $Verify) {
     $targetLetter = $Drive.TrimEnd([char]':',[char]'\').ToUpper()
     if ($targetLetter -notmatch '^[A-Z]$') { Fail ('Invalid drive letter: ' + $Drive) }
@@ -42,7 +64,13 @@ if ($Flash -or $Verify) {
 
     $efiDest = Join-Path $targetRoot (Join-Path 'EFI' 'BOOT')
     if ($Flash) {
-        if (-not $Yes) {
+        # ** El `-Si` vale solo si el destino es pequeno. Ver el techo, arriba.
+        $grande = ($volume -and ($volume.Size / 1GB) -gt $TECHO_SIN_PREGUNTA_GIB)
+        if ($grande -and $Yes) {
+            Write-Host ('  [!] -Si NO se aplica: ' + $targetLetter + ': mide mas de ' + `
+                $TECHO_SIN_PREGUNTA_GIB + ' GiB. Se pregunta igual.') -ForegroundColor Yellow
+        }
+        if ((-not $Yes) -or $grande) {
             $expected = 'FLASH ' + $targetLetter + ' BMO'
             $confirmation = Read-Host ('  Type "' + $expected + '" to update Ring 0')
             if ($confirmation -ne $expected) { Write-Host '  Aborted.'; exit 0 }
@@ -137,7 +165,12 @@ if ($Data) {
 
     # Cierre 3: la frase, igual que -Flash. Con la letra dentro, para que
     # copiar-pegar la de otra sesion no valga.
-    if (-not $Yes) {
+    $dGrande = ($dataVol -and ($dataVol.Size / 1GB) -gt $TECHO_SIN_PREGUNTA_GIB)
+    if ($dGrande -and $Yes) {
+        Write-Host ('  [!] -Si NO se aplica: ' + $dataLetter + ': mide mas de ' + `
+            $TECHO_SIN_PREGUNTA_GIB + ' GiB. Se pregunta igual.') -ForegroundColor Yellow
+    }
+    if ((-not $Yes) -or $dGrande) {
         $esperado = 'DATA ' + $dataLetter + ' BMO'
         $conf = Read-Host ('  Escribe "' + $esperado + '" para copiar los programas de Ring 3')
         if ($conf -ne $esperado) { Write-Host '  Abortado.'; exit 0 }

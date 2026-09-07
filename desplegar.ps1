@@ -26,6 +26,8 @@
 
 param(
     [switch]$Rapido,
+    # Pasa de largo las dos frases de confirmacion. Ver `bmo.ps1`.
+    [switch]$Si,
     [switch]$Metro,
     [string]$Arranque = 'D',
     [string]$Datos = 'A'
