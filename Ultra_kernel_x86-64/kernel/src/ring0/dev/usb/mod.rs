@@ -71,6 +71,9 @@ pub mod panel;
 /// sexta exigencia de `docs/componente/EL_TECLADO_EXIGE.md`: un contador que solo se lee
 /// en el shell de Ring 0 no existe para quien vive en el escritorio.
 pub mod salud;
+/// **EL PORTERO**: el libro de quien llego y que se le contesto. No decide
+/// nada -- el veredicto lo toma `bmo_uhid`; esto lo apunta y lo dice UNA vez.
+pub mod portero;
 /// El atajo que le devuelve la maquina al dueno. Politica, no driver.
 pub mod rescate;
 
@@ -168,6 +171,11 @@ impl XhciHal for KernelXhciHal {
     }
     fn delay_ms(&self, ms: u64) {
         delay_ms(ms);
+    }
+    /// **EL PORTERO.** El driver ya tenia el veredicto; hasta hoy solo lo
+    /// mandaba al log, que se va con el scroll. Ver `portero.rs`.
+    fn papeles(&self, puerto: u8, iface: u8, clase: u8, subclase: u8, proto: u8, veredicto: u8) {
+        portero::apunta(puerto, iface, clase, subclase, proto, veredicto);
     }
 }
 

@@ -289,6 +289,16 @@ pub fn render_hud() {
     let (peor_q, peor_us) = crate::ring0::dev::usb::peor_trabajo();
     r.txt(" peor="); r.txt(peor_q);
     r.txt(":"); r.dec(peor_us); r.txt("us");
+    // ** `portero=entraron:fuera:sinsitio` -- QUIEN LLEGO Y QUE SE LE CONTESTO.
+    //
+    // `fuera` no es un fallo por si mismo: un hub o un aparato que no es HID
+    // cuentan ahi, y es correcto que cuenten. Lo que compra es que "enchufe algo
+    // y no paso nada" deje de ser indistinguible de "no llego nada": el motivo
+    // de cada uno esta en CABINA, dicho una sola vez. `sinsitio` deberia ser 0.
+    let (p_ok, p_no, p_sin) = crate::ring0::dev::usb::portero::stats();
+    r.txt(" portero="); r.dec(p_ok);
+    r.txt(":"); r.dec(p_no);
+    r.txt(":"); r.dec(p_sin);
     // ** `puertas=esperando:PERDIDOS:barridos:reparados` -- QUE LAS PUERTAS SIGAN
     // ABIERTAS.
     //
