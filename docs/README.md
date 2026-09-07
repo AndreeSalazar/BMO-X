@@ -97,7 +97,7 @@ si por nombre y declaran que son la misma clase de documento.
 |---|---|---|
 | [`LA_PUERTA_POR_DENTRO.md`](componente/LA_PUERTA_POR_DENTRO.md) | C1 CPU | una puerta = **945 ciclos**, y el handle son 236 de ellos |
 | [`EL_COMPOSITOR_Y_EL_ESCANER.md`](componente/EL_COMPOSITOR_Y_EL_ESCANER.md) | C5 FRAMEBUFFER | volcar la pantalla = **27,6 ms** contra 16,7 de un frame |
-| [`EL_TECLADO_EXIGE.md`](componente/EL_TECLADO_EXIGE.md) | C7 USB | **seis exigencias**, y el numero que dice cual fallo |
+| [`EL_TECLADO_EXIGE.md`](componente/EL_TECLADO_EXIGE.md) | C7 USB | **nueve exigencias**, y el numero que dice cual fallo. Las tres ultimas: el controlador que miramos (E7), el turno que llega a su hora (E8) y **EL PORTERO** (E9) |
 | [`EL_DISCO_EXIGE.md`](componente/EL_DISCO_EXIGE.md) | C6 DISCO | una busqueda de HDD = **59 millones de ciclos**; y la ranura 0 de 32 |
 | [`LA_MAQUETA_EXIGE.md`](componente/LA_MAQUETA_EXIGE.md) | ⚠ **ninguno** -- ver abajo | las **seis** comprobaciones del veredicto |
 

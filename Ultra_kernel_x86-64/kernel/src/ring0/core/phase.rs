@@ -373,6 +373,18 @@ pub fn main(ctx: &mut BootContext) {
     // sola discrepa, ECAM se queda apagado entero. Una ventana que acierta a
     // veces es peor que ninguna.
     crate::ring0::dev::pci::ecam_montar(ctx.rsdp);
+
+    // *** EL PORTERO DEL BUS -- que hay en la placa, y para que hay codigo.
+    //
+    // ** Va AQUI y no antes, y el orden es la mitad del dato: los tres
+    // recorridos que reclaman aparatos --`find_ahci`, `find_nic`, `find_xhci`--
+    // ya han corrido, asi que "hay codigo" es una verdad comprobada y no una
+    // promesa. Censar antes daria "sin codigo" para el AHCI que se reclama tres
+    // lineas mas arriba.
+    //
+    // [!] Y no escribe un bit: ni MEM, ni Bus Master, ni un BAR. Es una
+    // pregunta, como la NIC y como la placa. Ver `dev/portero.rs`.
+    crate::ring0::dev::portero::censar();
     splash::intro_paso(58);
     // * El reloj de la placa, DESPUES de que el TSC este medido: la hora se
     // ancla a el, y anclarla a una frecuencia que todavia vale cero daria un

@@ -193,6 +193,10 @@ pub mod dev {
     pub mod framebuffer;
     pub mod keyboard;
     pub mod pci;
+    /// **EL PORTERO DEL BUS**: que hay enchufado a la placa y para que hay
+    /// codigo. La segunda puerta del portero -- la primera es `usb::portero`,
+    /// que mira lo que LLEGA; esta mira lo que HAY. No escribe ni un bit.
+    pub mod portero;
     /// **La tarjeta de red, de momento solo RECONOCIDA.** Encuentra la NIC,
     /// elige su BAR de memoria y le pregunta su MAC y su enlace -- sin
     /// escribirle un byte. Los anillos DMA vienen despues, y sobre esta prueba.

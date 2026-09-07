@@ -1039,11 +1039,33 @@ el endpoint en `Running` y sin un solo error.
   endpoint parado**, asi que reintentar sin resucitar es tocar un timbre roto; y
   resetear sin recolocar el puntero deja el endpoint leyendo TRBs viejos.
 
-** Ver `docs/componente/EL_TECLADO_EXIGE.md`: las **seis exigencias** del teclado con su
-estado y, sobre todo, **el numero que dice cual fallo**. Las seis estan puestas
-desde el 2026-08-17: R-USB6 son `INFO_USB_SALUD` + `INFO_USB_AVERIAS`
-(`dev/usb/salud.rs`) y la luz fija de la barra (`scene/testigo.rs`). Sin
-verificar en metal.
+** Ver `docs/componente/EL_TECLADO_EXIGE.md`: las **nueve exigencias** del teclado con
+su estado y, sobre todo, **el numero que dice cual fallo**. Las seis primeras
+estan puestas desde el 2026-08-17: R-USB6 son `INFO_USB_SALUD` +
+`INFO_USB_AVERIAS` (`dev/usb/salud.rs`) y la luz fija de la barra
+(`scene/testigo.rs`). Sin verificar en metal.
+
+Las tres que se anadieron despues no son exigencias nuevas del aparato: son
+**cosas que ya se sabian y no se guardaban**, que es la misma forma de fallo tres
+veces seguidas.
+
+```text
+   E7  que este en el CONTROLADOR que miramos     habia aparatos en otro xHC
+   E8  que el TURNO llegue a su hora              el periodo era trabajo + 4 ms
+   E9  ** EL PORTERO: quien llego y que se le contesto
+```
+
+*** **E9 es la que nombra el patron.** `bmo_uhid` ya leia clase, subclase y
+protocolo de cada interfaz --y ya se obligaba a decirlos-- pero los mandaba al
+LOG, que se va con el scroll. Y `leer_descriptores` ya traia el Device
+Descriptor entero y tiraba los bytes 8..12, que son el NOMBRE del aparato: el
+equivalente del `USB\VID_046D&PID_C077` que ensena Windows.
+
+> Los papeles se leian y se tiraban. El veredicto se tomaba y se olvidaba.
+
+El portero (`dev/usb/portero.rs`, carril VERDE) no decide nada -- decidir sigue
+siendo de `bmo_uhid`, por la misma razon que el barrido: la decision se prueba
+sin encender la maquina. El portero **apunta y lo dice UNA vez**.
 
 - **R-USB8.** ** **UN ESTADO QUE SE FOTOGRAFIA NECESITA UNA EDAD AL LADO.** La
   salud del bus se saca en el bombeo --el unico sitio con el PML4 del kernel
