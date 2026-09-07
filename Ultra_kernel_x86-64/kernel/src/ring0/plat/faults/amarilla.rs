@@ -217,6 +217,21 @@ pub(super) extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u6
                 Some(true) => l.s(" marco LIBRE"),
                 Some(false) => {
                     l.s(" marco OCUPADO");
+                    // *** LA OTRA PUNTA, Y ES LA QUE CIERRA EL CASO. (07-09)
+                    //
+                    // `OCUPADO` dice **se entrego dos veces** y manda a buscar
+                    // quien lo entrego. Si ademas este marco paso por un doble
+                    // `free`, esa es la respuesta y ya estaba apuntada -- el
+                    // `else` de `phys::free_frame` la guarda en su libro
+                    // desde hoy, justamente porque su grito de CABINA no
+                    // sobrevive a esta pantalla.
+                    //
+                    // ** Un veredicto que dice QUE paso y CUANDO no manda a
+                    // auditar un arbol: manda a un tick.
+                    if let Some(t) = crate::ring0::mm::phys::se_devolvio_dos_veces(fisica) {
+                        l.s(" -- Y SE DEVOLVIO DOS VECES en tick ");
+                        l.hex(t, 8);
+                    }
                     // *** Y DE QUIEN ES AHORA. (2026-09-02, a peticion del dueno)
                     //
                     // ** `OCUPADO` significa **se entrego dos veces**, y eso

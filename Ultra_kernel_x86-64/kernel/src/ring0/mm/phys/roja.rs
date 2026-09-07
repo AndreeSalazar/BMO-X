@@ -283,6 +283,69 @@ pub fn alloc_frames_contig(count: u64) -> Option<u64> {
     }
 }
 
+/// -- EL LIBRO DE LOS DOBLES `free`, Y POR QUE NO BASTABA CABINA -------------
+///
+/// *** EL GRITO NO SOBREVIVIA AL SUCESO QUE LO PROVOCA. (2026-09-07)
+///
+/// El `else` de [`free_frame`] ya cazaba un marco devuelto dos veces desde el
+/// 01-09, y lo decia con `cabina::fault`. Pero CABINA es **un anillo en RAM**, y
+/// la pantalla azul pinta encima y reinicia a los veinte segundos.
+///
+/// Esa leccion ya se pago una vez, y esta escrita en `reap`:
+///
+/// > *"El grito no sobrevive al suceso que lo provoca. La ficha de la morgue
+/// > si, porque la azul la consulta."*
+///
+/// ** Aqui faltaba exactamente lo mismo, un nivel al lado. La azul del 07-09
+/// --la que el dueno reprodujo purgando y volviendo a lanzar DOOM-- dijo
+/// `marco OCUPADO`, que segun [`esta_libre`] significa **se entrego dos
+/// veces**. Y la otra punta del caso --*"a este marco ya le paso un doble
+/// `free`, en el tick NNNN"*-- **existio en CABINA y se perdio con el
+/// reinicio**.
+///
+/// Ocho fichas por el mismo motivo que la morgue: caben en el sitio y un caso
+/// se resuelve con las ultimas, no con todas.
+const DOBLES_FICHAS: usize = 8;
+
+#[derive(Clone, Copy)]
+pub(crate) struct DobleFree {
+    pub(crate) phys: u64,
+    pub(crate) tick: u64,
+}
+
+pub(crate) static mut DOBLES: [DobleFree; DOBLES_FICHAS] =
+    [DobleFree { phys: 0, tick: 0 }; DOBLES_FICHAS];
+static mut DOBLES_N: usize = 0;
+
+/// Apunta un marco devuelto dos veces. Se llama **con `LOCK` en la mano**,
+/// desde el unico sitio que puede saberlo.
+fn anotar_doble(phys: u64) {
+    unsafe {
+        let n = DOBLES_N % DOBLES_FICHAS;
+        DOBLES[n] = DobleFree { phys, tick: crate::ring0::plat::timer::ticks() };
+        DOBLES_N = DOBLES_N.wrapping_add(1);
+    }
+}
+
+/// **A este marco ya le paso un doble `free`?** Devuelve el tick en que fue.
+///
+/// [!] Se lee SIN el cerrojo, por el mismo motivo escrito en [`esta_libre`]: lo
+/// llama la pantalla de fallo, y colgarse ahi cambia un volcado legible por una
+/// maquina muda.
+pub fn se_devolvio_dos_veces(phys: u64) -> Option<u64> {
+    let base = phys & !(PAGE - 1);
+    unsafe {
+        let d = &*core::ptr::addr_of!(DOBLES);
+        for f in d.iter() {
+            if f.tick != 0 && f.phys == base {
+                return Some(f.tick);
+            }
+        }
+    }
+    None
+}
+
+
 /// Free a frame previously returned by `alloc_frame`. Freeing anything else
 /// (reserved, unaligned, out of range, or double free) is a kernel bug and is
 /// silently ignored -- callers must keep their own ownership straight.
@@ -319,6 +382,10 @@ pub fn free_frame(phys: u64) {
             // > documentacion avisa de este bug exacto.
             crate::ring0::cabina::fault(
                 "phys", "se devuelve un marco que YA estaba libre", phys);
+            // ** Y SE APUNTA EN EL LIBRO, ademas de gritarse. Ver `DOBLES`:
+            // el grito de CABINA no sobrevive a la azul, y la otra punta de
+            // este caso se pregunta JUSTO desde la azul.
+            anotar_doble(phys);
             // ** Y EN QUE ESTACION DEL DESMONTAJE IBA. (2026-09-04)
             //
             // Ese dia este renglon salio dos veces --`841000` y `4D2000`-- y no

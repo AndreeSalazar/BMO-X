@@ -56,5 +56,6 @@ pub use amarilla::zero_frame;
 pub use super::duenno::{duenno_de, Duenno};
 pub use roja::{
     alloc_frame, alloc_frame_de, alloc_frames_contig, alloc_frames_contig_de, esta_libre,
+    se_devolvio_dos_veces,
     free_frame, free_frame_de, init, stats, tramos,
 };
