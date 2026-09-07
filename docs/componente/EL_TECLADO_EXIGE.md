@@ -574,3 +574,128 @@ Cuando llegue, la fila es esta y la restriccion del punto 2 va dentro:
 `hay()` es el *"que reconozca si HAY codigos"* del dueno, hecho mecanismo: un
 turno cuyo aparato no existe **no se salta a mano en el bucle** -- se apaga en su
 propia fila, que es el unico sitio donde se puede leer sin abrir el bucle.
+
+---
+
+## 9. ★★ E9 -- EL PORTERO: QUE SE SEPA QUIEN LLEGO Y QUE SE LE CONTESTO
+
+> Pedido el **2026-09-07**: *"es como un guardian con que busca nombres y
+> papeles, y si no sale le avisa al kernel y ya"*.
+
+### 9.1 El guardian YA existia. Lo que faltaba era el libro
+
+`cosechar_puerto` lee clase, subclase y protocolo de **cada interfaz** y decide
+con ellos. Y ya se obligaba a decirlos, con su motivo escrito en el codigo:
+
+> *"Toda interfaz se DICE antes de juzgarla. Sin esto, un aparato descartado y
+> un aparato ausente se ven exactamente igual"*
+
+★ **Pero los decia al LOG.** Y un log se va con el scroll, asi que esa frase
+valia mientras alguien mirara el serial **en ese instante** -- no despues, que es
+cuando de verdad se pregunta *"enchufe algo y no paso nada, que era?"*.
+
+```
+   los papeles se leian y se TIRABAN
+   el veredicto se tomaba y se OLVIDABA
+```
+
+### 9.2 Los diez veredictos
+
+Cubren el arbol entero de la adopcion. No hay ninguna rama muda:
+
+```
+   entra como TECLADO              entra como RATON
+   no es HID                       HID sin subclase BOOT
+   valia pero el puesto esta dado  sin endpoint de interrupcion
+   endpoint que no se preparo      raton que no se pudo instalar
+   el puerto no se direcciono      sus descriptores no se leyeron
+```
+
+### 9.3 El reparto, y por que el portero NO decide
+
+```
+   bmo-uhid     DECIDE       conoce las clases, sabe que es un teclado
+   el HAL       TRANSPORTA   `papeles()`: bmo-xhci no sabe que es un teclado
+   portero.rs   APUNTA       y lo dice UNA vez
+```
+
+Mismo corte que el barrido (`barrido::decidir` decide, el kernel obedece) y por
+la misma razon: **la decision se prueba sin encender la maquina**.
+
+[!] Un portero que ademas decidiera seria una segunda politica de adopcion al
+lado de la primera, y el dia que discreparan **ganaria la que corriera antes**.
+Los diez veredictos van al lado de las ramas que ya existian; ninguna condicion
+se toco.
+
+### 9.4 ★ El NOMBRE, que tambien estaba y tambien se tiraba
+
+`leer_descriptores` ya trae el Device Descriptor entero. Usaba el byte 4 --la
+clase-- y tiraba los bytes 8..12, que son `idVendor` e `idProduct`.
+
+O sea que BMO-X no tenia en ninguna parte esto:
+
+```
+   USB\VID_046D&PID_C077        <- lo que ensena Windows
+```
+
+Y es lo unico con lo que un aparato rechazado se puede **identificar**, o
+simplemente buscar. Clase y subclase dicen QUE es; solo el nombre dice CUAL es.
+Cero coste: ninguna peticion nueva al bus.
+
+** Cero cuando vino corto, y eso es parte del mecanismo: el bucle se conforma con
+ocho bytes --lo clasico, pedir ocho para saber el `bMaxPacketSize0`-- y el nombre
+empieza en el noveno. Un cero dice *"no se sabe"*; **inventarlo seria darle una
+identidad equivocada al aparato que no arranca**, que es justo lo que mas
+confunde.
+
+### 9.5 Se dice UNA vez, y el libro es quien lo garantiza
+
+El barrido vuelve a mirar cada 500 ms y los mismos papeles dan el mismo
+veredicto. Anunciarlo cada vez serian dos renglones por segundo por aparato, y
+CABINA tiene sitio para 82: en menos de un minuto la linea que explica la causa
+estaria fuera.
+
+```
+   ficha que ya esta       se calla
+   veredicto que CAMBIA    es otra ficha, y SI se dice   <- lo que hay que saber
+   libro lleno             se cuenta en `sinsitio` y se calla
+```
+
+** No se da la vuelta al llenarse a proposito: sobrescribir la vieja haria que su
+aparato volviera a anunciarse en el siguiente barrido, y el libro pasaria de
+antirrebote a **generador de renglones**.
+
+### 9.6 Los numeros
+
+```
+   portero=entraron:fuera:sinsitio        en la fila USB del panel
+```
+
+`fuera` **no es un fallo por si mismo**: un hub o un aparato que no es HID cuentan
+ahi, y es correcto que cuenten. Lo que se compra es que *"enchufe algo y no paso
+nada"* deje de ser indistinguible de *"no llego nada"*.
+
+Y el renglon de CABINA, en hexadecimal y de izquierda a derecha:
+
+```
+   vid(16) | pid(16) | puerto | clase | subclase | proto
+   046D      C077      02       03      01         01
+```
+
+El veredicto no va en el numero: va en el TEXTO, que es donde se lee sin
+decodificar nada.
+
+### 9.7 Lo que esto NO hace
+
+```
+   [ ] no cambia que aparatos se adoptan. Ni una condicion tocada
+   [ ] no resucita nada: si un aparato sale rechazado, sale rechazado
+   [ ] el libro no se lee desde Ring 3 todavia. Hoy contesta por CABINA y por
+       los tres numeros del panel, que es donde se mira con la maquina rota
+```
+
+★ **Y el rechazo que hoy se podria levantar ya esta nombrado**: `HID sin subclase
+BOOT`. El Report Descriptor **ya se sabe leer** (ver `formato`), asi que esa
+condicion espera solo a confirmarse en el Ryzen antes de ensancharse. Cuando se
+levante, el portero es lo que dira si sirvio: los aparatos que hoy salen con ese
+veredicto son exactamente los que entrarian.
