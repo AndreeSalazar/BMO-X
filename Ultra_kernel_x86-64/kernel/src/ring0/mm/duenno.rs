@@ -191,10 +191,55 @@ fn indice(phys: u64) -> Option<usize> {
     Some((phys / PAGE) as usize)
 }
 
+// == LA CUENTA DEL NEUTRO, Y POR QUE SE LLEVA AQUI ==========================
+//
+// `NEUTRO/LEY.md` regla N4 pide que la cantidad de marcos de aparato se pueda
+// mirar y este QUIETA. La primera version la contaba recorriendo la tabla
+// entera -- cuatro millones de entradas con el techo de 16 GiB-- y esa version
+// no se podia poner en un panel que se repinta.
+//
+// ** Asi que se lleva AQUI, que es el unico sitio por el que un marco cambia de
+// dueno. Dos comparaciones por marcado, y el numero esta siempre listo.
+//
+// *** Y AL LLEVARLA APARECIO ALGO QUE NO SE BUSCABA.
+//
+// Si la cuenta puede SUBIR cuando un marco pasa a `Neutro`, tambien puede BAJAR
+// cuando deja de serlo. Y un marco de aparato que deja de ser de un aparato es
+// **exactamente lo que N3 prohibe**:
+//
+// ```text
+//    N3   un marco neutro NO se devuelve
+// ```
+//
+// [!] Lo importante es COMO se detecta: **desde el lado del marcado, sin tocar
+// el camino de devolucion de marcos**. Ese camino es ROJO, es donde vive la
+// azul del 07-09, y `NEUTRO/REQUISITOS.md` (R4) dice que no se toca hasta
+// haberla reproducido. Esto lo vigila sin entrar.
+//
+// > Se puede saber que una regla se rompio sin ponerse delante de ella.
+
+/// Marcos que AHORA MISMO son de un aparato.
+static mut NEUTROS_VIVOS: u64 = 0;
+/// Veces que un marco dejo de ser de un aparato. **Tiene que ser CERO**: si no
+/// lo es, N3 se rompio y aqui esta la prueba. Ver la nota de arriba.
+static mut NEUTROS_SOLTADOS: u64 = 0;
+
 /// Apuntar para que se pidio un marco. Lo llama `alloc_frame_de`.
 pub fn marcar(phys: u64, q: Duenno) {
     if let Some(i) = indice(phys) {
+        let antes = tabla()[i];
         tabla()[i] = q as u8;
+        // La cuenta del neutro, en O(1). Ver la nota de arriba.
+        let era = antes == Duenno::Neutro as u8;
+        let es = q == Duenno::Neutro;
+        unsafe {
+            if es && !era {
+                NEUTROS_VIVOS += 1;
+            } else if era && !es {
+                NEUTROS_VIVOS = NEUTROS_VIVOS.saturating_sub(1);
+                NEUTROS_SOLTADOS = NEUTROS_SOLTADOS.wrapping_add(1);
+            }
+        }
     }
 }
 
@@ -252,25 +297,22 @@ pub fn cubiertos() -> u64 {
     n
 }
 
-/// **Cuantos marcos son de un APARATO**, o sea neutros.
+/// **`(marcos de aparato, veces que uno se solto)`.** La cifra de `NEUTRO/`.
 ///
 /// Va aparte de [`cubiertos`] a proposito. `cubiertos` contesta *"cuanto sabe
-/// el juez"*; esto contesta *"cuanta RAM de esta maquina esta fuera del celo"*,
-/// que es la cifra de `NEUTRO/` y no la del asignador.
+/// el juez"*; esto contesta *"cuanta RAM de esta maquina esta fuera del celo"*.
 ///
-/// ** En una maquina sana es un numero PEQUENO Y QUIETO: los cuatro aparatos
-/// piden sus marcos al arrancar y no vuelven a pedir. **Si sube con la maquina
-/// en marcha, alguien esta repartiendo DMA en caliente** -- y eso es lo que hay
-/// que ir a mirar antes que nada.
-pub fn neutros() -> u64 {
-    let t = tabla();
-    let mut n = 0u64;
-    for i in 0..MARCOS {
-        if t[i] == Duenno::Neutro as u8 {
-            n += 1;
-        }
-    }
-    n
+/// ```text
+///    vivos     PEQUENO Y QUIETO. Los aparatos piden al arrancar y ya.
+///              Si sube en marcha, alguien reparte DMA en caliente
+///    soltados  ** CERO. Cualquier otra cosa es N3 rota, y con su cuenta
+/// ```
+///
+/// Las dos son de leer un `static`: la cuenta la lleva [`marcar`], que es el
+/// unico sitio por el que un marco cambia de dueno. Preguntar esto **no
+/// recorre nada**, asi que se puede poner en un panel que se repinta.
+pub fn neutros() -> (u64, u64) {
+    unsafe { (NEUTROS_VIVOS, NEUTROS_SOLTADOS) }
 }
 
 /// **EL GUARDIAN DEL TECHO**, y corre en compilacion.
