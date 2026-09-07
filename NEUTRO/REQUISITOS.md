@@ -46,21 +46,40 @@ exactamente la pregunta que la pista hacia.
 
 ---
 
-## R3 -- [ ] EL NUMERO EN EL PANEL
+## R3 -- [x] EL NUMERO EN EL PANEL, y salio con un vigilante dentro
 
-**Bloquea:** nada. Es una fila.
+**Hecho el 2026-09-07.** `neutro=vivos:soltados` en la fila `sys`, al lado de
+`mem=`, porque es un hecho de MEMORIA y no de USB.
 
-`duenno::neutros()` existe y **no lo lee nadie**. N4 dice que su valor tiene que
-estar QUIETO, y una regla sobre un numero que no se mira no se puede romper ni
-cumplir.
+Lo que se pidio era una fila. Lo que aparecio al escribirla es otra cosa:
 
-**Como se sabra que quedo hecha:** aparece en el panel de CABINA junto a
-`placa=` y `portero=`, y su valor no cambia entre dos miradas con la maquina en
-marcha.
+```text
+   la version vieja de `neutros()` RECORRIA la tabla -- cuatro millones de
+   entradas-- y eso no se puede poner en un panel que se repinta
+```
+
+Asi que la cuenta se llevo a `marcar`, el unico sitio por el que un marco cambia
+de dueno. Y ahi aparecio lo que no se buscaba: **si la cuenta puede subir, puede
+bajar** -- y un marco de aparato que deja de serlo es **N3 rota**.
+
+★★ `soltados` la vigila **desde el lado del marcado, sin tocar el camino de
+devolucion de marcos**. Que es justo lo que R4 dice que no se puede tocar
+todavia.
+
+> Se puede saber que una regla se rompio sin ponerse delante de ella.
+
+**Como se comprueba:** arrancar y mirar la fila `sys`. `vivos` distinto de cero
+y quieto; `soltados` en cero. Si `soltados` sube, la fila entera se pone en rojo
+-- gana sobre el aviso de RAM baja, porque quedarse sin memoria es incomodo y un
+marco de aparato suelto es corrupcion esperando turno.
 
 ---
 
 ## R4 -- [ ] ⚠ QUE N3 SE HAGA CUMPLIR: un marco neutro que se devuelve
+
+> ⭐ **Y desde R3 ya se DETECTA**, aunque no se impida. `soltados` cuenta las
+> veces que pasa. Lo que falta aqui es **rehusarlo**, que es otra cosa y toca el
+> camino ROJO.
 
 **Bloquea:** hay que decidir **quien** rehusa, y no es obvio.
 
@@ -74,8 +93,14 @@ Adelante, y callado"*.
    quien NO declara     la purga, y las hojas de Ring 3
 ```
 
-** Asi que N3 esta escrita y **no la vigila nadie todavia**. Se dice aqui en vez
-de dejar la regla sonando a cumplida.
+** Asi que N3 esta escrita y **nadie la REHUSA todavia**. Desde R3 si se VIGILA
+--`soltados` cuenta las veces-- y son dos cosas distintas que conviene no
+mezclar:
+
+```text
+   vigilar   saber que paso. HECHO, y sin entrar en el camino rojo
+   rehusar   impedir que pase. ES ESTO, y hay que entrar
+```
 
 ⚠ **Y no se arregla poniendo `free_frame_de` en la purga sin pensarlo**: tocar
 el camino de devolucion de marcos es ROJO, es el mismo sitio de la azul del
@@ -146,7 +171,7 @@ GRAFICA y BMO-X no tiene codigo para ella"*, y el censo tiene una fila mas.
 ## ★ EL ORDEN, y no es el de los numeros
 
 ```text
-   1.  R3   una fila en el panel. Barato, y hace visible N4
+   1.  [x] R3   hecho. Y de regalo, `soltados` DETECTA la rotura de N3
    2.  R2   ya esta hecho: solo falta EJECUTARLO en el Ryzen
    3.  R5   el guardian del censo. Impide que esto se pudra solo
    4.  R4   ** despues de la 1.4b. Es ROJO y hay una azul sin reproducir

@@ -77,6 +77,7 @@ mientras el aparato sigue escribiendo -- que es la pista **1.5** de la hoja del
 ## N4 -- LA CUENTA DEL NEUTRO TIENE QUE ESTAR QUIETA
 
 **Componente:** `duenno::neutros()`.
+**Numero:** `neutro=vivos:soltados`, en la fila `sys` del panel.
 
 En una maquina sana ese numero **sube en el arranque y no se mueve mas**. Si
 sube con la maquina en marcha, alguien esta repartiendo DMA en caliente, y eso
@@ -85,11 +86,30 @@ es lo primero que hay que ir a mirar.
 ```text
    quieto    los aparatos pidieron al arrancar. Normal
    subiendo  ** algo reparte DMA en caliente. Ir a mirar ANTES que nada
+   bajando   ** N3 ROTA. Ver abajo
 ```
 
-> **Sacrificio:** contarlo recorre la tabla entera -- cuatro millones de
-> entradas con el techo de 16 GiB. Por eso **no se pregunta en un bucle**, y
-> quien lo ponga en uno rompe la regla aunque no cambie el numero.
+### ★★ Y LA CUENTA VIGILA A N3, que es lo que no se buscaba
+
+La primera version de esta regla contaba recorriendo la tabla entera, y su
+sacrificio era ese recorrido. **Al llevar la cuenta a `marcar` --el unico sitio
+por el que un marco cambia de dueno-- aparecio algo mejor:**
+
+Si la cuenta puede SUBIR cuando un marco pasa a `Neutro`, tambien puede BAJAR
+cuando deja de serlo. Y eso es **exactamente lo que N3 prohibe**. Asi que
+`soltados` cuenta las veces que se rompio, y tiene que ser **cero**.
+
+[!] Lo importante es COMO: **desde el lado del marcado, sin tocar el camino de
+devolucion de marcos**. Ese camino es ROJO, es donde vive la azul del 07-09, y
+[`REQUISITOS.md`](REQUISITOS.md) R4 dice que no se toca hasta reproducirla.
+
+> Se puede saber que una regla se rompio sin ponerse delante de ella.
+
+> **Sacrificio:** dos comparaciones y una rama **en cada marcado de marco**, que
+> es uno de los caminos mas transitados del kernel. Es barato, pero se paga
+> siempre y no solo cuando alguien mira. Y hay un precio de diseno mayor: la
+> cuenta ya **no es una medida independiente de la tabla** -- si `marcar` se
+> equivoca, el numero se equivoca con el, y no queda quien lo desmienta.
 
 ---
 

@@ -224,7 +224,30 @@ pub fn render_hud() {
     r.txt(" sw="); r.dec(s.scheduler.context_switches);
     r.txt(" task="); r.dec(s.scheduler.processes); r.txt("/"); r.dec(s.scheduler.threads);
     r.txt(" tid="); r.dec(tid as u64);
-    let health = if mib_free < 256 { C_WARN } else { C_OK };
+    // ** `neutro=vivos:soltados` -- LA RAM QUE ESTA FUERA DEL CELO.
+    //
+    // `vivos` son los marcos que un APARATO escribe por DMA: disco, red y USB
+    // hoy, y la GPU cuando llegue. Tiene que ser pequeno y QUIETO -- los
+    // aparatos piden al arrancar y no vuelven a pedir. Si sube con la maquina
+    // en marcha, alguien reparte DMA en caliente.
+    //
+    // [!] `soltados` tiene que ser **CERO**. Cualquier otra cosa significa que
+    // un marco de aparato volvio al asignador, que es la regla N3 rota -- y es
+    // la forma exacta de la pista 1.5 de la hoja del 07-09.
+    //
+    // Ver `NEUTRO/LEY.md` y `NEUTRO/REQUISITOS.md`, R3.
+    let (n_vivos, n_soltados) = crate::ring0::mm::duenno::neutros();
+    r.txt(" neutro="); r.dec(n_vivos);
+    r.txt(":"); r.dec(n_soltados);
+    let health = if n_soltados != 0 {
+        // Gana sobre la RAM baja: quedarse sin memoria es incomodo, un marco de
+        // aparato suelto es corrupcion esperando su turno.
+        C_FAULT
+    } else if mib_free < 256 {
+        C_WARN
+    } else {
+        C_OK
+    };
     splash_dashboard_log_color(total - 5, r.as_str(), health);
 
     // Ring 3 -- verde = corriendo, gris = termino, ambar = bloqueado.
