@@ -174,8 +174,18 @@ impl XhciHal for KernelXhciHal {
     }
     /// **EL PORTERO.** El driver ya tenia el veredicto; hasta hoy solo lo
     /// mandaba al log, que se va con el scroll. Ver `portero.rs`.
-    fn papeles(&self, puerto: u8, iface: u8, clase: u8, subclase: u8, proto: u8, veredicto: u8) {
-        portero::apunta(puerto, iface, clase, subclase, proto, veredicto);
+    fn papeles(
+        &self,
+        vid: u16,
+        pid: u16,
+        puerto: u8,
+        iface: u8,
+        clase: u8,
+        subclase: u8,
+        proto: u8,
+        veredicto: u8,
+    ) {
+        portero::apunta(vid, pid, puerto, iface, clase, subclase, proto, veredicto);
     }
 }
 

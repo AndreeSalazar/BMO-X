@@ -51,14 +51,21 @@ pub trait XhciHal {
     /// implemente el HAL puede GUARDARLO, y entonces se puede contestar despues
     /// *"que llego y que le dije"* sin haber estado mirando en ese instante.
     ///
+    /// `vid`/`pid` son el NOMBRE --lo que Windows ensena como
+    /// `USB\VID_046D&PID_C077`--, y en cero cuando no se pudo leer. Clase y
+    /// subclase dicen QUE es; solo el nombre dice CUAL es.
+    ///
     /// El `veredicto` lo pone quien decide, que es `bmo_uhid`: sus constantes
     /// `VEREDICTO_*` son el vocabulario. Aqui viaja como un numero a proposito --
     /// este crate habla con el controlador y **no sabe que es un teclado**.
     ///
     /// Por defecto no hace nada: un HAL de prueba no tiene donde apuntar, y una
     /// implementacion vacia deja que este metodo se anada sin tocar a nadie.
+    #[allow(clippy::too_many_arguments)]
     fn papeles(
         &self,
+        _vid: u16,
+        _pid: u16,
         _puerto: u8,
         _iface: u8,
         _clase: u8,

@@ -310,15 +310,17 @@ impl UsbHidHal {
             None => {
                 // `iface` = 0xFF: no llego a haber interfaz que mirar. Ver
                 // EL PORTERO, al final de este fichero.
-                h.papeles(port, 0xFF, 0, 0, 0, VEREDICTO_SIN_DIRECCION);
+                h.papeles(0, 0, port, 0xFF, 0, 0, 0, VEREDICTO_SIN_DIRECCION);
                 return cosecha;
             }
         };
         let mut cfg = [0u8; enumera::MAX_CFG];
-        let (cfg_val, largo) = match enumera::leer_descriptores(slot, &mut cfg) {
+        let (cfg_val, largo, vid, pid) = match enumera::leer_descriptores(slot, &mut cfg) {
             Some(v) => v,
             None => {
-                h.papeles(port, 0xFF, 0, 0, 0, VEREDICTO_SIN_DESCRIPTORES);
+                // Sin descriptores tampoco hay nombre: los dos salen del mismo
+                // camino. Cero es "no se sabe", y se dice como tal.
+                h.papeles(0, 0, port, 0xFF, 0, 0, 0, VEREDICTO_SIN_DESCRIPTORES);
                 return cosecha;
             }
         };
@@ -350,7 +352,7 @@ impl UsbHidHal {
             h.log_u64(" proto=", *proto as u64);
             if *clase != enumera::CLASE_HID {
                 h.log(" (no es HID)\n");
-                h.papeles(port, *iface, *clase, *subclase, *proto, VEREDICTO_NO_ES_HID);
+                h.papeles(vid, pid, port, *iface, *clase, *subclase, *proto, VEREDICTO_NO_ES_HID);
                 continue;
             }
             if *subclase != enumera::SUBCLASE_BOOT {
@@ -365,14 +367,14 @@ impl UsbHidHal {
                 // CPU lo ha ejecutado. Primero se confirma en el Ryzen que el
                 // descriptor del raton actual se lee bien; despues se ensancha.
                 h.log(" (HID sin subclase BOOT: no lo adopto todavia)\n");
-                h.papeles(port, *iface, *clase, *subclase, *proto, VEREDICTO_HID_SIN_BOOT);
+                h.papeles(vid, pid, port, *iface, *clase, *subclase, *proto, VEREDICTO_HID_SIN_BOOT);
                 continue;
             }
             let es_teclado = *proto == enumera::PROTO_TECLADO && self.teclado.is_none();
             let es_raton = *proto == enumera::PROTO_RATON && self.raton_libre(sale_del_teclado);
             if !es_teclado && !es_raton {
                 h.log(" (ya cubierto)\n");
-                h.papeles(port, *iface, *clase, *subclase, *proto, VEREDICTO_YA_CUBIERTO);
+                h.papeles(vid, pid, port, *iface, *clase, *subclase, *proto, VEREDICTO_YA_CUBIERTO);
                 continue;
             }
             h.log(" -> lo tomo\n");
@@ -380,7 +382,7 @@ impl UsbHidHal {
             let (_addr, mps, interval, dci) = match enumera::intr_in(cfg, *iface) {
                 Some(e) => e,
                 None => {
-                    h.papeles(port, *iface, *clase, *subclase, *proto, VEREDICTO_SIN_ENDPOINT);
+                    h.papeles(vid, pid, port, *iface, *clase, *subclase, *proto, VEREDICTO_SIN_ENDPOINT);
                     continue;
                 }
             };
@@ -388,7 +390,7 @@ impl UsbHidHal {
                 match enumera::preparar_endpoint(slot, dci, mps, interval, *iface, cfg_val) {
                     Some(b) => b,
                     None => {
-                        h.papeles(port, *iface, *clase, *subclase, *proto, VEREDICTO_SIN_PREPARAR);
+                        h.papeles(vid, pid, port, *iface, *clase, *subclase, *proto, VEREDICTO_SIN_PREPARAR);
                         continue;
                     }
                 };
@@ -404,7 +406,7 @@ impl UsbHidHal {
                 self.puerto_teclado = Some(port);
                 cosecha.teclado = true;
                 h.log("[uhid] teclado listo\n");
-                h.papeles(port, *iface, *clase, *subclase, *proto, VEREDICTO_TECLADO);
+                h.papeles(vid, pid, port, *iface, *clase, *subclase, *proto, VEREDICTO_TECLADO);
             } else {
                 if sale_del_teclado {
                     h.log("[uhid] iface de raton en MI TECLADO: provisional\n");
@@ -436,12 +438,12 @@ impl UsbHidHal {
                     self.puerto_raton = Some(port);
                     cosecha.raton = true;
                     h.log("[uhid] raton listo\n");
-                    h.papeles(port, *iface, *clase, *subclase, *proto, VEREDICTO_RATON);
+                    h.papeles(vid, pid, port, *iface, *clase, *subclase, *proto, VEREDICTO_RATON);
                 } else {
                     // Choco de direccion con uno ya puesto. Sin esta rama, el
                     // unico raton que no entra sale del libro como si no
                     // hubiera llegado nunca.
-                    h.papeles(port, *iface, *clase, *subclase, *proto, VEREDICTO_RATON_NO_ENTRO);
+                    h.papeles(vid, pid, port, *iface, *clase, *subclase, *proto, VEREDICTO_RATON_NO_ENTRO);
                 }
             }
         }

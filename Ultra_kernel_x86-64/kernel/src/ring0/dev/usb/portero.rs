@@ -73,6 +73,13 @@ const FICHAS: usize = 12;
 /// Los papeles de una llegada y lo que se le contesto.
 #[derive(Clone, Copy, PartialEq)]
 struct Ficha {
+    /// El NOMBRE: `idVendor`/`idProduct`. Cero = no se pudo leer.
+    ///
+    /// Clase y subclase dicen QUE es --un HID de arranque--; solo esto dice
+    /// CUAL es. Es lo que Windows ensena como `USB\VID_046D&PID_C077`, y sin
+    /// ello un aparato rechazado no se puede ni buscar.
+    vid: u16,
+    pid: u16,
     puerto: u8,
     /// `0xFF` = no llego a haber interfaz que mirar (fallo antes).
     iface: u8,
@@ -83,7 +90,7 @@ struct Ficha {
 }
 
 const VACIA: Ficha =
-    Ficha { puerto: 0, iface: 0, clase: 0, subclase: 0, proto: 0, veredicto: 0 };
+    Ficha { vid: 0, pid: 0, puerto: 0, iface: 0, clase: 0, subclase: 0, proto: 0, veredicto: 0 };
 
 static mut LIBRO: [Ficha; FICHAS] = [VACIA; FICHAS];
 /// Cuantas fichas hay escritas. Se detiene en `FICHAS`: ver [`apunta`].
@@ -103,8 +110,18 @@ pub fn stats() -> (u64, u64, u64) {
 /// Lo llama `KernelXhciHal::papeles`, que es la unica implementacion del HAL.
 /// Corre dentro de `pump_bus`, o sea con el PML4 del kernel puesto -- pero esto
 /// no toca MMIO, asi que no depende de ello.
-pub(super) fn apunta(puerto: u8, iface: u8, clase: u8, subclase: u8, proto: u8, veredicto: u8) {
-    let f = Ficha { puerto, iface, clase, subclase, proto, veredicto };
+#[allow(clippy::too_many_arguments)]
+pub(super) fn apunta(
+    vid: u16,
+    pid: u16,
+    puerto: u8,
+    iface: u8,
+    clase: u8,
+    subclase: u8,
+    proto: u8,
+    veredicto: u8,
+) {
+    let f = Ficha { vid, pid, puerto, iface, clase, subclase, proto, veredicto };
     unsafe {
         let libro = &mut *core::ptr::addr_of_mut!(LIBRO);
         // Ya lo dijimos? Entonces callar. Ver la cabecera.
@@ -131,16 +148,23 @@ pub(super) fn apunta(puerto: u8, iface: u8, clase: u8, subclase: u8, proto: u8, 
     }
     // ** Y AHORA SE DICE, fuera del `unsafe`: CABINA no necesita el libro.
     //
-    // El numero lleva los papeles enteros para que el renglon se pueda leer sin
-    // volver a enumerar nada. Seis campos de un byte en un `u64`:
+    // El numero lleva la ficha entera para que el renglon se pueda leer sin
+    // volver a enumerar nada. CABINA lo pinta en hexadecimal (`Fmt::Raw`), asi
+    // que sale con esta forma y se lee de izquierda a derecha:
     //
-    //    puerto | iface | clase | subclase | proto | veredicto
-    let papeles = ((puerto as u64) << 40)
-        | ((iface as u64) << 32)
-        | ((clase as u64) << 24)
-        | ((subclase as u64) << 16)
-        | ((proto as u64) << 8)
-        | veredicto as u64;
+    //    vid(16) | pid(16) | puerto | clase | subclase | proto
+    //    046D      C077      02       03      01         01
+    //    \_ el nombre, igual que lo dice Windows _/  \_ que ES _/
+    //
+    // ** El VEREDICTO no va en el numero: va en el TEXTO, que es donde se lee
+    // sin decodificar nada. Y `iface` se queda fuera porque, cuando hay que
+    // elegir, el puerto es el que se puede tocar con la mano.
+    let papeles = ((vid as u64) << 48)
+        | ((pid as u64) << 32)
+        | ((puerto as u64) << 24)
+        | ((clase as u64) << 16)
+        | ((subclase as u64) << 8)
+        | proto as u64;
     if admitido(veredicto) {
         crate::ring0::cabina::info("portero", motivo(veredicto), papeles);
     } else {
