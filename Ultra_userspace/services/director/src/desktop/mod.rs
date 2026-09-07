@@ -122,6 +122,9 @@ pub(crate) struct Windows {
     pub mem_open: bool,
     pub sound: crate::scene::sound::SoundWindow,
     pub sound_open: bool,
+    /// F1 -- ESTRUCTURA, el taller. Escalon 1 de `PLAN_ESTRUCTURA.md`.
+    pub estructura: crate::scene::estructura::EstructuraWindow,
+    pub estructura_open: bool,
     /// Who gets the keys. The policy lives in `bmo_input` and is tested THERE;
     /// here it is only asked, and what it decided is painted.
     pub focus: Focus,
@@ -149,6 +152,8 @@ impl Windows {
             mem_open: false,
             sound: crate::scene::sound::SoundWindow::new(p),
             sound_open: false,
+            estructura: crate::scene::estructura::EstructuraWindow::new(p),
+            estructura_open: false,
             focus,
             top_before: Ventana::Run,
             visible: true,
@@ -180,6 +185,7 @@ impl Windows {
             Ventana::Cpu => self.cpu_open,
             Ventana::Mem => self.mem_open,
             Ventana::Sound => self.sound_open,
+            Ventana::Estructura => self.estructura_open,
             // ** UNA APP ESTA ABIERTA SI EL FOCO LA CONOCE, y eso no es
             // una suposicion: un `Ventana::App` solo entra en la lista
             // cuando `table.collect` da a luz su caja, y sale cuando se

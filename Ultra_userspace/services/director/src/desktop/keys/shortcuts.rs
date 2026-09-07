@@ -153,6 +153,29 @@ if alt_alone && (0x80..=0x83).contains(&c) {
                 }
             }
         }
+        // ESTRUCTURA se mueve con Alt+flechas como las demas que llevan
+        // `Chrome`. Nace con esto y no como deuda: la ventana del taller es
+        // justo la que se quiere apartar para mirar otra cosa mientras compila.
+        Some(Ventana::Estructura) => {
+            if dsk.win.estructura_open && !dsk.win.estructura.chrome.minimized {
+                let (vx, vy, va, vl) = (
+                    dsk.win.estructura.chrome.x, dsk.win.estructura.chrome.y,
+                    dsk.win.estructura.chrome.width, dsk.win.estructura.chrome.height,
+                );
+                let cambio = if fit {
+                    dsk.win.estructura.chrome.snap(&p, heading)
+                } else {
+                    dsk.win.estructura.chrome.push(&p, heading)
+                };
+                if cambio {
+                    erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                    uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+                    scene::estructura::paint(&p, &dsk.win.estructura);
+                    dsk.win.top_before = Ventana::Estructura;
+                    moved = true;
+                }
+            }
+        }
         Some(Ventana::Sound) => {
             if dsk.win.sound_open && !dsk.win.sound.chrome.minimized {
                 let (vx, vy, va, vl) = (

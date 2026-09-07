@@ -161,6 +161,11 @@ pub(crate) fn on_pointer(
         Ventana::Data => dsk.win.data_open && dsk.win.data.contains(pos.x, pos.y),
         Ventana::Cabina => dsk.win.cabina_open && dsk.win.cabina.chrome.contains(pos.x, pos.y),
         Ventana::Sound => dsk.win.sound_open && dsk.win.sound.chrome.contains(pos.x, pos.y),
+        // ESTRUCTURA nace CON raton, y no por lujo: es la unica de las nuevas
+        // que lleva `Chrome` desde su primera linea, asi que arrastrarla y
+        // cerrarla con el aspa funcionan el primer dia. Dejarla fuera aqui
+        // seria repetir a proposito la deuda que las vitales tienen abajo.
+        Ventana::Estructura => dsk.win.estructura_open && dsk.win.estructura.chrome.contains(pos.x, pos.y),
         // [!] LAS VITALES NO ESTAN EN EL RATON, y esto lo dice en voz alta en
         // vez de esconderlo detras de un comodin. No se arrastran, sus botones
         // no responden y un clic encima se lo lleva la ventana de DEBAJO --que

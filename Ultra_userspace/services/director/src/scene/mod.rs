@@ -69,6 +69,10 @@ pub(crate) mod testigo;
 /// DEVUELVE al cerrarse -- ver la cabecera del modulo: es lo unico que impide
 /// que el escritorio deje mudos a todos los programas que lanza.
 pub(crate) mod sound;
+
+/// **ESTRUCTURA, el taller (F1).** Escalon 1 de
+/// `docs/plan/PLAN_ESTRUCTURA.md`: la ventana y su confesion, sin terminal.
+pub(crate) mod estructura;
 /// **La SUPERFICIE de una app**: memoria que otro proceso dibuja y el DIRECTOR
 /// pega dentro de un marco. Es lo que convierte "prestar la pantalla entera" en
 /// "tener una ventana".
