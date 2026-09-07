@@ -291,7 +291,10 @@ pub const MAX_REPORT: usize = 512;
 /// mismo binario da "no dev desc" en un encendido y enumera bien en el
 /// siguiente. Un dispositivo recien reseteado puede no estar listo para el
 /// primer control transfer.
-pub unsafe fn leer_descriptores(slot: u8, cfg: &mut [u8; MAX_CFG]) -> Option<(u8, usize)> {
+pub unsafe fn leer_descriptores(
+    slot: u8,
+    cfg: &mut [u8; MAX_CFG],
+) -> Option<(u8, usize, u16, u16)> {
     let h = bmo_xhci::hal();
 
     let mut dev_desc = [0u8; 18];
@@ -306,6 +309,27 @@ pub unsafe fn leer_descriptores(slot: u8, cfg: &mut [u8; MAX_CFG]) -> Option<(u8
         return None;
     }
     h.log_u64(" class=", dev_desc[4] as u64);
+    // == ** EL NOMBRE DEL APARATO, QUE YA ESTABA AQUI (2026-09-07) ==========
+    //
+    // `idVendor` e `idProduct` viven en los bytes 8..12 de este mismo
+    // descriptor que acabamos de leer. Se leian y **se tiraban**: BMO-X no
+    // tenia en ninguna parte el equivalente del `USB\VID_046D&PID_C077` que
+    // ensena Windows, que es lo unico con lo que un aparato rechazado se puede
+    // IDENTIFICAR -- clase y subclase dicen que ES, no cual es.
+    //
+    // [!] Cero coste: no hay una peticion nueva. Lo unico que cambia es que
+    // deja de tirarse.
+    //
+    // ** Y cero si vino corto. El bucle de arriba se conforma con OCHO bytes
+    // --lo clasico: pedir ocho para saber el `bMaxPacketSize0`-- y el nombre
+    // empieza en el noveno. Un cero aqui dice "no se sabe"; inventarlo seria
+    // dar una identidad equivocada a un aparato que no arranca, que es
+    // exactamente lo que mas confunde.
+    let (vid, pid) = if n >= 12 {
+        (le_u16(&dev_desc, 8), le_u16(&dev_desc, 10))
+    } else {
+        (0, 0)
+    };
 
     let mut cfg_hdr = [0u8; 9];
     let mut n2 = 0usize;
@@ -332,7 +356,7 @@ pub unsafe fn leer_descriptores(slot: u8, cfg: &mut [u8; MAX_CFG]) -> Option<(u8
         h.log("[uhid] cfg short\n");
         return None;
     }
-    Some((cfg_val, total_len))
+    Some((cfg_val, total_len, vid, pid))
 }
 
 /// Enciende un puerto y direcciona lo que haya. `None` = ahi no hay nada, o no
