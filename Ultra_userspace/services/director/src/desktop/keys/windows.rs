@@ -1,5 +1,11 @@
-//! **The five window toggles**: F7 cpu, F8 memory, F10 sound, F11 CABINA,
-//! F12 data -- and the ESC that closes each one.
+//! **The six window toggles**: F1 ESTRUCTURA, F7 cpu, F8 memory, F10 sound,
+//! F11 CABINA, F12 data -- and the ESC that closes each one.
+//!
+//! F1 is first in the list and last in the file, and both are on purpose: it is
+//! the workshop, which is where you start, while F7..F12 are instruments you go
+//! to. In the file it sits after F12 because that block is the one it was
+//! copied from, and putting it next to its original is what makes a later
+//! divergence between the two visible.
 //!
 //! Function keys produce no character in ANY layout, so they cannot collide
 //! with typing. That is the only thing that matters in a system shortcut, and
@@ -115,6 +121,60 @@ if let Some(open) = toggle_data {
         erase_window(
             &p, &dsk.run_box, dsk.win.data.x(), dsk.win.data.y(),
             dsk.win.data.width(), dsk.win.data.height(), dsk.win.visible,
+        );
+        dsk.win.top_before = Ventana::Run;
+        uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+    }
+    return Key::Taken;
+}
+
+// -- F1: ESTRUCTURA, el taller --
+//
+// Calcada de F12 y por los mismos motivos: se atiende ANTES de
+// preguntar por el foco, porque un atajo que solo funciona si ya
+// estas dentro de la ventana no sirve para abrirla, y peor, no
+// sirve para cerrarla.
+//
+// ** F1 ESTABA LIBRE, y no de casualidad: `keys/app.rs` declaraba
+// `SC_F1 = 0x3B` solo como frontera del rango que el escritorio
+// retiene (`SC_F1..=SC_F10`), sin que nadie la usara. O sea que la
+// tecla ya llegaba aqui y no habia quien la recogiera.
+//
+// El 0x89 es el codigo COCIDO, no el scancode: lo pone
+// `ring0/dev/keyboard.rs` (`KEY_F1`), y las doce F son 0x89..0x94.
+// Escribir aqui el 0x3B compilaria y no abriria nada -- son dos
+// colas distintas, y esta es la cocida.
+//
+// Escalon 1 de `docs/plan/PLAN_ESTRUCTURA.md`: la ventana abre y
+// dice en que escalon esta. Todavia no lee una tecla.
+let toggle_est = if c == 0x89 {
+    Some(!dsk.win.estructura_open)
+} else if c == 0x1B && dsk.win.estructura_open && dsk.win.focus.es_para(Ventana::Estructura) {
+    Some(false)
+} else {
+    None
+};
+if let Some(open) = toggle_est {
+    dsk.win.estructura_open = open;
+    if open {
+        dsk.win.focus.open(Ventana::Estructura);
+        scene::estructura::paint(&p, &dsk.win.estructura);
+        dsk.win.top_before = if dsk.win.focus.es_para(Ventana::Estructura) {
+            Ventana::Estructura
+        } else {
+            Ventana::Run
+        };
+        // En `Fijo` se ha pintado encima de una caja que sigue
+        // teniendo el teclado: hay que devolverla arriba.
+        if dsk.win.top_before == Ventana::Run {
+            uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
+        }
+    } else {
+        // Al cerrarla, devolver el fondo Y repintar lo que tapaba.
+        dsk.win.focus.close(Ventana::Estructura);
+        let ch = &dsk.win.estructura.chrome;
+        erase_window(
+            &p, &dsk.run_box, ch.x, ch.y, ch.width, ch.height, dsk.win.visible,
         );
         dsk.win.top_before = Ventana::Run;
         uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
