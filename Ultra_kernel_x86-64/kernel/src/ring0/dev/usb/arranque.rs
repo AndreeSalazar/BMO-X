@@ -321,6 +321,33 @@ pub fn init(_ctx: &BootContext) {
         PRESENT = true;
         READY = ok;
     }
+    // == ** EL CONTROLADOR SE MIRA ANTES QUE EL TECLADO (2026-09-07) ========
+    //
+    // ** Esta comprobacion vivia DENTRO de `if KBD_RDY`, unas lineas mas abajo.
+    // O sea que la unica linea que explica **por que no hay teclado** solo se
+    // imprimia cuando SI lo habia.
+    //
+    // ```text
+    //    xHC vivo, teclado enumerado   ->  se comprobaba (y salia limpia)
+    //    xHC MUERTO, sin teclado       ->  no se comprobaba: "sin teclado" a secas
+    // ```
+    //
+    // Y el segundo renglon es el caso entero: un controlador en HSE no enumera
+    // nada, asi que `KBD_RDY` es falso **precisamente cuando** hay algo que
+    // decir. El dueno se quedaba con *"ninguna interface de teclado enumero"*,
+    // que suena a cable flojo y era el controlador caido.
+    //
+    // > Un diagnostico que se salta justo el caso que diagnostica no esta
+    // > escrito: esta redactado (ley 14).
+    unsafe {
+        let sts = bmo_xhci::usbsts();
+        // HSE (bit 2) o HCE (bit 12): el controlador se cayo, y todo lo que
+        // veamos despues --enumeraciones, endpoints, intervalos-- es ruido.
+        if sts & ((1 << 2) | (1 << 12)) != 0 {
+            crate::ring0::cabina::fault(
+                "xhci", "controlador en error (USBSTS HSE/HCE)", sts as u64);
+        }
+    }
     // Resumen detallado en serial + panel (ademas del status fijo en pantalla).
     unsafe {
         if KBD_RDY {
@@ -330,15 +357,10 @@ pub fn init(_ctx: &BootContext) {
             crate::ring0::cabina::info("usb", "teclado enumerado y configurado", KBD_SLOT as u64);
             // Lo que de verdad decide si el teclado hablara: el estado del
             // endpoint segun el xHC y el intervalo que quedo programado.
-            let (st, bi, iv, _sp, sts) = kbd_ep_debug();
+            let (st, bi, iv, _sp, _sts) = kbd_ep_debug();
             crate::ring0::cabina::info("xhci", "kbd bInterval->Interval programado", ((bi as u64) << 8) | iv as u64);
             if st != 1 {
                 crate::ring0::cabina::fault("xhci", "endpoint del teclado NO quedo Running", st as u64);
-            }
-            // HSE (bit 2) o HCE (bit 12): el controlador se cayo, todo lo demas
-            // que veamos despues es ruido.
-            if sts & ((1 << 2) | (1 << 12)) != 0 {
-                crate::ring0::cabina::fault("xhci", "controlador en error (USBSTS HSE/HCE)", sts as u64);
             }
         } else {
             log("[usb] SIN teclado (no enumero interface kbd)\n");
