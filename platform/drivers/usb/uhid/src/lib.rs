@@ -307,12 +307,20 @@ impl UsbHidHal {
 
         let slot = match enumera::direccionar_puerto(port) {
             Some(s) => s,
-            None => return cosecha,
+            None => {
+                // `iface` = 0xFF: no llego a haber interfaz que mirar. Ver
+                // EL PORTERO, al final de este fichero.
+                h.papeles(port, 0xFF, 0, 0, 0, VEREDICTO_SIN_DIRECCION);
+                return cosecha;
+            }
         };
         let mut cfg = [0u8; enumera::MAX_CFG];
         let (cfg_val, largo) = match enumera::leer_descriptores(slot, &mut cfg) {
             Some(v) => v,
-            None => return cosecha,
+            None => {
+                h.papeles(port, 0xFF, 0, 0, 0, VEREDICTO_SIN_DESCRIPTORES);
+                return cosecha;
+            }
         };
         let cfg = &cfg[..largo];
 
@@ -342,6 +350,7 @@ impl UsbHidHal {
             h.log_u64(" proto=", *proto as u64);
             if *clase != enumera::CLASE_HID {
                 h.log(" (no es HID)\n");
+                h.papeles(port, *iface, *clase, *subclase, *proto, VEREDICTO_NO_ES_HID);
                 continue;
             }
             if *subclase != enumera::SUBCLASE_BOOT {
@@ -356,24 +365,32 @@ impl UsbHidHal {
                 // CPU lo ha ejecutado. Primero se confirma en el Ryzen que el
                 // descriptor del raton actual se lee bien; despues se ensancha.
                 h.log(" (HID sin subclase BOOT: no lo adopto todavia)\n");
+                h.papeles(port, *iface, *clase, *subclase, *proto, VEREDICTO_HID_SIN_BOOT);
                 continue;
             }
             let es_teclado = *proto == enumera::PROTO_TECLADO && self.teclado.is_none();
             let es_raton = *proto == enumera::PROTO_RATON && self.raton_libre(sale_del_teclado);
             if !es_teclado && !es_raton {
                 h.log(" (ya cubierto)\n");
+                h.papeles(port, *iface, *clase, *subclase, *proto, VEREDICTO_YA_CUBIERTO);
                 continue;
             }
             h.log(" -> lo tomo\n");
 
             let (_addr, mps, interval, dci) = match enumera::intr_in(cfg, *iface) {
                 Some(e) => e,
-                None => continue,
+                None => {
+                    h.papeles(port, *iface, *clase, *subclase, *proto, VEREDICTO_SIN_ENDPOINT);
+                    continue;
+                }
             };
             let (buf_phys, buf_virt, protocolo) =
                 match enumera::preparar_endpoint(slot, dci, mps, interval, *iface, cfg_val) {
                     Some(b) => b,
-                    None => continue,
+                    None => {
+                        h.papeles(port, *iface, *clase, *subclase, *proto, VEREDICTO_SIN_PREPARAR);
+                        continue;
+                    }
                 };
 
             let direccion = Direccion::nueva(slot, dci);
@@ -387,6 +404,7 @@ impl UsbHidHal {
                 self.puerto_teclado = Some(port);
                 cosecha.teclado = true;
                 h.log("[uhid] teclado listo\n");
+                h.papeles(port, *iface, *clase, *subclase, *proto, VEREDICTO_TECLADO);
             } else {
                 if sale_del_teclado {
                     h.log("[uhid] iface de raton en MI TECLADO: provisional\n");
@@ -418,6 +436,12 @@ impl UsbHidHal {
                     self.puerto_raton = Some(port);
                     cosecha.raton = true;
                     h.log("[uhid] raton listo\n");
+                    h.papeles(port, *iface, *clase, *subclase, *proto, VEREDICTO_RATON);
+                } else {
+                    // Choco de direccion con uno ya puesto. Sin esta rama, el
+                    // unico raton que no entra sale del libro como si no
+                    // hubiera llegado nunca.
+                    h.papeles(port, *iface, *clase, *subclase, *proto, VEREDICTO_RATON_NO_ENTRO);
                 }
             }
         }
@@ -804,3 +828,62 @@ mod tests_replug {
         assert!(!hal.soltar_puerto(0));
     }
 }
+
+
+// == *** EL PORTERO: LOS PAPELES Y EL VEREDICTO ==============================
+//
+// # Por que esto existe, y es un hueco que el propio codigo ya nombraba
+//
+// `cosechar_puerto` YA leia los papeles de cada interfaz --clase, subclase,
+// protocolo-- y ya se obligaba a decirlos, con su motivo escrito:
+//
+// > *"Toda interfaz se DICE antes de juzgarla. Sin esto, un aparato descartado y
+// > un aparato ausente se ven exactamente igual"*
+//
+// ** Pero los decia al LOG, y un log se va con el scroll. Asi que la frase valia
+// mientras alguien estuviera mirando el serial en ese instante, y no despues --
+// que es justo cuando se pregunta: *"enchufe algo y no paso nada, que era?"*.
+//
+// El dueno lo pidio con la imagen exacta el 2026-09-07:
+//
+// > *"es como un guardian con que busca nombres y papeles, y si no sale le avisa
+// > al kernel y ya"*
+//
+// # El reparto, y por que el veredicto sale de AQUI
+//
+// ```text
+//    bmo-uhid   DECIDE      conoce las clases, sabe que es un teclado
+//    el HAL     TRANSPORTA  `papeles()`, un numero: bmo-xhci no sabe de teclados
+//    el kernel  APUNTA      el libro de llegadas, y lo dice UNA vez
+// ```
+//
+// Es el mismo corte que ya usa el barrido --`barrido::decidir` decide y el
+// kernel obedece-- y por la misma razon: la decision se prueba sin encender la
+// maquina.
+//
+// [!] Un veredicto NO cambia lo que se adopta. Cada `papeles()` va al lado de la
+// rama que ya existia; ninguna condicion se toco. Este fichero contaba lo que
+// hacia solo por el log, y ahora ademas lo entrega.
+
+/// Se instalo como TECLADO.
+pub const VEREDICTO_TECLADO: u8 = 1;
+/// Se instalo como RATON.
+pub const VEREDICTO_RATON: u8 = 2;
+/// Su clase no es HID. No es un rechazo: es que no es de los nuestros.
+pub const VEREDICTO_NO_ES_HID: u8 = 3;
+/// Es HID pero sin subclase BOOT. **El unico rechazo que hoy se podria
+/// levantar**: el Report Descriptor ya se sabe leer (ver `formato`), y esa
+/// condicion espera a confirmarse en el Ryzen antes de ensancharse.
+pub const VEREDICTO_HID_SIN_BOOT: u8 = 4;
+/// Vale, pero su puesto ya esta ocupado.
+pub const VEREDICTO_YA_CUBIERTO: u8 = 5;
+/// No declara endpoint de interrupcion de entrada.
+pub const VEREDICTO_SIN_ENDPOINT: u8 = 6;
+/// El endpoint no se pudo preparar en el controlador.
+pub const VEREDICTO_SIN_PREPARAR: u8 = 7;
+/// Era raton y no se pudo instalar (choco de direccion con uno ya puesto).
+pub const VEREDICTO_RATON_NO_ENTRO: u8 = 8;
+/// El puerto no llego a direccionarse: no hay papeles que mirar.
+pub const VEREDICTO_SIN_DIRECCION: u8 = 9;
+/// Direccionado, pero sus descriptores no se pudieron leer.
+pub const VEREDICTO_SIN_DESCRIPTORES: u8 = 10;

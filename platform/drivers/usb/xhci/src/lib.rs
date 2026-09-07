@@ -43,6 +43,30 @@ pub trait XhciHal {
             core::hint::spin_loop();
         }
     }
+
+    /// **LOS PAPELES DE UN APARATO QUE LLEGO, Y QUE SE LE CONTESTO.**
+    ///
+    /// El driver ya miraba clase, subclase y protocolo de cada interfaz -- y los
+    /// mandaba al log, donde se van con el scroll. Esto es la otra salida: quien
+    /// implemente el HAL puede GUARDARLO, y entonces se puede contestar despues
+    /// *"que llego y que le dije"* sin haber estado mirando en ese instante.
+    ///
+    /// El `veredicto` lo pone quien decide, que es `bmo_uhid`: sus constantes
+    /// `VEREDICTO_*` son el vocabulario. Aqui viaja como un numero a proposito --
+    /// este crate habla con el controlador y **no sabe que es un teclado**.
+    ///
+    /// Por defecto no hace nada: un HAL de prueba no tiene donde apuntar, y una
+    /// implementacion vacia deja que este metodo se anada sin tocar a nadie.
+    fn papeles(
+        &self,
+        _puerto: u8,
+        _iface: u8,
+        _clase: u8,
+        _subclase: u8,
+        _proto: u8,
+        _veredicto: u8,
+    ) {
+    }
 }
 
 static mut XHCI_HAL: Option<&'static dyn XhciHal> = None;
