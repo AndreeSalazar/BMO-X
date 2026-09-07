@@ -262,8 +262,52 @@ impl Archivo {
         Self::con_ruta(ruta, OP_ARCHIVO_CREAR, true)
     }
 
+    /// *** **UN BLOQUE ENTERO DE UNA SOLA LLAMADA** -- el camino rapido.
+    ///
+    /// `read` mueve **siete bytes por syscall**. Con la puerta medida en 969
+    /// ciclos, leer un fuente de 24 KiB son ~3.500 llamadas y ~3,4 millones de
+    /// ciclos. Esto es **una**.
+    ///
+    /// ** Y NO ES UNA OPTIMIZACION NUEVA: `ARCH_OP_LEER_EN` esta en el ABI
+    /// desde antes, `<bmo/archivo.h>` lo usa desde que DOOM necesito su WAD, y
+    /// la cara de Rust nunca lo llamo. La cabecera de C ya escribio el motivo:
+    /// *"cargar un WAD de 4 MB asi son ~600.000 llamadas al sistema"*.
+    ///
+    /// ** POR QUE EL DESTINO ES UN HANDLE Y NO UN PUNTERO, que es lo bonito:
+    /// el kernel **no valida punteros** -- infraestructura que aqui no existe.
+    /// El destino es un bloque que **el mismo concedio**, asi que comprobar es
+    /// una resta contra lo que entrego. **Contrato en vez de comprobacion**, y
+    /// por eso esta operacion no necesita burocracia: la pago quien pidio el
+    /// bloque, una vez, al pedirlo.
+    ///
+    /// `desde` es el offset DENTRO del bloque, no dentro del fichero -- para
+    /// el del fichero esta [`Archivo::saltar`]. Devuelve los bytes traidos.
+    pub fn leer_en(&self, bloque: &crate::Memoria, desde: u64, cuantos: u64) -> u64 {
+        if self.escribe {
+            return 0;
+        }
+        invoke(self.cap, ARCH_OP_LEER_EN, bloque.handle(), desde, cuantos).value
+    }
+
+    /// El espejo de [`Archivo::leer_en`]: **escribe un bloque entero** de una
+    /// llamada, desde una capability de memoria.
+    ///
+    /// Es el camino que necesita un compilador para soltar su `.bex`: con
+    /// `write`, los 628 KiB de `d.bex` serian ~90.000 syscalls.
+    pub fn escribir_de(&self, bloque: &crate::Memoria, desde: u64, cuantos: u64) -> u64 {
+        if !self.escribe {
+            return 0;
+        }
+        invoke(self.cap, ARCH_OP_ESCRIBIR_DE, bloque.handle(), desde, cuantos).value
+    }
+
     /// Llena `dst` con lo que quede. Devuelve cuantos bytes se leyeron; `0` =
     /// se acabo el archivo.
+    ///
+    /// [!] **Mueve SIETE bytes por syscall.** Para una cabecera o un descriptor
+    /// esta bien --es lo que hace `paquete`-- pero para un fichero entero el
+    /// camino es [`Archivo::leer_en`], que es una sola llamada. La diferencia
+    /// no es de estilo: son tres ordenes de magnitud.
     pub fn read(&self, dst: &mut [u8]) -> usize {
         if self.escribe {
             return 0;

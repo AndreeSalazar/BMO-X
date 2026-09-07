@@ -683,6 +683,18 @@ pub const ARCH_OP_TAMANO: u32 = 0x03;
 pub const ARCH_OP_CERRAR: u32 = 0x04;
 /// Mueve el cursor a una posicion absoluta. Ver [`archivo::Archivo::saltar`].
 pub const ARCH_OP_SALTAR: u32 = 0x07;
+/// **Leer un bloque ENTERO** en una capability de memoria, de una sola llamada.
+///
+/// `arg0` = handle del bloque, `arg1` = offset dentro de el, `arg2` = cuantos
+/// bytes. Devuelve cuantos trajo.
+///
+/// ** Y no pide validar punteros: el destino es un bloque que concedio el
+/// KERNEL, asi que comprobar es una resta contra lo que entrego. Contrato en
+/// vez de comprobacion.
+pub const ARCH_OP_LEER_EN: u32 = 0x06;
+/// **Escribir un bloque ENTERO** desde una capability de memoria. El espejo
+/// exacto de [`ARCH_OP_LEER_EN`], con los mismos tres argumentos.
+pub const ARCH_OP_ESCRIBIR_DE: u32 = 0x08;
 
 // Operaciones sobre un handle de consola (`KIND_CONSOLE`).
 pub const CONSOLA_OP_LEER: u32 = 0x01;
