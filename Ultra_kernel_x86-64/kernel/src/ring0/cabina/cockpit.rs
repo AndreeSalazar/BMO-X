@@ -299,6 +299,14 @@ pub fn render_hud() {
     r.txt(" portero="); r.dec(p_ok);
     r.txt(":"); r.dec(p_no);
     r.txt(":"); r.dec(p_sin);
+    // ** Y LA OTRA PUERTA: `bus=funciones:interesan:sincodigo`. Aquel mira lo
+    // que LLEGA a un puerto USB; este, lo que HAY en la placa. `sincodigo` son
+    // aparatos de una clase que BMO-X podria querer y que hoy no toca nadie --
+    // la grafica del dueno entre ellos. Ver `dev/portero.rs`.
+    let (b_fn, b_int, b_sin) = crate::ring0::dev::portero::stats();
+    r.txt(" placa="); r.dec(b_fn as u64);
+    r.txt(":"); r.dec(b_int as u64);
+    r.txt(":"); r.dec(b_sin as u64);
     // ** `puertas=esperando:PERDIDOS:barridos:reparados` -- QUE LAS PUERTAS SIGAN
     // ABIERTAS.
     //
