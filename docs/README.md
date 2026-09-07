@@ -167,6 +167,7 @@ Los ocho declaran seguir el metodo de `SMP_MAESTRO.md`.
 | [`IPC_MAESTRO.md`](maestro/IPC_MAESTRO.md) | 08-18 | serializar no es enmarcar, y donde acaba un mensaje |
 | [`INTI_MAESTRO.md`](maestro/INTI_MAESTRO.md) | 08-19 | el lenguaje de BMO-X: no es el quinto frontend, es el unico que no le debe nada a nadie |
 | [`RING3_MAESTRO.md`](maestro/RING3_MAESTRO.md) | 08-26 | el censo de lo que corre con privilegio, y que baja |
+| [`GPU_NVIDIA_MAESTRO.md`](maestro/GPU_NVIDIA_MAESTRO.md) | 09-07 | **traducir el driver: imposible. Traducir el PERFIL: ya esta hecho.** Y la GPU no bloquea nada de lo que se esta construyendo |
 
 ---
 
