@@ -88,6 +88,13 @@ pub const USB_SALUD_EDAD_VIEJA: u64 = 0xFFFF;
 /// sola** y guardarla seria guardar una mentira que crece.
 static mut FOTO: u64 = 0;
 
+/// **Lo que la foto ANTERIOR decia del controlador**, y nada mas.
+///
+/// Existe para distinguir dos cosas que el bit no distingue: *"sigue
+/// averiado"* de *"ACABA de averiarse"*. Sin esto solo caben dos malas
+/// opciones -- callarse (lo que habia) o gritar 250 veces por segundo.
+static mut AVERIADO_ANTES: bool = false;
+
 /// **Mira el bus y guarda lo que ve.** Se llama desde `pump_bus`, con el PML4
 /// del kernel ya cargado -- ver la cabecera del modulo.
 ///
@@ -102,6 +109,9 @@ pub(super) fn refrescar() {
             // dejar la foto anterior seria contestar con el estado de un bus
             // que ya no esta.
             FOTO = 0;
+            // Sin controlador no hay averia que recordar: si un dia vuelve a
+            // haber bus, su primera muerte tiene que poder decirse otra vez.
+            AVERIADO_ANTES = false;
             return;
         }
         b |= USB_SALUD_XHCI;
@@ -133,6 +143,54 @@ pub(super) fn refrescar() {
             b |= USB_SALUD_XHC_AVERIADO;
         }
         FOTO = b;
+
+        // == *** Y AQUI EL KERNEL LO DICE EN VOZ ALTA (2026-09-07) ===========
+        //
+        // ** El bit se encendia y **no lo leia nadie de Ring 0**. Sus dos
+        // unicos lectores estan los dos al otro lado:
+        //
+        // ```text
+        //    scene/testigo.rs    la luz     <- la pinta el ESCRITORIO
+        //    commands/reports.rs la orden `usb` <- hay que TECLEARLA
+        // ```
+        //
+        // *** Y las dos cosas que hacen falta para verlo --un escritorio vivo y
+        // un teclado que escriba-- son exactamente las dos que ya no estan
+        // cuando el controlador se muere. El unico aviso de que el teclado ha
+        // muerto solo se podia leer con el teclado.
+        //
+        // > Un estado cuyo unico lector muere con la averia que anuncia no es
+        // > un instrumento: es un mensaje dentro de la casa que se quema.
+        //
+        // La cabecera de este fichero ya cerro la trampa hermana --si el hilo
+        // del bus muere, la foto miente-- con la edad del latido. Esta es la
+        // otra mitad, y CABINA es el sitio: la pinta el kernel, sobrevive a la
+        // purga y sale en la azul.
+        //
+        // [!] Por FLANCO y no por nivel. Esto corre 250 veces por segundo: un
+        // aviso por nivel llenaria el anillo de eventos con la misma linea y se
+        // llevaria por delante la que explica la causa, tres renglones mas
+        // arriba. Se dice cuando CAMBIA, y se rearma para que una segunda
+        // muerte tambien se diga.
+        let averiado = b & USB_SALUD_XHC_AVERIADO != 0;
+        if averiado && !AVERIADO_ANTES {
+            crate::ring0::cabina::fault(
+                "xhci",
+                "el controlador SE MURIO en marcha (USBSTS HSE/HCE)",
+                sts as u64,
+            );
+        } else if !averiado && AVERIADO_ANTES {
+            // ** Y la vuelta tambien se dice. Sin esta rama, una averia que se
+            // cura deja el ultimo renglon diciendo "muerto" para siempre, y el
+            // que lee la bitacora despues no puede saber si duro un instante o
+            // toda la sesion.
+            crate::ring0::cabina::info(
+                "xhci",
+                "el controlador VOLVIO: USBSTS ya no dice HSE/HCE",
+                sts as u64,
+            );
+        }
+        AVERIADO_ANTES = averiado;
     }
 }
 
