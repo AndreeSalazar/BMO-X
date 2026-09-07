@@ -447,3 +447,130 @@ mismo controlador; los frontales y los traseros casi nunca.
 Si con el teclado y el raton en puertos contiguos **sigue sin aparecer**, esta
 hipotesis esta muerta y hay que volver a las seis de arriba -- ahora con la luz
 del testigo puesta, que dira cual.
+
+---
+
+## 8. ★★ E8 -- QUE EL TURNO LLEGUE A SU HORA, Y PARA CUALQUIER APARATO
+
+> Escrito el **2026-09-07**, pedido por el dueno con Windows y Linux delante:
+> *"el teclado y mouse tiene que tener intervalo y algo que siempre esten
+> abierto... que el kernel o el orquestador le de tiempo aunque llegue tarde,
+> pero que el orquestador prepare eso para cualquier dispositivo -- claro, que
+> reconozca si HAY codigos"*.
+
+### 8.1 Primero, el reparto de verdad -- porque casi todo esto YA estaba
+
+Es el hallazgo que ordena el resto. **El ritmo del teclado no lo marca el
+software**, ni aqui ni en Windows ni en Linux: lo marca el controlador, en
+hardware, con el `Interval` que se le programo al endpoint (eso es E4). El
+driver no pregunta al aparato. Su trabajo es que **siempre haya sitio donde
+dejar el informe**.
+
+```
+   preguntar al aparato         su bInterval          EL xHC, en hardware   E4
+   volver a armar el TRB        al llegar el evento   bmo_uhid              E1
+   VACIAR el anillo             4 ms                  el hilo del bus       <--
+   la red por si se perdio      500 ms                el barrido            E5
+```
+
+★ Asi es como lo hacen los dos de los que venimos a copiar:
+
+```
+   Linux     una URB de interrupcion, REENVIADA desde el propio handler.
+             El endpoint nunca se queda sin sitio donde escribir
+   Windows   un lector continuo (IRP siempre pendiente). Misma idea, otro nombre
+```
+
+**"Siempre despierto" es en realidad "siempre ARMADO"**, y eso BMO-X ya lo tenia:
+el evento ES el permiso para volver a encolar (la leccion que costo un teclado
+mudo, escrita en `enchufe.rs`), el bit `USB_SALUD_KBD_BOMBA` dice si hay TRB
+encolado, y el barrido de 500 ms es la red por si un aviso se pierde.
+
+### 8.2 Lo que SI faltaba: la capa que puede llegar tarde
+
+De las cuatro filas, la unica que depende del planificador es el **vaciado**. Y
+estaba escrita asi:
+
+```rust
+   let wake_at = rdtsc() + 4 ms;      // 4 ms DESPUES DE ACABAR
+```
+
+Eso no es *"late cada 4 ms"*: es *"duerme 4 ms cuando termine"*. Dos consecuencias
+que nadie podia ver:
+
+```
+   [ ] el periodo real era TRABAJO + 4 ms, y el trabajo no es constante
+       (adoptar un puerto son hasta seis reintentos de 50 ms)
+   [ ] un retraso se ABSORBIA. 40 ms sin turno -> vuelta, y otros 4 ms a dormir.
+       Ni se recuperaba, ni se contaba, ni se sabia
+```
+
+**Exige:** que la hora del proximo latido salga **de la del anterior**, no de
+ahora; y que un retraso se cuente en vez de tragarse.
+
+**Hoy: HECHO** (07-09). Y no se recupera en rafaga: al llegar tarde se **re-ancla**
+y se anota lo que no se dio. Dar de golpe los cinco turnos perdidos empeora el
+atasco que los provoco -- que es la misma decision que toma Linux con
+`URB_ISO_ASAP`: saltar al siguiente hueco, no repetir los que ya pasaron.
+
+**Los numeros:** `ritmo=tarde:perdidos:peor_ms` y `peor=quien:us` en la fila USB
+del panel.
+
+```
+   tarde      latidos que llegaron despues de su hora
+   perdidos   turnos ENTEROS que cabian en el retraso y no se dieron  <- la que duele
+   peor_ms    el maximo, no la media: una media esconde el pico
+   peor       CUAL de los cinco trabajos de la vuelta se comio el turno
+```
+
+[!] **Y un latido tarde NO pierde una tecla directamente.** El xHC sigue
+preguntando y dejando informes; lo que cuesta es latencia --se nota en la mano--
+y riesgo de desborde del aparcadero, que ya tiene su contador. Decirlo asi y no
+*"se pierden teclas"* es la diferencia entre un instrumento y un susto.
+
+### 8.3 "Para cualquier aparato": lo que se encontro al ir a construirlo
+
+La peticion pide una tabla: cada aparato declara **cada cuanto** quiere turno, el
+orquestador se lo da, y solo corre si **hay codigo** para el. Al ir a escribirla
+aparecieron tres hechos que la ordenan, y ninguno estaba escrito:
+
+```
+   1. HAY UN SOLO HILO DE KERNEL en todo BMO-X: `bus_thread`. Ya ES el
+      repartidor de turnos de la casa -- pero se llama "bus" y vive en dev/usb/
+   2. NO TODO TRABAJO PUEDE SALIR DE `pump_bus`. Dentro se carga el PML4 del
+      kernel, y el MMIO del xHCI solo esta mapeado ahi. El barrido y la foto de
+      salud tocan MMIO: sacarlos a una fila de la tabla es un #PF
+   3. de los cinco trabajos de hoy, CUATRO quieren el mismo intervalo (4 ms) y
+      el quinto (el radar) trae su propio reloj, mas exacto que el de la tabla
+```
+
+★ **Asi que la tabla, escrita hoy, serian cuatro filas con el mismo numero y una
+que empeora un instrumento.** Eso es estructura por la estructura, y esta casa
+no la paga: la regla es que un mecanismo se escribe cuando tiene a quien servir.
+
+**Lo que SI se hizo hoy es la mitad que ya tiene a quien servir**: el reloj
+absoluto (8.2) y el reparto por trabajo, que es lo que convierte *"el latido
+llego tarde"* en *"lo comio la purga"*.
+
+### 8.4 Que desbloquea la tabla, y como sera cuando toque
+
+```
+   [ ] una SEGUNDA familia de aparatos que quiera turno propio.
+       La candidata escrita es la RED: `red rx` sigue sin ejecutarse
+   [ ] o el dia que el barrido deje de necesitar el PML4 del kernel
+```
+
+Cuando llegue, la fila es esta y la restriccion del punto 2 va dentro:
+
+```
+   nombre        cada_ms   hay()          donde corre
+   -----------   -------   ------------   ---------------------------
+   bombeo        4         PRESENT        dentro de la ventana de CR3
+   barrido       500       PRESENT        dentro de la ventana de CR3
+   rescate       4         siempre        fuera
+   red rx        ?         hay tarjeta    fuera (aun por medir)
+```
+
+`hay()` es el *"que reconozca si HAY codigos"* del dueno, hecho mecanismo: un
+turno cuyo aparato no existe **no se salta a mano en el bucle** -- se apaga en su
+propia fila, que es el unico sitio donde se puede leer sin abrir el bucle.
