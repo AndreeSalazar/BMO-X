@@ -458,3 +458,132 @@ disciplina de una consola en un sistema que ademas puede demostrarla.**
 idioma ya lo habla todo el mundo y es gratis; el sobre es donde caben las tres
 cosas que solo BMO ofrece -- **firma, requisitos declarados y precompilado
 verificable**.
+
+---
+
+# ★★ EL RECORTE DEL DUENO -- 1.0, UNA GPU PERFILADA, y lo que eso QUITA
+
+> Anadido el **2026-09-07**. Lo dijo el dueno y cambia la forma del documento:
+>
+> > *"yo queria Vulkan integrado en 1.0, no quiero JUEGOS TODO, quiero jugar
+> > algunos juegos aparte del DOOM... solo con shader y eso y video, que ya hay
+> > muchos documentos. **UNA GPU PERFILADA ES SUFICIENTE**"*
+>
+> No es una version rebajada de la meta B: es **la meta B con la ley 24 aplicada
+> encima**, que es otra cosa. Y este documento no la tenia escrita.
+
+## 1. Lo primero: la meta que pide ya la recomendaba este mismo documento
+
+La tabla de `QUE JUEGOS ABRE CADA NIVEL` termina asi, y lo dijo antes de que
+nadie preguntara:
+
+> *"Un **1.0 honesto y completo** ya da juegos de verdad, de una generacion
+> entera. **No es un ejercicio: es DOOM.**"*
+
+★ Asi que "Vulkan 1.0 y algunos juegos" no es conformarse. **Es elegir la fila
+que este plan ya senalaba como la unica alcanzable**, y renunciar a la que el
+propio plan llama *"un proyecto de anos"*.
+
+```text
+   lo que NO se persigue    1.2 y 1.3, o sea los motores actuales
+   lo que SI se persigue    la generacion de 2016-2018 nativa en Vulkan
+```
+
+## 2. ★★ "UNA GPU PERFILADA ES SUFICIENTE" -- el argumento, y es fuerte
+
+Es la LEY 24 aplicada a la GPU, y **desmonta la comparacion que asusta**. Cuando
+alguien dice *"un driver de GPU son cientos de miles de lineas"*, esta contando
+`amdgpu`. Y `amdgpu` no es un driver de una GPU: es un driver de **quince anos de
+GPU distintas a la vez**.
+
+** Lo que sale de `amdgpu` en cuanto la respuesta es UNA tarjeta, UN firmware,
+UN sistema:
+
+```text
+   quince familias de chips (SI, CI, VI, Vega, Navi 1x..4x, APUs)  -> UNA
+   DC/DCN, el motor de display entero                              -> FUERA
+       el firmware UEFI ya dejo el modo puesto. BMO-X pinta en el GOP
+   gestion de energia, curvas de ventilador, estados de portatil   -> FUERA
+   varias GPU a la vez, SR-IOV, virtualizacion, passthrough        -> FUERA
+   integracion con DRM/KMS, atomic modeset, DMA-BUF, PRIME         -> FUERA
+       son APIs de Linux. BMO-X no las tiene ni las quiere
+   suspender y reanudar, desenchufe en caliente, reset y recuperar -> FUERA
+   video por hardware (VCN/UVD)                                    -> APARTE
+```
+
+★ **Y no es que se "recorten": es que ninguna de esas responde a una pregunta que
+BMO-X se haga.** Un driver que no tiene portatiles no tiene estados de portatil.
+Esto no es optimismo, es la misma frase que el documento del asistente ya tenia
+escrita en una fila de su tabla:
+
+> *"`amdgpu` lo hace para 15 anos de aperturas. **UNA apertura, UN formato**: se
+> conoce, se escribe."*
+
+## 3. Lo que QUEDA, que es la lista honesta
+
+| # | pieza | precedente en esta casa |
+|---|---|---|
+| 1 | PCIe, BAR, y ahora tambien **el censo del bus** | ★ hecho. `dev/pci.rs` + `dev/portero.rs` |
+| 2 | Cargar el firmware por el PSP | ⚠ **el muro**, y sigue sin medir |
+| 3 | Anillos + timbres (GFX, SDMA) | ★ la forma de xHCI, ya peleada en metal |
+| 4 | Memoria de video: VRAM, GTT, tablas de pagina de la GPU | UNA, no quince |
+| 5 | **SPIR-V -> ISA de RDNA** | ver abajo, y es mejor noticia de lo que parece |
+| 6 | La API de Vulkan 1.0 encima | se reutiliza entera de B1 |
+| 7 | Manejador de interrupciones (anillo IH) | ★ la forma ya existe |
+
+## 4. ★ La pieza 5 no es "otro compilador entero". Es un BACKEND MAS
+
+Este documento decia *"es otro compilador entero"*, y **eso era verdad el
+2026-08-04 y hoy ya no lo es del todo**. Lo que ha aparecido desde entonces:
+
+```text
+   cinco frontends que ya bajan a un lenguaje intermedio
+   `bmo-lower`     el paso de bajada, con sus pruebas
+   `sem-asm`       el metal como TABLA, 62 intrinsecos declarados
+   `bmo-inti-x86-64`  un backend entero, con 256 filas de prueba
+```
+
+★ **O sea que la maquinaria de "de un arbol a instrucciones de una maquina" ya
+existe y esta probada.** SPIR-V ademas es mas facil de LEER que C: es binario,
+es SSA y esta especificado sin ambiguedad -- no tiene preprocesador, ni
+gramatica ambigua, ni tipos implicitos.
+
+⚠ **Lo que sigue siendo duro es el otro lado**: generar RDNA. Reparto de
+registros con la division VGPR/SGPR, la semantica de onda (lo que hace un
+`if` cuando 32 hilos no estan de acuerdo), y las instrucciones de memoria. Eso
+no lo abarata nada de lo anterior.
+
+> No es "escribir un compilador". Es **escribir un backend mas en un compilador
+> que ya tiene uno funcionando** -- y encima con un frontend mas facil que los
+> cinco que ya se leen.
+
+## 5. Y el video, que el dueno nombro aparte
+
+Dijo *"shader y eso y video"*. **Son dos cosas y conviene no mezclarlas**, porque
+una es esta ruta y la otra no:
+
+```text
+   VIDEO como PINTAR pixeles a tiempo      es la META A. No necesita Vulkan
+   VIDEO como DESCODIFICAR H.264/AV1       es el VCN, otro motor, otro plan
+```
+
+Descodificar por hardware es un tercer proyecto que **no bloquea ni es
+bloqueado** por Vulkan 1.0. Descodificar por software y pintar con la meta A es
+la ruta barata, y para eso el CPU de esta maquina sobra.
+
+## 6. Lo que este recorte NO quita, y hay que decirlo
+
+```text
+   [ ] el PSP sigue ahi. Es la pieza 2 y sigue SIN MEDIR (seccion "el muro real")
+   [ ] un juego pide una LISTA de caracteristicas, no una version.
+       Un 1.0 al que le falte una extension que el juego pide, no arranca
+   [ ] Vulkan es ~30% de lo que toca un juego: faltan hilos, ficheros,
+       audio y entrada. Eso no lo arregla ninguna GPU
+```
+
+★ **El disparador no cambia**: esto sigue sin ser lo siguiente. Lo siguiente es
+medir el PSP --*"un dia de leer `amdgpu` y contar pasos"*-- porque es lo unico
+que puede convertir este plan en imposible, y cuesta un dia averiguarlo.
+
+> Comprar la tarjeta antes de medir el PSP es pagar por saber lo que se puede
+> leer gratis.
