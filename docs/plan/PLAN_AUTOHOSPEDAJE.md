@@ -102,6 +102,50 @@ dueno lo pida**. Es exactamente lo que `EL_ORQUESTAL.md` llama el celo.
 
 ---
 
+## 2b. ★★ LAS DOS CARAS, Y POR QUE LA DE RUST NO NECESITA ESPEJO
+
+La superficie tiene **dos caras sobre una sola verdad**:
+
+```text
+                    bmo-abi          #![no_std], y NADIE la copia
+                   /        \
+              REX            bmo-rt
+        12 cabeceras .h      6 modulos Rust
+        C no puede             `use bmo_abi::syscalls::...`
+        importar Rust          y NO redeclara ni una constante
+              |
+        R13 EL ESPEJO -- 98 parejas que hay que mantener a mano
+```
+
+** Y de ahi sale algo que conviene decir en voz alta: **R13 existe para
+compensar una debilidad que la cara de Rust no tiene.** Una cabecera de C repite
+el numero y puede quedarse vieja sola; un `use` no puede. Se comprobo: `bmo-rt`
+importa de `bmo_abi` en `syscall.rs`, `heap/backend.rs` y `heap/freelist.rs`, y
+**no declara ni un `OP_` ni un `KIND_` propio**.
+
+> Para un compilador de a bordo, eso significa que **enlazar el crate es
+> estructuralmente mas seguro que incluir la cabecera**. No es una preferencia
+> de lenguaje: es que un camino puede derivar y el otro no.
+
+### Lo que le falta a la cara de Rust, medido
+
+```text
+   REX (C)     archivo  bloque  bmo  entrada  monton  musica
+               pantalla  paquete  prestado  scroll  sonido  superficie   12
+
+   bmo-rt      syscall  heap  string  fmt  crt0  ffi                      6
+```
+
+Los seis de `bmo-rt` son **fontaneria**; los doce de REX son **superficie**. Para
+autohospedar hacen falta exactamente dos de los que faltan --`archivo` y
+`paquete`-- y por eso son el escalon 3 y no un apano local.
+
+[!] `META-SDK_HARD.md` seccion 7 lista como hueco *"el enlace de COBOL y de
+Ada"*. **No lista este**, porque `bmo-rt` se daba por completo. Lo es como
+runtime y no como superficie.
+
+---
+
 ## 3. LOS ESCALONES
 
 Ordenados por la regla de la casa: **lo que no toca nada va primero, lo que no se
@@ -118,10 +162,12 @@ si algo se rompe ahi, se rompio en el sitio barato.
                                  Mecanico, y el banco de `bmo-ada-front`
                                  (20 filas) tiene que seguir en verde
 
-   [ ] 3  la capa de FUENTE      un trait que sustituya los 3 `std::fs` de
-                                 `toolchain/lang/ada/src`: una cara para el
-                                 anfitrion y otra para `<bmo/archivo.h>`.
-                                 Se prueba entera en el anfitrion
+   [ ] 3  bmo-rt gana ARCHIVO    y no es un apano para Ada: es la cara de Rust
+          y PAQUETE              alcanzando a REX. Hoy `toolchain/lang/base/
+                                 bmo-rt/src/lib.rs` expone SEIS modulos de
+                                 fontaneria y REX tiene DOCE de superficie.
+                                 Sin `archivo` el compilador no lee el fuente;
+                                 sin `paquete` no se lleva nada dentro
 
    [ ] 4  ada como lib no_std    `toolchain/lang/ada/src/lib.rs` con
                                  `#![no_std] + alloc`; `main.rs` se queda en
@@ -149,7 +195,7 @@ si algo se rompe ahi, se rompio en el sitio barato.
 |---|---|---|
 | 1 | un numero de errores, y una lista de los sitios | -- |
 | 2 | `cargo test -p bmo-ada-front` sigue en 20 filas | una fila roja: el orden de iteracion importaba |
-| 3 | el `cierre.bex` de hoy sale byte a byte igual | sale distinto: la capa cambio algo |
+| 3 | el `cierre.bex` de hoy sale byte a byte igual, y `ada.bex` lee un recurso de su propia seccion `0x0B` | sale distinto: la capa cambio algo |
 | 4 | compila para `x86_64-unknown-none` | falta un `alloc::` que era `std::` |
 | 5 | `ada` en el escritorio imprime su version | no arranca: monton, pila o reloc |
 | 6 | aparece `hola.bex` en la ventana de ESTRATOS | se queda sin monton, o `bmo-verify` lo rechaza |
@@ -211,6 +257,39 @@ fuente unica de verdad.
 * **Llamarlo "como Linux".** Lo que se parece es el gesto --tecleas y compila--;
   lo que hay debajo no se parece en nada, y prometer lo segundo por haber
   conseguido lo primero es vender una compatibilidad que no existe.
+* **Que V-ABI compile.** Es la tentacion mas razonable de todas y hay que
+  rechazarla: el estandar juzga, y un compilador que fuera el estandar se
+  estaria certificando a si mismo. Es exactamente el *juez y parte* por el que
+  `VALKYRIE-ABI/README.md` argumenta que V-ABI no tiene anillo. El compilador
+  **apunta** a V-ABI; no lo es. Igual que `gcc` apunta a POSIX y no es POSIX.
+
+---
+
+## 7. ★ "COMO GCC, PERO SIN INSTALAR" -- y ya esta medio construido
+
+El gesto que se busca es `compilar hola.ada` y que salga un programa. En Linux
+eso pide una **instalacion**: cabeceras en su sitio, librerias, un enlazador, un
+fichero de especificaciones y unas rutas. Aqui no hay nada de eso que instalar:
+
+```text
+   no hay enlazador       el frontend escribe el `.bex` por `bmo-lower` + `bmo-verify`
+   no hay libc que buscar  la superficie son 2 puertas y sus operaciones
+   las cabeceras VIAJAN    seccion `0x0B` (Resources) del propio `.bex`
+```
+
+** El tercero no es una idea nueva: **ya funciona**. `bmo-pack` mete recursos
+dentro de un `.bex` --hoy `caja.bex` lleva `saludo.txt` y `cuenta.bin`-- y
+`<bmo/paquete.h>` los lee en ejecucion sin copiar nada. La cabecera cita al
+dueno diciendo la idea entera:
+
+> *"es un bef pero ese bex es el mismo que abre la caja: no lo duplica, lo lee y
+> punto. Es una app como Windows pero no lo copia, lo deja en el lugar correcto
+> y lee directo."*
+
+Asi que **un compilador de a bordo puede ser literalmente un fichero con sus
+tablas dentro**, y lo unico que falta para que eso valga para un compilador de
+Rust es el `paquete` del escalon 3 -- porque hoy esa lectura solo existe en la
+cara de C.
 
 ---
 
