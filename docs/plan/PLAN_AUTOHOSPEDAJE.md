@@ -127,22 +127,36 @@ importa de `bmo_abi` en `syscall.rs`, `heap/backend.rs` y `heap/freelist.rs`, y
 > estructuralmente mas seguro que incluir la cabecera**. No es una preferencia
 > de lenguaje: es que un camino puede derivar y el otro no.
 
-### Lo que le falta a la cara de Rust, medido
+### ** CORREGIDO EL 06-09: LA CARA DE RUST NO ES `bmo-rt`
+
+Esta seccion decia que a la cara de Rust *"le faltan seis modulos de superficie"*
+comparando REX contra `bmo-rt`. **El error fue de medida, no de razonamiento.**
+
+`bmo-rt` (`toolchain/lang/base/`, 1.371 lineas) es **el arranque y el monton**:
+crt0, syscall, heap, string, fmt, ffi. Es lo que `bex-link` mete en un `.bex`
+para que arranque -- el equivalente de la `crt0`, no de la libreria.
+
+**La superficie de Rust es `bmo-userland` v2.0.0**, 3.901 lineas, y su propia
+descripcion lo dice: *"Runtime de Ring 3: los dos syscalls, capabilities y la
+pantalla"*.
 
 ```text
-   REX (C)     archivo  bloque  bmo  entrada  monton  musica
-               pantalla  paquete  prestado  scroll  sonido  superficie   12
-
-   bmo-rt      syscall  heap  string  fmt  crt0  ffi                      6
+   bmo-rt          1.371   crt0, syscall, heap, string, fmt, ffi   EL ARRANQUE
+   bmo-userland    3.901   archivo 344, pantalla 623, entrada 139, LA SUPERFICIE
+                           memoria 143, estratos 482, disco 114,
+                           red 120, sonido 76, proceso 175
 ```
 
-Los seis de `bmo-rt` son **fontaneria**; los doce de REX son **superficie**. Para
-autohospedar hacen falta exactamente dos de los que faltan --`archivo` y
-`paquete`-- y por eso son el escalon 3 y no un apano local.
+Y con la crate correcta, lo que le faltaba a Rust para autohospedar era **UNA
+cosa**, no dos: `archivo` ya sabia abrir, crear, leer, escribir, saltar, medir y
+cerrar. Lo que no habia era **`paquete`** -- leer la seccion `0x0B` del propio
+`.bex`.
 
-[!] `META-SDK_HARD.md` seccion 7 lista como hueco *"el enlace de COBOL y de
-Ada"*. **No lista este**, porque `bmo-rt` se daba por completo. Lo es como
-runtime y no como superficie.
+** Y su cimiento ya estaba puesto sin que ningun plan lo dijera: `Archivo::saltar`
+lleva escrito desde antes *"hacia falta para leer un PAQUETE: la seccion de
+recursos vive al final"*. Alguien preparo el terreno y no lo anoto en ningun
+sitio -- que es el mismo patron de REX y de V-ABI: **la pieza existia y no tenia
+quien la anunciara**.
 
 ---
 
@@ -162,12 +176,12 @@ si algo se rompe ahi, se rompio en el sitio barato.
                                  Mecanico, y el banco de `bmo-ada-front`
                                  (20 filas) tiene que seguir en verde
 
-   [ ] 3  bmo-rt gana ARCHIVO    y no es un apano para Ada: es la cara de Rust
-          y PAQUETE              alcanzando a REX. Hoy `toolchain/lang/base/
-                                 bmo-rt/src/lib.rs` expone SEIS modulos de
-                                 fontaneria y REX tiene DOCE de superficie.
-                                 Sin `archivo` el compilador no lee el fuente;
-                                 sin `paquete` no se lleva nada dentro
+   [x] 3  PAQUETE en Rust        HECHO 06-09 --
+                                 `Ultra_userspace/userland/src/paquete.rs` y
+                                 `Archivo::mi_imagen`. `archivo` ya estaba: el
+                                 hueco era leer la seccion 0x0B del propio
+                                 `.bex`, que es lo que hace posible el "sin
+                                 instalar" de la seccion 7
 
    [ ] 4  ada como lib no_std    `toolchain/lang/ada/src/lib.rs` con
                                  `#![no_std] + alloc`; `main.rs` se queda en
