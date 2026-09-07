@@ -175,6 +175,68 @@ historial.rs` (172 lineas) ya lo hace dentro del DIRECTOR y de ahi sale la forma
 
 ---
 
+## 4b. ** CUANTAS PUERTAS CUESTA UNA COMPILACION -- contadas, no estimadas
+
+El dueno pidio el numero. Sale de **leer el codigo y contar**, no de estimar:
+cada llamada esta escrita en `Ultra_userspace/userland/src/archivo.rs` y se
+puede senalar con el dedo.
+
+```text
+   fuente        ->  salida          HOY   CON BLOQUE   factor
+   ------------------------------------------------------------
+   hola_C.c      ->  holac.bex       656         11        59x
+   blit_C.c      ->  blit.bex       2144         11       194x
+   leer_C.c      ->  leer.bex       3490         11       317x
+   coste_C.c     ->  coste.bex     10657         11       968x
+```
+
+### El desglose de `hola_C.c`, que es de donde sale todo
+
+```text
+   abrir fuente (ruta 2 + abrir 1)           3
+   esperar (cabe en la ventana de 64 KiB)    1
+   leer      1839 / 7                      263
+   COMPILAR                                  0     <-- todo en memoria
+   crear salida (ruta 2 + crear 1)           3
+   escribir  2695 / 7                      385
+   cerrar                                    1
+                                          ----
+                                            656
+```
+
+** Y la fila que manda es la de **CERO**. Compilar no cuesta ni una puerta: el
+parser, el codegen y el emisor trabajan en memoria del proceso. **Todo el coste
+de puerta de una compilacion es mover bytes**, y por eso el camino de bloque lo
+cambia todo y afinar el compilador no cambiaria nada.
+
+### Por que el numero nuevo es 11 y no crece
+
+```text
+   abrir 3 + esperar 1 + pedir el bloque 1 + leer_en 1
+   + crear 3 + escribir_de 1 + cerrar 1  =  11
+```
+
+**No depende del tamano.** `ARCH_OP_LEER_EN` no pasa por la ventana de 64 KiB
+--el rango va del disco al bloque, sin escala-- asi que un fuente de 30 KiB
+cuesta las mismas once puertas que uno de 1 KiB.
+
+### [!] LO QUE ESTA CUENTA NO ES
+
+**No es una medicion en metal.** Es una cuenta del codigo, y tiene dos huecos
+declarados:
+
+1. **El bucle de `esperar_entero`** vale 1 vuelta solo porque los ficheros de
+   ejemplo caben en la ventana de 64 KiB (`obj/file.rs`, `WINDOW`). Un fuente
+   mayor gira mas veces, y cuantas depende del disco.
+2. **La ruta** se cuenta como 2 paquetes de ocho bytes. Una ruta larga cuesta
+   mas, y es la parte que menos importa.
+
+El kernel ya sabe contar puertas --`INFO_SYSCALL_CUENTA`-- asi que confirmarlo
+es restar el contador antes y despues. Eso pide **un arranque**, y entra en la
+misma deuda que todo lo demas de esta semana.
+
+---
+
 ## 5. LOS ESCALONES
 
 Ordenados por la regla de la casa: **lo que no toca nada va primero.**
