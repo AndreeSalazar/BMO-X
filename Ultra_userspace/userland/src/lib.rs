@@ -769,6 +769,14 @@ mod sys;
 /// ESTRATOS desde Ring 3. Sigue siendo `bmo::estratos::...`.
 pub mod estratos;
 
+/// ** LEER LO QUE VIAJA DENTRO DEL PROPIO `.bex` -- la seccion `0x0B`.
+///
+/// Es el gemelo en Rust de `<bmo/paquete.h>`, y existe porque una app de Rust
+/// no podia abrir su propia caja. Va con nombre --`bmo::paquete::Paquete`-- y
+/// no reexportado, por lo mismo que `estratos`: el nombre del modulo es la
+/// mitad de lo que dice el tipo.
+pub mod paquete;
+
 pub use sys::smp_hilo;
 pub use red::{placa_cuantas, placa_ecam, placa_iommu, placa_tabla};
 pub use archivo::*;

@@ -69,10 +69,32 @@ son en su mayoria **lectores de instrumentos del kernel**. Y
    DISCO_  ES_  CABINA_  USB_  AUTOPSIA_  KLOG_  SYSCALL_  MAQ_
 ```
 
-> **Asi que ESTRUCTURA no puede correr `cpu`, `mem`, `disco`, `red` ni
-> `cabina`.** No por falta de trabajo: **por diseno**, y el diseno esta escrito.
+### ** CORREGIDO EL 06-09: la frontera es MAS ESTRECHA de lo que decia aqui
 
-### La consecuencia, que es buena: son DOS terminales, no uno
+La primera version de esta seccion decia que ESTRUCTURA *"no puede correr `cpu`,
+`mem`, `disco` ni `red`"*. **Es falso**, y lo desmiente la propia fila de la
+frontera:
+
+> `DISCO_` -- *los paneles. Un programa lee el disco por `BMO_INFO_DISCO_*`,
+> **que SI esta***
+
+Lo que la frontera deja fuera son las **operaciones de panel**, no las lecturas.
+Y las lecturas ya estan publicadas: `bmo/verde.h` de REX trae **49 constantes
+`BMO_INFO_*`**, entre ellas 12 de `CPU_`, 10 de `DISCO_` y 8 de `NET_`, todas
+por `OP_INFO`.
+
+```text
+   ESTRUCTURA SI PUEDE    cpu  mem  disco  red        (las LECTURAS, por OP_INFO)
+   ESTRUCTURA NO PUEDE    cabina  klog  autopsia      (las ORDENES de panel)
+                          usb  syscall  maq  es
+```
+
+** Y lo que queda fuera tiene un motivo que no es tecnico: *"cada fila de la
+puerta de los terceros es una promesa que hay que mantener despues"*. Publicar
+`KLOG_` convierte el formato del log del kernel en un contrato con terceros, y
+ese formato cambia cada vez que se depura algo.
+
+### La consecuencia sigue siendo la misma: son DOS terminales, no uno
 
 ```text
    la consola del DIRECTOR   el panel de INSTRUMENTOS   cpu, mem, red, cabina
@@ -113,31 +135,43 @@ copiar nada. La cabecera ya cita al dueno diciendo la idea:
 ## 4. ★★ ESTRUCTURA Y EL AUTOHOSPEDAJE SON EL MISMO TRABAJO
 
 El frontend de Ada es **Rust**. Si ESTRUCTURA tiene que contenerlo, ESTRUCTURA es
-un `.bex` de Rust -- y ahi se topa con lo mismo que
-[`PLAN_AUTOHOSPEDAJE.md`](PLAN_AUTOHOSPEDAJE.md) seccion 2b ya midio:
+un `.bex` de Rust -- y la pregunta es que tiene ya la cara de Rust.
+
+### ** CORREGIDO EL 06-09: SE MIDIO CONTRA LA CRATE EQUIVOCADA
+
+La primera version de esta seccion comparaba REX contra **`bmo-rt`** y concluia
+que *"la cara de Rust tiene cero"*. Era falso, y el error fue de medida: `bmo-rt`
+(`toolchain/lang/base/`, 1.371 lineas) es **el arranque y el monton** --crt0,
+syscall, heap, string, fmt, ffi--, o sea el equivalente de la `crt0` y poco mas.
+
+**La cara de Rust de la superficie es `bmo-userland` v2.0.0**, cuya propia
+descripcion lo dice: *"Runtime de Ring 3: los dos syscalls, capabilities y la
+pantalla"*. Son **3.901 lineas** y es lo que enlaza el DIRECTOR.
 
 ```text
-   REX (C)   archivo bloque bmo entrada monton musica pantalla
-             paquete prestado scroll sonido superficie          12
-   bmo-rt    syscall heap string fmt crt0 ffi                    6
+   bmo-rt          1.371   crt0, syscall, heap, string, fmt, ffi   EL ARRANQUE
+   bmo-userland    3.901   archivo, pantalla, entrada, memoria,    LA SUPERFICIE
+                           disco, red, sonido, proceso, estratos
 ```
 
-La cara de C tiene las seis piezas del terminal. **La de Rust tiene cero.**
+### El hueco de verdad, medido contra la crate correcta
 
-| lo que necesita ESTRUCTURA | REX (C) | `bmo-rt` (Rust) |
+| lo que necesita ESTRUCTURA | REX (C) | `bmo-userland` (Rust) |
 |---|---|---|
-| `archivo` -- leer el fuente, escribir el `.bex` | ✅ | ❌ |
-| `paquete` -- las tablas dentro del fichero | ✅ | ❌ |
-| `superficie` -- dibujar en su memoria | ✅ | ❌ |
-| `entrada` -- teclas y raton por buzon | ✅ | ❌ |
-| `scroll` -- el historial | ✅ | ❌ |
-| `monton` | ✅ | ✅ `heap` |
+| `archivo` -- leer el fuente, escribir el `.bex` | si | **ya estaba** (344 lineas) |
+| `pantalla` -- dibujar | si | **ya estaba** (623) |
+| `entrada` -- teclas y raton | si | **ya estaba** (139) |
+| `monton` | si | **ya estaba** (`memoria`, 143) |
+| `paquete` -- las tablas dentro del fichero | si | **HECHO el 06-09** (escalon 2) |
+| `scroll` -- el historial | si | falta como modulo reutilizable |
 
-> **El escalon 3 del autohospedaje deja de ser de un plan y pasa a ser de los
-> dos.** `bmo-rt` necesitaba `archivo` y `paquete` para compilar a bordo;
-> necesita `superficie`, `entrada` y `scroll` ademas para tener ventana. Cinco
-> modulos, y ninguno es investigacion: cada uno tiene su gemelo en C, escrito y
-> probado, del que copiar la forma.
+** Asi que el escalon 2 no eran cinco modulos: era **UNO**, y el unico que
+quedaba de verdad. Y su cimiento ya estaba puesto sin que nadie lo dijera --
+`Archivo::saltar` lleva escrito desde antes *"hacia falta para leer un PAQUETE:
+la seccion de recursos vive al final"*.
+
+Lo que queda es `scroll`, y no bloquea nada hasta el escalon 4: `scene/
+historial.rs` (172 lineas) ya lo hace dentro del DIRECTOR y de ahi sale la forma.
 
 ---
 
@@ -151,11 +185,14 @@ Ordenados por la regla de la casa: **lo que no toca nada va primero.**
                                       deciden F11 y F12. Sin compilador y sin
                                       terminal: solo que la tecla llegue
 
-   [ ] 2  bmo-rt gana la SUPERFICIE   `archivo` y `paquete` (los pide tambien
-                                      PLAN_AUTOHOSPEDAJE), mas `superficie`,
-                                      `entrada` y `scroll`. Cinco modulos en
-                                      `toolchain/lang/base/bmo-rt/src`, cada
-                                      uno con su gemelo en C del que copiar
+   [x] 2  PAQUETE en Rust            HECHO 06-09 --
+                                      `Ultra_userspace/userland/src/paquete.rs`
+                                      y `Archivo::mi_imagen`. Era el UNICO que
+                                      faltaba de los cinco: los otros cuatro ya
+                                      estaban en `bmo-userland` (ver seccion 4)
+
+   [ ] 2b la ventana con REJILLA      `scroll` como modulo reutilizable, de la
+                                      forma que ya tiene `scene/historial.rs`
 
    [ ] 3  estructura.bex DIBUJA       una ventana con su rejilla y su cursor,
                                       sin leer una tecla. Se compara contra

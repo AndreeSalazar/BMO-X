@@ -193,6 +193,32 @@ impl Archivo {
         Self::con_ruta(ruta, OP_ARCHIVO_ASINC, false)
     }
 
+    /// *** **MI PROPIA IMAGEN, y es la unica de esta familia SIN RUTA.**
+    ///
+    /// Todas las de arriba empujan una ruta por `OP_RUTA` antes de pedir el
+    /// handle. Esta no: `OP_MI_PAQUETE` no lleva argumentos porque **el
+    /// programa no dice CUAL, dice "el mio"**, y quien sabe cual es el kernel.
+    ///
+    /// ** Y esa diferencia no es comodidad, es el modelo. Pedir el propio
+    /// fichero por su ruta seria pedir por NOMBRE lo que se tiene por DERECHO --
+    /// y quien puede escribir su ruta puede escribir otra. En un sistema de
+    /// capabilities eso es justo lo que no se hace. La cabecera de
+    /// `<bmo/paquete.h>` ya lo dejo escrito para la cara de C.
+    ///
+    /// `None` si el kernel no recuerda de donde salio este proceso, que es lo
+    /// que le pasa a los binarios que el propio kernel embebe. **No es un
+    /// fallo**: es que ese proceso no vino de un fichero.
+    ///
+    /// Lo usa `crate::paquete::Paquete::mio`.
+    pub fn mi_imagen() -> Option<Self> {
+        let st = invoke(CURRENT_TASK, OP_MI_PAQUETE, 0, 0, 0);
+        if st.ok() && st.value != 0 {
+            Some(Self { cap: st.value, escribe: false })
+        } else {
+            None
+        }
+    }
+
     /// `(entero, bytes que ya llegaron)`. **Y avanza la carga**: preguntar por
     /// el archivo es lo que lo trae.
     pub fn listo(&self) -> (bool, u64) {
