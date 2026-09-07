@@ -317,7 +317,7 @@ un sintoma y pasa a ser dos causas separables. Sin ella eran la misma cosa.
 
 ---
 
-# 2. ⚠ LOS DOS DEFECTOS QUE YA SE ENCONTRARON LEYENDO, SIN ARRANCAR
+# 2. ⚠ LOS DEFECTOS QUE SE ENCONTRARON LEYENDO, SIN ARRANCAR
 
 No estan arreglados a proposito: tocar la purga o `reap` es ROJO, y el dueno
 pidio **mecanismos, no parches**. Se apuntan aqui para que la tanda los mire
@@ -364,6 +364,49 @@ nadie lo persiga**.
 | que `reap` recoja una tarea por vuelta | recorre la tabla ENTERA (`for i in 0..len`) |
 | que `reap` no libere la ranura | pone `self.tasks[i] = Task::EMPTY` |
 | que el supervisor relance en medio | corre en `run_shell`, UNA vez, no en bucle |
+
+## 2.4 ⭐⭐ ARREGLADO EL 07-09: `alloc_frame` podia NO TERMINAR
+
+Buscando por que el asignador entrega un marco dos veces (1.3) aparecio la
+vecina, y es peor: **no repartia mal la RAM, es que no acababa**.
+
+```rust
+   if FREE_FRAMES == 0 { return None; }     // <-- el UNICO terminador
+   let mut i = HINT % FRAME_SLOTS;
+   loop {                                    // <-- y estaba aqui arriba
+       let w = bm[i];
+       if w != !0 { ... return ... }
+       i = (i + 1) % FRAME_SLOTS;
+   }
+```
+
+Con el contador diciendo que quedaban marcos y el bitmap lleno, ese `loop` da
+vueltas **para siempre sujetando `LOCK`**. Y ese cerrojo lo pide todo el mundo:
+
+```text
+   el hilo del bus USB   ->  teclado y raton mudos          <- 1.6
+   el planificador       ->  ninguna tarea vuelve a arrancar
+   la pantalla azul      ->  ni siquiera se puede contar lo que paso
+```
+
+★ **Y su vecina de veinte lineas mas abajo ya estaba bien.**
+`alloc_frames_contig` recorre `while frame < total` y devuelve `None` al caer
+por el final: no se fia del contador, se fia del recorrido.
+
+### Las dos correcciones son la misma por los dos lados
+
+```text
+   [x] la vuelta se acota a FRAME_SLOTS. Al acabarla sin hueco --que NO es
+       quedarse sin memoria-- se dice que el contador miente, con el numero
+       que afirmaba, y se RECUENTA desde el bitmap
+   [x] `init` sumaba a los contadores sin mirar el bit, mientras
+       `reserve_range` --sobre el mismo bitmap-- ya llevaba el guardia con su
+       motivo escrito. Esa asimetria era el unico camino para inflarlo
+```
+
+**Como se ve si era esto**: no se ve. Ese es el punto -- una maquina muerta sin
+azul y sin un renglon. Desde el 07-09 si se ve: sale `phys  el contador de
+marcos libres MIENTE` y la maquina sigue.
 
 ---
 
