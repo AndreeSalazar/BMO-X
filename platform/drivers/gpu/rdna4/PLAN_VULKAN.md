@@ -145,6 +145,29 @@ supone):
 **No escribas un plan de fechas sobre esto hasta haberlo mirado.** Es
 exactamente el tipo de cosa que parece de dos semanas y son seis meses.
 
+## ★★ MEDIDO EL 2026-09-07 -- y el veredicto es que NO es un muro
+
+Se hizo lo que esta seccion pedia: leer `amdgpu` y contar pasos. El resultado
+entero esta en [`PSP_MEDIDO.md`](PSP_MEDIDO.md), y lo que cambia aqui es esto:
+
+```text
+   EL PSP NO ES UN MURO CRIPTOGRAFICO. ES UN BUZON.
+```
+
+Nosotros no firmamos nada ni negociamos nada: AMD firma los blobs antes de
+publicarlos, el PSP los verifica, y el driver solo los ENTREGA. Doce mensajes
+sobre doce registros, con el mismo patron cada vez -- direccion, orden, esperar
+el bit 31 -- y despues un anillo que **es el molde de xHCI**, ya peleado en metal.
+
+⚠ **Y trae una correccion a este documento**: la meta A no es independiente del
+PSP. El SDMA --el motor de copia que la meta A necesita-- **tambien sube por el
+PSP**. No la hace imposible; le pone el precio real delante:
+
+```text
+   antes   meta A = anillos + SDMA
+   ahora   meta A = PSP (12 mensajes) + anillos + SDMA
+```
+
 ## Y la nota que ya estaba escrita, que sigue valiendo
 
 De `src/lib.rs`: *si el firmware o los registros de la SKU concreta no
