@@ -271,6 +271,18 @@ pub fn render_hud() {
     let (bus_turns, bus_overlaps) = crate::ring0::dev::usb::bus_stats();
     r.txt(" bus="); r.dec(bus_turns);
     r.txt(":"); r.dec(bus_overlaps);
+    // ** `ritmo=tarde:perdidos:peor_ms` -- QUE EL LATIDO LLEGUE A SU HORA.
+    //
+    // `turns` de arriba dice que el hilo VIVE; esto dice si llega PUNTUAL, y son
+    // preguntas distintas: un hilo que late 250 veces por segundo con picos de
+    // 80 ms se ve perfecto en `turns` y se nota en la mano.
+    //
+    // `perdidos` es la fila que duele: turnos enteros que cabian en el retraso y
+    // no se dieron. Los tres deberian quedarse en 0.
+    let (r_tarde, r_perd, r_peor) = crate::ring0::dev::usb::ritmo();
+    r.txt(" ritmo="); r.dec(r_tarde);
+    r.txt(":"); r.dec(r_perd);
+    r.txt(":"); r.dec(r_peor);
     // ** `puertas=esperando:PERDIDOS:barridos:reparados` -- QUE LAS PUERTAS SIGAN
     // ABIERTAS.
     //
