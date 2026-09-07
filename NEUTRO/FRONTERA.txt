@@ -1,0 +1,69 @@
+LA FRONTERA DEL NEUTRO -- que ES y que NO, para no estirar la palabra
+======================================================================
+
+  Una palabra que sirve para todo no sirve para nada. Esta existe para separar
+  un caso concreto del resto, y en cuanto abarque a los perifericos habra que
+  inventar otra.
+
+
+LAS TRES CONDICIONES, Y HACEN FALTA LAS TRES
+---------------------------------------------
+
+  1. EJECUTA          tiene procesador propio y su propio programa
+  2. ES OPACO         ese programa no se puede leer, ni parar, ni auditar
+  3. ALCANZA LA RAM   por DMA, sin capability y sin pedir turno
+
+  *** LA TERCERA ES LA QUE MANDA.
+  Un microcontrolador de teclado cumple 1 y 2 y NO es neutro: es un periferico.
+
+      el teclado te MANDA bytes
+      el neutro te ESCRIBE en la memoria
+
+  Esa es la frase entera. Lo demas son matices.
+
+
+LOS CASOS QUE SE PARECEN Y NO SON
+----------------------------------
+
+  MMIO que el CPU escribe
+      Va en la otra direccion: nosotros escribimos en el aparato. Eso ya tiene
+      juez -- bmo-mmio-juicio, con su veto PisaRam -- y es la mitad que SI esta
+      vigilada.
+
+  una tarea de Ring 3 con un bloque prestado
+      Pide, y el orquestador decide. Es el celo funcionando. Lo contrario.
+
+  un fichero reflejado en RAM
+      Lo escribe el kernel tras leerlo del disco. Quien hizo el DMA fue el AHCI,
+      y el AHCI ya tiene su fila.
+
+  el framebuffer del UEFI
+      Es memoria del aparato mapeada para nosotros, no memoria nuestra escrita
+      por el. Otra vez la otra direccion.
+
+  un nucleo dormido (AXION)
+      Es este mismo CPU. Ejecuta lo que le pusimos, y se le puede parar.
+
+
+EL CASO DIFICIL, Y SE DEJA DECIDIDO
+------------------------------------
+
+  El microcodigo del CPU y el SMM del firmware cumplen las tres condiciones.
+  SI son neutros, y estan en el censo -- pero no se pueden etiquetar porque no
+  piden memoria a este asignador: ya estan dentro.
+
+  ** Se escriben igual. Un censo que solo lista lo que se puede controlar no es
+  un censo: es un inventario de lo que ya se tenia, y el hueco desaparece justo
+  donde mas incomoda.
+
+
+DONDE ACABA EL NEUTRO
+----------------------
+
+  El neutro NO es "todo lo que no controlamos". Es lo que ESCRIBE EN NUESTRA
+  RAM sin permiso. Un aparato que no puede tocar la RAM no es neutro por muy
+  cerrado que sea su firmware.
+
+      cerrado          no basta
+      con procesador   no basta
+      con DMA          ESO es

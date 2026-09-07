@@ -217,7 +217,7 @@ suya (...) copiarlas seria heredar sus deudas sin heredar sus motivos."*
 | [`LA_COMPATIBILIDAD.md`](identidad/LA_COMPATIBILIDAD.md) | las tablas de lo que no se puede romper, y el PEAJE que se olvida |
 | [`LA_RUTA.md`](identidad/LA_RUTA.md) | se paga en la puerta una vez, y despues no hay puerta |
 | [`LOS_TRES_VERTICES.md`](identidad/LOS_TRES_VERTICES.md) | de que esta hecho BMO-X, y por que esos tres |
-| [`EL_NEUTRO.md`](identidad/EL_NEUTRO.md) | ★ lo que el orquestador NO orquesta: el orquestador es celoso con Ring 3 y **CIEGO** con el neutro |
+| [`EL_NEUTRO.md`](identidad/EL_NEUTRO.md) | ★ lo que el orquestador NO orquesta: el orquestador es celoso con Ring 3 y **CIEGO** con el neutro. Su estandar vive en [`NEUTRO/`](../NEUTRO/README.md), en la raiz |
 | [`LIENZO.md`](identidad/LIENZO.md) | ⚠ **SUPERADO** por `plan/PLAN_DIRECTOR.md` -- se conserva a proposito |
 
 [!] `LIENZO.md` **no se borra y no se arregla**: su conclusion se cayo y el
