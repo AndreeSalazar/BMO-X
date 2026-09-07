@@ -587,3 +587,112 @@ que puede convertir este plan en imposible, y cuesta un dia averiguarlo.
 
 > Comprar la tarjeta antes de medir el PSP es pagar por saber lo que se puede
 > leer gratis.
+
+---
+
+# ★★ EL BSF Y "UNA GPU PERFILADA" SON LA MISMA DECISION
+
+> Anadido el **2026-09-07**. El dueno volvio al BSF y le puso el motivo que le
+> faltaba: *"que la GPU no pierda el tiempo"*. Y al ponerlo, las dos ideas de
+> este documento --el sobre de sombreadores y la GPU perfilada-- resultan ser
+> **una sola**, que ninguna de las dos secciones decia.
+
+## 1. Un sombreador precompilado esta CASADO con una ISA
+
+Es el hecho que lo ata todo, y hay que decirlo antes que nada bueno:
+
+```text
+   SPIR-V          portable. Vale en cualquier GPU del mundo
+   RDNA compilado  vale en UNA familia de chips. En la de al lado, NO
+```
+
+** Asi que un BSF que lleve el sombreador **ya traducido a instrucciones** solo
+sirve en la tarjeta para la que se tradujo.
+
+★ **Y eso, que en un sistema normal es un defecto, aqui es GRATIS.** Un driver
+generico tendria que meter N copias o compilar al vuelo, porque no sabe delante
+de que tarjeta va a despertar. BMO-X ya decidio que **hay UNA**:
+
+> La GPU perfilada es lo que hace posible el BSF precompilado. Y el BSF
+> precompilado es lo que hace que perfilar la GPU sirva para algo.
+
+Es exactamente por eso que **las consolas lo hacen y los PC no**. No es que
+Sony sea mas lista: es que Sony sabe que tarjeta hay dentro.
+
+## 2. ⚠ Y por eso el sobre tiene que DECIR para que maquina es
+
+Un fichero precompilado sin declarar su destino es la peor version de esta idea:
+funciona en la maquina de quien lo hizo y falla raro en cualquier otra.
+
+```text
+   [ ] el BSF declara la ISA y la generacion para la que se tradujo
+   [ ] el cargador COMPARA con la GPU perfilada, y se NIEGA si no cuadra
+   [ ] y lleva el SPIR-V original al lado, para poder traducir si no cuadra
+```
+
+** La tercera fila es la que convierte el formato en util fuera de esta maquina,
+y es barata: SPIR-V ocupa poco. Sin ella el BSF es un atajo; con ella es un
+**cache verificable** -- *"aqui esta el resultado, y aqui esta de que salio"*.
+
+> Un precompilado que no dice de que maquina es no es una optimizacion: es una
+> trampa que salta en la maquina de otro.
+
+## 3. La pregunta del dueno: *"eso parece DMA o algo?"*
+
+Buena pregunta, y la respuesta es **si en una capa y no en las otras**. Se
+separan porque confundirlas es lo que hace que un plan crezca sin control:
+
+```text
+   BSF        el FORMATO       QUE bytes son, y como se comprueban
+   DMA        el TRANSPORTE    COMO llegan a la memoria de la GPU sin el CPU
+   sombreador la EJECUCION     la GPU corriendo esos bytes
+```
+
+★ Es la misma relacion que ya existe un piso mas abajo, y por eso se reconoce:
+
+```text
+   BEF   es el formato de un programa
+   y leerlo del disco usa DMA (el AHCI), que no sabe nada de BEF
+```
+
+** Donde el dueno acierta de lleno: **subir un sombreador ya compilado a la
+memoria de video ES una copia por DMA** -- el mismo motor SDMA de la meta A. Asi
+que las dos metas se tocan aqui, y en el sitio bueno:
+
+```text
+   la META A construye el motor de copia para pintar mas rapido
+   la META B lo REUSA para subir sombreadores y datos
+```
+
+*** Lo cual da un orden que no habia que buscar: **la meta A no es solo lo
+alcanzable, es ademas la primera pieza de la meta B.**
+
+## 4. "1.0 y hasta la ultima": el orden, y por que no es una promesa
+
+El dueno lo dijo asi -- *"Vulkan 1.0 hasta la ultima por eso"*. Como ORDEN es
+correcto y este documento ya lo llamaba la estrategia buena. Como PLAN hay que
+decir lo que cuesta cada peldano:
+
+```text
+   1.0 -> 1.1   barato: son extensiones encima de lo mismo
+   1.1 -> 1.2   ⚠ CARO. timeline semaphores y descriptor indexing cambian
+                como se sincroniza y como se accede a los recursos
+   1.2 -> 1.3   medio: dynamic rendering simplifica, no anade capacidad
+```
+
+★ **El peldano caro es el 1.2, y da la casualidad de que es el que mas abre.**
+Escrito aqui para que el dia que se llegue a el nadie lo confunda con "una
+extension mas".
+
+## 5. Lo que sigue sin cambiar
+
+```text
+   [ ] el PSP sigue sin medir, y sigue siendo lo unico que puede
+       convertir esto en imposible
+   [ ] medirlo NO necesita la tarjeta: es LEER `amdgpu`, que es codigo publico
+```
+
+⚠ **Y eso ultimo hay que dejarlo escrito porque se malentendio**: el PSP no es
+un aparato que haya que comprar ni que haya que tener. Es **un bloque dentro de
+la propia GPU de AMD**. No se puede "no tenerlo": se tiene el dia que se tiene la
+tarjeta, y hasta ese dia se estudia leyendo el driver de Linux.
