@@ -78,6 +78,26 @@ Y las otras dos lineas lo estrechan mas:
 | `iq: no hay marco de iretq` | **no** es un cambio de contexto |
 | `rip=0x0` | se salto a CERO -- o sea, un `ret` sobre una pila con basura |
 
+## 1.3b ⭐ Y DESDE EL 07-09 LA AZUL CONTESTA UNA COSA MAS
+
+El `else` de `phys::free_frame` cazaba un marco devuelto dos veces desde el
+01-09 **y solo lo decia en CABINA**, que muere con la azul. Ahora lo apunta en
+un libro de ocho fichas que la azul consulta, asi que si vuelve a pasar el
+renglon dira:
+
+```text
+   marco OCUPADO -- Y SE DEVOLVIO DOS VECES en tick XXXXXXXX
+```
+
+** Si sale ese trozo, **el caso esta cerrado**: hay un doble `free`, y el tick
+dice cuando. Si NO sale, tambien es una respuesta y de las caras -- significa
+que el marco se entrego dos veces **sin que nadie lo devolviera dos veces**, y
+entonces el fallo esta en el camino de ENTREGA, no en el de devolucion.
+
+Es la misma jugada que la morgue: dos respuestas, las dos utiles.
+
+---
+
 ★ **La cadena entera, en una frase**: la purga libera marcos; algo se libera dos
 veces; el asignador entrega el mismo marco al siguiente que pide (DOOM); ese
 marco lleva dentro la pila de un hilo que todavia esta sentado en ella; el

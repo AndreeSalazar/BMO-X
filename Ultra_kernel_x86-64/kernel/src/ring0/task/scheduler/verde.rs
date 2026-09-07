@@ -293,8 +293,37 @@ pub fn context_rsp_of(tid: u32) -> u64 {
 /// `Exited` cuenta como que SI queda: la tarea existe hasta que `reap` la
 /// recoge, y lo que la purga espera es precisamente esa recogida. Contarla como
 /// ida seria declarar limpio un sitio que todavia tiene inquilino.
+/// **Queda alguna tarea de Ring 3?** La pregunta que cierra el bucle de la purga.
+///
+/// *** SE TOMA EL CERROJO, Y HASTA EL 2026-09-07 NO SE TOMABA.
+///
+/// Sus dos vecinas de aqui abajo --`hay_hueco` y `huecos_libres`-- lo tomaban
+/// desde siempre; esta leia `SCHEDULER` con un `addr_of!` y a pelo. Y quien la
+/// llama es el bucle de `core/purga.rs`, **entre cesiones de CPU**:
+///
+/// ```text
+///    while vueltas < VUELTAS_MAX {
+///        if !queda_alguna_de_ring3() { ... }   <-- aqui
+///        yield_current();                      <-- y cada uno de estos
+///        vueltas += 1;                         //   termina en `reap`
+///    }
+/// ```
+///
+/// ** O sea que se preguntaba por la tabla **justo en el momento en que `reap`
+/// la esta reescribiendo**: `reap` recorre las ranuras poniendo `Task::EMPTY`,
+/// y esto las leia a la vez. Lo que devuelve una lectura a medias no es un dato
+/// peor: es un dato de un estado que nunca existio.
+///
+/// [!] Y el sintoma que produce es de los caros de leer: `completa=false` con
+/// la maquina limpia, o `completa=true` con algo vivo. **El bucle decide
+/// cuando parar de limpiar con esta respuesta**, asi que una lectura sucia aqui
+/// no da un numero raro en un panel -- deja Ring 3 a medio recoger.
+///
+/// No arregla la doble entrega que reporta la azul del 07-09; es un defecto
+/// distinto que salio buscandola. Ver `docs/metal/PRUEBA_EN_METAL_0907.md` 2.1.
 pub fn queda_alguna_de_ring3() -> bool {
-    let s = unsafe { &*core::ptr::addr_of!(SCHEDULER) };
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
     s.tasks.iter().any(|t| t.is_user && t.state != TaskState::Empty)
 }
 
