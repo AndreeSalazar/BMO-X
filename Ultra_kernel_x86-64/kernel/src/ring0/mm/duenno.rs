@@ -112,6 +112,29 @@ pub enum Duenno {
     Bufer = 6,
     /// Una estructura del propio kernel.
     Kernel = 7,
+    /// **NEUTRO: un aparato escribe aqui por DMA, y no obedece a nadie.**
+    ///
+    /// == *** LA NOVENA CLASE, Y LA UNICA QUE NO ES DE ESTE PROCESADOR ======
+    ///
+    /// Las ocho de arriba son cosas que el CPU escribe. Esta no: es un marco
+    /// que **el AHCI, la tarjeta de red, el xHC o la GPU** tienen programado
+    /// como destino, y en el que van a escribir cuando les parezca -- sin
+    /// pedir permiso, sin capability y sin que el orquestador se entere.
+    ///
+    /// ** Hasta hoy esos marcos salian `Anonimo`, que significa SIN OPINION.
+    /// O sea que los unicos marcos del sistema en los que escribe alguien a
+    /// quien no se puede parar eran, justamente, sobre los que el juez se
+    /// callaba.
+    ///
+    /// > El marco mas peligroso de la maquina era el que no tenia etiqueta.
+    ///
+    /// [!] Y esta clase NO se devuelve nunca. Los cuatro sitios que la piden
+    /// la piden UNA vez, en el arranque, y viven lo que vive el kernel. Si un
+    /// dia aparece uno que la suelte, `puede_soltar` ya sabra decir que no --
+    /// que es media respuesta a la pista 1.5 de la hoja del 07-09.
+    ///
+    /// Ver `NEUTRO/LEY.md`, regla N2.
+    Neutro = 8,
 }
 
 impl Duenno {
@@ -127,6 +150,10 @@ impl Duenno {
             Duenno::Bloque => "bloque",
             Duenno::Bufer => "bufer",
             Duenno::Kernel => "kernel",
+            // En MAYUSCULAS como `TABLA`, y por el mismo motivo: los dos
+            // aparecen en una pantalla azul que se lee con una camara, y los
+            // dos significan "esto no lo tocaba quien creias".
+            Duenno::Neutro => "NEUTRO (un aparato)",
         }
     }
 
@@ -138,6 +165,7 @@ impl Duenno {
             5 => Duenno::Bloque,
             6 => Duenno::Bufer,
             7 => Duenno::Kernel,
+            8 => Duenno::Neutro,
             1 => Duenno::Anonimo,
             // [!] Un byte que esta tabla no sabe producir se lee como `Nadie` y
             // NO como un dueno inventado. Un juez que se inventa una respuesta
@@ -218,6 +246,27 @@ pub fn cubiertos() -> u64 {
     for i in 0..MARCOS {
         let b = t[i];
         if b >= 2 {
+            n += 1;
+        }
+    }
+    n
+}
+
+/// **Cuantos marcos son de un APARATO**, o sea neutros.
+///
+/// Va aparte de [`cubiertos`] a proposito. `cubiertos` contesta *"cuanto sabe
+/// el juez"*; esto contesta *"cuanta RAM de esta maquina esta fuera del celo"*,
+/// que es la cifra de `NEUTRO/` y no la del asignador.
+///
+/// ** En una maquina sana es un numero PEQUENO Y QUIETO: los cuatro aparatos
+/// piden sus marcos al arrancar y no vuelven a pedir. **Si sube con la maquina
+/// en marcha, alguien esta repartiendo DMA en caliente** -- y eso es lo que hay
+/// que ir a mirar antes que nada.
+pub fn neutros() -> u64 {
+    let t = tabla();
+    let mut n = 0u64;
+    for i in 0..MARCOS {
+        if t[i] == Duenno::Neutro as u8 {
             n += 1;
         }
     }

@@ -322,7 +322,12 @@ pub fn rx_start() -> bool {
     // bufer de red -- visible, reproducible, y sin llevarse nada por delante.
     let bytes = bmo_net::anillo::bytes_necesarios();
     let paginas = (bytes + mm::PAGE - 1) / mm::PAGE;
-    let arena = match crate::ring0::mm::phys::alloc_frames_contig(paginas) {
+    // ** El corral entero es NEUTRO: la tarjeta escribe ahi por DMA. Ver
+    // `NEUTRO/LEY.md`, N2.
+    let arena = match crate::ring0::mm::phys::alloc_frames_contig_de(
+        paginas,
+        crate::ring0::mm::phys::Duenno::Neutro,
+    ) {
         Some(p) => p,
         None => {
             crate::ring0::cabina::fault("red", "sin marcos contiguos para el corral de DMA", paginas);

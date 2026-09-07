@@ -1,0 +1,72 @@
+EL CENSO DEL NEUTRO -- quien alcanza la RAM sin pasar por el orquestador
+=========================================================================
+
+  La lista, no la prosa. El porque esta en docs/identidad/EL_NEUTRO.md y las
+  reglas en LEY.md. Esto es N1: un aparato neutro sin fila aqui es una parte
+  del sistema que nadie sabe que existe.
+
+  [!] SE ESCRIBE A MANO, y eso es una deuda: ver REQUISITOS.md, R5. El portero
+  del bus (dev/portero.rs) ya recorre el PCI y sabe quien hay; hoy no alimenta
+  este fichero, asi que las dos listas pueden separarse sin que nadie avise.
+
+
+LAS COLUMNAS
+------------
+
+  aparato       quien es
+  ejecuta       tiene procesador propio y programa propio?
+  opaco         ese programa se puede leer, parar o auditar?
+  DMA           alcanza la RAM por su cuenta?
+  marcos        de donde saca la memoria en la que escribe
+  etiquetados   sus marcos llevan Duenno::Neutro? (N2)
+
+
+LOS QUE ESTAN DENTRO DE ESTA MAQUINA HOY
+-----------------------------------------
+
+  aparato   ejecuta  opaco  DMA  marcos                        etiquetados
+  -------   -------  -----  ---  ---------------------------   -----------
+  AHCI      si       si     SI   dev/disk/mod.rs  x2           SI  07-09
+  NIC       si       si     SI   dev/net/mod.rs   x1           SI  07-09
+  xHCI      si       si     SI   dev/usb/mod.rs   x1           SI  07-09
+  GPU+PSP   si       si     SI   -- todavia no hay tarjeta --  --
+  ucode     si       si     si   no pide: ya esta dentro       imposible
+  SMM       si       si     si   no pide: se la toma           imposible
+
+
+  ** LAS DOS ULTIMAS FILAS NO SON UN DESCUIDO.
+  El microcodigo del CPU y el modo de gestion del firmware cumplen las tres
+  condiciones y NO SE PUEDEN ETIQUETAR: no piden memoria a este asignador. Se
+  escriben igual porque un censo que solo lista lo que puede controlar no es un
+  censo -- es un inventario de lo que ya se tenia.
+
+
+  *** LOS TRES PRIMEROS ESTABAN EL PRIMER DIA.
+  El neutro no llego con la GPU. La GPU solo hizo evidente lo que llevaba ahi
+  desde que el disco arranco por primera vez.
+
+
+LO QUE NO ENTRA, Y POR QUE
+---------------------------
+
+  el teclado USB      manda bytes; no escribe en memoria. El que escribe es el
+                      xHC, y ese ya tiene su fila
+  el raton            igual
+  el audio USB        igual: viaja por el xHC
+  el framebuffer      es MMIO que el CPU escribe. Va en la otra direccion
+  una tarea de Ring 3 pide y el orquestador decide. Eso es el celo funcionando,
+                      que es lo contrario de esto
+
+  Ver FRONTERA.txt: la palabra "neutro" es util mientras no se estire.
+
+
+COMO SE ANADE UNO
+-----------------
+
+  1. se escribe su fila AQUI, con la maquina apagada  (N1)
+  2. su peticion de memoria pasa a alloc_frames_contig_de(.., Neutro)  (N2)
+  3. se comprueba que duenno::neutros() sube al arrancar y luego se queda
+     quieto  (N4)
+
+  [!] El orden importa: la fila va PRIMERO. Un aparato que ya funciona y todavia
+  no esta escrito es justo el que nadie se acuerda de escribir.

@@ -123,7 +123,11 @@ impl StorageHal for KernelStorageHal {
         // CONTIGUOS: la lista de comandos y las tablas de descriptores las
         // recorre el HBA por direccion fisica, linealmente. Dos frames que no
         // se tocan serian dos estructuras rotas.
-        phys::alloc_frames_contig(count as u64)
+        // ** Y SE DICE QUE ES DE UN APARATO (`Neutro`, 2026-09-07). El HBA
+        // escribe aqui por DMA sin pedir permiso a nadie: hasta hoy estos
+        // marcos salian `Anonimo` --sin opinion-- que es justo lo que no
+        // pueden ser. Ver `NEUTRO/LEY.md`, N2.
+        phys::alloc_frames_contig_de(count as u64, phys::Duenno::Neutro)
     }
     fn free_dma_pages(&self, _addr: u64, _count: usize) {
         // El disco se abre una vez y vive lo que vive el kernel: no hay ciclo
@@ -343,7 +347,7 @@ pub fn init() {
         return;
     }
     // Pagina de rebote para el DMA, contigua y de direccion fisica conocida.
-    let dma = match phys::alloc_frames_contig(1) {
+    let dma = match phys::alloc_frames_contig_de(1, phys::Duenno::Neutro) {
         Some(p) => p,
         None => {
             crate::ring0::cabina::fault("disk", "sin memoria para el buffer DMA", 0);

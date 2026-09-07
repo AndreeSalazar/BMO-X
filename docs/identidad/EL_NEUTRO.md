@@ -3,6 +3,10 @@
 > Capitulo de identidad: *por que BMO-X hace esto distinto en vez de copiar*.
 > Hermano de [`EL_ORQUESTAL.md`](EL_ORQUESTAL.md), y su contrapeso exacto.
 >
+> ⭐ **Y desde el 2026-09-07 tiene CARPETA PROPIA en la raiz**: [`NEUTRO/`](../../NEUTRO/README.md),
+> con su ley, su censo y sus requisitos. Este capitulo contesta *por que*; la
+> carpeta guarda *el estandar*. Mismo reparto que `VALKYRIE-ABI/`.
+>
 > Lo nombro el dueno el **2026-09-07**, hablando de la GPU:
 >
 > > *"considero que si hablamos de GPU, ese ya no vive en RING 0 ni RING 3.
@@ -168,8 +172,28 @@ descubrirla otra vez con una pantalla azul delante.
    [ ] no dice que el neutro sea inseguro. Dice que NO ESTA VIGILADO,
        que es una afirmacion mas pequena y comprobable
    [ ] no propone una IOMMU. La nombra como lo unico que cerraria esto
-   [ ] no cambia ni una linea de codigo. Es una CATEGORIA, no un mecanismo
    [ ] y no aparece en el ABI: Ring 3 no tiene que saber que existe
 ```
+
+### ⚠ Y una linea de esta lista se cayo EL MISMO DIA
+
+Aqui decia tambien *"no cambia ni una linea de codigo: es una CATEGORIA, no un
+mecanismo"*. **Duro unas horas.** Al escribir `NEUTRO/LEY.md` aparecio que la
+regla N2 --etiquetar los marcos-- era una linea en `mm/duenno.rs`, porque las
+otras ocho clases ya estaban.
+
+```text
+   se anadio   `Duenno::Neutro`, y los cuatro sitios que piden DMA la usan
+   salio gratis la pantalla azul YA preguntaba el dueno del marco: solo le
+               faltaba que existiera un nombre que decir
+```
+
+*** Se deja escrito en vez de borrarlo: **una categoria que a las pocas horas
+produce un mecanismo es la senal de que la categoria era buena**, y taparlo
+haria parecer que estaba planeado.
+
+> Lo que sigue siendo cierto es lo de arriba: nombrar el agujero no lo tapa.
+> Etiquetar los marcos hace que se pueda CULPAR a un aparato, no que se le pueda
+> impedir escribir. Eso es R6, y es la MMU.
 
 > El neutro no es un anillo nuevo. Es el nombre de donde acaba la ley.
