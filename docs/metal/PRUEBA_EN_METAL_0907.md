@@ -480,7 +480,29 @@ cuestan si salen mal:
    7.  ★ LA PURGA, seccion 1.4               reproduce, y APUNTA LOS NUMEROS
    8.  DOOM y `ray`                          lo que revienta despues de 7
    9.  ★ 1.6a -- SI el teclado se muere    mira CABINA antes de reiniciar
+   10. ★★ la linea del IOMMU               UN VISTAZO, y decide un proyecto
 ```
+
+⭐⭐ **La 10 cuesta un vistazo y decide semanas.** En el arranque, `placa.rs` ya
+dice si el firmware declara un IOMMU -- y esa linea **no la ha leido nadie
+nunca**. Busca en CABINA:
+
+```text
+   placa   IOMMU que declara el firmware        -> N       y su base de MMIO
+   placa   [!] sin IVRS: un aparato con DMA no tiene quien lo limite
+```
+
+```text
+   [ ] 10a  si sale el PRIMERO -> R6 de NEUTRO es POSIBLE en esta placa,
+            y se puede planificar con un numero delante
+   [ ] 10b  si sale el SEGUNDO -> ** R6 esta MUERTO aqui. NEUTRO se queda
+            en nombrar, contar y culpar, y no impedir. Para siempre en
+            esta maquina
+```
+
+★ Es la unica casilla de esta hoja que **no arregla nada y aun asi es de las
+mas valiosas**: contesta si vale la pena empezar un proyecto de meses. Ver
+`NEUTRO/REQUISITOS.md`, R6.0.
 
 ⭐ **La 9 no se planifica: se atiende.** No es un paso que se teclea, es lo
 que hay que mirar el dia que pase lo del 07-09. Y va escrita aqui para que la
