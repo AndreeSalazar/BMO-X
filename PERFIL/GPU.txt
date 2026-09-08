@@ -68,3 +68,29 @@ LO QUE FALTA EN ESTE PERFIL
   [ ] los codigos PSP_BL__LOAD_* -- hoy `Codigos::SIN_RELLENAR`, y la maquina
       de estados SE NIEGA a arrancar sin ellos
   [ ] y la fila de la GPU en NEUTRO/CENSO.txt, ANTES de que funcione (N1)
+
+
+SI ESTE PERFIL ESTA MAL, ASI SE NOTA
+-------------------------------------
+
+  pci_devices con una SKU que no es
+      `claims()` dice que si a una tarjeta que no maneja, y el driver le habla
+      a registros que ahi significan otra cosa. Escribir en un registro
+      equivocado de una GPU no da error: da una tarjeta muda o una maquina
+      colgada. Por eso HOY esta vacio
+
+  la version de PSP equivocada (v13 donde toca v14)
+      el prefijo del bloque de registros cambia, asi que se escribe en
+      direcciones que no son del PSP. El sintoma es silencio: se espera el
+      bit 31 de un registro que nadie va a encender, y salta el plazo de
+      3.000 vueltas. La maquina de estados dira `SinRespuesta(35)`
+
+  un codigo PSP_BL__LOAD_* mal copiado
+      se le pide al gestor de arranque una cosa por otra. Es el fallo que
+      `Codigos::SIN_RELLENAR` existe para impedir: con un cero la maquina se
+      para en `SinCodigos` en vez de mandar una orden inventada
+
+  *** LA REGLA DE ESTE FICHERO: mientras no haya tarjeta en el banco, TODO campo
+  que se rellene aqui es una suposicion que compila. Por eso `pci_devices` esta
+  vacio y los codigos tambien -- y las dos cosas HACEN QUE EL CODIGO SE PARE, no
+  que siga con un valor por defecto.

@@ -117,7 +117,32 @@ con manas que se pueden quedar obsoletas en silencio.
 
 ---
 
-## 6. Lo que esta carpeta NO promete
+## 6. ★ LA REGLA DEL FORMATO: cada perfil dice COMO SE NOTA que esta mal
+
+Pedido por el dueno: *"quizas que pongan por que razones, para saber por que
+falla"*. Es la ley **L6f** --el `[riesgo]` de un modulo-- aplicada a un dato:
+
+> Un `[riesgo]` no dice **que cuesta** un fallo. Dice **por que esa pieza va a
+> fallar**.
+
+Asi que todo perfil de aqui lleva una seccion `SI ESTE PERFIL ESTA MAL, ASI SE
+NOTA`, y cada fila es un sintoma real, no una advertencia:
+
+```text
+   el campo que puede estar mal
+       que se ve desde fuera cuando lo esta
+       y como se caza
+```
+
+*** El caso que lo justifica esta en [`RAM.txt`](RAM.txt): los modulos dicen
+3200 MT/s y **una A320M puede no estar dandoselos**. Un tercio de diferencia en
+el ancho de banda, invisible desde dentro de BMO-X, y el sintoma es *"el
+asistente va lento y parece que el modelo esta mal elegido"*. Sin esa seccion,
+ese dia se audita el modelo -- que es lo unico que no tiene la culpa.
+
+---
+
+## 7. Lo que esta carpeta NO promete
 
 ```text
    [ ] no hace que cambiar de hardware sea automatico
