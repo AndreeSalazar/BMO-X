@@ -33,6 +33,24 @@ param(
     [string]$Datos = 'A'
 )
 
-& "$PSScriptRoot\bmo.ps1" -Desplegar -Rapido:$Rapido -Metro:$Metro `
+# == ** EL RELEVO, Y AQUI SE PERDIA UNA (2026-09-07) ==========================
+#
+# Este fichero DECLARABA `-Si` y NO se lo pasaba a `bmo.ps1`. O sea que
+# `.\desplegar.ps1 -Si ...` se aceptaba sin protestar, la bandera se la tragaba
+# el relevo, y el despliegue preguntaba igual.
+#
+# ** Y es la peor clase de fallo de esta casa: **algo que se acepta y no hace
+# nada**. Ni un error, ni un aviso -- el dueno tecleo la bandera que el mismo
+# habia pedido y penso que la pregunta era irremediable.
+#
+# La cabecera de arriba lo decia y no lo cumplia: *"todo lo demas se pasa tal
+# cual"*. Lo decia de `-Rapido` y `-Metro`, que si viajaban, y se olvido del
+# tercero.
+#
+# [!] Desde hoy lo vigila `toolchain/tools/relevo`: una bandera declarada aqui
+# que no aparezca en la llamada de abajo **para el build**. Un relevo con un
+# hueco no se ve leyendo -- se ve cuando algo no pasa, y para entonces ya se ha
+# buscado en el sitio equivocado.
+& "$PSScriptRoot\bmo.ps1" -Desplegar -Rapido:$Rapido -Si:$Si -Metro:$Metro `
     -Arranque $Arranque -Datos $Datos
 exit $LASTEXITCODE
