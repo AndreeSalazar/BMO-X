@@ -881,70 +881,20 @@ pub(crate) fn placa(dsk: &mut Desktop, _p: &bmo::Pantalla) -> After {
     After::Settle
 }
 
-/// **EL CENSO HILO A HILO, CON SU NOMBRE.**
-///
-/// *** Peticion del dueno (2026-08-24): *"en `smp all` me gustaria que detalles
-/// TODO con nombres CORE y THREAD asi para no decir x12, eso es mentir si pongo
-/// asi"*.
-///
-/// Y tiene razon. **"12 de 12" presenta doce cosas como si fueran doce
-/// iguales**, y no lo son: son SEIS nucleos con dos hilos cada uno. Un hilo SMT
-/// no es medio nucleo ni es un nucleo -- es un sitio mas para meter trabajo en
-/// el MISMO nucleo, y cuanto rinde depende de si la faena deja huecos.
-///
-/// Es la misma queja que la de la aceleracion, en otro sitio: **un numero sin el
-/// perfil al lado no se puede juzgar.**
-fn tabla_de_hilos(s: &mut crate::scene::output::Output) {
-    let hilos = bmo::info(bmo::INFO_CPU_HILOS) as u32;
-    if hilos == 0 || hilos > 64 {
-        return;
-    }
-    let mut cores = 0u32;
-    let mut threads = 0u32;
-    let mut trabajando = 0u32;
-    let mut ultimo_fisico = u32::MAX;
-
-    for id in 0..hilos {
-        let (estado, tipo, fisico, _hpc) = bmo::smp_hilo(id);
-        // ** Una linea en blanco entre nucleos fisicos: es lo que hace que se
-        // VEA que los hermanos van de dos en dos, sin tener que contarlos.
-        if fisico != ultimo_fisico {
-            ultimo_fisico = fisico;
-            s.text(b"    CORE ");
-            s.dec(fisico as u64);
-            s.byte(b'\n');
-        }
-        s.text(b"      ");
-        match tipo {
-            1 => { cores += 1; s.text(b"CORE   "); }
-            2 => { threads += 1; s.text(b"THREAD "); }
-            _ => s.text(b"?      "),
-        }
-        s.text(b"#");
-        s.dec(id as u64);
-        s.text(b"  ");
-        match estado {
-            0 => { trabajando += 1; s.with_ink(INK_GOOD); s.text(b"MAESTRO (el BSP)"); s.with_ink(INK_PLAIN); }
-            1 => { trabajando += 1; s.with_ink(INK_GOOD); s.text(b"obrero, EN PIE"); s.with_ink(INK_PLAIN); }
-            // ** "Dormido" y "en pie" se cuentan distinto A PROPOSITO. El dueno
-            // escribio `smp stop`, luego `smp`, y leyo "12 de 12": las dos
-            // lineas eran ciertas y juntas decian una mentira.
-            2 => s.text(b"PARADO (sin IPI no vuelve)"),
-            3 => s.text(b"AUSENTE -- no contesto al llamarlo"),
-            _ => s.text(b"?"),
-        }
-        s.byte(b'\n');
-    }
-
-    // *** Y EL RESUMEN QUE NO ES UNA `x`.
-    s.text(b"    = ");
-    s.dec(cores as u64);
-    s.text(b" CORE + ");
-    s.dec(threads as u64);
-    s.text(b" THREAD, y ");
-    s.dec(trabajando as u64);
-    s.text(b" trabajando\n");
-    s.text(b"    [!] un THREAD no es medio CORE: es otro sitio para meter\n");
-    s.text(b"        trabajo en el MISMO nucleo. Lo que rinde depende de si\n");
-    s.text(b"        la faena deja huecos -- `smp test` da los DOS numeros.\n");
-}
+// == ** `tabla_de_hilos` SE RETIRO el 2026-09-08, y su razon se queda =========
+//
+// Eran 67 lineas que NADIE LLAMABA, con una doc excelente dentro:
+//
+// > *"12 de 12 presenta doce cosas como si fueran doce iguales, y no lo son:
+// > son SEIS nucleos con dos hilos cada uno... un numero sin el perfil al lado
+// > no se puede juzgar"*
+//
+// ** Y esa idea NO se pierde: vive en `commands/topologia.rs`, que es la
+// version que si esta cableada --`reports.rs` llama a `duda_nota` y a
+// `detalle`-- y que ademas hace mas: dice si la MADT y CPUID discrepan y si los
+// hilos por nucleo se MIDIERON o se supusieron.
+//
+// *** Esto era la version vieja, superada y olvidada. La clase de deuda que
+// esta casa ya tiene nombrada: **codigo que compila, no lo llama nadie, y
+// nadie sabe que no lo llama nadie.** El aviso del compilador era el unico que
+// lo sabia.

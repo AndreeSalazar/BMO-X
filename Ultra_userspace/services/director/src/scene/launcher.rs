@@ -186,11 +186,6 @@ impl Launcher {
         }
     }
 
-    /// Cual esta senalado.
-    pub fn sel(&self) -> Option<usize> {
-        self.sel
-    }
-
     /// **Un clic en el icono `i`.** `true` si es el SEGUNDO de un doble clic.
     ///
     /// Es la misma regla que la rejilla de ESTRATOS, y desde el 2026-08-23 es

@@ -155,18 +155,3 @@ pub(crate) fn paint(
 /// El rojo apagado de "aqui no hay nada que ensenar". No es un error del disco,
 /// asi que no lleva el rojo de alarma.
 const INK_BAD_O_DIM: u32 = 0x008A_9BB4;
-
-/// Sobre que version cayo el puntero.
-pub(crate) fn version_en(z: &Zona, desde: usize, px: u32, py: u32) -> Option<usize> {
-    if !z.contiene(px, py) {
-        return None;
-    }
-    let paso = CAJA_H + HUECO;
-    let k = ((py - z.y) / paso) as usize;
-    let i = desde + k;
-    if i < bmo::estratos::hist_cuantas() as usize {
-        Some(i)
-    } else {
-        None
-    }
-}
