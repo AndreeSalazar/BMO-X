@@ -70,6 +70,19 @@ LO QUE FALTA EN ESTE PERFIL
   [ ] y la fila de la GPU en NEUTRO/CENSO.txt, ANTES de que funcione (N1)
 
 
+A QUIEN EXPONE
+--------------
+
+expone: platform/drivers/gpu/rdna4
+   el crate entero: el perfil, `claims()` y la maquina de estados del PSP
+
+expone: Ultra_kernel_x86-64/kernel/src/ring0/dev/portero.rs
+   el censo del bus, que es quien hoy DICE que hay una grafica sin codigo
+
+expone: NEUTRO/CENSO.txt
+   la GPU sera el neutro mas grande de esta maquina, y su fila va ANTES de
+   que funcione (N1)
+
 SI ESTE PERFIL ESTA MAL, ASI SE NOTA
 -------------------------------------
 

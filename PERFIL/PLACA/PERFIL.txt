@@ -92,6 +92,19 @@ LO QUE ESTE PERFIL NO SABE TODAVIA
   lo que sabe se lee igual que uno completo.
 
 
+A QUIEN EXPONE
+--------------
+
+expone: Ultra_kernel_x86-64/kernel/src/ring0/plat/perfil_placa.rs
+   la otra mitad, que lo dice en CABINA al arrancar
+
+expone: Ultra_kernel_x86-64/kernel/src/ring0/plat/placa.rs
+   quien LEE ACPI de verdad. Si lo que declara este fichero y lo que lee ese
+   no coinciden, los dos renglones salen seguidos en el arranque
+
+expone: PERFIL/RED.txt
+   la NIC va en la placa: cambiar una cambia la otra
+
 SI ESTE PERFIL ESTA MAL, ASI SE NOTA
 -------------------------------------
 

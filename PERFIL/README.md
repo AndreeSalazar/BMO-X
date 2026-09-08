@@ -110,10 +110,17 @@ es justo lo que hacen ya `perfil-placa` y `censo-neutro`.
 | disco | falta | `dev/disk/` | -- |
 | red | falta | `dev/net/` | -- |
 
-⚠ **Solo la placa tiene guardian hoy.** Los otros tres son declaraciones sin
-nadie que las compare con el codigo, y eso hay que decirlo en vez de dejar que la
-tabla parezca completa. El de la placa se escribio primero porque era el unico
+⚠ **Solo la placa tiene guardian PROPIO.** Los otros cinco son declaraciones sin
+nadie que las compare campo por campo, y eso hay que decirlo en vez de dejar que
+la tabla parezca completa. El de la placa se escribio primero porque era el unico
 con manas que se pueden quedar obsoletas en silencio.
+
+★ Lo que SI cubre a los seis es el guardian de la **exposicion** (seccion 7): que
+cada uno diga a quien rompe, y que ese alguien exista.
+
+*** Y el orden de lectura no es el de la tabla: **[`DISCO.txt`](DISCO.txt) va
+primero.** Los demas, si mienten, hacen que algo vaya lento o no arranque. Ese,
+si miente, escribe en el disco equivocado -- y ahi vive el Windows del dueno.
 
 ---
 

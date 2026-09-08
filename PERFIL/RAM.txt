@@ -90,6 +90,16 @@ POR QUE ESE NUMERO DECIDE UN PROYECTO
   que este fichero exista.
 
 
+A QUIEN EXPONE
+--------------
+
+expone: Ultra_kernel_x86-64/kernel/src/ring0/core/shell/banda.rs
+   la orden que MIDE. Es la unica que puede desmentir a este fichero
+
+expone: docs/plan/PLAN_EL_ASISTENTE.md
+   toda la aritmetica de tokens/s de su seccion 8 se apoya en el ancho de
+   banda. Hoy se apoya en un [SPEC], no en un [MEDIDO]
+
 SI ESTE PERFIL ESTA MAL, ASI SE NOTA
 -------------------------------------
 
