@@ -63,6 +63,8 @@ const TESTIGO_W: u32 = 168;
 /// otra, y la tapada seria justo el aviso del dia en que la entrada no se pudo
 /// reclamar.
 const TESTIGO_RANURA: u32 = 3;
+/// La misma ranura, para quien se pinta a su derecha. Ver `scene::pulso`.
+pub(crate) const RANURA: u32 = TESTIGO_RANURA;
 
 /// Verde apagado: sano se ve, pero no llama. Un verde brillante permanente
 /// convierte la barra en un arbol de navidad y entrena al ojo a no mirarla.

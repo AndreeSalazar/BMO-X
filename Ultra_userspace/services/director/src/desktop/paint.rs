@@ -219,6 +219,8 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         // Un hueco vacio donde estaba la luz se lee como "no hay problema", que
         // es la peor cosa que puede decir un instrumento que se borro.
         scene::testigo::olvidar();
+        // El pulso vive a la derecha del testigo y lo tapa lo mismo.
+        scene::pulso::olvidar();
         dsk.win.taskbar_dirty = false;
     }
 
@@ -341,6 +343,13 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
     // flanco que se levanta en una vuelta que no pinta no lo veria nadie.
     if dsk.tick.will_paint {
         scene::testigo::refrescar(&p, dsk.tick.quarter_cycles());
+        // ** EL PULSO, al lado del testigo y por el mismo motivo que el.
+        //
+        // `loops_per_second` existia y solo se pintaba DENTRO de las ventanas
+        // de CPU y memoria, que se abren con una tecla. O sea que el unico
+        // numero que dice si el escritorio esta vivo estaba detras de la cosa
+        // cuya muerte hay que diagnosticar. Ver la cabecera de `scene::pulso`.
+        scene::pulso::refrescar(&p, dsk.tick.loops_per_second);
     }
 
     // -- El cursor del raton, ENCIMA de todo y lo ultimo --
