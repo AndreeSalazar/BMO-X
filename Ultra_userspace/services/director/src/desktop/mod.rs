@@ -57,7 +57,37 @@ use crate::PATH_MAX;
 /// Counted in frames and not in time because there is no clock here: the three
 /// syscalls do not include "what time is it". It is a blink that depends on the
 /// speed of the machine, and for saying "you type here" that is enough.
-pub(crate) const BLINK: u32 = 12_000;
+/// **Cuartos de segundo que el cursor de escritura aguanta encendido.**
+///
+/// == *** ESTO CONTABA VUELTAS DE BUCLE, Y ERA EL BUG (2026-09-08) =========
+///
+/// Valia `12_000` y no eran milisegundos: eran **vueltas del bucle del
+/// escritorio**. Y ese numero decidia mucho mas que un parpadeo -- era el UNICO
+/// suelo de repintado que tenia el compositor:
+///
+/// ```text
+///    will_paint = algo sucio  ||  since_key + 1 >= BLINK  ||  nacio  ||  murio
+/// ```
+///
+/// ** O sea que sin entrada, el escritorio no repintaba hasta completar DOCE
+/// MIL vueltas. A la velocidad a la que va el bucle en el Ryzen eso son
+/// segundos, y el sintoma que trajo el dueno fue exacto:
+///
+/// > *"los FPS dependen de un teclado que no tiene sentido... tengo que pulsar
+/// > el bloq numerico SOLO para ver 1 frame que cambia"*
+///
+/// *** Y LA CASA YA HABIA CORREGIDO ESTE MISMO ERROR AL LADO. `paint.rs` cuenta
+/// como las vitales dejaron de usar `frames % 15` --*"un reloj que corria
+/// solo"*-- y pasaron a `Tick::quarter`, que se MIDE con el TSC. El parpadeo se
+/// quedo atras y se llevo por delante el repintado entero.
+///
+/// > Un contador de vueltas no es un reloj. Mide lo rapido que va el bucle, que
+/// > es justo lo que no se quiere saber.
+///
+/// **DOS**, o sea medio segundo: encendido un cuarto, apagado el siguiente. Y
+/// sigue reiniciandose con cada tecla, que es lo que mantiene el cursor solido
+/// mientras se escribe.
+pub(crate) const BLINK: u32 = 2;
 
 /// The one line of the Run box, and everything needed to edit it.
 pub(crate) struct Field {

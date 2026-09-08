@@ -79,7 +79,6 @@ mod watch;
 
 use scene::output::{paint_output, Output};
 use scene::*;
-use desktop::BLINK;
 use watch::{watch_run, Run};
 
 
@@ -754,8 +753,30 @@ pub extern "C" fn _start() -> ! {
         // en el que solo cambio una app no se contara como "va a pintar", el
         // cursor del raton no se quitaria antes de componer -- la app dibujaria
         // encima y el puntero desapareceria bajo su ventana.
+        // == *** EL SUELO DE REPINTADO SALE DEL RELOJ (2026-09-08) ==========
+        //
+        // ** Aqui ponia `dsk.field.since_key + 1 >= BLINK`, y BLINK eran DOCE
+        // MIL VUELTAS DE BUCLE. O sea que el unico repintado que no dependia de
+        // la entrada llegaba cada doce mil iteraciones -- segundos en esta
+        // maquina.
+        //
+        // El dueno lo describio sin saber que describia esta linea:
+        //
+        // > *"los FPS dependen de un teclado que no tiene sentido"*
+        //
+        // Y era literal: sin tecla, sin raton y sin app naciendo, este fotograma
+        // no pintaba. **La unica fuente de tiempo del compositor era el teclado.**
+        //
+        // *** Ahora el suelo es `Tick::quarter`: cuatro repintados por segundo,
+        // MEDIDOS con el TSC. Es la misma maquinaria que ya usan las vitales y
+        // el testigo del USB, y por el mismo motivo escrito alli.
+        //
+        // [!] Y no cuesta un volcado: `Pantalla::volcar` copia CAJAS SUCIAS, asi
+        // que un fotograma con el suelo puesto y nada sucio sale por su `return`
+        // sin tocar el framebuffer. Lo que se compra es que el escritorio TENGA
+        // pulso; lo que no se paga es pintar por pintar.
         dsk.tick.will_paint = dsk.out.grid.dirty
-            || dsk.field.since_key + 1 >= BLINK
+            || dsk.tick.quarter
             || born
             || dead > 0
             || dsk.table.has_new();
