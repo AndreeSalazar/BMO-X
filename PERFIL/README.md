@@ -11,6 +11,41 @@
 
 ---
 
+## 0b. ★★ EL CRITERIO: que merece perfil y que NO
+
+Lo pregunto el dueno el 07-09 -- *"falta el teclado y el mouse, aunque no se si
+esos 2 importan"*-- y al contestarlo salio la regla que faltaba. **Sin ella,
+acaba habiendo un perfil de cada cosa.**
+
+```text
+   se le PUEDE preguntar     ->  se le PREGUNTA. No hace falta perfil
+   NO se le puede preguntar  ->  hay que SUPONERLO, y entonces se ESCRIBE
+```
+
+★ Y el teclado es el mejor ejemplo, porque cae **en los dos lados a la vez**:
+
+```text
+   quien es              te lo DICE. Clase, subclase, protocolo, y desde el
+                         07-09 tambien su nombre (idVendor/idProduct)
+                         -> NO se perfila. Lo apunta el portero, al llegar
+
+   que letra es cada     NO te lo dice NADIE. Un teclado manda SCANCODES, y
+   tecla                 que la de al lado del 1 sea `!` o `"` lo decide el
+                         sistema  -> ESO si se perfila
+```
+
+*** Por eso [`ENTRADA.txt`](ENTRADA.txt) no tiene ni un campo de identidad y su
+campo mas importante es `distribucion: espanol (ISO)`.
+
+** Y la regla explica la carpeta entera hacia atras: la placa esta aqui porque su
+firmware **no cuenta sus manas**; el CPU porque sus erratas **no se preguntan**;
+la RAM porque su ancho de banda **solo se mide**; y el disco porque cual de las
+letras es el Windows del dueno **no se puede averiguar desde dentro**.
+
+> Un aparato que contesta no se perfila: se enumera.
+
+---
+
 ## 1. ★★ LAS TRES FRONTERAS -- y por eso las tres estan en la raiz
 
 Esto es lo que ordena todo lo demas, y no estaba escrito en ningun sitio:
@@ -107,6 +142,7 @@ es justo lo que hacen ya `perfil-placa` y `censo-neutro`.
 | [`CPU.txt`](CPU.txt) | aqui | `cpu_vendor/ryzen_5_5600x/` (1.072 lineas) | -- |
 | [`RAM.txt`](RAM.txt) | aqui | `core/shell/banda.rs` (la MIDE) | -- |
 | [`GPU.txt`](GPU.txt) | aqui | `platform/drivers/gpu/rdna4/` | -- |
+| [`ENTRADA.txt`](ENTRADA.txt) | aqui | `uhid/` + `dev/usb/` | -- |
 | disco | falta | `dev/disk/` | -- |
 | red | falta | `dev/net/` | -- |
 
@@ -129,6 +165,9 @@ La respuesta no fue "todo", y lo que NO se puede vale tanto como lo que si:
    RED     `pci_vendor` contra `VENDOR_REALTEK`. El device NO: no es constante
    DISCO   ** LOS TRES CIERRES de discos.ps1. Si alguien quita uno, el build para
    RAM     NADA. Su unico numero se MIDE, y no se ha medido
+   ENTRADA `latido_ms` y `subclase_exigida` SI. **La distribucion NO**: es una
+           TABLA de scancodes, no una constante -- y es justo el campo cuyo
+           fallo no da error nunca
 ```
 
 *** Y el orden de lectura no es el de la tabla: **[`DISCO.txt`](DISCO.txt) va
