@@ -12,6 +12,9 @@ use bmo_userland as bmo;
 /// **La ventana de CABINA** (F11): lo que el kernel ve, con su gravedad y en
 /// su color. Sustituye a la del klog, que era texto plano sin severidad.
 /// F7 y F8: lo que la maquina esta haciendo AHORA, cada uno en su ventana.
+/// **EL PULSO**: cuantas vueltas da el escritorio por segundo, en la barra y
+/// sin abrir nada. Su cabecera cuenta las seis hipotesis que costo no tenerlo.
+pub(crate) mod pulso;
 pub(crate) mod vitals;
 pub(crate) mod cabina;
 pub(crate) mod calc;
