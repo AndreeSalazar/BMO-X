@@ -42,8 +42,17 @@
 //!    la AGUJA quieta  el bucle NO da vueltas. Ahi se acaba la ambiguedad
 //!
 //!    miles            gira rapido. El fallo esta en quien marca SUCIO
-//!    decenas o 0      gira despacio: algo dentro de la vuelta cuesta
+//!    decenas          gira despacio: algo dentro de la vuelta cuesta
+//!    SIN RELOJ        no es el bucle: el kernel contesto 0 a INFO_TSC_HZ,
+//!                     y entonces el ritmo entero de esta casa --el cuarto de
+//!                     segundo-- se cuenta por VUELTAS, no por tiempo
 //! ```
+//!
+//! [!] Esa tercera fila se anadio el mismo dia, y por el mismo motivo que la
+//! aguja: sin reloj, `loops_per_second` **no se calcula nunca** y se queda en
+//! el cero con el que nacio. La caja pintaba `pulso 0/s`, que se lee como *"el
+//! bucle esta muerto"* cuando lo que pasa es *"no tengo con que medirlo"*. Un
+//! cero es una medida, y esa medida no se tomo. Ver `desktop::Tick::sin_reloj`.
 //!
 //! [!] La aguja se anadio DESPUES, y por un fallo de este mismo fichero: ver la
 //! nota de `AGUJA`. La primera version solo tenia el numero, y un numero que se
@@ -120,8 +129,11 @@ pub(crate) fn olvidar() {
     unsafe { ULTIMO = u32::MAX };
 }
 
-/// **Pinta el pulso si cambio.** Se llama en las vueltas del cuarto de segundo.
-pub(crate) fn refrescar(p: &bmo::Pantalla, vueltas: u32) {
+/// **Pinta el pulso.** Se llama en las vueltas del cuarto de segundo.
+///
+/// `sin_reloj` no es un adorno: decide si el numero SIGNIFICA algo. Ver la
+/// tercera fila de la cabecera.
+pub(crate) fn refrescar(p: &bmo::Pantalla, vueltas: u32, sin_reloj: bool) {
     // ** LA AGUJA AVANZA SIEMPRE, y por eso este modulo repinta SIEMPRE que le
     // llega un cuarto. Es lo contrario de lo que hace el testigo --que se calla
     // si no cambio nada-- y es a proposito: aqui lo que se ensena no es el
@@ -141,14 +153,21 @@ pub(crate) fn refrescar(p: &bmo::Pantalla, vueltas: u32) {
     p.rect(x, y, ANCHO, h, TASKBAR);
     let ty = y + (h.saturating_sub(bmo::GLIFO_ALTO)) / 2;
     let tx = p.texto(x + 4, ty, "pulso ", INK_DIM);
-    let mut buf = [0u8; 10];
-    let n = decimal(vueltas as u64, &mut buf);
-    // ** EN BLANCO SI ES BAJO. Un pulso de dos digitos no es un detalle de
-    // rendimiento: es el bucle bloqueado, y tiene que llamar la atencion sin
-    // que nadie sepa que numero esperar.
-    let tinta = if vueltas < 100 { INK } else { INK_DIM };
-    let tx = p.texto_bytes(tx, ty, &buf[..n], tinta);
-    let tx = p.texto(tx, ty, "/s ", INK_DIM);
+    // ** SIN RELOJ NO SE PINTA UN NUMERO, y esa es toda la regla. El numero no
+    // existe --nadie lo calculo-- asi que ponerlo seria inventarlo. La aguja
+    // sigue girando debajo, porque ella no necesita reloj: cuenta vueltas.
+    let tx = if sin_reloj {
+        p.texto(tx, ty, "SIN RELOJ ", INK)
+    } else {
+        let mut buf = [0u8; 10];
+        let n = decimal(vueltas as u64, &mut buf);
+        // ** EN BLANCO SI ES BAJO. Un pulso de dos digitos no es un detalle de
+        // rendimiento: es el bucle bloqueado, y tiene que llamar la atencion sin
+        // que nadie sepa que numero esperar.
+        let tinta = if vueltas < 100 { INK } else { INK_DIM };
+        let tx = p.texto_bytes(tx, ty, &buf[..n], tinta);
+        p.texto(tx, ty, "/s ", INK_DIM)
+    };
     // La aguja al final, en blanco: es lo unico de esta caja que tiene que
     // verse desde lejos sin leer.
     p.texto_bytes(tx, ty, &[paso], INK);
