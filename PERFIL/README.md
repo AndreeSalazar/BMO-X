@@ -115,8 +115,21 @@ nadie que las compare campo por campo, y eso hay que decirlo en vez de dejar que
 la tabla parezca completa. El de la placa se escribio primero porque era el unico
 con manas que se pueden quedar obsoletas en silencio.
 
-★ Lo que SI cubre a los seis es el guardian de la **exposicion** (seccion 7): que
-cada uno diga a quien rompe, y que ese alguien exista.
+★ Lo que SI cubre a los seis son **DOS guardianes**: el de la **exposicion**
+(seccion 7) --que cada uno diga a quien rompe, y que ese alguien exista-- y el de
+los **campos**, que compara lo que cada perfil afirma con lo que el codigo dice.
+
+** Y el de campos hizo falta mirar, uno por uno, QUE SE PUEDE COMPARAR DE VERDAD.
+La respuesta no fue "todo", y lo que NO se puede vale tanto como lo que si:
+
+```text
+   CPU     fabricante y microarquitectura SI. Los nucleos NO: el codigo los
+           MIDE en el arranque, no los declara -- y eso esta BIEN
+   GPU     `pci_vendor`, y que `pci_devices` siga VACIO
+   RED     `pci_vendor` contra `VENDOR_REALTEK`. El device NO: no es constante
+   DISCO   ** LOS TRES CIERRES de discos.ps1. Si alguien quita uno, el build para
+   RAM     NADA. Su unico numero se MIDE, y no se ha medido
+```
 
 *** Y el orden de lectura no es el de la tabla: **[`DISCO.txt`](DISCO.txt) va
 primero.** Los demas, si mienten, hacen que algo vaya lento o no arranque. Ese,
