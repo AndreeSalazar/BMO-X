@@ -614,8 +614,36 @@ pub fn on_timer() {
             task.state = TaskState::Ready;
         }
     }
+    // == *** UN QUANTUM ES DE QUIEN CORRE (2026-09-08) ====================
+    //
+    // Aqui ponia `if current.remaining_ticks > 1` a secas, **sin mirar si la
+    // tarea actual sigue corriendo**. Y una tarea de kernel puede dejar de
+    // correr sin pasar por aqui: `park_until` marca `Blocked` con `mark_wait`
+    // --que NO reprograma-- y se queda haciendo `hlt` hasta que la vuelvan a
+    // elegir.
+    //
+    // ** Asi que el hilo que se acaba de dormir **seguia siendo el dueno del
+    // CPU** durante el resto de su quantum, hasta 4 ms, HALTADO y sin hacer
+    // nada. Y no hay un parker, hay dos: el hilo del bus late 250 veces por
+    // segundo y el shell de Ring 0 descansa otras tantas.
+    //
+    // *** Y con `choose_next` en prioridad ESTRICTA --lo dice su propio
+    // comentario en `verde.rs`: *"un orden estricto excluye"*-- eso se lo
+    // comia el escritorio, que vive en prioridad 0. El metal lo dijo con un
+    // numero que no deja duda:
+    //
+    // ```text
+    //    latido 9/s   pinta 3   cuerpo 1   puerta 33750
+    // ```
+    //
+    // Un milisegundo de trabajo y TREINTA Y TRES SEGUNDOS esperando turno. El
+    // compositor hacia lo correcto --dormir en `WAIT` y no girar-- y por eso
+    // mismo desaparecia: mientras giraba se peleaba por el CPU y ganaba algo.
+    //
+    // [!] El arreglo es una condicion, no un mecanismo nuevo: si la tarea
+    // actual ya NO esta `Running`, su quantum no es suyo. Se reparte ahora.
     let current = &mut s.tasks[s.current];
-    if current.remaining_ticks > 1 {
+    if current.state == TaskState::Running && current.remaining_ticks > 1 {
         current.remaining_ticks -= 1;
         return;
     }
@@ -1009,6 +1037,19 @@ pub fn wait_current_checked(
 
 
 /// Kernel-task parking: mark blocked, then `hlt` until scheduled again.
+///
+/// ** POR QUE NO REPROGRAMA AQUI MISMO, y hay que decirlo: el cambio de
+/// contexto se consuma en el EPILOGO DEL TRAP, y esto no corre en un trap --
+/// corre en el cuerpo de un hilo de kernel. Llamar a `schedule_locked` desde
+/// aqui moveria `s.current` sin que nadie restaure la pila. El `hlt` es el
+/// mecanismo correcto: se para el CPU y el reloj hace el cambio.
+///
+/// [!] Lo que SI hacia falta era que el reloj no se lo pensara. Hasta el
+/// 2026-09-08 `on_timer` le daba a esta tarea el resto de su quantum --hasta 4
+/// ms-- aunque ya estuviera `Blocked`, o sea **hasta 4 ms de CPU haltada por
+/// cada parada**, y hay dos parkers latiendo a 250 Hz. Ver la nota de
+/// `on_timer`: ahora un quantum es de quien CORRE, asi que esto suelta el CPU
+/// en el tick siguiente.
 pub fn park_until(deadline_tsc: u64) {
     {
         let _g = SCHED_LOCK.lock();
