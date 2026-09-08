@@ -212,9 +212,62 @@ pub fn purgar() -> Parte {
 /// El parte, en cuatro renglones del panel. Lo llama la tecla y lo llama el
 /// shell: **el mismo texto por los dos caminos**, para que lo que se lee con
 /// la maquina rota y lo que se lee probando sean comparables.
+/// Purgas seguidas que no cerraron NI UNA tarea. Ver [`contar`].
+static mut VACIAS_SEGUIDAS: u32 = 0;
+
+/// A partir de aqui, una purga vacia deja de imprimir su parte.
+///
+/// Tres: la primera puede ser legitima --se pide con Ring 3 ya limpio-- y la
+/// segunda todavia es un dedo torpe. La tercera seguida ya no es un usuario.
+const VACIAS_QUE_SE_CALLAN: u32 = 3;
+
 pub fn contar(p: &Parte) {
     use crate::ring0::core::dashboard::dashboard_log;
     use crate::ring0::cabina::format::Buf;
+
+    // == *** UNA PURGA VACIA REPETIDA TAPA LO QUE HAY QUE LEER (2026-09-08) ===
+    //
+    // ** El dueno trajo la foto: el parte de la purga sale DOCENAS de veces
+    // seguidas, y todas dicen lo mismo -- `tareas cerradas: 0`, `VOLVIERON 0`,
+    // `Ring 3 VACIO en 0 cesiones`. Cuatro renglones por vuelta.
+    //
+    // Y entre medias, una sola vez, la linea que de verdad importaba:
+    //
+    // > *"escritorio MURIO tras arrancar. tid 3 -- esto es lo ULTIMO que dijo:"*
+    //
+    // *** Sus ultimas palabras las tapo el siguiente parte. El instrumento que
+    // se escribio para explicar la purga acabo **borrando la causa** de lo que
+    // habia que explicar.
+    //
+    // > Un informe que se repite sin cambiar deja de ser un informe: es ruido
+    // > con formato de dato.
+    //
+    // [!] Y NO se deja de purgar ni de contar -- eso seguiria siendo verdad y
+    // seguiria haciendo falta. Lo que se calla es el PARTE, que es lo unico que
+    // ocupa pantalla. La cuenta sale al final, en una linea, cuando pare.
+    unsafe {
+        if p.tareas == 0 && p.vueltos == 0 {
+            VACIAS_SEGUIDAS = VACIAS_SEGUIDAS.saturating_add(1);
+            if VACIAS_SEGUIDAS >= VACIAS_QUE_SE_CALLAN {
+                // Una sola vez, al cruzar el umbral: a partir de ahi, silencio.
+                if VACIAS_SEGUIDAS == VACIAS_QUE_SE_CALLAN {
+                    dashboard_log(
+                        "*** LA PURGA SE PIDE EN BUCLE Y NO HAY NADA QUE PURGAR ***");
+                    dashboard_log(
+                        "   se deja de imprimir el parte: estaba tapando la causa");
+                    crate::ring0::cabina::fault(
+                        "purga", "pedida en bucle sin nada que cerrar", VACIAS_SEGUIDAS as u64);
+                }
+                return;
+            }
+        } else if VACIAS_SEGUIDAS != 0 {
+            // Una purga que SI hizo algo cierra la racha, y la dice: saber
+            // cuantas se pidieron de mas es la mitad de la pista.
+            crate::ring0::cabina::warn(
+                "purga", "purgas vacias seguidas antes de esta", VACIAS_SEGUIDAS as u64);
+            VACIAS_SEGUIDAS = 0;
+        }
+    }
 
     dashboard_log("*** PURGA DE RING 3 ***");
 
