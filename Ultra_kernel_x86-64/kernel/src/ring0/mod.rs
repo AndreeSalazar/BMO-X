@@ -116,6 +116,10 @@ pub mod plat {
     /// dos modulos porque el primero interpreta una tabla concreta y el segundo
     /// no interpreta ninguna: solo dice que hay.
     pub mod placa;
+    /// **EL PERFIL DE LA PLACA**: lo que BMO-X SUPONE del firmware que tiene
+    /// debajo, declarado en un sitio. `placa` PREGUNTA (lee ACPI); esto
+    /// DECLARA, y son dos cosas distintas. Ver `PLACA/`.
+    pub mod perfil_placa;
     pub mod reinicio;
     /// Despertar los otros nucleos. **No corre en el arranque**: lo pide la
     /// orden `smp`. Ver la cabecera del modulo para saber por que esto no podia

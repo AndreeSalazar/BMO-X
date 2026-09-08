@@ -1,0 +1,92 @@
+EL PERFIL DE LA PLACA -- lo que BMO-X supone del firmware que tiene debajo
+===========================================================================
+
+  El porque de esta carpeta esta en README.md. Esto es la lista, y la lee
+  `toolchain/tools/perfil-placa` en cada build.
+
+
+LA PLACA DE HOY
+---------------
+
+  fabricante: MSI
+  modelo: A320M
+  socket: AM4
+  firmware: AMI
+
+  [!] Estos cuatro campos estan TAMBIEN en plat/perfil_placa.rs, y el guardian
+  exige que digan lo mismo. Cambiar de placa se hace en los dos sitios a la vez
+  o el build para.
+
+
+EL FORMATO, porque lo lee un guardian
+--------------------------------------
+
+  Una mana por bloque, y cada campo es `clave` mas dos puntos mas su valor.
+  Las claves, en orden:
+
+    mana     un nombre corto, sin espacios
+    que      que hace mal el firmware
+    rodeo    que hace BMO-X para esquivarlo
+    donde    el fichero que lo implementa, desde la raiz del repo
+    coste    lo que se paga por rodearla
+
+  [!] Aqui van SIN los dos puntos a proposito: el guardian lee este mismo
+  fichero, y un ejemplo con la forma de un dato se cuenta como un dato. Es la
+  trampa clasica de los ficheros que se explican a si mismos.
+
+  El guardian comprueba que `donde` existe y que ese fichero todavia NOMBRA el
+  modelo. Si un rodeo se quita del codigo y sigue aqui, el build falla -- y al
+  reves tambien.
+
+  ** Escrito aqui y no solo en el guardian: un formato que solo conoce quien lo
+  comprueba es un formato que nadie puede cumplir.
+
+
+LAS MANAS
+---------
+
+mana:  esp_ilegible
+que:   el firmware carga el arranque con su propio lector de FAT y NUNCA
+       enlaza SimpleFileSystem a ningun handle. El ESP no se puede leer por
+       protocolos de UEFI, ni despues de un ConnectController recursivo
+rodeo: `uefi_chain` es UNIFICADO: lleva s1, s2 y el kernel dentro de su propia
+       imagen con include_bytes!, y no lee nada del disco
+donde: Ultra_kernel_x86-64/boot_context/src/lib.rs
+coste: la imagen del arranque pesa lo que pesan los tres juntos, SIEMPRE
+
+mana:  cuatro_megas_ocupados
+que:   con Boot Services vivo, AllocateAddress sobre 0x400000 + 16 MiB FALLA:
+       el firmware aparca datos suyos justo ahi
+rodeo: el kernel viaja dentro de la imagen del shim y se copia a su sitio
+       JUSTO DESPUES de ExitBootServices, cuando ese rango ya es nuestro
+donde: Ultra_kernel_x86-64/faggin/s1_cpu/src/uefi.rs
+coste: una copia de la imagen entera del kernel en el arranque
+
+mana:  gop_escondido
+que:   el firmware pinta texto por su consola y NO publica el GOP por
+       LocateProtocol. Sin GOP no hay framebuffer, o sea no hay pantalla
+rodeo: se escala en tres pasos -- LocateProtocol, luego enumerar todos los
+       handles de GOP, y luego ConnectController de todo y volver a enumerar
+donde: Ultra_kernel_x86-64/faggin/s1_cpu/src/uefi.rs
+coste: un recorrido de handles en cada arranque, y codigo que en una placa
+       sana no se ejecuta nunca
+
+mana:  post_de_diez_segundos
+que:   el POST de esta placa se come unos diez segundos EL SOLO, antes de que
+       BMO-X exista
+rodeo: no hay rodeo posible. Lo que hay es una LINEA DE TIEMPO del arranque,
+       para que esos segundos no se le carguen a BMO-X al medir
+donde: Ultra_kernel_x86-64/kernel/src/ring0/core/klog.rs
+coste: ninguno en ejecucion. Es un instrumento, no un parche
+
+
+LO QUE ESTE PERFIL NO SABE TODAVIA
+-----------------------------------
+
+  iommu    ** SIN MIRAR. `plat/placa.rs` ya lee la tabla IVRS y lo dice en
+           CABINA al arrancar, y esa linea no la ha leido nadie. Decide si
+           NEUTRO/REQUISITOS.md R6 es posible en esta placa o esta muerto.
+           Es el paso 10 de docs/metal/PRUEBA_EN_METAL_0907.md
+
+  ** Se escribe el hueco en vez de dejarlo en blanco: un perfil que solo lista
+  lo que sabe se lee igual que uno completo.

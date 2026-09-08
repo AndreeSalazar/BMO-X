@@ -366,6 +366,11 @@ pub fn main(ctx: &mut BootContext) {
     // [!] Y la cifra que hay que mirar es la de tablas que NO pasan su suma: en
     // una placa sana es cero, y si no lo es lo que falla no es la placa -- es el
     // mapeo de esas direcciones fisicas.
+    // ** PRIMERO LO QUE SUPONEMOS, y luego lo que la placa DICE. El orden es
+    // el dato: si el perfil declara una A320M y el firmware se presenta como
+    // otra cosa, los dos renglones salen seguidos y la diferencia se ve sola.
+    // Ver `PLACA/README.md`.
+    crate::ring0::plat::perfil_placa::confesar();
     crate::ring0::plat::placa::confesar(ctx.rsdp);
 
     // ** Y ECAM, que se monta SOLO SI se cree. El careo lee el vendor/device de
