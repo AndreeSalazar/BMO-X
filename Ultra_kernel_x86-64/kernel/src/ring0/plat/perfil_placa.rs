@@ -5,9 +5,9 @@
 //!
 //! [cuesta]  NADA -- se dice una vez al arrancar. Lo que cuesta de verdad son
 //!           las manas que este fichero NOMBRA, y cada una lleva su precio
-//!           escrito en `PLACA/PERFIL.txt`.
+//!           escrito en `PERFIL/PLACA/PERFIL.txt`.
 //!
-//! [riesgo]  ESPEJO -- estos cuatro campos viven TAMBIEN en `PLACA/PERFIL.txt`.
+//! [riesgo]  ESPEJO -- estos cuatro campos viven TAMBIEN en `PERFIL/PLACA/PERFIL.txt`.
 //!           Pueden separarse sin que nadie avise, y por eso los compara un
 //!           guardian en cada build. Sin el, este fichero seria una opinion
 //!           sobre una placa que ya no esta puesta.
@@ -63,7 +63,7 @@ pub const FIRMWARE: &str = "AMI";
 const NOMBRE: &str = "perfil de placa: MSI A320M (AM4, firmware AMI)";
 
 /// Cuantas manas de este firmware rodea BMO-X. Cada una, con su precio, en
-/// `PLACA/PERFIL.txt`.
+/// `PERFIL/PLACA/PERFIL.txt`.
 ///
 /// ** Es el numero que hay que mirar al cambiar de placa: son cuatro cosas que
 /// se estan pagando por esta y que a lo mejor en la siguiente sobran.

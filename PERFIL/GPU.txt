@@ -1,0 +1,70 @@
+EL PERFIL DE LA GPU -- dos tarjetas, y ninguna perfilada todavia
+==================================================================
+
+  La mitad OPERATIVA vive en platform/drivers/gpu/rdna4/ (el crate
+  `bmo-gpu-rdna4`, con la maquina de estados del PSP y sus nueve pruebas).
+
+  [!] Este fichero no tiene guardian. Ver README.md, seccion 5.
+
+
+LA QUE HAY PUESTA HOY
+----------------------
+
+  fabricante: NVIDIA
+  modelo: RTX 3060 12GB
+  familia: Ampere (GA106)
+  driver en BMO-X: NINGUNO
+
+  ** Y desde el 07-09 la maquina LO DICE. `dev/portero.rs` censa el bus y suelta
+  en CABINA: "hay una GRAFICA NVIDIA y BMO-X no tiene codigo para ella".
+  Antes esa tarjeta estaba dentro y el sistema no la nombraba ni una vez.
+
+
+LA QUE EL PLAN SUPONE
+----------------------
+
+  fabricante: AMD
+  familia: RDNA 4 (Navi 4x)
+  pci_vendor: 0x1002
+  pci_devices: -- vacio: no hay tarjeta en el banco --
+
+  El crate lo declara asi y `claims()` devuelve false para todo, a proposito:
+  un perfil que reclama hardware que nadie ha visto es una mentira que compila.
+
+
+POR QUE AMD Y NO LA QUE YA TIENE
+---------------------------------
+
+  No es ideologia y esta medido en docs/maestro/GPU_NVIDIA_MAESTRO.md:
+
+    * el DRIVER no se traduce. RDNA y Ampere no comparten nada donde importa
+    * el PERFIL si: Meta A vs Meta B, la ruta por software, el muro del
+      firmware, la enumeracion de PCI -- nada de eso sabe de fabricante
+    * AMD publica los manuales de registros. NVIDIA no, aunque publique el
+      codigo del modulo del kernel
+
+  ** Y LO MAS IMPORTANTE: la 3060 NO BLOQUEA NADA de lo que se esta
+  construyendo. El cuello de hoy es el blit, y eso no necesita sombreadores.
+
+
+EL MURO, MEDIDO
+---------------
+
+  psp: NO es un muro criptografico. Es un buzon de doce mensajes.
+
+  Medido leyendo amdgpu el 07-09: 12 registros, 14 pasos hasta el primer anillo
+  vivo, 9 componentes de firmware. Entero en platform/drivers/gpu/rdna4/
+  PSP_MEDIDO.md, con la frontera de copyright en su seccion 0.
+
+  [!] Y trae una correccion al plan: el SDMA --el motor de copia que la meta A
+  necesita-- TAMBIEN sube por el PSP. No hay meta A barata sin PSP.
+
+
+LO QUE FALTA EN ESTE PERFIL
+----------------------------
+
+  [ ] el pci_device exacto de la SKU que se compre, si se compra
+  [ ] que version de PSP le toca (v13 o v14). Se mira en amdgpu_discovery.c
+  [ ] los codigos PSP_BL__LOAD_* -- hoy `Codigos::SIN_RELLENAR`, y la maquina
+      de estados SE NIEGA a arrancar sin ellos
+  [ ] y la fila de la GPU en NEUTRO/CENSO.txt, ANTES de que funcione (N1)

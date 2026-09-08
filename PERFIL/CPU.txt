@@ -1,0 +1,55 @@
+EL PERFIL DEL CPU -- la mitad declarativa
+==========================================
+
+  La mitad OPERATIVA vive en Ultra_kernel_x86-64/kernel/src/ring0/cpu_vendor/
+  y son 1.072 lineas de CODIGO en nueve ficheros: cpuid, cache, errata, power,
+  presupuesto, topology, tsc, bmo_cpu.
+
+  ** No se mueve aqui, y el porque esta en README.md, seccion 3: sacar eso a un
+  fichero de texto exigiria un interprete que lo ejecute, o sea un lenguaje mas
+  que mantener.
+
+  [!] Este fichero NO tiene guardian todavia. Lo que dice puede separarse de lo
+  que dice el codigo sin que nadie avise. Se escribe igual, porque un perfil que
+  no existe tampoco avisa.
+
+
+EL CPU DE HOY
+-------------
+
+  fabricante: AMD
+  microarquitectura: Zen 3 (Vermeer)
+  modelo: Ryzen 5 5600X
+  socket: AM4
+
+  nucleos: 6
+  hilos: 12
+  ccx: 1        un solo grupo de L3: hablar entre nucleos NO cruza el Fabric
+  ccd: 1
+
+
+LO QUE EL CONTRATO SUBE A RING 0, Y NADA MAS
+---------------------------------------------
+
+  El contrato es `cpu_vendor::profile::Nucleos` y lleva SEIS campos, no cuatro.
+  Los dos ultimos no son numeros: son la CONFIANZA en los otros cuatro.
+
+    nucleos, hilos, ccx, ccd    lo que hay
+    hilos_por_nucleo            MEDIDO. Cero = no se pudo medir
+    discrepan                   las dos fuentes del silicio no coinciden
+
+  *** La leccion esta escrita en el propio contrato y vale para todo este
+  directorio: sin los dos ultimos, un "27 fisicos / 54 logicos" sube igual de
+  limpio que un 6/12, y el que lo recibe no puede saber que uno se midio y el
+  otro se supuso.
+
+
+LO QUE ESTE PERFIL SABE Y NO SE USA
+------------------------------------
+
+  ** El 5600X SOBRA TRES VECES para un modelo de 7B en Q4. El limite de una IA
+  local en esta maquina es el ancho de MEMORIA, no el calculo -- ver RAM.txt y
+  docs/plan/PLAN_EL_ASISTENTE.md, seccion 8.
+
+  Y AXION sabe APAGAR nucleos y no encenderlos: falta MWAIT. Hoy no hay trabajo
+  pesado que repartir, asi que no bloquea nada.

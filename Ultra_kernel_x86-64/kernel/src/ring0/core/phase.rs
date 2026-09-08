@@ -369,7 +369,7 @@ pub fn main(ctx: &mut BootContext) {
     // ** PRIMERO LO QUE SUPONEMOS, y luego lo que la placa DICE. El orden es
     // el dato: si el perfil declara una A320M y el firmware se presenta como
     // otra cosa, los dos renglones salen seguidos y la diferencia se ve sola.
-    // Ver `PLACA/README.md`.
+    // Ver `PERFIL/PLACA/README.md`.
     crate::ring0::plat::perfil_placa::confesar();
     crate::ring0::plat::placa::confesar(ctx.rsdp);
 
