@@ -15,9 +15,14 @@ pub(crate) fn complete(path: &mut [u8; PATH_MAX], n: usize, output: &mut Output)
     // lo que el prestamista de Rust no deja -- y hace bien: escribir sobre lo
     // que estas leyendo es como se corrompe un buffer sin enterarse.
     let mut dir = [0u8; PATH_MAX];
-    let mut dir_n = 0usize;
     let mut prefix = [0u8; 12];
-    let mut prefix_n = 0usize;
+    // ** SIN VALOR INICIAL, y no es estilo (2026-09-08). Eran `= 0usize` y el
+    // cero no lo leia nadie: se asignan una sola vez, dentro del bloque de
+    // abajo. Declararlos sin valor hace que **el compilador exija** que ese
+    // camino los asigne -- con el cero puesto, un camino futuro que se olvidara
+    // saldria con longitud cero y una ruta vacia, en silencio.
+    let dir_n;
+    let prefix_n;
     let prefix_start;
     {
         let token = &path[start..n];
