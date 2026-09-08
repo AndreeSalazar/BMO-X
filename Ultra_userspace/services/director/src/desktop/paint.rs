@@ -232,11 +232,17 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
     // de la palabra y no volvia hasta la siguiente vuelta entera. Un
     // cursor que se esconde mientras escribes es lo contrario de lo que
     // un cursor existe para decir.
-    dsk.field.since_key = dsk.field.since_key.wrapping_add(1);
-    if dsk.field.since_key >= BLINK {
-        dsk.field.since_key = 0;
-        dsk.field.caret = !dsk.field.caret;
-        dsk.tick.repaint_field = true;
+    // ** Y AVANZA CON EL RELOJ, NO CON LAS VUELTAS (2026-09-08). `since_key`
+    // contaba iteraciones del bucle; ahora cuenta CUARTOS DE SEGUNDO, medidos
+    // por `Tick::pulse` con el TSC. Es el mismo movimiento que hicieron las
+    // vitales veinte lineas mas abajo, y el porque entero esta en `BLINK`.
+    if dsk.tick.quarter {
+        dsk.field.since_key = dsk.field.since_key.wrapping_add(1);
+        if dsk.field.since_key >= BLINK {
+            dsk.field.since_key = 0;
+            dsk.field.caret = !dsk.field.caret;
+            dsk.tick.repaint_field = true;
+        }
     }
     if dsk.tick.repaint_field
         && dsk.tick.will_paint
