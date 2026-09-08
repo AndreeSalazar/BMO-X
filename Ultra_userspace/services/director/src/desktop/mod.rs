@@ -359,6 +359,30 @@ pub(crate) struct Tick {
     /// Los dos tramos del segundo en curso, en ciclos.
     suma_cuerpo: u64,
     suma_puerta: u64,
+    /// **El LATIDO del hardware**, o `0` si no se pudo tomar.
+    ///
+    /// == *** EL SEGUNDO SYSCALL, ESTRENADO (2026-09-08) ==================
+    ///
+    /// Lo vio el dueno:
+    ///
+    /// > *"tengo 2 syscalls, INVOKE y WAIT, pero WAIT casi no se usaba.
+    /// > Creo que es momento de darle su oportunidad."*
+    ///
+    /// Y era literal. `WAIT` se usaba en **UN** sitio de todo el repo --el
+    /// `dormir_un_rato` del arranque, con esperable `0`, o sea un `sleep`-- y
+    /// `latido_esperar` no lo llamaba **nadie**. El suelo S3 se construyo
+    /// entero, se documento, se le puso envoltorio de userland, y no se
+    /// estreno. Un sistema con dos puertas donde una solo sabe dormir un plazo
+    /// no tiene dos puertas: tiene una y media.
+    ///
+    /// ** Y el sitio donde faltaba era este, el bucle que corre SIEMPRE. Antes
+    /// acababa en `yield_screen()`: "quitame de en medio y devuelveme el turno
+    /// en cuanto puedas", que es girar con buenos modales. Ahora dice lo que de
+    /// verdad quiere -- **despiertame cuando lata el reloj** -- y esa frase solo
+    /// se puede decir con `WAIT`.
+    latido: u64,
+    /// El testigo del ultimo latido visto. Ver `ceder`.
+    visto: u64,
     /// `rdtsc` justo antes de ceder, y `0` si todavia no se cedio nunca.
     cedio_en: u64,
     /// `rdtsc` del principio de esta vuelta.
@@ -463,20 +487,84 @@ impl Tick {
         }
     }
 
-    /// **Se va a ceder el CPU.** Cierra el tramo del cuerpo y abre el de la
-    /// puerta. Lo llama el bucle justo antes de `yield_screen`, y el tramo se
-    /// cierra solo en el `pulse()` de la vuelta siguiente.
+    /// **Tomar el LATIDO.** Una vez en la vida del proceso, al arrancar.
     ///
-    /// Cuesta un `rdtsc` --unas decenas de ciclos, sin cruzar ninguna puerta--
-    /// al lado de un cambio de contexto. Un instrumento que costara lo que mide
-    /// no mediria nada. Ver [`Tick::cuerpo_ms`].
-    pub fn cediendo(&mut self) {
-        if self.tsc_hz == 0 || self.tsc_hz == NO_CLOCK {
+    /// Si el kernel dice que no, `latido` se queda en `0` y `ceder` sigue
+    /// girando como giraba. **Nunca peor que antes** -- y se ve en la barra,
+    /// porque la caja del pulso cambia de nombre segun por donde este.
+    pub fn tomar_latido(&mut self) {
+        if let Some(h) = bmo::latido_tomar() {
+            self.latido = h;
+            self.visto = bmo::latido_cuenta(h).unwrap_or(0);
+        }
+    }
+
+    /// El escritorio va montado en el reloj del hardware. Ver [`Tick::latido`].
+    pub fn en_latido(&self) -> bool {
+        self.latido != 0
+    }
+
+    /// El plazo de seguridad del `WAIT`, en nanosegundos.
+    ///
+    /// ** NO se pone `0` --que seria "solo el latido"-- y el motivo esta escrito
+    /// dos veces en esta casa: un bloqueo que solo despierta un aviso se cuelga
+    /// para siempre el dia que el aviso no llegue. Ver `dormir_un_rato`, que ya
+    /// se lo encontro.
+    ///
+    /// 50 ms es el suelo: si el latido se parara, el escritorio seguiria dando
+    /// 20 vueltas por segundo y **el pulso lo diria en la barra** en vez de
+    /// quedarse negro. Un instrumento tiene que sobrevivir a lo que mide.
+    const PLAZO_NS: u64 = 50_000_000;
+
+    /// **Devolver el turno**, que es lo que cierra cada vuelta.
+    ///
+    /// Hace dos cosas y las dos van juntas a proposito: cierra el tramo del
+    /// CUERPO --un `rdtsc`, sin cruzar ninguna puerta-- y da el turno. Que sea
+    /// un solo sitio es lo que garantiza que las dos mitades del segundo sumen:
+    /// medir en un metodo y ceder en otro deja un hueco entre los dos que no
+    /// cuenta nadie.
+    ///
+    /// # Las dos formas de dar el turno, y en que se diferencian
+    ///
+    /// ```text
+    ///    yield_screen   "quitame de en medio y devuelveme el turno ya"
+    ///                   -> vuelve en cuanto no haya nadie mejor. Girar con
+    ///                      buenos modales
+    ///    WAIT(latido)   "despiertame cuando lata el reloj"
+    ///                   -> el nucleo queda LIBRE hasta entonces
+    /// ```
+    ///
+    /// *** El techo util de este bucle son 250 vueltas/s --lo pone el bus USB,
+    /// que late cada 4 ms-- y el latido va a 1 kHz, o sea CUATRO VECES por
+    /// encima de lo que la entrada puede refrescar. No se pierde ni un evento y
+    /// se deja de quemar el nucleo para descubrir que no ha pasado nada.
+    ///
+    /// # [!] Por que se RELEE la cuenta antes de esperar
+    ///
+    /// Porque el valor que devuelve `WAIT` **no es la cuenta nueva**. El kernel
+    /// lo dice en `wait_current_checked`: *"the value returned here is what the
+    /// caller sees when resumed, so it is advisory"*. Cuando de verdad duerme,
+    /// devuelve el MISMO `observed` que se le paso.
+    ///
+    /// ** Asi que el ejemplo que traia `sys::latido_tomar` --`loop { visto =
+    /// latido_esperar(h, visto, 0) }`-- dormiria solo UNA VUELTA DE CADA DOS: al
+    /// despertar, `visto` sigue viejo, y la llamada siguiente ve que la cuenta
+    /// ya no coincide y vuelve en el acto sin dormir. Nunca se habia ejecutado.
+    ///
+    /// Releer cuesta UNA puerta --969 ciclos, el 0,026 % del segundo a 1.000
+    /// vueltas-- y a cambio duermen las vueltas TODAS. Se paga.
+    pub fn ceder(&mut self) {
+        if self.tsc_hz != 0 && self.tsc_hz != NO_CLOCK {
+            let t = bmo::ciclos();
+            self.suma_cuerpo = self.suma_cuerpo.wrapping_add(t.wrapping_sub(self.inicio));
+            self.cedio_en = t;
+        }
+        if self.latido == 0 {
+            bmo::yield_screen();
             return;
         }
-        let t = bmo::ciclos();
-        self.suma_cuerpo = self.suma_cuerpo.wrapping_add(t.wrapping_sub(self.inicio));
-        self.cedio_en = t;
+        self.visto = bmo::latido_cuenta(self.latido).unwrap_or(self.visto);
+        bmo::latido_esperar(self.latido, self.visto, Self::PLAZO_NS);
     }
 
     /// **No hay reloj de referencia**: el kernel contesto `0` a `INFO_TSC_HZ`.
@@ -724,6 +812,8 @@ pub(crate) fn install(p: &bmo::Pantalla, console: Option<bmo::Consola>) -> &'sta
             pintados: 0,
             suma_cuerpo: 0,
             suma_puerta: 0,
+            latido: 0,
+            visto: 0,
             cedio_en: 0,
             inicio: 0,
             quarter: false,

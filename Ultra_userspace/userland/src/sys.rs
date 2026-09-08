@@ -335,8 +335,20 @@ pub fn memoria_fisica(handle: u64) -> Option<u64> {
 ///
 /// ```text
 ///    let h = latido_tomar()?;
-///    let mut visto = latido_cuenta(h)?;
-///    loop { visto = latido_esperar(h, visto, 0); }
+///    loop {
+///        let visto = latido_cuenta(h)?;      // <-- SE RELEE cada vuelta
+///        latido_esperar(h, visto, plazo);
+///    }
+///
+/// [!] **El ejemplo de antes estaba mal**, y no lo habia ejecutado nadie:
+/// `loop { visto = latido_esperar(h, visto, 0) }`. Lo devuelto por `WAIT` NO es
+/// la cuenta nueva -- el kernel lo dice en `wait_current_checked`: *"the value
+/// returned here is what the caller sees when resumed, so it is advisory"*.
+/// Cuando de verdad duerme, devuelve el MISMO `observed` que se le paso.
+///
+/// Asi que aquel bucle dormia **una vuelta de cada dos**: al despertar, `visto`
+/// seguia viejo, y la llamada siguiente veia que la cuenta ya no coincidia y
+/// volvia en el acto. Releer cuesta una puerta y duermen todas.
 /// ```
 pub fn latido_tomar() -> Option<u64> {
     invoke(CURRENT_TASK, OP_LATIDO_TOMAR, 0, 0, 0).valor()

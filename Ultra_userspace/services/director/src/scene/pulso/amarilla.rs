@@ -38,9 +38,9 @@
 //! Ryzen, que es el recurso mas caro que tiene este proyecto. Un carril propio
 //! con su letrero es lo que hace que la tercera se vea venir.
 //!
-//! # Las CINCO afirmaciones, y el porque de cada una
+//! # Las SEIS afirmaciones, y el porque de cada una
 //!
-//! Todo lo que hace este fichero es decidir **que es verdad**. Cinco
+//! Todo lo que hace este fichero es decidir **que es verdad**. Seis
 //! decisiones, y ninguna toca un pixel:
 //!
 //! ```text
@@ -51,7 +51,16 @@
 //!    4  la mitad grande en blanco    es LA RESPUESTA: de que lado tirar
 //!    5  al lado del ritmo, `pinta`   el ritmo dice lo rapido que gira; esto
 //!                                    dice cuantas de esas vueltas SIRVIERON
+//!    6  la caja se llama LATIDO o    por donde da el turno el bucle. Si el
+//!       PULSO, y no es adorno        kernel no da el latido hay que SABERLO
 //! ```
+//!
+//! *** La sexta es la que impide que este fichero cometa su tercera mentira. El
+//! bucle pide el latido al arrancar y, si el kernel dice que no, sigue girando
+//! **exactamente igual de bien**. Sin ese nombre en la caja, las dos formas se
+//! verian identicas -- y eso es la definicion del `[riesgo] SILENCIO` que este
+//! carril declara arriba. Un modo de reserva que no se anuncia es un modo de
+//! reserva que se queda puesto para siempre.
 //!
 //! ** La quinta se anadio al preguntar el dueno si quedaba algo que exprimir,
 //! y la contesta ella sola. El techo UTIL de ese bucle son **250 vueltas por
@@ -76,6 +85,8 @@ pub(crate) struct Lectura {
     pub puerta_ms: u32,
     /// De ese segundo, cuantas vueltas PINTARON algo.
     pub pinta: u32,
+    /// El bucle va montado en el LATIDO del hardware (`WAIT`), no girando.
+    pub en_latido: bool,
 }
 
 /// **Lo que hay que ensenar, ya decidido.** El carril verde no vuelve a
@@ -95,6 +106,8 @@ pub(crate) struct Dictamen {
     pub puerta_ms: u32,
     /// Vueltas que pintaron. Ver la decision 5.
     pub pinta: u32,
+    /// Va montado en el latido. Ver la decision 6.
+    pub en_latido: bool,
     /// El cuerpo se queda el segundo. Ver la decision 4.
     pub manda_cuerpo: bool,
 }
@@ -158,6 +171,7 @@ pub(crate) fn leer(l: &Lectura) -> Dictamen {
         cuerpo_ms: l.cuerpo_ms,
         puerta_ms: l.puerta_ms,
         pinta: l.pinta,
+        en_latido: l.en_latido,
         // ** DE QUE LADO TIRAR. Las dos mitades suenan igual desde fuera --"el
         // escritorio va lento"-- y no se arreglan en el mismo sitio: una es de
         // Ring 3 y la otra del planificador. El empate cae del lado del cuerpo
@@ -179,5 +193,6 @@ pub(crate) fn de(t: &desktop::Tick) -> Lectura {
         cuerpo_ms: t.cuerpo_ms,
         puerta_ms: t.puerta_ms,
         pinta: t.pintados_por_segundo,
+        en_latido: t.en_latido(),
     }
 }

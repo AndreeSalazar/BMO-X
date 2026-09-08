@@ -672,6 +672,9 @@ pub extern "C" fn _start() -> ! {
     // orden al kernel sesenta veces por segundo: el turno largo se pide
     // cuando el foco CAMBIA, no mientras siga donde estaba.
     let mut foco_antes: Option<desktop::Ventana> = None;
+    // ** EL SEGUNDO SYSCALL, TOMADO UNA VEZ. Si el kernel dice que no, el bucle
+    // gira como giraba y la barra lo dice. Ver `Tick::tomar_latido`.
+    dsk.tick.tomar_latido();
     loop {
         // -- Termino el programa que se lanzo? Entonces, a guardarlo --
         //
@@ -976,25 +979,30 @@ pub extern "C" fn _start() -> ! {
         // que `docs` ya escribio sobre limar el ensamblador de la puerta--. Lo
         // que sobra no son las nueve puertas: son las vueltas.
         //
-        // # Lo que hay que hacer, y por que TODAVIA no esta hecho
+        // # HECHO: el bucle va montado en el LATIDO
         //
-        // `WAIT` --el segundo syscall congelado-- ya sabe dormir hasta el
-        // LATIDO del hardware (`KIND_LATIDO`, 1 kHz desde `on_timer`), y ese
-        // brazo esta escrito y probado. Montar este bucle ahi lo dejaria en
-        // ~1.000 vueltas por segundo SIN girar, con la entrada igual de fresca.
+        // `WAIT` --el segundo syscall congelado-- sabe dormir hasta que late el
+        // reloj (`KIND_LATIDO`, 1 kHz desde `on_timer`). Este bucle es ahora su
+        // primer usuario de verdad: hasta hoy `WAIT` solo se usaba UNA vez en
+        // todo el repo, y para dormir un plazo. Ver `Tick::ceder`.
         //
-        // [!] No se hace en la misma tanda que el arreglo del shell de Ring 0 a
-        // proposito: cambiaria el MISMO numero que ese arreglo tiene que mover.
-        // Dos cambios sobre una sola medida es un arranque que no contesta
-        // ninguna de las dos preguntas. Primero se lee el pulso; luego esto.
+        // *** Y esto no enturbia la medida del arreglo del shell de Ring 0: la
+        // AFILA. Antes el ritmo esperado era desconocido; ahora el bucle PIDE
+        // 1.000 vueltas por segundo, asi que la lectura se compara contra un
+        // numero sabido:
         //
-        // ** AQUI SE ACABA EL CUERPO DE LA VUELTA Y EMPIEZA LA PUERTA.
+        // ```text
+        //    ~1000/s   pide y recibe. El planificador reparte bien
+        //    mucho <   pide 1.000 y le dan 50 -> el turno se lo queda otro
+        //    ~20/s     el latido no late: esta corriendo el plazo de seguridad
+        // ```
         //
-        // Un `rdtsc` --sin cruzar nada-- que separa lo que el compositor GASTA
-        // de lo que el compositor ESPERA. Las dos mitades se ven iguales desde
-        // fuera y no se arreglan en el mismo sitio: ver `Tick::cuerpo_ms`.
-        dsk.tick.cediendo();
-        bmo::yield_screen();
+        // ** Y AQUI SE DEVUELVE EL TURNO, que es lo que cierra la vuelta.
+        //
+        // Cierra el tramo del CUERPO y duerme hasta el latido del hardware. Era
+        // `yield_screen()` --"devuelveme el turno ya", o sea girar con buenos
+        // modales-- y ahora dice lo que de verdad quiere. Ver `Tick::ceder`.
+        dsk.tick.ceder();
     }
 }
 

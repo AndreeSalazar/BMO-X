@@ -31,8 +31,8 @@
 //! vivo** por no caber **lo que dice en que se le va el tiempo**.
 //!
 //! ```text
-//!    cabe entero   pulso 1234/s  pinta 4  cuerpo 40  puerta 950  |
-//!    cabe corto    pulso 1234/s  |
+//!    cabe entero   latido 1000/s  pinta 4  cuerpo 40  puerta 950  |
+//!    cabe corto    latido 1000/s  |
 //!    no cabe       nada -- pintar encima de otra cosa es peor que no pintar
 //! ```
 //!
@@ -48,7 +48,7 @@ use crate::text::decimal;
 /// suya, asi que esto empieza pasado ese ancho.
 const TRAS_TESTIGO: u32 = 168 + 8;
 /// Lo que ocupa la forma LARGA:
-/// `pulso 12345/s  pinta 4  cuerpo 900  puerta 40  |`.
+/// `latido 12345/s  pinta 4  cuerpo 900  puerta 40  |`.
 const ANCHO: u32 = 400;
 /// Lo que ocupa la forma CORTA: `pulso 12345/s |`, sin el reparto.
 const ANCHO_CORTO: u32 = 150;
@@ -68,7 +68,10 @@ pub(crate) fn pintar(p: &bmo::Pantalla, d: &Dictamen) {
     };
     p.rect(x, y, ancho, h, TASKBAR);
     let ty = y + (h.saturating_sub(bmo::GLIFO_ALTO)) / 2;
-    let tx = p.texto(x + 4, ty, "pulso ", INK_DIM);
+    // ** EL NOMBRE DICE EL MODO. No es adorno: si el kernel no dio el latido,
+    // el bucle gira igual de bien y las dos formas se verian identicas. Ver la
+    // decision 6 de `amarilla.rs`.
+    let tx = p.texto(x + 4, ty, if d.en_latido { "latido " } else { "pulso " }, INK_DIM);
     let mut tx = match d.ritmo {
         None => p.texto(tx, ty, "SIN RELOJ ", INK),
         Some(v) => {
