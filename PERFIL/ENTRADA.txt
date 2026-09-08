@@ -1,0 +1,90 @@
+EL PERFIL DE LA ENTRADA -- y casi todo lo que tiene NO es del aparato
+======================================================================
+
+  La mitad OPERATIVA esta en platform/drivers/usb/uhid/ (quien decide) y en
+  kernel/src/ring0/dev/usb/ (quien obedece).
+
+
+LO PRIMERO, Y ES LA MITAD DE ESTE FICHERO
+------------------------------------------
+
+  ** EL TECLADO Y EL RATON NO NECESITAN PERFIL DE IDENTIDAD.
+
+  Y no es un descuido: es que SE LES PUEDE PREGUNTAR. BMO-X les pregunta su
+  clase, su subclase, su protocolo y --desde el 07-09-- tambien su NOMBRE
+  (`idVendor`/`idProduct`), y lo apunta en el libro del portero.
+
+      la placa       no puede decirte sus manas   -> hay que SUPONERLAS
+      el teclado     te dice lo que es            -> se le PREGUNTA
+
+  *** Es el criterio entero de esta carpeta, y esta escrito en README.md
+  seccion 0b. Un aparato que contesta no se perfila: se enumera.
+
+
+LO QUE SI SE SUPONE, Y NO SE PUEDE PREGUNTAR
+---------------------------------------------
+
+  distribucion: espanol (ISO)
+
+  ** ESTA ES LA DE VERDAD. Un teclado manda SCANCODES, no letras. Que la tecla
+  de al lado del 1 sea un `!` o un `"` no lo dice el aparato: lo decide el
+  sistema, y aqui esta decidido en `uhid/teclado.rs`:
+
+      la tecla ISO de mas          en espanol es la de  } ] `
+      el tercer nivel con AltGr    @ # \ | { } [ ]
+      AltGr con scancode PROPIO    porque llegaba como Alt izquierdo y el
+                                   tercer nivel era inalcanzable
+      la division del numpad       resuelta aparte: en espanol esa tecla es
+                                   '-' y el numpad escribia guiones
+
+  [!] Un teclado americano enchufado aqui funciona -- y escribe otras letras
+  que las serigrafiadas. El aparato no se entera y el sistema tampoco.
+
+
+LO QUE SE ELIGE, QUE TAMPOCO SE PREGUNTA
+-----------------------------------------
+
+  latido_ms: 4
+      cada cuanto VACIA el anillo el hilo del bus. 250 Hz, comodo por encima
+      de los 8-10 ms que pide un teclado boot.
+      ** Ojo: quien PREGUNTA al aparato es el xHC en hardware, con el Interval
+      del endpoint. Esto es otra capa -- ver EL_TECLADO_EXIGE.md, E8
+
+  subclase_exigida: 1
+      SUBCLASE_BOOT. Hoy solo se adoptan HID de arranque, y es la unica puerta
+      que se podria abrir ya: el Report Descriptor ya se sabe leer, y ese
+      rechazo espera a confirmarse en el Ryzen antes de ensancharse
+
+
+A QUIEN EXPONE
+--------------
+
+expone: platform/drivers/usb/uhid/src/teclado.rs
+   la distribucion. Cambiarla de sitio o de tabla cambia lo que se escribe,
+   y nada avisa: las teclas siguen respondiendo
+
+expone: Ultra_kernel_x86-64/kernel/src/ring0/dev/usb/bus.rs
+   el latido de 4 ms y su reloj absoluto
+
+expone: Ultra_kernel_x86-64/kernel/src/ring0/dev/usb/portero.rs
+   el libro de llegadas, que es lo que hace que este perfil NO necesite
+   campos de identidad
+
+
+SI ESTE PERFIL ESTA MAL, ASI SE NOTA
+-------------------------------------
+
+  la distribucion no es la del teclado que hay puesto
+      ** el peor de este fichero, y no da error NUNCA: las teclas responden,
+      el sistema esta sano, y salen letras equivocadas. Se caza mirando la
+      serigrafia del teclado, que es lo unico que no esta en el software
+
+  latido_ms mas alto de lo que pide el aparato
+      no se pierde una tecla --el xHC sigue preguntando y dejando informes--
+      pero sube la latencia y el aparcadero de eventos se acerca a desbordar.
+      Se caza con `ritmo=` y `peor=` del panel
+
+  se sube subclase_exigida sin confirmarlo en metal
+      cambia QUE aparatos se adoptan en el arranque, y ningun CPU lo ha
+      ejecutado. El portero lo dira: los que hoy salen con veredicto
+      `HID sin subclase BOOT` son exactamente los que entrarian

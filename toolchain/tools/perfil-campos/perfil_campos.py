@@ -63,6 +63,16 @@ COMPARABLES = {
         ("pci_vendor", os.path.join(RAIZ, "platform", "drivers", "gpu", "rdna4", "src", "lib.rs"),
          r"pci_vendor:\s*(0x[0-9A-Fa-f]+)", "numero"),
     ],
+    "ENTRADA.txt": [
+        ("latido_ms", os.path.join(K, "dev", "usb", "bus.rs"),
+         r"const BUS_PERIOD_MS:\s*u64\s*=\s*(\d+)", "decimal"),
+        ("subclase_exigida",
+         os.path.join(RAIZ, "platform", "drivers", "usb", "uhid", "src", "enumera.rs"),
+         r"pub const SUBCLASE_BOOT:\s*u8\s*=\s*(\d+)", "decimal"),
+        # ** `distribucion` NO se compara: es una TABLA de scancodes, no una
+        # constante. Y es justo el campo cuyo fallo no da error nunca. Se dice
+        # aqui para que su ausencia no se lea como que esta cubierto.
+    ],
     "RED.txt": [
         ("pci_vendor", os.path.join(K, "dev", "net", "mod.rs"),
          r"const VENDOR_REALTEK:\s*u16\s*=\s*(0x[0-9A-Fa-f]+)", "numero"),
@@ -147,8 +157,13 @@ def main():
                         "o se quito" % (f, os.path.relpath(fichero, RAIZ), nombre))
                     continue
                 codigo = m.group(1)
-                igual = (int(dice, 16) == int(codigo, 16)) if modo == "numero" \
-                    else (dice == codigo)
+                if modo == "numero":
+                    igual = int(dice, 16) == int(codigo, 16)
+                elif modo == "decimal":
+                    # El perfil puede llevar una coletilla ("4", "4 ms").
+                    igual = dice.split()[0] == codigo
+                else:
+                    igual = dice == codigo
                 if not igual:
                     quejas.append("%s: `%s` dice '%s' y el codigo dice '%s'"
                                   % (f, nombre, dice, codigo))
