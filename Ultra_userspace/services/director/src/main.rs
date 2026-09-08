@@ -946,6 +946,12 @@ pub extern "C" fn _start() -> ! {
 
         desktop::paint::compose(&mut dsk, &p, dead);
 
+        // ** AQUI SE ACABA EL CUERPO DE LA VUELTA Y EMPIEZA LA PUERTA.
+        //
+        // Un `rdtsc` --sin cruzar nada-- que separa lo que el compositor GASTA
+        // de lo que el compositor ESPERA. Las dos mitades se ven iguales desde
+        // fuera y no se arreglan en el mismo sitio: ver `Tick::cuerpo_ms`.
+        dsk.tick.cediendo();
         bmo::yield_screen();
     }
 }
