@@ -89,9 +89,43 @@ static mut ALTGR: bool = false;
 /// Ctrl mantenido: convierte las letras en codigos de control (Ctrl+A = 0x01),
 /// que es como los terminales han mandado ordenes de edicion desde siempre.
 static mut CTRL: bool = false;
-/// Bloq Num. Arranca ENCENDIDO (el teclado numerico escribe digitos), como
-/// cualquier PC.
-static mut NUMLOCK: bool = true;
+/// Bloq Num. **Siempre encendido, y ya no se apaga.**
+///
+/// == *** POR QUE DEJO DE SER UN MODO (2026-09-08) =========================
+///
+/// Lo trajo el dueno con dos palabras exactas: *"eso hace MOVER, y pues no
+/// tiene sentido"*.
+///
+/// Y era literal. Con Bloq Num apagado, este fichero convertia el teclado
+/// numerico en teclas de navegacion --el segundo oficio que llevan impreso--
+/// asi que el 8 pasaba a ser flecha arriba, el 4 flecha izquierda y el punto
+/// a ser Suprimir. Pulsar una vez esa tecla y **el numpad dejaba de escribir
+/// numeros y se ponia a mover el cursor**.
+///
+/// ** Y esto es exactamente la clase de fallo que esta casa persigue: un MODO
+/// INVISIBLE. Lo que hace una tecla dependia de un estado que:
+///
+/// ```text
+///    no se ve en el escritorio   el indicador solo lo pinta el prompt de
+///                                Ring 0, y ese esta tapado --`has_fb()` lo
+///                                apaga en cuanto la pantalla se cede
+///    lo cambia una tecla         que no escribe nada y no avisa de nada
+///    y encima esa tecla          era la que el dueno usaba para forzar un
+///                                fotograma cuando el escritorio no tenia
+///                                reloj propio. O sea que la pulsaba MUCHO
+/// ```
+///
+/// *** El segundo oficio del numpad existe para teclados que NO TIENEN flechas
+/// propias, y este ya no es el caso: la tabla de `uhid/teclado.rs` les dio
+/// codigo propio (`SC_UP`, `SC_LEFT`, `0x66..0x6F`) justo para que una flecha
+/// no escribiera un numero. Asi que el modo no daba ninguna tecla que no
+/// estuviera ya: solo podia quitar el numpad.
+///
+/// [!] Se queda como constante y no se borra el campo: `led_mask` manda la
+/// lucecita al teclado fisico y `lock_state` lo pinta. Con el valor fijo en
+/// `true`, la luz dice la verdad --el numpad escribe digitos-- en vez de
+/// anunciar un modo que ya no existe.
+const NUMLOCK: bool = true;
 
 // -- Teclas que no son caracteres --------------------------------------------
 //
@@ -153,8 +187,8 @@ pub const LED_SCROLL: u8 = 1 << 2;
 /// hay que mandarselo (ver `UsbHidHal::set_leds`).
 pub fn led_mask() -> u8 {
     let mut m = 0;
+    if NUMLOCK { m |= LED_NUM; }
     unsafe {
-        if NUMLOCK { m |= LED_NUM; }
         if CAPS { m |= LED_CAPS; }
     }
     m
@@ -162,7 +196,7 @@ pub fn led_mask() -> u8 {
 
 /// Estado de los bloqueos para pintarlo en pantalla -- que las luces fisicas
 /// funcionen o no no deberia ser la unica forma de saberlo.
-pub fn lock_state() -> (bool, bool) { unsafe { (CAPS, NUMLOCK) } }
+pub fn lock_state() -> (bool, bool) { (unsafe { CAPS }, NUMLOCK) }
 
 // ===========================================================================
 //  Distribuciones
@@ -284,9 +318,11 @@ pub(crate) fn feed(code: u8, shift: bool, altgr: bool, caps: bool) {
 
 /// Igual que `feed` pero con el estado de Ctrl explicito.
 pub(crate) fn feed_full(code: u8, shift: bool, altgr: bool, caps: bool, ctrl: bool) {
-    // Bloq Num: alterna, y de paso mantiene el LED sincronizado.
+    // ** BLOQ NUM NO HACE NADA, y eso es la respuesta. Ver `NUMLOCK`: alternaba
+    // el numpad entre escribir digitos y mover el cursor, o sea un modo que no
+    // se ve, que lo cambia una tecla que no escribe, y que no daba ni una tecla
+    // que las flechas propias no dieran ya. Se traga y se sigue.
     if code == 0x45 {
-        unsafe { NUMLOCK = !NUMLOCK; }
         return;
     }
     // Teclas de navegacion: no son caracteres, van tal cual por la cola.
@@ -294,18 +330,11 @@ pub(crate) fn feed_full(code: u8, shift: bool, altgr: bool, caps: bool, ctrl: bo
         push_out(nav);
         return;
     }
-    // Con Bloq Num APAGADO el teclado numerico es de navegacion, como en
-    // cualquier PC -- el segundo oficio que tienen impreso esas teclas.
-    if !unsafe { NUMLOCK } {
-        let nav = match code {
-            0x47 => Some(KEY_HOME), 0x48 => Some(KEY_UP),   0x49 => Some(KEY_PGUP),
-            0x4B => Some(KEY_LEFT), 0x4D => Some(KEY_RIGHT),
-            0x4F => Some(KEY_END),  0x50 => Some(KEY_DOWN), 0x51 => Some(KEY_PGDN),
-            0x53 => Some(KEY_DELETE),
-            _ => None,
-        };
-        if let Some(n) = nav { push_out(n); return; }
-    }
+    // ** AQUI VIVIA EL SEGUNDO OFICIO DEL NUMPAD --0x48 como flecha arriba,
+    // 0x4B como izquierda, 0x53 como Suprimir-- cuando Bloq Num estaba apagado.
+    // Se retiro el 2026-09-08 y el porque entero esta en `NUMLOCK`: el numpad
+    // escribe digitos SIEMPRE, y las flechas de verdad ya tienen codigo propio.
+    let _ = NUMLOCK;
     // Ctrl + letra = codigo de control ASCII (Ctrl+A = 0x01, Ctrl+U = 0x15...).
     // Es la convencion de toda la vida de los terminales y no necesita un
     // canal aparte: cabe en el mismo byte que las letras.
