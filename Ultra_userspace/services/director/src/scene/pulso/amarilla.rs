@@ -38,10 +38,10 @@
 //! Ryzen, que es el recurso mas caro que tiene este proyecto. Un carril propio
 //! con su letrero es lo que hace que la tercera se vea venir.
 //!
-//! # Las cuatro afirmaciones, y el porque de cada una
+//! # Las CINCO afirmaciones, y el porque de cada una
 //!
-//! Todo lo que hace este fichero es decidir **que es verdad**. Son cuatro
-//! decisiones y ninguna toca un pixel:
+//! Todo lo que hace este fichero es decidir **que es verdad**. Cinco
+//! decisiones, y ninguna toca un pixel:
 //!
 //! ```text
 //!    1  la aguja avanza SIEMPRE      para que `quieta` signifique `muerto`
@@ -49,7 +49,15 @@
 //!    3  el numero en blanco si <100  dos cifras no son rendimiento: son el
 //!                                    bucle sin turno, y tienen que gritar
 //!    4  la mitad grande en blanco    es LA RESPUESTA: de que lado tirar
+//!    5  al lado del ritmo, `pinta`   el ritmo dice lo rapido que gira; esto
+//!                                    dice cuantas de esas vueltas SIRVIERON
 //! ```
+//!
+//! ** La quinta se anadio al preguntar el dueno si quedaba algo que exprimir,
+//! y la contesta ella sola. El techo UTIL de ese bucle son **250 vueltas por
+//! segundo** --lo pone el bus USB, que late cada 4 ms-- asi que la distancia
+//! entre `pulso` y `pinta` no es una curiosidad: es el desperdicio, medido.
+//! Ver el presupuesto escrito en `main.rs`, junto al `yield_screen`.
 
 use crate::desktop;
 
@@ -66,6 +74,8 @@ pub(crate) struct Lectura {
     pub cuerpo_ms: u32,
     /// De ese segundo, ms esperando el turno.
     pub puerta_ms: u32,
+    /// De ese segundo, cuantas vueltas PINTARON algo.
+    pub pinta: u32,
 }
 
 /// **Lo que hay que ensenar, ya decidido.** El carril verde no vuelve a
@@ -83,6 +93,8 @@ pub(crate) struct Dictamen {
     pub alarma: bool,
     pub cuerpo_ms: u32,
     pub puerta_ms: u32,
+    /// Vueltas que pintaron. Ver la decision 5.
+    pub pinta: u32,
     /// El cuerpo se queda el segundo. Ver la decision 4.
     pub manda_cuerpo: bool,
 }
@@ -145,6 +157,7 @@ pub(crate) fn leer(l: &Lectura) -> Dictamen {
         alarma: !l.sin_reloj && l.vueltas < RITMO_BAJO,
         cuerpo_ms: l.cuerpo_ms,
         puerta_ms: l.puerta_ms,
+        pinta: l.pinta,
         // ** DE QUE LADO TIRAR. Las dos mitades suenan igual desde fuera --"el
         // escritorio va lento"-- y no se arreglan en el mismo sitio: una es de
         // Ring 3 y la otra del planificador. El empate cae del lado del cuerpo
@@ -165,5 +178,6 @@ pub(crate) fn de(t: &desktop::Tick) -> Lectura {
         sin_reloj: t.sin_reloj(),
         cuerpo_ms: t.cuerpo_ms,
         puerta_ms: t.puerta_ms,
+        pinta: t.pintados_por_segundo,
     }
 }

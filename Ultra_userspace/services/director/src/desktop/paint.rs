@@ -29,6 +29,9 @@ use crate::{erase_window, uncover};
 
 /// Everything that happens after the input has been read and understood.
 pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
+    // Aqui y no antes: `will_paint` no es definitivo hasta que la recogida de
+    // entrada termina, y ella lo puede subir. Ver `Tick::pintados_por_segundo`.
+    dsk.tick.anota_pintado();
     // -- Drenar la salida de los hijos --
     //
     // Con tope por fotograma. Un programa que escupe sin parar podria
