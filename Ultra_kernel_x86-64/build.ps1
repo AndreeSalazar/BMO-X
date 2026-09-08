@@ -232,6 +232,18 @@ Guardian 'Validating commit scopes' `
     'toolchain\tools\ambitos\ambitos.py' 'los ambitos de los commits' `
     'ambitos: un commit usa un ambito que no esta en AMBITOS.txt (ver arriba)'
 
+# ** EL CENSO DEL NEUTRO contra el codigo. `NEUTRO/CENSO.txt` se escribe a mano
+# y los marcos se etiquetan en otro sitio: dos listas de lo mismo que pueden
+# separarse sin que nadie avise -- el `[riesgo] ESPEJO` de esta casa, que ya se
+# pago con las constantes del ABI.
+#
+# [!] Y NO comprueba el censo contra la MAQUINA: aqui no hay bus PCI. Esa mitad
+# es el `sincodigo` del portero y hay que arrancar para verla. El porque entero
+# esta en la cabecera de censo_neutro.py.
+Guardian 'Validating NEUTRO census matches the code' `
+    'toolchain\tools\censo-neutro\censo_neutro.py' 'el censo del neutro' `
+    'censo-neutro: el censo y el codigo no dicen lo mismo (ver arriba)'
+
 # -- CONTRATO (L6a: `build.ps1` se partio el 2026-08-28) --------
 . (Join-Path $PSScriptRoot 'build\contrato.ps1')
 # NOTE: uefi_chain is now the UNIFIED shim -- it embeds the flat binaries
