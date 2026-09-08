@@ -102,9 +102,32 @@ pub fn cuenta() -> u64 {
 /// ventana de un aparato: el reloj no se gasta. Cien procesos pueden esperarlo a
 /// la vez y los cien despiertan.
 ///
-/// Solo `RIGHT_WAIT`: sobre este handle no se lee ni se escribe nada, se espera.
+/// `RIGHT_WAIT` para dormirse, y `RIGHT_READ` para mirar la cuenta.
+///
+/// == ** POR QUE LOS DOS, Y ANTES ERA UNO (2026-09-08) ======================
+///
+/// Aqui ponia solo `RIGHT_WAIT`, con este motivo: *"sobre este handle no se lee
+/// ni se escribe nada, se espera"*. Suena bien y **era falso en el mismo
+/// fichero**: `operation()`, doce lineas mas abajo, contesta a
+/// `LATIDO_OP_CUENTA`, y `sys::latido_cuenta` la envuelve para Ring 3.
+///
+/// ```text
+///    INVOKE resuelve con RIGHT_WRITE y luego con RIGHT_READ
+///    esta capability no tenia ninguno de los dos
+///    -> el brazo `KIND_LATIDO` de `invoke` era CODIGO INALCANZABLE
+///    -> y `latido_cuenta` contestaba None a todo el mundo, siempre
+/// ```
+///
+/// *** No se descubrio leyendo: se descubrio en el metal. El compositor uso ese
+/// `latido_cuenta` para sacar su testigo, se comio el `None` con un
+/// `unwrap_or(0)`, y con el testigo en cero **`WAIT` no durmio ni una vez**:
+/// `current != observed` siempre. Trece mil vueltas por segundo pidiendo mil.
+///
+/// ** Leer un contador monotono no concede nada: el mismo dato sale de
+/// `INFO_TSC_HZ` y un `rdtsc`, que Ring 3 ya puede hacer sin permiso. Lo que se
+/// concede es poder USAR la operacion que este objeto ya publicaba.
 pub fn claim(pid: u32) -> Result<u64, u32> {
-    match cap::grant(pid, cap::KIND_LATIDO, cap::RIGHT_WAIT, LLAVE) {
+    match cap::grant(pid, cap::KIND_LATIDO, cap::RIGHT_WAIT | cap::RIGHT_READ, LLAVE) {
         Some(h) => Ok(h),
         None => Err(cap::ERROR_PERMISSION_DENIED),
     }

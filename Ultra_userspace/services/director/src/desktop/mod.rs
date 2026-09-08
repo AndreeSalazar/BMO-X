@@ -495,7 +495,10 @@ impl Tick {
     pub fn tomar_latido(&mut self) {
         if let Some(h) = bmo::latido_tomar() {
             self.latido = h;
-            self.visto = bmo::latido_cuenta(h).unwrap_or(0);
+            // El testigo arranca en `0` y se pone al dia SOLO en la primera
+            // vuelta. No se pregunta la cuenta aqui, y eso no es pereza: ver
+            // "el testigo se saca del propio WAIT" en `ceder`.
+            self.visto = 0;
         }
     }
 
@@ -539,20 +542,52 @@ impl Tick {
     /// encima de lo que la entrada puede refrescar. No se pierde ni un evento y
     /// se deja de quemar el nucleo para descubrir que no ha pasado nada.
     ///
-    /// # [!] Por que se RELEE la cuenta antes de esperar
+    /// # *** EL TESTIGO SE SACA DEL PROPIO `WAIT`, y la primera version no
     ///
-    /// Porque el valor que devuelve `WAIT` **no es la cuenta nueva**. El kernel
-    /// lo dice en `wait_current_checked`: *"the value returned here is what the
-    /// caller sees when resumed, so it is advisory"*. Cuando de verdad duerme,
-    /// devuelve el MISMO `observed` que se le paso.
+    /// La primera version releia la cuenta con `latido_cuenta` antes de esperar.
+    /// **Y no funciono en el metal**, con un numero que no dejaba dudas:
     ///
-    /// ** Asi que el ejemplo que traia `sys::latido_tomar` --`loop { visto =
-    /// latido_esperar(h, visto, 0) }`-- dormiria solo UNA VUELTA DE CADA DOS: al
-    /// despertar, `visto` sigue viejo, y la llamada siguiente ve que la cuenta
-    /// ya no coincide y vuelve en el acto sin dormir. Nunca se habia ejecutado.
+    /// ```text
+    ///    latido 12937/s   pinta 3   cuerpo 1066   puerta 29
+    /// ```
     ///
-    /// Releer cuesta UNA puerta --969 ciclos, el 0,026 % del segundo a 1.000
-    /// vueltas-- y a cambio duermen las vueltas TODAS. Se paga.
+    /// Trece mil vueltas pidiendo dormir mil veces, 29 ms de puerta en todo un
+    /// segundo, y el cuerpo quedandose el resto. **`WAIT` no durmio ni una vez.**
+    ///
+    /// La cadena entera, y cada eslabon estaba escrito:
+    ///
+    /// ```text
+    ///    latido::claim   cap::grant(..., RIGHT_WAIT, ...)   solo ese derecho
+    ///                    y su comentario lo dice: "sobre este handle no se
+    ///                    lee ni se escribe nada, se espera"
+    ///    latido_cuenta   es un INVOKE -> resuelve con RIGHT_READ -> FALLA
+    ///    .unwrap_or(0)   se traga el fallo -> `visto` = 0 PARA SIEMPRE
+    ///    WAIT            `current != observed` (0) -> vuelve EN EL ACTO
+    /// ```
+    ///
+    /// ** Y lo caro no fue no dormir: fue **dejar de ceder**. Este metodo habia
+    /// sustituido al `yield_screen()` incondicional, asi que el escritorio se
+    /// quedo el nucleo entero y el teclado y el raton del dueno parecieron
+    /// ignorados. Una optimizacion que se apaga sola tiene que apagarse HACIA
+    /// EL LADO SEGURO, y esta se apagaba hacia el peor.
+    ///
+    /// # Como se saca ahora, sin cruzar ni una puerta
+    ///
+    /// El valor que devuelve `WAIT` es *advisory*: si DURMIO devuelve el mismo
+    /// `observed` que se le paso; si NO durmio devuelve la cuenta de verdad. Eso
+    /// no es un dato pobre -- **es justo el bit que hace falta**:
+    ///
+    /// ```text
+    ///    vuelve == lo que pedi    durmio  -> el testigo avanza uno
+    ///    vuelve != lo que pedi    NO durmio, iba atrasado -> se pone al dia
+    ///                             ** Y SE CEDE IGUAL: esta vuelta no ha
+    ///                                soltado el turno, y soltarlo no es
+    ///                                opcional
+    /// ```
+    ///
+    /// Se pone al dia sola en la primera vuelta y a partir de ahi duerme en
+    /// todas. Cero puertas, y **el bucle no puede acabar sin ceder haga `WAIT`
+    /// lo que haga**, que es la invariante que faltaba.
     pub fn ceder(&mut self) {
         if self.tsc_hz != 0 && self.tsc_hz != NO_CLOCK {
             let t = bmo::ciclos();
@@ -563,8 +598,15 @@ impl Tick {
             bmo::yield_screen();
             return;
         }
-        self.visto = bmo::latido_cuenta(self.latido).unwrap_or(self.visto);
-        bmo::latido_esperar(self.latido, self.visto, Self::PLAZO_NS);
+        let vuelve = bmo::latido_esperar(self.latido, self.visto, Self::PLAZO_NS);
+        if vuelve == self.visto {
+            // Durmio. Al despertar ha latido al menos una vez.
+            self.visto = vuelve.wrapping_add(1);
+        } else {
+            // No durmio: el testigo iba atrasado. Se pone al dia **y se cede**.
+            self.visto = vuelve;
+            bmo::yield_screen();
+        }
     }
 
     /// **No hay reloj de referencia**: el kernel contesto `0` a `INFO_TSC_HZ`.
