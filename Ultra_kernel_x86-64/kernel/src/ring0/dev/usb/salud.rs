@@ -179,6 +179,38 @@ pub(super) fn refrescar() {
                 "el controlador SE MURIO en marcha (USBSTS HSE/HCE)",
                 sts as u64,
             );
+            // == *** Y AHORA SE PIDE LA PANTALLA (2026-09-08) ================
+            //
+            // El 07-09 esto solo lo decia en CABINA, y CABINA hay que IR A
+            // MIRARLA -- con F11, o sea con el teclado. El mismo teclado que
+            // acaba de morirse.
+            //
+            // ** El dueno lo topo al dia siguiente: *"entre pero veia el
+            // puntero y teclado que no respondia"*. Reinicio, y no se llevo ni
+            // un dato. La averia se anuncio en un sitio al que solo se llega
+            // con lo que la averia acaba de romper.
+            //
+            // > Un instrumento que solo se lee tecleando no existe el dia que
+            // > no hay teclado.
+            //
+            // *** El mecanismo YA ESTABA ENTERO --`core/emergencia.rs` toma la
+            // pantalla, suelta la entrada y SE EXPLICA-- y hasta hoy solo lo
+            // disparaba una corrupcion de memoria. Aqui se le da su segundo
+            // motivo. Quien lo recoge es el hilo del bus, en esta misma vuelta:
+            // `pump_bus` corre antes que `emergencia::atender`.
+            //
+            // [!] Y quitarle la pantalla al escritorio se puede JUSTIFICAR aqui
+            // y no en cualquier sitio: sin teclado ni raton, lo que hay debajo
+            // ya no se puede usar. **No se interrumpe a nadie: se le da al
+            // dueno lo unico que todavia funciona.**
+            //
+            // [!] Una vez. `declarar` guarda el PRIMER motivo y `atender`
+            // consume la bandera, y esta rama es un FLANCO -- si el
+            // controlador parpadeara, no se robaria la pantalla en bucle.
+            crate::ring0::core::emergencia::declarar(
+                "el controlador USB murio: no hay teclado ni raton",
+                sts as u64,
+            );
         } else if !averiado && AVERIADO_ANTES {
             // ** Y la vuelta tambien se dice. Sin esta rama, una averia que se
             // cura deja el ultimo renglon diciendo "muerto" para siempre, y el
