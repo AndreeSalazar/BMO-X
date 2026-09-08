@@ -269,6 +269,14 @@ Guardian 'Validating profile fields match the code' `
     'toolchain\tools\perfil-campos\perfil_campos.py' 'los campos de los perfiles' `
     'perfil-campos: un perfil afirma algo que el codigo no dice (ver arriba)'
 
+# ** Y QUE UNA BANDERA DECLARADA LLEGUE AL OTRO LADO. `desplegar.ps1` declaraba
+# `-Si` y no se lo pasaba a `bmo.ps1`: se aceptaba sin protestar y el despliegue
+# preguntaba igual. PowerShell no se queja de un `param` que no se use, asi que
+# el hueco solo se ve cuando algo no pasa.
+Guardian 'Validating no flag is dropped in the handoff' `
+    'toolchain\tools\relevo\relevo.py' 'el relevo de las banderas' `
+    'relevo: una bandera se declara y no viaja -- se acepta y no hace nada'
+
 # -- CONTRATO (L6a: `build.ps1` se partio el 2026-08-28) --------
 . (Join-Path $PSScriptRoot 'build\contrato.ps1')
 # NOTE: uefi_chain is now the UNIFIED shim -- it embeds the flat binaries
