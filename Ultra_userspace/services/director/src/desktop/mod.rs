@@ -671,6 +671,27 @@ impl Tick {
             bmo::yield_screen();
             return;
         }
+        // *** EL TESTIGO SE RELEE, y esta es la tercera version de esta linea.
+        //
+        // La segunda lo sacaba del valor que devuelve `WAIT`, para no cruzar una
+        // puerta. **Y eso solo vale si el bucle es MAS RAPIDO que el latido.**
+        // El metal dijo que no lo es:
+        //
+        // ```text
+        //    pulso 4/s   pinta 4   cuerpo 2   puerta 1237
+        // ```
+        //
+        // Cuatro vueltas por segundo, o sea 300 ms por vuelta, o sea **300
+        // latidos entre dos vueltas**. Con el testigo sacado de la vuelta
+        // anterior llega caducado SIEMPRE, `current != observed`, y `WAIT`
+        // vuelve en el acto -> se cede -> 300 ms -> y otra vez. Un circulo
+        // vicioso que se alimenta de su propia lentitud.
+        //
+        // ** Releer cuesta UNA puerta: 969 ciclos sobre una vuelta de 300 ms es
+        // la tres millonesima parte. Y ahora se PUEDE, porque el mismo dia se
+        // arreglo el derecho que faltaba en `latido::claim`. Las dos mitades del
+        // arreglo eran una sola pieza y las separe: esto lo junta.
+        self.visto = bmo::latido_cuenta(self.latido).unwrap_or(self.visto);
         let vuelve = bmo::latido_esperar(self.latido, self.visto, Self::PLAZO_NS);
         // ** EL JUEZ ES EL RELOJ. Un latido son 1.000 us y una puerta 0,26, asi
         // que el umbral --la decima parte de un latido-- esta a 380 veces una
@@ -680,13 +701,12 @@ impl Tick {
             && bmo::ciclos().wrapping_sub(antes) >= (self.ciclos_de(1) / 10).max(1);
         if durmio {
             self.dormidas = self.dormidas.wrapping_add(1);
-            // Durmio, asi que ha latido al menos una vez desde `visto`.
-            self.visto = self.visto.wrapping_add(1);
         } else {
-            // No durmio. `vuelve` puede ser la cuenta buena --el testigo iba
-            // atrasado-- o basura de un error; en los dos casos ponerselo cuesta
-            // como mucho una vuelta, y ceder no es opcional.
-            self.visto = vuelve;
+            // No durmio. `vuelve` no se usa para nada --la cuenta se relee
+            // arriba-- y lo unico que importa aqui es que **ceder no es
+            // opcional**: si el mecanismo no duerme, esto degrada a girar
+            // cediendo, que es lento y no se lleva el teclado por delante.
+            let _ = vuelve;
             bmo::yield_screen();
         }
     }
