@@ -349,7 +349,10 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         // de CPU y memoria, que se abren con una tecla. O sea que el unico
         // numero que dice si el escritorio esta vivo estaba detras de la cosa
         // cuya muerte hay que diagnosticar. Ver la cabecera de `scene::pulso`.
-        scene::pulso::refrescar(&p, dsk.tick.loops_per_second);
+        // ** Y VA CON `sin_reloj`, no solo con el numero. Sin reloj de
+        // referencia el numero no se calcula nunca y se queda en cero -- y un
+        // cero pintado es una medida que nadie tomo. Ver `Tick::sin_reloj`.
+        scene::pulso::refrescar(&p, dsk.tick.loops_per_second, dsk.tick.sin_reloj());
     }
 
     // -- El cursor del raton, ENCIMA de todo y lo ultimo --

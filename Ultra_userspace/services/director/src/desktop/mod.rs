@@ -379,6 +379,28 @@ impl Tick {
         }
     }
 
+    /// **No hay reloj de referencia**: el kernel contesto `0` a `INFO_TSC_HZ`.
+    ///
+    /// == ** POR QUE ESTO SE PUBLICA (2026-09-08) ==========================
+    ///
+    /// Sin reloj, `pulse` sale por su rama de emergencia y **`loops_per_second`
+    /// no se calcula nunca**: se queda en el `0` con el que nacio. Eso esta
+    /// escrito arriba, en el propio campo... y aun asi la barra pintaba
+    /// `pulso 0/s`, que cualquiera lee como *"el bucle esta muerto"*.
+    ///
+    /// ```text
+    ///    lo que pasa       no tengo con que medir el ritmo
+    ///    lo que se veia    el ritmo es CERO
+    /// ```
+    ///
+    /// ** Son dos cosas distintas y se veian iguales -- la misma clase de fallo
+    /// que la aguja acaba de arreglar, un escalon mas abajo. Un instrumento que
+    /// no sabe la respuesta tiene que decir QUE NO LA SABE, no dar un cero: un
+    /// cero es una medida, y esa medida nunca se tomo.
+    pub fn sin_reloj(&self) -> bool {
+        self.tsc_hz == NO_CLOCK
+    }
+
     /// The same quarter second as `quarter`, in cycles, for whoever cannot read
     /// the edge because they are not called on every pass.
     pub fn quarter_cycles(&self) -> u64 {
