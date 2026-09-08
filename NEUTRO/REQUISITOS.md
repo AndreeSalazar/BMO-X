@@ -112,17 +112,63 @@ de CABINA nombrando al aparato, en vez de volver al asignador en silencio.
 
 ---
 
-## R5 -- [ ] QUE EL CENSO SE ALIMENTE SOLO
+## R5 -- EL GUARDIAN DEL CENSO. Y son DOS mitades, no una
 
-**Bloquea:** nada tecnico. Es trabajo.
+Al ir a escribirlo aparecio que el requisito estaba mal planteado: pedia que el
+guardian del build comparase el censo *"con lo que el portero encuentra"*, y
+**el build no puede ver el bus PCI**. Corre en el anfitrion.
 
-`CENSO.txt` se escribe a mano y `dev/portero.rs` ya recorre el PCI y sabe quien
-hay. **Dos listas de lo mismo que pueden separarse sin que nadie avise** -- que
-es el `[riesgo] ESPEJO` de esta casa, otra vez.
+Asi que R5 se parte, y las dos mitades son de verdad distintas:
 
-**Como se sabra que quedo hecha:** el guardian del build compara el censo con lo
-que el portero encuentra, y **falla** si un aparato de una clase con DMA no
-tiene fila.
+```text
+   R5a  codigo <-> censo     el build. Corre veinte veces al dia
+   R5b  censo  <-> maquina   el portero. Hay que ARRANCAR para verla
+```
+
+### R5a -- [x] el guardian del build
+
+**Hecho el 2026-09-07.** `toolchain/tools/censo-neutro/censo_neutro.py`,
+enganchado en `build.ps1` como los otros cinco. Comprueba cuatro cosas:
+
+```text
+   1. todo fichero que etiqueta `Duenno::Neutro` tiene fila en el censo   (N1)
+   2. toda fila que nombra un fichero, ese fichero existe y etiqueta      (N2)
+   3. la cuenta `xN` de la fila es el numero de sitios que etiquetan
+   4. y DICE cuantas filas se salto, para que la cobertura parcial no se
+      disfrace de salud
+```
+
+★ **Y sabe decir que NO** (L4), probado en las tres formas antes de engancharlo:
+
+```text
+   la cuenta miente (x2 -> x3)     "el censo dice x3 y el codigo etiqueta 2"
+   un fichero etiqueta sin fila    "... y NO tiene fila en el censo (N1)"
+   el censo desaparece            "el censo NO EXISTE"
+```
+
+** La tercera importa mas de lo que parece: la leccion del propio `Guardian` de
+`build.ps1` es que **un path mal escrito dejo un guardian muerto y el build dijo
+COMPLETE igual**. Un censo que falta no puede leerse como un censo limpio.
+
+Y el formato de la tabla queda escrito **dentro de `CENSO.txt`**, no solo en el
+guardian: un formato que solo conoce quien lo comprueba es un formato que nadie
+puede cumplir.
+
+**Como se comprueba:** sale `clean: el censo del neutro cuadra con el codigo` en
+cada build.
+
+### R5b -- [ ] el censo contra la maquina de verdad
+
+**Bloquea:** hace falta arrancar, y el censo no se puede leer desde Ring 0 (no
+hay sistema de ficheros a esa altura del arranque).
+
+Lo que ya existe es la mitad util: `dev/portero.rs` cuenta `sincodigo` -- los
+aparatos de una clase que BMO-X podria querer y que no toca nadie. **Lo que
+falta es cerrar el circulo**: que el portero sepa cuales de esos tienen DMA y
+avise si no estan en el censo.
+
+**Como se sabra que quedo hecha:** enchufar una tarjeta con DMA que no este en
+el censo, y que el panel lo diga sin haber tocado el codigo.
 
 ---
 
@@ -173,7 +219,7 @@ GRAFICA y BMO-X no tiene codigo para ella"*, y el censo tiene una fila mas.
 ```text
    1.  [x] R3   hecho. Y de regalo, `soltados` DETECTA la rotura de N3
    2.  R2   ya esta hecho: solo falta EJECUTARLO en el Ryzen
-   3.  R5   el guardian del censo. Impide que esto se pudra solo
+   3.  [x] R5a  hecho. R5b sigue: hay que arrancar para ver esa mitad
    4.  R4   ** despues de la 1.4b. Es ROJO y hay una azul sin reproducir
    5.  R6   la MMU. Un proyecto, no una casilla
    6.  R7   cuando haya tarjeta

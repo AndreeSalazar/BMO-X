@@ -21,6 +21,23 @@ LAS COLUMNAS
   etiquetados   sus marcos llevan Duenno::Neutro? (N2)
 
 
+EL FORMATO ES UN CONTRATO, Y LO LEE UN GUARDIAN
+------------------------------------------------
+
+  Desde el 07-09 la tabla de abajo la comprueba `toolchain/tools/censo-neutro`
+  en cada build. Asi que su forma ya no es de gusto:
+
+    * la tabla empieza en la linea de guiones, y acaba en la primera vacia
+    * una fila que nombra un fichero se escribe:  <ruta>  xN
+    * la ruta es relativa a Ultra_kernel_x86-64/kernel/src/ring0/
+    * `xN` es CUANTOS sitios de ese fichero etiquetan. Sin `xN` se lee x1
+    * una fila sin fichero (una tarjeta que no ha llegado, el microcodigo) se
+      salta, y el guardian DICE cuantas se salto
+
+  ** Escrito aqui y no solo en el guardian a proposito: un formato que solo
+  conoce quien lo comprueba es un formato que nadie puede cumplir.
+
+
 LOS QUE ESTAN DENTRO DE ESTA MAQUINA HOY
 -----------------------------------------
 
