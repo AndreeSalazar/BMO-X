@@ -1,0 +1,96 @@
+EL PERFIL DEL DISCO -- y el unico perfil de esta carpeta que puede BORRAR ALGO
+===============================================================================
+
+  La mitad OPERATIVA vive en Ultra_kernel_x86-64/kernel/src/ring0/dev/disk/
+  (el HBA SATA, las particiones, TRIM) y en build/discos.ps1 (el despliegue).
+
+  [!] Este fichero se lee ANTES que los otros cuatro. Los demas, si mienten,
+  hacen que algo vaya lento o no arranque. Este, si miente, escribe en el disco
+  equivocado.
+
+
+==========================================================================
+  ** LO PRIMERO, Y NO ES UN DATO: EL NVMe NO SE TOCA
+==========================================================================
+
+  nvme: EL WINDOWS DEL DUENO
+  nvme_escritura: CERRADA A PROPOSITO
+
+  *** No es que "todavia no este hecho". Es una decision, y esta cableada en
+  build/discos.ps1 con TRES cierres que se cumplen a la vez:
+
+      1. RECHAZA la unidad del sistema        ($env:SystemDrive)
+      2. EXIGE FAT o FAT32                    un ESP no es otra cosa
+      3. EXIGE que la unidad EXISTA           antes de tocar nada
+
+  ** Y la pregunta que se hace antes de escribir NO era decoracion: la propia
+  cabecera de discos.ps1 lo dice -- una letra puede apuntar a OTRO volumen que
+  tambien sea FAT32. Contra eso los tres cierres no bastan, y por eso hay techo
+  (`-Si` solo salta la pregunta por debajo de 64 GiB).
+
+  [!] SI ALGUIEN QUITA UNO DE LOS TRES, este perfil miente y el precio es el
+  disco de trabajo del dueno. Es el unico sitio de todo el repo donde eso puede
+  pasar.
+
+
+EL DISCO DONDE VIVE BMO-X
+--------------------------
+
+  fabricante: Kingston
+  interfaz: SATA
+  tipo: SSD
+  controlador: AHCI
+  para_que: los dos volumenes de BMO-X
+
+      EFI        FAT32   el arranque
+      BMO-DATA   FAT32   los programas
+
+  ** El SSD "es solo volumen": BMO-X no le pide nada raro. Lee y escribe
+  sectores por AHCI, y su identidad la da el propio disco (IDENTIFY).
+
+
+LO QUE NO SE USA, Y POR QUE
+----------------------------
+
+  nvme_driver: NO EXISTE, y no es una carencia
+
+  Escribir un driver de NVMe daria acceso al disco que NO se quiere tocar. La
+  ausencia del driver es, hoy, media defensa: aunque los tres cierres fallaran,
+  el kernel no sabria hablarle a ese disco.
+
+  *** Se escribe porque el dia que se escriba ese driver --y hay motivos para
+  hacerlo-- ESA media defensa desaparece, y los tres cierres pasan a ser la
+  unica. Quien lo escriba tiene que leer esto antes.
+
+
+A QUIEN EXPONE
+--------------
+
+expone: Ultra_kernel_x86-64/build/discos.ps1
+   los tres cierres. Si el perfil dice otra letra o se relaja un cierre, aqui
+   es donde se escribe en el disco equivocado
+
+expone: Ultra_kernel_x86-64/kernel/src/ring0/dev/disk
+   el HBA, las particiones y TRIM. TRIM BORRA: un rango mal calculado no se
+   deshace
+
+expone: Ultra_kernel_x86-64/kernel/src/ring0/fsys
+   FAT32 y ESTRATOS leen encima de esto. Si el volumen no es el que dice el
+   perfil, montan otra cosa
+
+
+SI ESTE PERFIL ESTA MAL, ASI SE NOTA
+-------------------------------------
+
+  la letra de destino apunta a otro volumen FAT32
+      se despliega encima de algo que no es BMO-DATA. No hay sintoma: el
+      comando dice OK. Lo unico que lo impide es la PREGUNTA, y por eso `-Si`
+      lleva techo
+
+  se relaja "rechaza la unidad del sistema"
+      el peor caso de todo el repo, y no tiene sintoma previo: el primer aviso
+      seria Windows sin arrancar
+
+  interfaz o controlador equivocados
+      esto SI se nota y rapido: `find_ahci` no encuentra nada de clase 0x01 con
+      la subclase que dice el perfil, y BMO-X arranca sin disco

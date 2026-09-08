@@ -254,6 +254,13 @@ Guardian 'Validating board profile matches its workarounds' `
     'toolchain\tools\perfil-placa\perfil_placa.py' 'el perfil de la placa' `
     'perfil-placa: el perfil y los rodeos no dicen lo mismo (ver arriba)'
 
+# ** Y QUE TODO PERFIL DIGA A QUIEN EXPONE. Un perfil que expone a un fichero
+# borrado no avisa de nada: describe una maquina que ya no esta y suena igual
+# de seguro. Idea del dueno -- 'si falla, el guardian lo frena por motivos'.
+Guardian 'Validating every profile declares what it exposes' `
+    'toolchain\tools\perfil\perfil.py' 'las exposiciones de los perfiles' `
+    'perfil: un perfil no dice a quien expone, o expone a algo que no existe'
+
 # -- CONTRATO (L6a: `build.ps1` se partio el 2026-08-28) --------
 . (Join-Path $PSScriptRoot 'build\contrato.ps1')
 # NOTE: uefi_chain is now the UNIFIED shim -- it embeds the flat binaries

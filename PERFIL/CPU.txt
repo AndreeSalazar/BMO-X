@@ -55,6 +55,17 @@ LO QUE ESTE PERFIL SABE Y NO SE USA
   pesado que repartir, asi que no bloquea nada.
 
 
+A QUIEN EXPONE
+--------------
+
+expone: Ultra_kernel_x86-64/kernel/src/ring0/cpu_vendor
+   la mitad operativa entera: cpuid, cache, errata, power, presupuesto,
+   topologia y TSC. 1.072 lineas que dan por buenos estos numeros
+
+expone: Ultra_kernel_x86-64/kernel/src/ring0/plat/smp
+   el reparto de nucleos. `smp orquesta` crea un obrero por cada uno que este
+   fichero declare, y espera a todos en la barrera
+
 SI ESTE PERFIL ESTA MAL, ASI SE NOTA
 -------------------------------------
 

@@ -1,0 +1,86 @@
+EL PERFIL DE LA RED -- que vive DENTRO del perfil de la placa
+==============================================================
+
+  La mitad OPERATIVA esta repartida en dos: `platform/drivers/net/` (lo que un
+  RTL cuenta de si mismo, probado en el anfitrion) y
+  `kernel/src/ring0/dev/net/` (el que le habla).
+
+
+LO PRIMERO: ESTO NO ES UNA TARJETA APARTE
+------------------------------------------
+
+  donde: EN LA PLACA BASE
+
+  *** Y por eso este perfil es HIJO de PLACA/. Cambiar de placa cambia la red
+  aunque no se compre nada, y ese es exactamente el tipo de cosa que se descubre
+  tarde: se cambia la placa por otra razon, la red deja de ir, y se busca en el
+  driver.
+
+  [!] Si algun dia se pincha una tarjeta PCIe de red, ESTE FICHERO SE PARTE EN
+  DOS: la de la placa y la de la ranura. Hoy no hace falta y se dice para que el
+  dia que pase no se edite este en vez de crear el otro.
+
+
+LA NIC QUE HAY
+---------------
+
+  fabricante: Realtek
+  familia: RTL8111/8168
+  pci_vendor: 0x10EC
+  pci_device: 0x8168
+  identificacion_cruda: 0x10EC8168
+
+  ** El numero crudo ES la identificacion, y se entrega asi a proposito
+  (`INFO_RED_*` del ABI): traducirlo a un nombre bonito seria que el kernel
+  decidiera como se llama, y eso es politica.
+
+  clase_pci: 0x02 subclase 0x00        Ethernet, y SOLO Ethernet
+  driver: `bmo-net`, y solo sabe leer registros de Realtek
+
+
+LO QUE HACE Y LO QUE NO
+------------------------
+
+  hace: encuentra la NIC, elige su BAR de memoria, y le pregunta MAC y enlace
+  no_hace: no le escribe un byte. Los anillos de DMA vienen despues
+
+  msi: se PREGUNTA, no se enciende
+      con MSI la tarjeta AVISA en vez de que el driver SONDEE, y esa es la fila
+      que abre la puerta de TCP. Hoy `rx_poll` sondea
+
+  estado: [!] la foto del paso 1 salio en CERO el 28-08, y NO fue la tarjeta.
+      Tres causas encontradas, arregladas y SIN EJECUTAR. Es la seccion 3.4 de
+      docs/metal/PRUEBA_EN_METAL_0907.md
+
+
+A QUIEN EXPONE
+--------------
+
+expone: Ultra_kernel_x86-64/kernel/src/ring0/dev/net
+   los offsets de registro son del mapa de la familia 8169/8168. Leerlos en
+   OTRA tarjeta no da error: da numeros que parecen datos
+
+expone: platform/drivers/net
+   lo que se cree que la tarjeta cuenta de si misma, probado sin hardware
+
+expone: PERFIL/PLACA/PERFIL.txt
+   porque la NIC va en la placa: cambiar una cambia la otra
+
+
+SI ESTE PERFIL ESTA MAL, ASI SE NOTA
+-------------------------------------
+
+  la familia equivocada (un Intel donde dice Realtek)
+      ** EL PEOR, y esta escrito en el propio driver: los offsets se leen
+      igual y devuelven basura. Una MAC inventada sale con la misma cara que
+      una MAC leida. Se caza comparando `identificacion_cruda` con lo que el
+      PCI declara -- que el kernel YA imprime al arrancar
+
+  se cambia de placa y no se toca este fichero
+      la red deja de ir y se busca en el driver, que es donde no esta. Es el
+      motivo de que la seccion de arriba diga que esto es hijo de PLACA
+
+  se da por hecho que hay Ethernet y lo que hay es Wi-Fi
+      `find_nic` solo mira clase 0x02 subclase 0x00. Un Wi-Fi es 0x0D y NO
+      entra -- se parece en la clase y en nada mas. El sintoma es "no hay
+      tarjeta", que es cierto y confunde
