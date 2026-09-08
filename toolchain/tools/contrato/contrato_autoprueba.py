@@ -30,8 +30,11 @@ def autoprueba():
     fallos = []
     casos = [0]
 
+    nombres = []
+
     def exige(nombre, quejas, debe_quejarse=True):
         casos[0] += 1
+        nombres.append(nombre)
         if debe_quejarse and not quejas:
             fallos.append("la regla %s NO dijo nada y tenia que decir que NO" % nombre)
         if not debe_quejarse and quejas:
@@ -284,6 +287,24 @@ def autoprueba():
           r9_los_carriles_del_modulo({"obj/fb": {"mod.rs": ""}}), False)
     exige("R9(sin carpetas)", r9_los_carriles_del_modulo({}), False)
 
+    # -- R18: los carriles FUERA del kernel ---------------------------------
+    #
+    # ** Los casos de letrero NO se repiten aqui: R18 delega en R9 y probarlos
+    # otra vez seria comprarse el ESPEJO que la propia regla dice evitar. Lo que
+    # se prueba es lo unico que R9 no puede ver -- que el arbol vigilado siga
+    # existiendo y con algo dentro.
+    exige("R18(carpeta sana en un arbol que existe)",
+          r18_los_carriles_fuera_del_kernel(
+              {"scene/pulso": sano}, ("toolchain",)), False)
+    # *** El que de verdad guarda algo: la ruta se muda y el guardian se queda
+    # mirando un sitio vacio. Sin esto, R18 aprobaria en silencio para siempre.
+    exige("R18(el arbol declarado no existe)",
+          r18_los_carriles_fuera_del_kernel({}, ("no/existe/esto",)))
+    exige("R18(arbol declarado y ni un carril)",
+          r18_los_carriles_fuera_del_kernel({}, ("toolchain",)))
+    exige("R18(sin arboles declarados)",
+          r18_los_carriles_fuera_del_kernel({}, ()), False)
+
     # -- R10: el semaforo ---------------------------------------------------
     CA = "//! [carril]  ROJO      porque si" + chr(10)
     exige("R10(con color)", r10_el_semaforo({"plat/spin.rs": CA}), False)
@@ -307,7 +328,13 @@ def autoprueba():
     # ** El numero se CUENTA, no se escribe. La version anterior decia "21
     # casos" y habia 19: un guardian con una cifra a mano dentro es un guardian
     # que dice un numero viejo con toda la confianza del mundo.
-    print("clean: las DIECISIETE reglas saben decir que NO (%d casos)" % casos[0])
+    #
+    # *** Y las REGLAS estaban en esa misma situacion, con el aviso escrito
+    # justo encima: "DIECISIETE" era una palabra a mano. Al anadir R18 el 08-09
+    # habria dicho diecisiete con dieciocho, que es exactamente el fallo que el
+    # parrafo de arriba describe. Ahora salen del nombre de los casos.
+    print("clean: las %d reglas saben decir que NO (%d casos)"
+          % (len({n.split("(")[0] for n in nombres}), casos[0]))
     return 0
 
 

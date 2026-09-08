@@ -115,6 +115,32 @@ SEMAFORO = ("ROJO", "AMARILLO", "VERDE")
 COLOR_DEL_NOMBRE = {"roja": "ROJO", "amarilla": "AMARILLO", "verde": "VERDE"}
 RING0_DIR = "Ultra_kernel_x86-64/kernel/src/ring0"
 
+# -- R18: los carriles TAMBIEN fuera del kernel, 2026-09-08 -------------------
+#
+# ** L6g nacio mirando a Ring 0 porque alli vive lo que puede parar la maquina.
+# Y el 08-09 el dueno partio `scene/pulso` --un modulo de RING 3-- en carriles,
+# con esta peticion: *"necesito saber que todo lo cumpla por completo"*.
+#
+# *** Cumplir por completo es justo lo que NO pasaba: la carpeta traia sus
+# letreros y **ningun guardian los miraba**. Un carril sin juez es un comentario
+# bonito, y la primera ley de esta casa dice que un eje sin juez es prosa.
+#
+# Asi que la regla de los carriles POR MODULO (R9) se cobra aqui tambien. Lo que
+# NO se extiende es el semaforo total (R10): exigir `[carril]` a los ~90 ficheros
+# del compositor de golpe seria un guardian gritando noventa veces el primer dia,
+# y uno que grita sin motivo se apaga en una semana -- lo dice L6a y lo repite el
+# guardian de los enlaces.
+#
+#    R9   una carpeta de carriles no mezcla, y cada carril trae su letrero
+#         -> se aplica a Ring 0 Y a esto. Es la regla del que YA se partio
+#    R10  todo fichero lleva color
+#         -> solo Ring 0. Aqui seria un muro, no un trinquete
+#
+# ** Y por eso esto es una LISTA y no un `walk` de todo `Ultra_userspace`: se
+# nombra el arbol que se vigila. Lo que no esta aqui no esta vigilado, y eso se
+# puede leer de un vistazo en vez de deducirlo.
+CARRILES_FUERA_DEL_KERNEL = ("Ultra_userspace/services/director/src",)
+
 # -- R17: la CARA RUST del ABI, que tampoco llevaba letrero -------------------
 #
 # `fundamentals/` son los tipos que cruzan la frontera: `BmoStatus` en rax/rdx,

@@ -219,8 +219,6 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         // Un hueco vacio donde estaba la luz se lee como "no hay problema", que
         // es la peor cosa que puede decir un instrumento que se borro.
         scene::testigo::olvidar();
-        // El pulso vive a la derecha del testigo y lo tapa lo mismo.
-        scene::pulso::olvidar();
         dsk.win.taskbar_dirty = false;
     }
 
@@ -349,16 +347,11 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         // de CPU y memoria, que se abren con una tecla. O sea que el unico
         // numero que dice si el escritorio esta vivo estaba detras de la cosa
         // cuya muerte hay que diagnosticar. Ver la cabecera de `scene::pulso`.
-        // ** Y VA LA LECTURA ENTERA, no solo el numero. Sin reloj el numero no
-        // se calcula nunca y se queda en cero --un cero pintado es una medida
-        // que nadie tomo-- y sin el reparto no se sabe si el segundo se GASTA o
-        // se ESPERA. Ver `Tick::sin_reloj` y `Tick::cuerpo_ms`.
-        scene::pulso::refrescar(&p, &scene::pulso::Lectura {
-            vueltas: dsk.tick.loops_per_second,
-            sin_reloj: dsk.tick.sin_reloj(),
-            cuerpo_ms: dsk.tick.cuerpo_ms,
-            puerta_ms: dsk.tick.puerta_ms,
-        });
+        // ** Y VA LA LECTURA ENTERA, no solo el numero: sin reloj el numero no
+        // significa nada, y sin el reparto no se sabe si el segundo se GASTA o
+        // se ESPERA. Armarla es trabajo del modulo --`pulso::de`-- y no de
+        // aqui: este fichero es el que menos tiene que saber de las dos cosas.
+        scene::pulso::refrescar(&p, &scene::pulso::de(&dsk.tick));
     }
 
     // -- El cursor del raton, ENCIMA de todo y lo ultimo --
