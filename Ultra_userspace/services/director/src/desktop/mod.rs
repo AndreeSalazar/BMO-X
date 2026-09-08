@@ -338,6 +338,24 @@ pub(crate) struct Tick {
     /// De cada segundo, cuantos ms se fueron en `yield_screen`. Ver
     /// [`Tick::cuerpo_ms`].
     pub puerta_ms: u32,
+    /// **De cada segundo, cuantas vueltas PINTARON algo.**
+    ///
+    /// == *** LA OTRA MITAD DE `loops_per_second` (2026-09-08) ============
+    ///
+    /// El ritmo dice a que velocidad gira. Esto dice **cuantas de esas vueltas
+    /// sirvieron para algo**, y el cociente de los dos es el desperdicio:
+    ///
+    /// ```text
+    ///    20000 vueltas, 4 pintan    19996 vueltas para descubrir que no
+    ///    250 vueltas, 4 pintan      lo mismo, sin quemar el nucleo
+    /// ```
+    ///
+    /// ** Y hace falta un numero porque la decision que viene se toma con el:
+    /// si el bucle debe seguir girando o pasar a montarse en el LATIDO. Ver la
+    /// nota del presupuesto en `main.rs`, junto al `yield_screen`.
+    pub pintados_por_segundo: u32,
+    /// Las que llevan pintado en el segundo en curso.
+    pintados: u32,
     /// Los dos tramos del segundo en curso, en ciclos.
     suma_cuerpo: u64,
     suma_puerta: u64,
@@ -426,10 +444,22 @@ impl Tick {
                 self.cuerpo_ms = (self.suma_cuerpo / por_ms) as u32;
                 self.puerta_ms = (self.suma_puerta / por_ms) as u32;
             }
+            self.pintados_por_segundo = self.pintados;
+            self.pintados = 0;
             self.suma_cuerpo = 0;
             self.suma_puerta = 0;
             self.sample_at = now;
             self.sample_loops = self.loops;
+        }
+    }
+
+    /// **Esta vuelta pinto.** Una suma, sin cruzar ninguna puerta.
+    ///
+    /// Lo llama `compose`, que es el unico sitio donde `will_paint` ya es
+    /// definitivo: la recogida de entrada todavia lo puede subir.
+    pub fn anota_pintado(&mut self) {
+        if self.will_paint {
+            self.pintados = self.pintados.wrapping_add(1);
         }
     }
 
@@ -690,6 +720,8 @@ pub(crate) fn install(p: &bmo::Pantalla, console: Option<bmo::Consola>) -> &'sta
             loops_per_second: 0,
             cuerpo_ms: 0,
             puerta_ms: 0,
+            pintados_por_segundo: 0,
+            pintados: 0,
             suma_cuerpo: 0,
             suma_puerta: 0,
             cedio_en: 0,

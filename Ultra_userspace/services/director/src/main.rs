@@ -946,6 +946,48 @@ pub extern "C" fn _start() -> ! {
 
         desktop::paint::compose(&mut dsk, &p, dead);
 
+        // == *** EL PRESUPUESTO DE ESTE BUCLE, y lo pone el HARDWARE =========
+        //
+        // La ley de esta casa dice que optimizar es lo ultimo y que antes hay
+        // que decir QUIEN pone el presupuesto. Aqui esta dicho, y no lo pone
+        // una opinion: sale de dos numeros que ya estaban medidos.
+        //
+        // ```text
+        //    el bus USB late cada 4 ms      -> 250 Hz. El teclado y el raton
+        //                                      no pueden traer nada mas fresco
+        //    el cuarto de segundo           -> 4 Hz. Es TODO lo que cambia en
+        //                                      pantalla sin que nadie toque nada
+        // ```
+        //
+        // ** Asi que el techo UTIL de este bucle son 250 vueltas por segundo.
+        // Una vuelta 251 no puede ver una tecla que la 250 no viera: **esta
+        // sondeando un dato que fisicamente no ha podido cambiar**.
+        //
+        // Y una vuelta en vacio cruza NUEVE puertas para averiguar eso:
+        //
+        // ```text
+        //    9 puertas x 969 ciclos = 8.721 ciclos = 2,36 us por vuelta
+        //       a    250 vueltas/s ->  0,06 % del CPU
+        //       a  20000 vueltas/s ->  4,71 %
+        //       a  60000 vueltas/s -> 14,14 %
+        // ```
+        //
+        // *** Por eso limar puertas es el trabajo equivocado --la misma leccion
+        // que `docs` ya escribio sobre limar el ensamblador de la puerta--. Lo
+        // que sobra no son las nueve puertas: son las vueltas.
+        //
+        // # Lo que hay que hacer, y por que TODAVIA no esta hecho
+        //
+        // `WAIT` --el segundo syscall congelado-- ya sabe dormir hasta el
+        // LATIDO del hardware (`KIND_LATIDO`, 1 kHz desde `on_timer`), y ese
+        // brazo esta escrito y probado. Montar este bucle ahi lo dejaria en
+        // ~1.000 vueltas por segundo SIN girar, con la entrada igual de fresca.
+        //
+        // [!] No se hace en la misma tanda que el arreglo del shell de Ring 0 a
+        // proposito: cambiaria el MISMO numero que ese arreglo tiene que mover.
+        // Dos cambios sobre una sola medida es un arranque que no contesta
+        // ninguna de las dos preguntas. Primero se lee el pulso; luego esto.
+        //
         // ** AQUI SE ACABA EL CUERPO DE LA VUELTA Y EMPIEZA LA PUERTA.
         //
         // Un `rdtsc` --sin cruzar nada-- que separa lo que el compositor GASTA

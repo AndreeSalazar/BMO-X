@@ -31,7 +31,7 @@
 //! vivo** por no caber **lo que dice en que se le va el tiempo**.
 //!
 //! ```text
-//!    cabe entero   pulso 1234/s  cuerpo 40  puerta 950  |
+//!    cabe entero   pulso 1234/s  pinta 4  cuerpo 40  puerta 950  |
 //!    cabe corto    pulso 1234/s  |
 //!    no cabe       nada -- pintar encima de otra cosa es peor que no pintar
 //! ```
@@ -47,8 +47,9 @@ use crate::text::decimal;
 /// La ranura siguiente al testigo del USB. El testigo mide 168 px desde la
 /// suya, asi que esto empieza pasado ese ancho.
 const TRAS_TESTIGO: u32 = 168 + 8;
-/// Lo que ocupa la forma LARGA: `pulso 12345/s  cuerpo 900  puerta 40  |`.
-const ANCHO: u32 = 330;
+/// Lo que ocupa la forma LARGA:
+/// `pulso 12345/s  pinta 4  cuerpo 900  puerta 40  |`.
+const ANCHO: u32 = 400;
 /// Lo que ocupa la forma CORTA: `pulso 12345/s |`, sin el reparto.
 const ANCHO_CORTO: u32 = 150;
 
@@ -82,6 +83,10 @@ pub(crate) fn pintar(p: &bmo::Pantalla, d: &Dictamen) {
     // cabe entero. La mitad que manda va en blanco: es la respuesta, y tiene
     // que verse sin leer los numeros.
     if d.ritmo.is_some() && ancho == ANCHO {
+        // `pinta` NUNCA en blanco: no es una alarma, es la escala con la que se
+        // lee el ritmo de al lado. Ponerla a competir con la mitad que manda
+        // seria gastar el unico color fuerte de la caja en dos cosas.
+        tx = renglon(p, tx, ty, " pinta ", d.pinta, false);
         tx = renglon(p, tx, ty, " cuerpo ", d.cuerpo_ms, d.manda_cuerpo);
         tx = renglon(p, tx, ty, " puerta ", d.puerta_ms, !d.manda_cuerpo);
     }
