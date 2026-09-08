@@ -310,6 +310,41 @@ pub(crate) struct Tick {
     /// USB witness light does have that constraint, and that is why it keeps
     /// its own distance instead: see `scene::testigo::refrescar`.
     pub quarter: bool,
+    /// **De cada segundo, cuantos ms se fueron DENTRO de la vuelta** -- todo
+    /// el trabajo del compositor: mirar la entrada, componer y volcar.
+    ///
+    /// == *** PARA QUE ESTAN ESTAS DOS CIFRAS (2026-09-08) ================
+    ///
+    /// El dueno midio el pulso en el Ryzen y salio **50 vueltas por segundo**.
+    /// El bucle vive --la aguja gira, hay reloj-- pero 50 vueltas son **20 ms
+    /// por vuelta**, y esto no es un bucle con freno: no tiene ninguno.
+    ///
+    /// Y ahi la pregunta se vuelve a partir en dos, igual que la partio la
+    /// aguja, porque una vuelta solo tiene dos mitades:
+    ///
+    /// ```text
+    ///    el CUERPO    lo que hace el compositor antes de ceder
+    ///    la PUERTA    lo que tarda en volver despues de ceder
+    /// ```
+    ///
+    /// ** Las dos suenan igual desde fuera --"el escritorio va lento"-- y la
+    /// cura no se parece en nada: una se arregla en Ring 3 y la otra en el
+    /// planificador. Sin separarlas, cualquier arreglo es una apuesta.
+    ///
+    /// Van en **ms de cada segundo** y no en el peor caso a proposito: sumados
+    /// dan ~1000, asi que se leen como un reparto y se ve de un vistazo cual de
+    /// las dos mitades se queda el segundo.
+    pub cuerpo_ms: u32,
+    /// De cada segundo, cuantos ms se fueron en `yield_screen`. Ver
+    /// [`Tick::cuerpo_ms`].
+    pub puerta_ms: u32,
+    /// Los dos tramos del segundo en curso, en ciclos.
+    suma_cuerpo: u64,
+    suma_puerta: u64,
+    /// `rdtsc` justo antes de ceder, y `0` si todavia no se cedio nunca.
+    cedio_en: u64,
+    /// `rdtsc` del principio de esta vuelta.
+    inicio: u64,
     /// The open sample: when it started (cycles) and at which pass.
     sample_at: u64,
     sample_loops: u32,
@@ -360,23 +395,58 @@ impl Tick {
             self.sample_at = now;
             self.sample_loops = self.loops;
             self.quarter_at = now;
+            self.inicio = now;
             self.quarter = false;
             return;
         }
         if self.tsc_hz == NO_CLOCK {
             // Sin reloj no hay ritmo que medir: se cuenta como se contaba.
+            self.inicio = now;
             self.quarter = self.loops % QUARTER_LOOPS == 0;
             return;
         }
+        // ** SE CIERRA EL TRAMO DE LA PUERTA. Entre `cediendo()` y este
+        // instante no corrio ni una linea del compositor: lo que haya pasado
+        // ahi es tiempo que el escritorio ESPERO, no que gasto.
+        if self.cedio_en != 0 {
+            self.suma_puerta = self.suma_puerta.wrapping_add(now.wrapping_sub(self.cedio_en));
+        }
+        self.inicio = now;
         self.quarter = now.wrapping_sub(self.quarter_at) >= self.ciclos_de(QUARTER_MS);
         if self.quarter {
             self.quarter_at = now;
         }
         if now.wrapping_sub(self.sample_at) >= self.tsc_hz {
             self.loops_per_second = self.loops.wrapping_sub(self.sample_loops);
+            // El reparto del segundo que se cierra, y a cero para el siguiente.
+            // Se publica en ms enteros: decimas de ms en una barra de tareas es
+            // precision que nadie puede usar leyendo de lejos.
+            let por_ms = self.tsc_hz / 1_000;
+            if por_ms > 0 {
+                self.cuerpo_ms = (self.suma_cuerpo / por_ms) as u32;
+                self.puerta_ms = (self.suma_puerta / por_ms) as u32;
+            }
+            self.suma_cuerpo = 0;
+            self.suma_puerta = 0;
             self.sample_at = now;
             self.sample_loops = self.loops;
         }
+    }
+
+    /// **Se va a ceder el CPU.** Cierra el tramo del cuerpo y abre el de la
+    /// puerta. Lo llama el bucle justo antes de `yield_screen`, y el tramo se
+    /// cierra solo en el `pulse()` de la vuelta siguiente.
+    ///
+    /// Cuesta un `rdtsc` --unas decenas de ciclos, sin cruzar ninguna puerta--
+    /// al lado de un cambio de contexto. Un instrumento que costara lo que mide
+    /// no mediria nada. Ver [`Tick::cuerpo_ms`].
+    pub fn cediendo(&mut self) {
+        if self.tsc_hz == 0 || self.tsc_hz == NO_CLOCK {
+            return;
+        }
+        let t = bmo::ciclos();
+        self.suma_cuerpo = self.suma_cuerpo.wrapping_add(t.wrapping_sub(self.inicio));
+        self.cedio_en = t;
     }
 
     /// **No hay reloj de referencia**: el kernel contesto `0` a `INFO_TSC_HZ`.
@@ -618,6 +688,12 @@ pub(crate) fn install(p: &bmo::Pantalla, console: Option<bmo::Consola>) -> &'sta
             calc_hover: None,
             dead_boxes: [(0, 0, 0, 0); crate::scene::surface::MAX],
             loops_per_second: 0,
+            cuerpo_ms: 0,
+            puerta_ms: 0,
+            suma_cuerpo: 0,
+            suma_puerta: 0,
+            cedio_en: 0,
+            inicio: 0,
             quarter: false,
             sample_at: 0,
             sample_loops: 0,
