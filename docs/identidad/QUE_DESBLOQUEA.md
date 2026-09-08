@@ -230,6 +230,87 @@ falten esas piezas.
 **Pero un navegador si es alcanzable**: NetSurf, motor propio, ~200k lineas, en
 **C**. Su bloqueante es la **red**.
 
+> ⚠ **Afinado el 2026-09-07**: *"la red"* ya no es la respuesta entera. La
+> criptografia esta pagada --`bmo-cripto` son 3.604 lineas con curva, AES y
+> GCM-- asi que el muro es **TLS**, no el cifrado. Y antes que TLS esta `red
+> rx`, que sigue sin ejecutarse. Ver el Nivel 4b, justo debajo.
+
+---
+
+## ★★ Nivel 4b -- YouTube, y MAQUETA: lo que el dueno pregunto el 07-09
+
+> *"un dia entrar YouTube, porque todo es documentos enviando datos XD. Eso por
+> algo `.maqueta` es el motivo, son listas largas para eso, no?"*
+
+La intuicion es buena y la mitad es correcta. La otra mitad **ya estaba decidida
+al reves, y a proposito**.
+
+### La cadena entera, con lo que falta en cada eslabon
+
+```text
+   HTTPS        te trae los BYTES         -> falta TLS entero
+   MAQUETA      los MAQUETA               -> ya sabe hacerlo
+   un LECTOR    las dos juntas            -> ** ALCANZABLE, y terminable
+   un NAVEGADOR + HTML tolerante          -> NetSurf, ~200k lineas
+   YouTube      + JavaScript + video      -> ver abajo
+```
+
+### ⚠ MAQUETA NO es el camino al navegador, y su propio plan lo prohibe
+
+`PLAN_MAQUETA.md` lo dice en su tercera linea --*"no es un navegador"*-- y lo
+que mas convence es COMO lo prohibe: **no con una regla, con la gramatica**.
+
+```text
+   un navegador TIENE que perdonar    el <p> sin cerrar, la etiqueta mal
+                                      anidada, el atributo sin comillas
+   MAQUETA se NIEGA                   y por eso no puede derivar en uno
+```
+
+★ *"El abuelo prohibe el navegador, sin que nadie lo decida."* Un motor que
+perdona necesita reglas de recuperacion de error, y esas reglas son la mitad de
+lo que pesa un navegador de verdad.
+
+** Asi que MAQUETA + HTTPS no dan un navegador: dan un **LECTOR de documentos
+bien formados**. Y eso es mucho, es finito, y es exactamente lo que esta casa
+sabe terminar.
+
+### *** Y YouTube lo prohibe BMO-X, no una pieza que falte
+
+Esta es la parte que no estaba escrita. YouTube **no es una pagina**: es una
+aplicacion de JavaScript que ademas descodifica video. Y de las dos cosas, la que
+manda ya tiene veredicto en el Nivel 3 de este mismo documento:
+
+> **V8 / cualquier JIT de JS**: paginas W+X y mapear codigo en ejecucion --
+> **no existe en el modelo de capabilities**
+
+```text
+   lo que falta para un lector       trabajo. Mucho, pero contable
+   lo que falta para un navegador    trabajo. Mas, y sigue siendo contable
+   lo que falta para YouTube         ** una decision de identidad, al reves
+```
+
+*** No es que BMO-X sea pequeno para YouTube. Es que **el celo lo prohibe**: un
+JIT necesita escribir memoria y luego ejecutarla, y `EL_ORQUESTAL.md` existe
+justo para que eso no se pueda. Cambiarlo no seria anadir una pieza -- seria
+dejar de ser BMO-X.
+
+> Lo que impide ver YouTube aqui no es lo que le falta a BMO-X. Es lo que BMO-X
+> ES.
+
+[!] Y el video es el segundo muro, aparte: descodificar H.264 o AV1 por hardware
+es el VCN, que vive en `PERFIL/GPU.txt` como *"otro plan"*. Por software se puede
+--el CPU sobra-- pero eso es otro proyecto tambien.
+
+### Lo que si sale de aqui, y es una lista corta
+
+```text
+   [ ] TLS, que es el unico muro real de HTTPS. La criptografia YA esta pagada
+       (3.604 lineas: curva, AES, GCM) -- ver docs/maestro/RED_MAESTRO.md, 9
+   [ ] y con eso, un LECTOR: traer un documento y maquetarlo
+```
+
+** Y antes de los dos, `red rx`. Sigue sin ejecutarse desde el 28-08.
+
 ---
 
 ## ★ Las palancas, ordenadas por lo que desbloquean
