@@ -3,7 +3,7 @@
 Por que existe
 ==============
 
-`PLACA/PERFIL.txt` lista las manas del firmware de esta placa y, por cada una,
+`PERFIL/PLACA/PERFIL.txt` lista las manas del firmware de esta placa y, por cada una,
 el fichero que la rodea. Y los rodeos viven en TRES CAPAS distintas -- el sobre
 del traspaso, la etapa s1 y el kernel -- que no saben las unas de las otras.
 
@@ -24,7 +24,7 @@ Lo que comprueba
 ================
 
     1. los cuatro campos (fabricante, modelo, socket, firmware) dicen lo mismo
-       en `PLACA/PERFIL.txt` y en `plat/perfil_placa.rs`
+       en `PERFIL/PLACA/PERFIL.txt` y en `plat/perfil_placa.rs`
     2. el `donde` de cada mana EXISTE
     3. y ese fichero todavia NOMBRA el modelo -- si el rodeo se quito, deja de
        nombrarlo y aqui se ve
@@ -46,7 +46,7 @@ import re
 import sys
 
 RAIZ = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-PERFIL = os.path.join(RAIZ, "PLACA", "PERFIL.txt")
+PERFIL = os.path.join(RAIZ, "PERFIL", "PLACA", "PERFIL.txt")
 KERNEL = os.path.join(
     RAIZ, "Ultra_kernel_x86-64", "kernel", "src", "ring0", "plat", "perfil_placa.rs")
 
@@ -106,7 +106,7 @@ def main():
     # de build.ps1: un path mal escrito dejo un guardian muerto y el build dijo
     # COMPLETE igual.
     if campos is None:
-        print("el perfil NO EXISTE: falta PLACA/PERFIL.txt")
+        print("el perfil NO EXISTE: falta PERFIL/PLACA/PERFIL.txt")
         return 1 if args.check else 0
     kern = del_kernel()
     if kern is None:
@@ -124,7 +124,7 @@ def main():
     for c in CAMPOS:
         a, b = campos.get(c), kern.get(c)
         if a is None:
-            quejas.append("PLACA/PERFIL.txt no dice `%s`" % c)
+            quejas.append("PERFIL/PLACA/PERFIL.txt no dice `%s`" % c)
         elif b is None:
             quejas.append("perfil_placa.rs no declara %s" % c.upper())
         elif a != b:
@@ -162,7 +162,7 @@ def main():
         for q in quejas:
             print("  " + q)
         print("")
-        print("  el perfil esta en PLACA/PERFIL.txt y su otra mitad en")
+        print("  el perfil esta en PERFIL/PLACA/PERFIL.txt y su otra mitad en")
         print("  kernel/src/ring0/plat/perfil_placa.rs. Al cambiar de placa se")
         print("  tocan LOS DOS, y las manas se quitan de los dos a la vez.")
         return 1 if args.check else 0

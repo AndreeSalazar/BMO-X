@@ -246,7 +246,7 @@ Guardian 'Validating NEUTRO census matches the code' `
 
 # ** EL PERFIL DE LA PLACA contra los rodeos. Lo que se sabe de esta A320M
 # vivia repartido en tres capas --el sobre del traspaso, la etapa s1 y el
-# kernel-- y ninguna sabia de las otras. El porque entero en PLACA/README.md.
+# kernel-- y ninguna sabia de las otras. El porque entero en PERFIL/PLACA/README.md.
 #
 # [!] Y NO comprueba que la placa puesta sea esta: eso lo sabria el firmware.
 # El perfil se DECLARA, no se detecta.

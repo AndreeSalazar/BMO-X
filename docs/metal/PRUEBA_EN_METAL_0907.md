@@ -481,7 +481,21 @@ cuestan si salen mal:
    8.  DOOM y `ray`                          lo que revienta despues de 7
    9.  ★ 1.6a -- SI el teclado se muere    mira CABINA antes de reiniciar
    10. ★★ la linea del IOMMU               UN VISTAZO, y decide un proyecto
+   11. ★★ `banda`                        UNA TARDE, y decide otro
 ```
+
+⭐⭐ **La 11 es la hermana de la 10**: otra herramienta escrita que nadie ha
+ejecutado. `core/shell/banda.rs` mide el ancho de banda de la memoria, y ese
+numero decide si una IA local en esta maquina apunta a un modelo de **3B o de
+7B** -- `PLAN_EL_ASISTENTE.md` lo dice con la frase *"la accion que sale de aqui
+no es comprar nada: es MEDIR el ancho de memoria"*.
+
+```text
+   [ ] 11a  teclear `banda` y apuntar el numero en PERFIL/RAM.txt
+```
+
+★ Las dos --10 y 11-- **no arreglan nada y cada una decide un proyecto**. Son
+las dos casillas mas baratas de esta hoja.
 
 ⭐⭐ **La 10 cuesta un vistazo y decide semanas.** En el arranque, `placa.rs` ya
 dice si el firmware declara un IOMMU -- y esa linea **no la ha leido nadie

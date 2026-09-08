@@ -1,0 +1,57 @@
+EL PERFIL DE LA RAM -- y el numero que decide un proyecto entero
+=================================================================
+
+  [!] ESTE PERFIL ESTA CASI VACIO A PROPOSITO. Lo importante de el no es lo que
+  dice: es lo que dice que NO SE HA MEDIDO.
+
+
+LO QUE SE SABE
+--------------
+
+  tipo: DDR4
+  canales: 2         (lo que la placa admite; no se ha comprobado que esten
+                      los dos poblados)
+
+  ** Y poco mas. El kernel sabe cuantos MARCOS hay --lo cuenta el mapa de bits
+  al arrancar-- pero eso es CUANTA memoria, no COMO DE RAPIDA.
+
+
+LO QUE NO SE HA MEDIDO, Y ES LO QUE IMPORTA
+--------------------------------------------
+
+  ancho_de_banda: SIN MEDIR
+
+  *** Y LA HERRAMIENTA YA EXISTE. `core/shell/banda.rs` es la orden `banda`, y
+  su cabecera dice literalmente "cuanto ancho de banda tiene de verdad esta
+  memoria". Esta escrita, compila, y NADIE LA HA EJECUTADO.
+
+  Es el mismo caso que la linea del IOMMU (PERFIL/PLACA y NEUTRO/REQUISITOS R6):
+  la respuesta esta a un arranque de distancia y sin recoger.
+
+
+POR QUE ESE NUMERO DECIDE UN PROYECTO
+--------------------------------------
+
+  De docs/plan/PLAN_EL_ASISTENTE.md, seccion 8.5:
+
+      tokens/s = ancho de memoria / tamano del modelo.  NO es potencia de calculo
+      este CPU SOBRA TRES VECES para un 7B: el limite es la memoria
+
+  Y su conclusion, que es una orden y no una opinion:
+
+      "la accion que sale de aqui no es comprar nada: es MEDIR el ancho de
+       memoria de esta maquina"
+
+  Con ese numero se sabe si el objetivo es un modelo de 3B o de 7B. Sin el, toda
+  la aritmetica de esa seccion esta hecha sobre un supuesto.
+
+
+QUE HACER, Y CUESTA UNA TARDE
+------------------------------
+
+  [ ] arrancar y teclear `banda`
+  [ ] apuntar el numero AQUI, en ancho_de_banda
+  [ ] y con el, decidir 3B o 7B en el plan del asistente
+
+  ** Va escrito como casilla y no como parrafo porque es lo unico de este
+  fichero que se puede terminar.
