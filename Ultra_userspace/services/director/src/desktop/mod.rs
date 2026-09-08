@@ -334,6 +334,41 @@ pub(crate) struct Tick {
     /// Van en **ms de cada segundo** y no en el peor caso a proposito: sumados
     /// dan ~1000, asi que se leen como un reparto y se ve de un vistazo cual de
     /// las dos mitades se queda el segundo.
+    ///
+    /// # [!!] MIDE RELOJ DE PARED, NO CPU. Y esto hay que leerlo antes de usarlo
+    ///
+    /// `cuerpo` es *"desde el principio de la vuelta hasta justo antes de
+    /// ceder"*, y eso incluye **el tiempo en que a esta tarea la echaron del
+    /// CPU**. Ring 3 no tiene hoy forma de preguntar su propio tiempo de CPU, y
+    /// por eso no la tiene esto.
+    ///
+    /// *** LA PRIMERA LECTURA EN METAL LO DEMOSTRO, y casi me manda al sitio
+    /// equivocado. Salio `cuerpo 1066` con 12.937 vueltas, o sea 82 us por
+    /// vuelta. Y una vuelta en vacio son NUEVE PUERTAS: 2,36 us. Los otros 80
+    /// no los gastaba el compositor -- **se los pasaba fuera del CPU**, porque
+    /// `WAIT` estaba roto, el bucle no cedia nunca, y el reloj lo echaba a la
+    /// fuerza cada cuatro milisegundos.
+    ///
+    /// ** Y de ahi sale tambien el otro sintoma que trajo el dueno: el ritmo le
+    /// bailo entre 600 y 12.937 en el mismo arranque, y lo llamo *"el kernel
+    /// borracho"*. No lo estaba:
+    ///
+    /// ```text
+    ///    el bucle no cedia         -> su ritmo era EL SOBRANTE del CPU
+    ///    el sobrante cambia        -> con el bus USB, con el shell, con
+    ///                                 cualquiera que quisiera trabajar
+    ///    `cuerpo` no cambia        -> el reloj de pared es el reloj de pared
+    /// ```
+    ///
+    /// Montado en el latido el ritmo deja de ser un sobrante y pasa a ser una
+    /// propiedad del reloj (1 kHz), asi que el baile se acaba **por
+    /// construccion**, no por haber optimizado nada.
+    ///
+    /// [!] Asi que la lectura honesta es: `cuerpo` grande **no** dice "el
+    /// compositor trabaja mucho". Dice *"entre el principio y el final de sus
+    /// vueltas pasa mucho tiempo"*, y eso son dos cosas -- trabajar, o esperar
+    /// de pie. Para separarlas hace falta que el kernel publique el tiempo de
+    /// CPU de una tarea, y hoy no lo hace.
     pub cuerpo_ms: u32,
     /// De cada segundo, cuantos ms se fueron en `yield_screen`. Ver
     /// [`Tick::cuerpo_ms`].
@@ -383,6 +418,28 @@ pub(crate) struct Tick {
     latido: u64,
     /// El testigo del ultimo latido visto. Ver `ceder`.
     visto: u64,
+    /// **Cuantas vueltas DURMIERON de verdad** en el segundo en curso.
+    ///
+    /// == *** POR QUE ESTO NO SE DEDUCE, SE MIDE (2026-09-08) ==============
+    ///
+    /// La primera version decidia "durmio o no" comparando el valor que
+    /// devuelve `WAIT` con el que se le paso. **Y eso tiene un agujero**: si
+    /// `WAIT` falla --por ejemplo porque al handle le falta un derecho, que es
+    /// justo lo que acababa de pasar-- devuelve un error con `value = 0`. Con
+    /// `visto` en 0, la comparacion daba IGUAL y el bucle se creia dormido.
+    ///
+    /// ```text
+    ///    una vuelta   cree que durmio  -> NO cede
+    ///    la siguiente ve que no cuadra -> cede
+    /// ```
+    ///
+    /// O sea medio giro, otra vez, y con el mismo disfraz. *** Deducir el
+    /// estado de un mecanismo a partir de lo que devuelve ese mecanismo es
+    /// preguntarle al sospechoso. El reloj no es sospechoso: si paso un
+    /// milisegundo, durmio; si no paso nada, no durmio. Se mide y se acabo.
+    dormidas: u32,
+    /// Las del ultimo segundo cerrado, y es lo que hace HONESTO el letrero.
+    dormidas_por_segundo: u32,
     /// `rdtsc` justo antes de ceder, y `0` si todavia no se cedio nunca.
     cedio_en: u64,
     /// `rdtsc` del principio de esta vuelta.
@@ -470,6 +527,8 @@ impl Tick {
             }
             self.pintados_por_segundo = self.pintados;
             self.pintados = 0;
+            self.dormidas_por_segundo = self.dormidas;
+            self.dormidas = 0;
             self.suma_cuerpo = 0;
             self.suma_puerta = 0;
             self.sample_at = now;
@@ -502,9 +561,19 @@ impl Tick {
         }
     }
 
-    /// El escritorio va montado en el reloj del hardware. Ver [`Tick::latido`].
+    /// **El escritorio va montado en el reloj del hardware Y ESO FUNCIONA.**
+    ///
+    /// ** No dice "tengo el handle": dice "he dormido". La version anterior
+    /// contestaba lo primero, y por eso la barra puso `latido` con toda la
+    /// confianza del mundo mientras `WAIT` volvia en el acto trece mil veces
+    /// por segundo. El letrero existe para distinguir los dos modos, asi que
+    /// tiene que mirar el modo, no el permiso.
+    ///
+    /// Basta con que haya dormido ALGUNA vez en el ultimo segundo: una vuelta
+    /// con trabajo de verdad no duerme, y eso esta bien. Lo que no puede pasar
+    /// desapercibido es que no duerma NINGUNA.
     pub fn en_latido(&self) -> bool {
-        self.latido != 0
+        self.latido != 0 && self.dormidas_por_segundo > 0
     }
 
     /// El plazo de seguridad del `WAIT`, en nanosegundos.
@@ -571,39 +640,52 @@ impl Tick {
     /// ignorados. Una optimizacion que se apaga sola tiene que apagarse HACIA
     /// EL LADO SEGURO, y esta se apagaba hacia el peor.
     ///
-    /// # Como se saca ahora, sin cruzar ni una puerta
+    /// # Como se sabe si durmio: SE MIRA EL RELOJ, no lo que contesto
     ///
-    /// El valor que devuelve `WAIT` es *advisory*: si DURMIO devuelve el mismo
-    /// `observed` que se le paso; si NO durmio devuelve la cuenta de verdad. Eso
-    /// no es un dato pobre -- **es justo el bit que hace falta**:
+    /// El valor que devuelve `WAIT` es *advisory*, y encima **miente cuando
+    /// falla**: un error trae `value = 0`, que con el testigo en 0 se confunde
+    /// con "durmio". Preguntarle al mecanismo por su propio estado es
+    /// preguntarle al sospechoso -- ver [`Tick::dormidas`].
+    ///
+    /// El reloj no es sospechoso:
     ///
     /// ```text
-    ///    vuelve == lo que pedi    durmio  -> el testigo avanza uno
-    ///    vuelve != lo que pedi    NO durmio, iba atrasado -> se pone al dia
-    ///                             ** Y SE CEDE IGUAL: esta vuelta no ha
-    ///                                soltado el turno, y soltarlo no es
-    ///                                opcional
+    ///    paso ~un milisegundo   durmio     -> el testigo avanza uno
+    ///    no paso nada           NO durmio  -> se pone al dia con lo que
+    ///                                         contesto **y SE CEDE IGUAL**
     /// ```
     ///
-    /// Se pone al dia sola en la primera vuelta y a partir de ahi duerme en
-    /// todas. Cero puertas, y **el bucle no puede acabar sin ceder haga `WAIT`
-    /// lo que haga**, que es la invariante que faltaba.
+    /// ** Y esa ultima linea es la invariante entera: el bucle no puede acabar
+    /// una vuelta sin soltar el turno, haga `WAIT` lo que haga. Si el mecanismo
+    /// se rompe, esto degrada a lo que habia antes --girar CEDIENDO-- que es
+    /// lento y no se lleva el teclado por delante.
     pub fn ceder(&mut self) {
-        if self.tsc_hz != 0 && self.tsc_hz != NO_CLOCK {
-            let t = bmo::ciclos();
-            self.suma_cuerpo = self.suma_cuerpo.wrapping_add(t.wrapping_sub(self.inicio));
-            self.cedio_en = t;
+        let antes = bmo::ciclos();
+        let con_reloj = self.tsc_hz != 0 && self.tsc_hz != NO_CLOCK;
+        if con_reloj {
+            self.suma_cuerpo = self.suma_cuerpo
+                .wrapping_add(antes.wrapping_sub(self.inicio));
+            self.cedio_en = antes;
         }
         if self.latido == 0 {
             bmo::yield_screen();
             return;
         }
         let vuelve = bmo::latido_esperar(self.latido, self.visto, Self::PLAZO_NS);
-        if vuelve == self.visto {
-            // Durmio. Al despertar ha latido al menos una vez.
-            self.visto = vuelve.wrapping_add(1);
+        // ** EL JUEZ ES EL RELOJ. Un latido son 1.000 us y una puerta 0,26, asi
+        // que el umbral --la decima parte de un latido-- esta a 380 veces una
+        // puerta y a 10 veces por debajo de un latido. No hay forma de
+        // confundir las dos cosas.
+        let durmio = con_reloj
+            && bmo::ciclos().wrapping_sub(antes) >= (self.ciclos_de(1) / 10).max(1);
+        if durmio {
+            self.dormidas = self.dormidas.wrapping_add(1);
+            // Durmio, asi que ha latido al menos una vez desde `visto`.
+            self.visto = self.visto.wrapping_add(1);
         } else {
-            // No durmio: el testigo iba atrasado. Se pone al dia **y se cede**.
+            // No durmio. `vuelve` puede ser la cuenta buena --el testigo iba
+            // atrasado-- o basura de un error; en los dos casos ponerselo cuesta
+            // como mucho una vuelta, y ceder no es opcional.
             self.visto = vuelve;
             bmo::yield_screen();
         }
@@ -856,6 +938,8 @@ pub(crate) fn install(p: &bmo::Pantalla, console: Option<bmo::Consola>) -> &'sta
             suma_puerta: 0,
             latido: 0,
             visto: 0,
+            dormidas: 0,
+            dormidas_por_segundo: 0,
             cedio_en: 0,
             inicio: 0,
             quarter: false,
