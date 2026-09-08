@@ -90,3 +90,24 @@ LO QUE ESTE PERFIL NO SABE TODAVIA
 
   ** Se escribe el hueco en vez de dejarlo en blanco: un perfil que solo lista
   lo que sabe se lee igual que uno completo.
+
+
+SI ESTE PERFIL ESTA MAL, ASI SE NOTA
+-------------------------------------
+
+  el modelo dice una placa que no es la puesta
+      todas las manas siguen aplicandose, y como son DEFENSIVAS la maquina
+      arranca igual. El sintoma es que no hay sintoma: se paga por rodeos que
+      ya no hacen falta y nadie se entera. Es el motivo entero de esta carpeta
+
+  una mana que ya no hace falta y sigue escrita
+      lo mismo, en pequeno. `uefi_chain` sigue pesando lo que pesan los tres
+      binarios juntos aunque el firmware nuevo si lea el ESP
+
+  una mana que hace falta y se quito
+      esto SI se nota, y de la peor manera: la maquina no arranca, y no dice
+      por que. Es el motivo de que el paso 3 de README.md se haga de UNA EN UNA
+
+  el fichero de un rodeo se renombra
+      el perfil apunta a un sitio que no existe. Lo caza el guardian, y es la
+      unica de las cuatro que se caza sin arrancar

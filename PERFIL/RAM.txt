@@ -1,32 +1,70 @@
 EL PERFIL DE LA RAM -- y el numero que decide un proyecto entero
 =================================================================
 
-  [!] ESTE PERFIL ESTA CASI VACIO A PROPOSITO. Lo importante de el no es lo que
-  dice: es lo que dice que NO SE HA MEDIDO.
+  La mitad OPERATIVA es `core/shell/banda.rs`: la orden `banda`, que MIDE.
+
+  [!] Este perfil no tiene guardian. Ver README.md, seccion 5.
 
 
-LO QUE SE SABE
---------------
+LOS MODULOS QUE HAY PUESTOS
+----------------------------
 
+  fabricante: TeamGroup
+  modelo: T-Force Vulcan Z
   tipo: DDR4
-  canales: 2         (lo que la placa admite; no se ha comprobado que esten
-                      los dos poblados)
+  modulos: 2 x 8 GB
+  total: 16 GB
+  velocidad_declarada: 3200 MT/s
 
-  ** Y poco mas. El kernel sabe cuantos MARCOS hay --lo cuenta el mapa de bits
-  al arrancar-- pero eso es CUANTA memoria, no COMO DE RAPIDA.
+  *** DOS MODULOS SON DOS CANALES, y eso no es un detalle de compra: es el
+  factor 2 de todo lo que viene abajo. Con un solo modulo de 16 GB la mitad de
+  este fichero valdria la mitad.
 
 
-LO QUE NO SE HA MEDIDO, Y ES LO QUE IMPORTA
---------------------------------------------
+EL TECHO QUE DICE LA ESPECIFICACION -- y NO es una medida
+----------------------------------------------------------
+
+  [SPEC]  un canal a 3200 MT/s   3200 x 8 bytes  =  25,6 GB/s
+  [SPEC]  dos canales            x2              =  51,2 GB/s
+
+  ** Esto es lo que PONE EN LA CAJA. Ninguna maquina alcanza su techo teorico, y
+  esta no se ha medido nunca. Va marcado [SPEC] por la LEY 24: una cifra
+  generica es la cifra de OTRO proyecto.
+
+
+==========================================================================
+  ** LA TRAMPA, Y ES DE ESTA PLACA -- por que este numero puede estar MAL
+==========================================================================
+
+  Los modulos dicen 3200. **La A320M puede no estar dandoselos.**
+
+  El chipset A320 es el mas basico de AM4 y su firmware suele NO aplicar los
+  perfiles de memoria (XMP/DOCP). Si no se aplican, los modulos arrancan a la
+  velocidad JEDEC por defecto, que es mucho menor:
+
+      a 3200 declarados   ->  51,2 GB/s   lo que se compro
+      a 2666 por defecto  ->  42,7 GB/s   -17%
+      a 2133 por defecto  ->  34,1 GB/s   -33%
+
+  *** UN TERCIO DE DIFERENCIA, y desde dentro de BMO-X NO SE VE. El kernel
+  cuenta MARCOS, que es cuanta memoria hay; la velocidad a la que se lee no la
+  declara nadie.
+
+  ** Y esto no lo arregla el software: se mira en la BIOS. Lo unico que BMO-X
+  puede hacer es MEDIRLO y decir cual de las tres filas es.
+
+
+ANCHO DE BANDA MEDIDO
+----------------------
 
   ancho_de_banda: SIN MEDIR
 
-  *** Y LA HERRAMIENTA YA EXISTE. `core/shell/banda.rs` es la orden `banda`, y
-  su cabecera dice literalmente "cuanto ancho de banda tiene de verdad esta
+  *** Y LA HERRAMIENTA YA EXISTE. `core/shell/banda.rs` es la orden `banda` y su
+  cabecera dice literalmente "cuanto ancho de banda tiene de verdad esta
   memoria". Esta escrita, compila, y NADIE LA HA EJECUTADO.
 
-  Es el mismo caso que la linea del IOMMU (PERFIL/PLACA y NEUTRO/REQUISITOS R6):
-  la respuesta esta a un arranque de distancia y sin recoger.
+  Es el mismo caso que la linea del IOMMU: la respuesta esta a un arranque de
+  distancia y sin recoger.
 
 
 POR QUE ESE NUMERO DECIDE UN PROYECTO
@@ -37,21 +75,45 @@ POR QUE ESE NUMERO DECIDE UN PROYECTO
       tokens/s = ancho de memoria / tamano del modelo.  NO es potencia de calculo
       este CPU SOBRA TRES VECES para un 7B: el limite es la memoria
 
-  Y su conclusion, que es una orden y no una opinion:
+  Y lo que sale de aplicar eso a un modelo de 7B en Q4 (~4 GB), con las tres
+  velocidades posibles de arriba:
 
-      "la accion que sale de aqui no es comprar nada: es MEDIR el ancho de
-       memoria de esta maquina"
+      [SPEC]  a 3200   51,2 / 4  =  ~12,8 tokens/s de TECHO
+      [SPEC]  a 2666   42,7 / 4  =  ~10,7
+      [SPEC]  a 2133   34,1 / 4  =  ~8,5
 
-  Con ese numero se sabe si el objetivo es un modelo de 3B o de 7B. Sin el, toda
-  la aritmetica de esa seccion esta hecha sobre un supuesto.
+  ** Y ninguna maquina llega a su techo: contando un 60-70% real, la banda util
+  queda entre ~6 y ~9 tokens/s. Un humano lee comodo a 5-8.
+
+  *** O SEA QUE ESTA MAQUINA ESTA JUSTO EN LA FRONTERA, y de que lado cae lo
+  decide si la BIOS aplico el perfil de memoria o no. Ese es el motivo entero de
+  que este fichero exista.
+
+
+SI ESTE PERFIL ESTA MAL, ASI SE NOTA
+-------------------------------------
+
+  velocidad_declarada mas alta que la real
+      el asistente sale la mitad de lento de lo previsto y parece que el
+      modelo esta mal elegido, cuando lo que pasa es que la BIOS no aplico
+      el perfil. Se caza tecleando `banda`
+
+  modulos: 2 pero solo hay uno puesto
+      la mitad del ancho, y NADA lo dice. Es el fallo mas silencioso de este
+      fichero: la maquina arranca igual, tiene los mismos GB, y va a la mitad
+
+  total distinto del que cuenta el kernel
+      entonces uno de los dos miente. El kernel cuenta marcos al arrancar y
+      esa cuenta si es una medida: gana ella
 
 
 QUE HACER, Y CUESTA UNA TARDE
 ------------------------------
 
   [ ] arrancar y teclear `banda`
-  [ ] apuntar el numero AQUI, en ancho_de_banda
+  [ ] apuntar el numero AQUI, en ancho_de_banda, marcado [MEDIDO]
+  [ ] comparar con las tres filas de la trampa: dice si la BIOS aplico el perfil
   [ ] y con el, decidir 3B o 7B en el plan del asistente
 
-  ** Va escrito como casilla y no como parrafo porque es lo unico de este
-  fichero que se puede terminar.
+  ** Va como casillas y no como parrafo porque es lo unico de este fichero que
+  se puede terminar hoy.

@@ -53,3 +53,26 @@ LO QUE ESTE PERFIL SABE Y NO SE USA
 
   Y AXION sabe APAGAR nucleos y no encenderlos: falta MWAIT. Hoy no hay trabajo
   pesado que repartir, asi que no bloquea nada.
+
+
+SI ESTE PERFIL ESTA MAL, ASI SE NOTA
+-------------------------------------
+
+  nucleos o hilos de mas
+      el reparto de SMP crea obreros para nucleos que no existen y la orquesta
+      espera en la barrera a alguien que no va a llegar. Se caza en
+      `smp orquesta`: `atriles que tocaron` sale menor que los que se pidieron
+
+  ccx mal (decir 1 cuando son 2)
+      no rompe nada, y por eso es el peor: el reparto cree que hablar entre
+      nucleos es barato y en un Zen 2 cruza el Infinity Fabric. Sale como
+      "el paralelo escala peor de lo que deberia" y no como un fallo
+
+  microarquitectura equivocada
+      las erratas que aplica `errata.rs` son de OTRO chip. Puede no notarse
+      nunca, o notarse una vez cada mil arranques -- que es la forma mas cara
+      de un fallo
+
+  *** Y LA DEFENSA YA ESTA PUESTA: `hilos_por_nucleo` y `discrepan` viajan en el
+  contrato. Si el silicio no confirma los numeros de este fichero, Ring 0 lo
+  sabe y puede desconfiar del bloque entero en vez de elegir el que le guste.
