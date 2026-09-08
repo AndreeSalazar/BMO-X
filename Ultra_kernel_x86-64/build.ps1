@@ -244,6 +244,16 @@ Guardian 'Validating NEUTRO census matches the code' `
     'toolchain\tools\censo-neutro\censo_neutro.py' 'el censo del neutro' `
     'censo-neutro: el censo y el codigo no dicen lo mismo (ver arriba)'
 
+# ** EL PERFIL DE LA PLACA contra los rodeos. Lo que se sabe de esta A320M
+# vivia repartido en tres capas --el sobre del traspaso, la etapa s1 y el
+# kernel-- y ninguna sabia de las otras. El porque entero en PLACA/README.md.
+#
+# [!] Y NO comprueba que la placa puesta sea esta: eso lo sabria el firmware.
+# El perfil se DECLARA, no se detecta.
+Guardian 'Validating board profile matches its workarounds' `
+    'toolchain\tools\perfil-placa\perfil_placa.py' 'el perfil de la placa' `
+    'perfil-placa: el perfil y los rodeos no dicen lo mismo (ver arriba)'
+
 # -- CONTRATO (L6a: `build.ps1` se partio el 2026-08-28) --------
 . (Join-Path $PSScriptRoot 'build\contrato.ps1')
 # NOTE: uefi_chain is now the UNIFIED shim -- it embeds the flat binaries
