@@ -261,6 +261,14 @@ Guardian 'Validating every profile declares what it exposes' `
     'toolchain\tools\perfil\perfil.py' 'las exposiciones de los perfiles' `
     'perfil: un perfil no dice a quien expone, o expone a algo que no existe'
 
+# ** Y EL CONTENIDO, no solo la flecha: que lo que cada perfil AFIRMA sea lo que
+# el codigo dice. Incluye LOS TRES CIERRES de build/discos.ps1 -- la
+# comprobacion mas importante del repo, porque ese fichero es el unico que
+# puede escribir en el disco del dueno. Ver PERFIL/DISCO.txt.
+Guardian 'Validating profile fields match the code' `
+    'toolchain\tools\perfil-campos\perfil_campos.py' 'los campos de los perfiles' `
+    'perfil-campos: un perfil afirma algo que el codigo no dice (ver arriba)'
+
 # -- CONTRATO (L6a: `build.ps1` se partio el 2026-08-28) --------
 . (Join-Path $PSScriptRoot 'build\contrato.ps1')
 # NOTE: uefi_chain is now the UNIFIED shim -- it embeds the flat binaries
