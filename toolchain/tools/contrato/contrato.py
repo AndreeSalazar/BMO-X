@@ -618,8 +618,52 @@ def r9_los_carriles_del_modulo(carpetas):
     return quejas
 
 
-def carpetas_de_carriles():
-    """`{carpeta: {fichero: texto}}` de toda carpeta de Ring 0 con carriles.
+def r18_los_carriles_fuera_del_kernel(vias, arboles):
+    """R18 -- **R9 fuera del kernel, y que el arbol vigilado siga estando.**
+
+    La mitad de los letreros es R9 tal cual: un carril de Ring 3 se lee igual
+    que uno de Ring 0, y tener dos jueces que dijeran lo mismo seria el ESPEJO
+    que esta casa caza en el codigo. Por eso esto DELEGA en vez de copiar.
+
+    ** Lo que si es nuevo, y es todo el motivo de que R18 exista aparte, es la
+    otra mitad: **que la ruta declarada exista y tenga algo dentro.** Esa es la
+    unica forma de fallar que R9 no puede ver, porque R9 recibe un diccionario
+    ya construido -- si el `walk` no encuentra nada, R9 aprueba un vacio.
+
+    ```text
+       la ruta se muda      el walk no encuentra nada -> R9 aprueba el vacio
+       el corte se deshace  lo mismo, y por el mismo camino
+    ```
+
+    *** Y ese fallo esta pagado dos veces en este repo: el `Guardian` de
+    `build.ps1` con un path mal escrito, y `perfil.py`, que lleva escrito
+    *"cero perfiles no es cero problemas"* por la misma razon. Un guardian que
+    no encuentra lo que mira tiene que PARAR, no aprobar.
+    """
+    quejas = list(r9_los_carriles_del_modulo(vias))
+    for base in arboles:
+        d = os.path.join(raiz(), base.replace("/", os.sep))
+        if not os.path.isdir(d):
+            quejas.append(
+                "%s esta declarado en CARRILES_FUERA_DEL_KERNEL y NO EXISTE. "
+                "Un arbol vigilado que se muda deja este guardian MUERTO, y el "
+                "build dice COMPLETE igual (R18)" % base)
+    if arboles and not vias:
+        quejas.append(
+            "hay %d arbol(es) declarados fuera del kernel y no se encuentra ni "
+            "una carpeta de carriles. O se deshizo el corte, o este guardian "
+            "dejo de verlas -- y las dos cosas hay que decirlas (R18)"
+            % len(arboles))
+    return quejas
+
+
+def carpetas_de_carriles(base=None):
+    """`{carpeta: {fichero: texto}}` de toda carpeta con carriles.
+
+    `base` es el arbol que se mira, y por defecto Ring 0. Se hizo parametro el
+    2026-09-08, cuando un modulo de Ring 3 --`scene/pulso`-- se partio en
+    carriles y resulto que **nadie los miraba**: traia los letreros y ninguna
+    regla los leia. Ver `CARRILES_FUERA_DEL_KERNEL`.
 
     Una carpeta ES de carriles si tiene al menos un `.rs` con nombre de carril.
     No hay lista que mantener: **el arbol se declara solo**, que es lo que hace
@@ -629,7 +673,7 @@ def carpetas_de_carriles():
     mas duras-- y desaparecio con la carpeta el 2026-08-31: un color solo
     significa algo dentro de un modulo.
     """
-    d = os.path.join(raiz(), RING0_DIR.replace("/", os.sep))
+    d = os.path.join(raiz(), (base or RING0_DIR).replace("/", os.sep))
     if not os.path.isdir(d):
         return {}
     fuera = {}
@@ -773,6 +817,19 @@ def comprobar():
     vias = carpetas_de_carriles()
     quejas += [("R9 L6g los carriles del modulo", q)
                for q in r9_los_carriles_del_modulo(vias)]
+    # ** R18: LA MISMA REGLA, FUERA DEL KERNEL. Es R9 sobre otro arbol y no una
+    # regla nueva: un carril de Ring 3 se lee igual que uno de Ring 0, asi que
+    # tener dos jueces que dijeran lo mismo seria el ESPEJO que esta casa caza
+    # en el codigo. Lo unico que cambia es donde se mira.
+    vias_fuera = {}
+    # `arbol` y no `base`: `base` ya es la LINEA BASE en esta funcion, y
+    # reutilizarlo la pisaba. La sombra no da error al escribirla -- explota
+    # sesenta lineas mas abajo, en un sitio que no tiene nada que ver.
+    for arbol in CARRILES_FUERA_DEL_KERNEL:
+        vias_fuera.update(carpetas_de_carriles(arbol))
+    quejas += [("R18 L6g los carriles fuera del kernel", q)
+               for q in r18_los_carriles_fuera_del_kernel(
+                   vias_fuera, CARRILES_FUERA_DEL_KERNEL)]
     quejas += [("R10 L6g el semaforo de Ring 0", q) for q in r10_el_semaforo(r0)]
     rex = cabeceras_de_rex()
     quejas += [("R11 L6g el semaforo de REX", q) for q in r11_el_semaforo_de_rex(rex)]
@@ -834,6 +891,14 @@ def comprobar():
     if vias:
         print("clean: %d carpeta(s) de carriles (L6g), %d carril(es), todos con letrero"
               % (len(vias), sum(len([n for n in g if n != "mod.rs"]) for g in vias.values())))
+    # ** SE DICE APARTE, y a proposito. Sumarlo al renglon de arriba haria creer
+    # que fuera del kernel rige el semaforo entero, y ahi solo rige R9: las
+    # carpetas que YA se partieron. Un guardian que informa de mas cubre menos.
+    if vias_fuera:
+        print("clean: %d carpeta(s) de carriles fuera del kernel, %d carril(es) "
+              "(R18 -- R9 tambien alli; el semaforo total sigue siendo de Ring 0)"
+              % (len(vias_fuera),
+                 sum(len([n for n in g if n != "mod.rs"]) for g in vias_fuera.values())))
     if rex:
         cr = {c: 0 for c in SEMAFORO}
         for txt in rex.values():
