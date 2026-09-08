@@ -172,22 +172,80 @@ el censo, y que el panel lo diga sin haber tocado el codigo.
 
 ---
 
-## R6 -- [ ] ★★ LA MMU DE LOS APARATOS -- la unica que cierra el agujero
+## R6 -- ★★ LA MMU DE LOS APARATOS -- la unica que cierra el agujero
 
-**Bloquea:** todo lo demas es contabilidad; esto es el mecanismo.
+### ⚠ PRIMERO, EL MALENTENDIDO: esto NO espera a la GPU
 
-Las cinco de arriba hacen que el neutro se pueda **nombrar, contar y culpar**.
-Ninguna impide que un aparato escriba donde no debe. Lo unico que lo impide es
-la MMU del lado de los aparatos, que en esta maquina se llama **AMD-Vi**.
+El dueno lo pregunto asi: *"R6 la MMU, aunque eso es cuando llegue la GPU, no?"*.
+
+**No.** La MMU de los aparatos protege de los aparatos que **ya estan dentro de
+la maquina**: el AHCI, la tarjeta de red y el xHC. Los tres estan en el censo
+desde la primera fila y los tres escriben en la RAM hoy.
 
 ```text
-   lo que hay hoy   el aparato escribe, y nos enteramos DESPUES
-   con la MMU       el aparato escribe donde se le permite, y punto
+   lo que cierra R6 el dia que se haga    la pista 1.5, en esta maquina, HOY
+   lo que NO tiene nada que ver           que llegue o no una tarjeta grafica
 ```
 
-⚠ **Y es un proyecto de verdad**, no una casilla: tablas de traduccion propias,
-un dominio por aparato, y el arranque del propio IOMMU desde ACPI. Se escribe
-aqui para que tenga sitio, **no para prometerlo**.
+★ Aplazarlo *"hasta que llegue la GPU"* seria aplazar el arreglo del agujero por
+el que ya se cayo la maquina el 07-09.
+
+### R6.0 -- [x] ★★ QUE LA PLACA CONFIESE SI HAY IOMMU -- **ya estaba hecho**
+
+Y esto se encontro al ir a planificar R6: **la maquina ya sabe contestarlo**.
+`plat/placa.rs` lee la tabla **IVRS** del firmware desde antes de que NEUTRO
+existiera, y dice tres cosas:
+
+```text
+   cuantos IOMMU declara el firmware
+   donde viven sus registros              (la base de MMIO del primero)
+   el IVinfo crudo, sin interpretar
+```
+
+Y si NO hay IVRS, avisa con la frase exacta -- escrita antes de esta carpeta y
+diciendo lo mismo que ella:
+
+> *"[!] sin IVRS: un aparato con DMA no tiene quien lo limite"*
+
+⚠ **Pero esa linea NUNCA SE HA MIRADO.** Va a `CABINA` en el arranque y nadie ha
+ido a leerla. Asi que la pregunta que decide si R6 es siquiera posible en esta
+placa **ya tiene respuesta y esta sin recoger**.
+
+**Como se comprueba:** arrancar y buscar en CABINA la linea `placa ... IOMMU`.
+Entra en la hoja del metal.
+
+### R6.1 -- [ ] Y LA RESPUESTA PUEDE SER QUE NO
+
+Esta es la parte incomoda y va escrita antes de planificar nada:
+
+```text
+   si hay IVRS       R6 es posible, y se puede escribir su plan con un numero
+   si NO hay IVRS    ** R6 esta MUERTO en esta placa
+```
+
+Una A320M barata con un firmware viejo puede no declarar IOMMU, o traerlo
+apagado. **Y en ese caso NEUTRO se queda como esta para siempre en esta
+maquina** -- se nombra, se cuenta y se culpa, y no se impide.
+
+*** Saberlo cuesta un arranque. Planificar R6 sin saberlo cuesta semanas.
+
+### R6.2 -- [ ] EL PROYECTO, si la placa dice que si
+
+**Bloquea:** R6.0, y nada mas.
+
+```text
+   [ ] arrancar el propio IOMMU desde sus registros
+   [ ] tablas de traduccion propias, y un dominio por aparato
+   [ ] meter en cada dominio EXACTAMENTE los marcos de su fila del censo
+   [ ] y que un fallo del IOMMU llegue a CABINA con el nombre del aparato
+```
+
+⚠ **Es un proyecto de verdad, no una casilla.** Se escribe aqui para que tenga
+sitio, **no para prometerlo**.
+
+★ Y fijate en la tercera linea: **el censo ya dice que marcos son de quien.**
+R1, R3 y R5a no eran contabilidad por gusto -- son la lista con la que se
+rellenan los dominios el dia que esto se haga.
 
 **Como se sabra que quedo hecha:** un aparato programado con una direccion que
 no es suya produce un fallo del IOMMU en vez de corromper memoria. Es decir:
@@ -221,7 +279,9 @@ GRAFICA y BMO-X no tiene codigo para ella"*, y el censo tiene una fila mas.
    2.  R2   ya esta hecho: solo falta EJECUTARLO en el Ryzen
    3.  [x] R5a  hecho. R5b sigue: hay que arrancar para ver esa mitad
    4.  R4   ** despues de la 1.4b. Es ROJO y hay una azul sin reproducir
-   5.  R6   la MMU. Un proyecto, no una casilla
+   5.  [x] R6.0  ya estaba hecho. Falta MIRARLO: la linea `placa ... IOMMU`
+       R6.1  y la respuesta puede ser que NO, y eso cierra el tema
+       R6.2  el proyecto, solo si la placa dice que si
    6.  R7   cuando haya tarjeta
 ```
 
