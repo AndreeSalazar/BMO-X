@@ -222,6 +222,66 @@ pub(crate) fn hist_get(back: usize) -> Option<&'static [u8]> {
     }
 }
 
+/// Cuanto duerme el shell cuando NO tiene nada que leer.
+///
+/// Cuatro milisegundos, el mismo numero que el latido del bus USB y por la
+/// misma razon: es la distancia a la que un humano no nota la espera y la
+/// maquina deja de girar en vacio.
+const DESCANSO_MS: u64 = 4;
+
+/// **El turno se devuelve cuando no hay nada que leer.**
+///
+/// == *** POR QUE EXISTE, y lo pidio el dueno (2026-09-08) =================
+///
+/// > *"me gustaria que el kernel no pierda tiempo chequeando si el guardian
+/// > esta alli"*
+///
+/// Y tenia razon, con un numero detras. El pulso del escritorio salio en **50
+/// vueltas por segundo** -- 20 ms por vuelta en un bucle que no tiene freno
+/// ninguno. El escritorio no estaba lento: **estaba esperando turno**.
+///
+/// ** Y el turno se lo quedaba ESTE bucle. `shell_read_line` giraba a CPU
+/// completa: recogia una decena de estadisticas, preguntaba por el serial, por
+/// el USB, por el PS/2, y hacia `continue`. Sin `hlt`, sin ceder. Solo lo
+/// echaba de ahi el reloj, al agotar su quantum de 4 ms.
+///
+/// *** Y lo peor es lo que giraba comprobando: cuando Ring 3 tiene la entrada,
+/// este bucle **no puede leer el teclado ni aunque quiera** --lo dice tres
+/// lineas mas arriba, `cedido es cedido`-- asi que gastaba su turno entero
+/// preguntando por una tecla que tenia prohibido coger.
+///
+/// ```text
+///    antes    gira 4 ms preguntando por un teclado que no es suyo
+///    ahora    se duerme 4 ms y el turno se lo queda quien SI trabaja
+/// ```
+///
+/// # El sacrificio (L3)
+///
+/// El cable del serial y la vuelta del teclado se ven con hasta 4 ms de
+/// retraso. Es la misma apuesta que ya hace el hilo del bus con el teclado
+/// USB, y por eso el numero es el mismo.
+///
+/// # Solo cuando la entrada es de Ring 3, y eso no es prudencia
+///
+/// Es la condicion que hace la afirmacion CIERTA. Mientras el shell es el dueno
+/// del teclado, girar no es girar en vacio: cada vuelta puede traer una letra.
+/// En cuanto la cede, no puede traer ninguna -- y solo entonces dormir es
+/// gratis. Sin ese `if`, esto seria una espera puesta a ojo.
+fn descansar() {
+    use crate::ring0::task::scheduler;
+    if !crate::ring0::obj::input::yielded() {
+        return;
+    }
+    let hz = scheduler::tsc_freq();
+    // ** SIN TSC NO SE DUERME. Un plazo que no se puede medir es un plazo
+    // inventado, y quedarse Blocked con una hora falsa es no despertar. Se gira
+    // como se giraba: peor, y vivo.
+    if hz == 0 {
+        return;
+    }
+    scheduler::park_until(scheduler::rdtsc() + (hz / 1_000) * DESCANSO_MS);
+}
+
 /// Lee una linea del teclado con edicion completa: cursor, historial y los
 /// atajos de Ctrl de toda la vida.
 ///
@@ -287,7 +347,13 @@ pub(crate) fn shell_read_line(buf: &mut [u8]) -> usize {
                 }
             }
         }
-        let c = match byte { Some(c) => c, None => continue };
+        let c = match byte {
+            Some(c) => c,
+            None => {
+                descansar();
+                continue;
+            }
+        };
 
         match c {
             b'\r' | b'\n' => {
