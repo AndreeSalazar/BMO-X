@@ -31,6 +31,11 @@ const SPLASH_BG: u32 = 0x000A_0E17;
 const SPLASH_DIM: u32 = 0x0059_6B8A;
 
 
+/// Lo que se sostiene la intro **cuando algo no se cedio**, y solo entonces.
+///
+/// Cuando todo llego bien no hay espera ninguna: ver el final de `paint`.
+const CON_AVISO_MS: u64 = 1100;
+
 /// Espera exacta, cediendo el CPU mientras tanto -- y **cortable con una tecla**.
 ///
 /// * Cede en el bucle a proposito: un `spin` de 900 ms en un sistema preemptivo
@@ -333,11 +338,41 @@ pub(crate) fn paint(
     // pantalla que existe para ser leida seria justo la que no se ve.
     p.vaciar();
 
-    // Se deja leer, y se puede saltar. Ver `wait_ms`: es tiempo REAL, no
-    // vueltas de bucle, y cualquier tecla la corta.
-    p.texto(x, y + bmo::GLIFO_ALTO + 26, "una tecla para entrar", SPLASH_DIM);
-    p.vaciar();
-    wait_ms(1100, input);
+    // == *** LA ESPERA DEPENDE DE SI HAY ALGO QUE LEER (2026-09-08) ========
+    //
+    // Peticion del dueno, con sus palabras: *"cuando entro, que no cargue por
+    // procesos -- que YA entre, como en Windows 11: entro y ya esta todo
+    // listo"*.
+    //
+    // ** Y llevaba razon con un numero que este mismo fichero confiesa doce
+    // lineas mas arriba: **1.100 de los 1.205 ms hasta el escritorio eran esta
+    // espera**. El sistema estaba listo en 52 ms.
+    //
+    // Esto ya se intento arreglar el 07-08 haciendola saltable con una tecla, y
+    // la idea era buena. *** Lo que la tumbo fue el metal: el teclado del dueno
+    // lleva meses siendo el aparato menos fiable de la maquina --el xHC llego a
+    // MORIRSE en marcha-- asi que la salida de emergencia estaba detras del
+    // aparato roto. La misma leccion que ya obligo a poner CABINA y el pulso
+    // siempre en la barra, y van tres.
+    //
+    // Asi que la espera deja de ser una constante y pasa a ser una RESPUESTA:
+    //
+    // ```text
+    //    se cedio todo         no hay nada que leer  -> se entra y ya
+    //    falta algo            ESO es lo que la intro existe para contar,
+    //                          y vale justo los segundos de leerlo
+    // ```
+    //
+    // ** No se borra la pantalla ni se acorta el texto, igual que en el 07-08:
+    // lo que se quita es que el dia BUENO pague el precio del dia malo.
+    let todo_cedido = has_input && has_console;
+    if !todo_cedido {
+        // Se deja leer, y se puede saltar. Ver `wait_ms`: es tiempo REAL, no
+        // vueltas de bucle, y cualquier tecla la corta.
+        p.texto(x, y + bmo::GLIFO_ALTO + 26, "una tecla para entrar", SPLASH_DIM);
+        p.vaciar();
+        wait_ms(CON_AVISO_MS, input);
+    }
 }
 
 /// Dos digitos hexadecimales, en mayusculas. Para la MAC.

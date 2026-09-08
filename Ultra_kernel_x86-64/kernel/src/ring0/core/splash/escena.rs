@@ -54,7 +54,15 @@ use crate::ring0::core::gato;
 /// de espera artificial (los cuatro carteles de aqui y la siesta del compositor),
 /// y 3.000 devolveria dos tercios de lo ganado. Es una linea: si se quieren los
 /// tres segundos, se cambia el numero.
-const GATO_MS: u64 = 1600;
+// ** `GATO_MS` ESTUVO AQUI: 1.600 ms de sostener el gato en pantalla, tiempo de
+// arranque puro. Lo mato el truco de Santa Monica --la intro dejo de esperar y
+// paso a taparse con el trabajo de verdad-- y la constante se quedo, muerta,
+// diciendo un numero que ya no pagaba nadie. Un `1600` que sobrevive a su
+// espera invita a creer que el arranque todavia se para ahi.
+//
+// El unico sitio donde sigue nombrado es el comentario de `boot_timeline`, que
+// cuenta POR QUE el logo tiene fila propia. Ahi es historia; aqui era una
+// afirmacion.
 
 /// **El gato ENCENDIENDOSE**, que es lo que pidio el dueno: *"el gato en neon
 /// que se prende al arrancar"*.
