@@ -45,6 +45,36 @@ LOS CASOS QUE SE PARECEN Y NO SON
       Es este mismo CPU. Ejecuta lo que le pusimos, y se le puede parar.
 
 
+EL MALENTENDIDO QUE HAY QUE MATAR PRONTO
+-----------------------------------------
+
+  El dueno lo dijo asi el 07-09, y es lo que casi todo el mundo piensa:
+
+      "si la GPU fuera simplemente sin PSP ni nada, ya normal al RING 0"
+
+  ** Y NO. Una GPU sin PSP SIGUE SIENDO NEUTRA.
+
+  La prueba esta en el censo, dos filas mas arriba: el AHCI no tiene PSP, la
+  tarjeta de red tampoco, y las dos son neutras desde el primer dia. Lo que
+  las mete aqui es la condicion 3 -- alcanzan la RAM -- y esa no sabe nada de
+  firmware firmado.
+
+      lo que hace neutra a una GPU        el DMA
+      lo que hace DIFICIL su driver       el PSP
+
+  Son dos cosas distintas y se cruzan en la misma tarjeta, que es justo por lo
+  que se confunden:
+
+      sin PSP   el driver seria mas simple: escribir registros y ya
+                y el aparato SEGUIRIA escribiendo en tu RAM sin permiso
+      con PSP   el driver lleva doce mensajes antes de nada
+                y el aparato escribe en tu RAM exactamente igual
+
+  *** Por que importa que no se confundan: si alguien lee "sin PSP no es
+  neutro", dejara de etiquetar los marcos de un aparato sencillo -- y los
+  marcos sin etiquetar son los que costaron esta carpeta entera.
+
+
 EL CASO DIFICIL, Y SE DEJA DECIDIDO
 ------------------------------------
 
