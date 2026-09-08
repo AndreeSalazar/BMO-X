@@ -230,10 +230,97 @@ opinion.
 
 - **No va a haber Wi-Fi.** Un chip Wi-Fi necesita firmware propietario cargado
   desde el sistema, mas WPA2 (que es criptografia de verdad). Es otro proyecto.
-- **No va a haber TLS pronto.** Sin curva eliptica ni AES no hay HTTPS, y eso
-  esta detras de la misma deuda que aplazo la firma Ed25519.
+- ~~**No va a haber TLS pronto.** Sin curva eliptica ni AES no hay HTTPS, y eso
+  esta detras de la misma deuda que aplazo la firma Ed25519.~~
+  ⚠ **CADUCADA, y se deja tachada en vez de borrarla** (07-09): la deuda se
+  pago. `bmo-cripto` son 3.604 lineas y tiene curva --`campo25519`, `ed25519`,
+  `x25519`-- y AES con GCM. Lo que frena a HTTPS ya no es la criptografia: es
+  TLS entero. Ver la seccion 9.
 - **La primera version va a ser lenta**, y esta bien. Correcto primero, medido
   segundo, rapido tercero -- y con el numero delante, no con la sensacion.
+
+---
+
+# 9. ★★ LA VPN -- y sale mas barata que HTTPS, que es lo que no se esperaba
+
+> Lo pregunto el dueno el 07-09 sin darle importancia: *"podria tener VPN nativo
+> en mi BMO-X? no se..., meh"*. La respuesta merece seccion porque **reordena lo
+> que este documento daba por hecho**.
+
+## 9.1 Lo que hay que tener para WireGuard, y lo que YA ESTA
+
+WireGuard es el candidato y no OpenVPN, por la misma razon por la que este
+documento elige todo lo demas: **cabe**. Son cuatro primitivas fijas, sin
+negociacion y sin certificados.
+
+```text
+   X25519             ** YA ESTA. 367 lineas, con `secreto_compartido()`
+   HKDF               HMAC ya esta -> HKDF son unas decenas de lineas encima
+   BLAKE2s            FALTA. (Hay BLAKE3 en el BEF, que es OTRA cosa)
+   ChaCha20-Poly1305  FALTA. (Hay AES-GCM, que es OTRA cosa)
+```
+
+★ **Y la que ya esta es la dificil.** X25519 se pago escribiendo la firma del
+`.bex`: Ed25519 y X25519 comparten la misma curva y la misma aritmetica de campo
+--`campo25519.rs`-- asi que el intercambio de claves de la VPN vino de regalo con
+el trabajo de firmar programas.
+
+## 9.2 ⚠ Y AQUI LA INVERSION: WireGuard es MAS BARATO que HTTPS
+
+Este documento daba por hecho lo contrario. Puestos uno al lado del otro:
+
+| | TLS / HTTPS | WireGuard |
+|---|---|---|
+| certificados | X.509, cadenas, PKI | **ninguno** |
+| como se codifica | ASN.1/DER, un parser propio | estructuras fijas |
+| negociacion | versiones y suites de cifrado | **ninguna** |
+| primitivas | muchas, y a eleccion del otro lado | **cuatro, fijas** |
+| handshake | variable | **tres mensajes** |
+
+*** Todo lo que hace caro a TLS es lo que le sobra a WireGuard: **la
+flexibilidad**. Un TLS a medias no habla con nadie porque el otro lado espera lo
+que le falta; un WireGuard a medias o funciona o no, y se sabe en el primer
+mensaje.
+
+## 9.3 ★★ Y SE SALTA TCP ENTERO
+
+Esta es la parte que mas ahorra y la que menos se ve:
+
+```text
+   WireGuard va sobre UDP. SOLO UDP.
+```
+
+** TCP es la pieza grande de una pila de red -- maquina de estados,
+retransmision, ventana, control de congestion. **Una VPN no necesita nada de
+eso.** UDP es cabecera de ocho bytes y una suma de comprobacion.
+
+★ O sea que una VPN nativa **no espera a TCP**: espera a que llegue un paquete.
+
+## 9.4 El orden, y el primero no es criptografia
+
+```text
+   [ ] 1. `red rx`   ** LO PRIMERO, y sigue sin ejecutarse
+          la foto del paso 1 salio en CERO el 28-08 y no fue la tarjeta. Tres
+          causas encontradas, arregladas y nunca probadas -- seccion 3.4 de
+          docs/metal/PRUEBA_EN_METAL_0907.md
+   [ ] 2. UDP: enviar y recibir un datagrama
+   [ ] 3. ChaCha20-Poly1305 y BLAKE2s, con sus vectores de prueba
+   [ ] 4. el handshake de tres mensajes
+```
+
+⚠ **Hasta que el paso 1 conteste, todo lo demas es aritmetica sobre un
+supuesto.** BMO-X no ha recibido un paquete todavia, y ninguna cantidad de
+criptografia arregla eso.
+
+## 9.5 Lo que esta seccion NO promete
+
+```text
+   [ ] no dice que la VPN sea facil: dice que es MAS BARATA que HTTPS
+   [ ] no dice que sea lo siguiente. Lo siguiente es `red rx`
+   [ ] y no cambia el resumen de abajo: el protocolo sigue siendo de USUARIO.
+       Una VPN en Ring 0 seria criptografia con privilegio, que es justo lo
+       que este documento existe para no hacer
+```
 
 ---
 

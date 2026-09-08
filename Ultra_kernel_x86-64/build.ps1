@@ -335,7 +335,23 @@ if (-not (Test-Path $usDir)) { Fail 'Ultra_userspace/ no existe' }
 Push-Location $usDir
 try {
     $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
-    $out = cargo +nightly build -p bmo-service-director --release --target x86_64-unknown-none 2>&1
+    # == ** Y `coste` SE CONSTRUYE AQUI, NO A MANO (2026-09-07) ==============
+    #
+    # Este paso compilaba SOLO el director, y veinte lineas mas abajo el build
+    # EXIGIA un ELF de `medida/coste` que nadie construia. O sea que
+    # `sys/precio.bex` dependia de que alguien lo hubiera compilado a mano
+    # alguna vez, y de que nada lo hubiera tocado desde entonces.
+    #
+    # ** Y algo lo tocaba: cualquier `cargo` en ese workspace con otros flags
+    # --un `cargo test` del banco, por ejemplo-- puede dejar ese artefacto sin
+    # revalidar. El sintoma era `[X] no salio el ELF de medida/coste` seguido de
+    # "28 .bex que este build NO ha producido", y ha pasado ya tres veces.
+    #
+    # *** La regla es la de la casa: un build que EXIGE algo tiene que
+    # CONSTRUIRLO. Exigir sin construir es un guardian que se queja del usuario
+    # en vez de hacer su trabajo.
+    $out = cargo +nightly build -p bmo-service-director -p bmo-medida-coste `
+        --release --target x86_64-unknown-none 2>&1
     $out | ForEach-Object {
         if ($_ -match 'Compiling|Finished|error') { Write-Host ('    [userspace] ' + $_) -ForegroundColor DarkGray }
     }
