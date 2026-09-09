@@ -13,14 +13,11 @@
 //! [!] Printed text stays in Spanish.
 
 use boot_context::BootContext;
-use super::super::dashboard::{dash_log, dashboard_log};
+use super::super::dashboard::dash_log;
 use super::super::phase::s_log;
-use super::{danger, files, hardware, screen};
-use super::ui::{clear_screen, similar_command, row, shell_help, shell_hist,
-                shell_layout, shell_prompt, shell_read_line, L, SH_TITLE, SH_VALUE};
-use super::super::dashboard::dashboard_log_color;
-use super::super::desktop::{death_report, desktop_died, start_desktop,
-                             wait_for_demo_tasks, DESKTOP_ATTEMPTS, DESKTOP_MAX_ATTEMPTS};
+use super::ui::{clear_screen, row, shell_help, shell_hist,
+                shell_layout, shell_prompt, shell_read_line};
+use super::super::desktop::{death_report, desktop_died, start_desktop, DESKTOP_ATTEMPTS, DESKTOP_MAX_ATTEMPTS};
 
 pub(crate) fn run_shell(ctx: &BootContext) -> ! {
     // Normalize the i8042 (translation -> Set 1, re-enable scanning) so the

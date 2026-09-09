@@ -101,7 +101,6 @@
 //! The proof that this works is a number: **the operations went 22 -> 39 while
 //! the doors went 3 -> 2.** The system grew and the surface shrank.
 
-use core::arch::{asm, naked_asm};
 
 use crate::ring0::obj::cap;
 use crate::ring0::obj::channel;

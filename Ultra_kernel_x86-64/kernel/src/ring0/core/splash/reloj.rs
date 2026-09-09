@@ -53,11 +53,14 @@ pub(crate) fn ms_desde(origen: u64) -> u32 {
     (tsc_read().wrapping_sub(origen) / (f / 1000)) as u32
 }
 
-pub(crate) fn hold_ms(ms: u64) {
-    let f = crate::ring0::task::scheduler::tsc_freq();
-    let cycles = if f == 0 { ms * 3_000_000 } else { ms * (f / 1000) };
-    let start = tsc_read();
-    while tsc_read().wrapping_sub(start) < cycles {
-        core::hint::spin_loop();
-    }
-}
+// ** AQUI VIVIA `hold_ms`, y era el motor de la siesta (retirado 08-09).
+//
+// Un `spin_loop` que se comia el CPU los milisegundos que le pidieran. Lo mato
+// el truco de Santa Monica --la intro dejo de esperar y paso a taparse con el
+// trabajo de verdad-- y el mismo dia se retiro `GATO_MS`, que era su unico
+// argumento: 1.600 ms de sostener el gato.
+//
+// Se borra la funcion y no solo la llamada: **una espera que gira, viva en el
+// arbol y sin llamador, es una invitacion**. El dia que alguien quiera esperar
+// tiene que encontrarse con `WAIT` y con `park_until`, que ceden el turno --no
+// con esto, que se lo queda. Ver `docs/plan/PLAN_EL_PLAZO.md`, P2.

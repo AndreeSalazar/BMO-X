@@ -1,0 +1,7 @@
+# Cuantos avisos del compilador tiene el kernel HOY.
+#
+# Solo puede BAJAR. La regla y la historia estan en avisos.py: el 2026-09-08
+# eran 97 y uno de ellos escondia que `WAIT` no habia bloqueado nunca.
+#
+# 2026-09-08  97 -> 39   (cargo fix + el despachador arreglado + 4 muertos)
+39

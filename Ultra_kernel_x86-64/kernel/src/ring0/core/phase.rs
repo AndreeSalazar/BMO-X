@@ -18,7 +18,6 @@
 use boot_context::BootContext;
 use super::splash;
 
-use super::shell;
 use super::dashboard::{dash_log, dashboard_log};
 use super::desktop::{start_desktop, wait_for_demo_tasks, COMPOSITOR_PATH};
 use super::shell::ui::row;

@@ -35,7 +35,6 @@ use super::verde::{
     Informe, Line, FALLO_BARRA, FALLO_DATO, FALLO_FONDO, FALLO_SEGUNDOS, FALLO_TEXTO,
     FALLO_TITULO,
 };
-use crate::ring0::dev::console::serial_write;
 
 
 /// Terminal fault reporter. Draws to the top of the dashboard log (rows that

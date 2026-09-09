@@ -25,7 +25,7 @@
 //! [!] Printed text stays in Spanish.
 
 use super::super::splash;
-use super::super::dashboard::{dashboard_log, dashboard_log_color};
+use super::super::dashboard::dashboard_log_color;
 use super::super::phase::s_log;
 use super::super::dashboard::{dash_log, DASH_LOG_ROW};
 

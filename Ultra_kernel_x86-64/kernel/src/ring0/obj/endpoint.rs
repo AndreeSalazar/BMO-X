@@ -54,14 +54,13 @@ pub const ERROR_BUSY: u32 = 21;
 
 #[derive(Clone, Copy)]
 struct Call {
-    ocupada: bool,
     caller_tid: u32,
     op: u64,
     args: [u64; 3],
 }
 
 impl Call {
-    const EMPTY_ONE: Call = Call { ocupada: false, caller_tid: 0, op: 0, args: [0; 3] };
+    const EMPTY_ONE: Call = Call { caller_tid: 0, op: 0, args: [0; 3] };
 }
 
 #[derive(Clone, Copy)]
@@ -169,7 +168,14 @@ pub fn call(idx: usize, op: u64, args: [u64; 3]) -> Outcome {
         if !e.vivo { return Outcome { code: ERROR_ENDPOINT_DEAD, value: 0 }; }
         if e.n >= QUEUE { return Outcome { code: ERROR_BUSY, value: 0 }; }
         let slot = (e.cabeza + e.n) % QUEUE;
-        e.cola[slot] = Call { ocupada: true, caller_tid: tid, op, args };
+        // ** AQUI HABIA UN `ocupada: true`, y era una MINA (retirado 08-09).
+        // La ocupacion de esta cola la lleva `e.n` --y por eso el `if e.n >=
+        // QUEUE` de arriba es el unico juez-- asi que `ocupada` era una
+        // SEGUNDA fuente de verdad sobre el mismo hecho. Y peor: se ponia a
+        // `true` al encolar y **nunca volvia a `false`** al desencolar, asi que
+        // tras la primera vuelta del anillo todas las ranuras mentian. Nadie
+        // la leia; el dia que alguien lo hiciera, leeria basura.
+        e.cola[slot] = Call { caller_tid: tid, op, args };
         e.n += 1;
         e.seq = e.seq.wrapping_add(1);
     }

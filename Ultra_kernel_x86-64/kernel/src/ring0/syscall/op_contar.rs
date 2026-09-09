@@ -44,7 +44,7 @@ pub(super) fn cabina_texto(arg0: u64, arg1: u64) -> BmoStatus {
         BmoStatus::ok_value(crate::ring0::cabina::texto(evento, cual, arg1))
 }
 
-pub(super) fn info(arg0: u64, arg1: u64) -> BmoStatus {
+pub(super) fn info(arg0: u64, _arg1: u64) -> BmoStatus {
         BmoStatus::ok_value(crate::ring0::core::report::campo(arg0))
 }
 
@@ -52,7 +52,7 @@ pub(super) fn info_texto(arg0: u64, arg1: u64) -> BmoStatus {
         BmoStatus::ok_value(crate::ring0::core::report::texto(arg0, arg1))
 }
 
-pub(super) fn klog_info(arg0: u64, arg1: u64) -> BmoStatus {
+pub(super) fn klog_info(arg0: u64, _arg1: u64) -> BmoStatus {
         use crate::ring0::core::klog;
         BmoStatus::ok_value(match arg0 {
             0 => klog::disponibles(),

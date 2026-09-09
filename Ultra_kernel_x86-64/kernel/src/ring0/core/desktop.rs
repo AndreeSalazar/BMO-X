@@ -23,10 +23,7 @@
 //!
 //! [!] Names went to English; the text it prints stays in Spanish.
 
-use super::shell::ui::{row, L};
-use super::dashboard::{dash_log, dashboard_log, dashboard_log_color};
-use super::phase::s_log;
-use super::shell::ui::{SH_TITLE, SH_VALUE};
+use super::shell::ui::row;
 
 /// Donde vive el escritorio en el volumen de datos.
 ///

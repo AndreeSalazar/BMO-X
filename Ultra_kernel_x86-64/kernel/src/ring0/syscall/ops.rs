@@ -46,35 +46,65 @@
 //! which is the only acceptable outcome: reusing it would make that binary do
 //! something nobody asked for.
 
+/// **La puerta RETIRADA.** No se usa, y por eso esta aqui.
+///
+/// == ** SE INTENTO BORRAR EL 08-09, Y EL CONTRATO LO IMPIDIO ===============
+///
+/// En la caza de codigo muerto salio con un `constant is never used` y se
+/// retiro. **Y estaba mal**: el guardian del contrato lo caza en el acto
+/// --*"BMO ABI surface syscall contract mismatch"*-- porque el ABI lo declara y
+/// el kernel tiene que decir lo mismo.
+///
+/// *** Y el guardian tenia razon por debajo de la regla: esto no es codigo
+/// muerto, es una RESERVA. El 1 fue el syscall de avisar al estuario hasta que
+/// paso a ser una operacion del canal, y el numero **no se reutiliza**: un
+/// binario viejo que lo llame tiene que fallar diciendolo, no hacer otra cosa.
+/// El despachador se apoya en ese nombre en su comentario, y `sys::channel_kick`
+/// cuenta la mudanza.
+///
+/// [!] La leccion, y vale para toda la limpieza de hoy: **"nadie lo usa" y "no
+/// sirve para nada" son dos frases distintas.** Un numero reservado no tiene
+/// llamadores por definicion. Lo que lo distingue de la basura es que alguien
+/// --aqui, el ABI-- depende de que siga existiendo.
+#[allow(dead_code)]
+pub(crate) const NR_CHANNEL_KICK: u32 = 0x01;
 
-pub(crate) const NR_INVOKE: u32 = 0x00;
-/// ** RETIRADO el 2026-08-10. El numero queda RESERVADO y no se reutiliza.
+/// **La primera puerta.** `INVOKE`: haz esto ahora.
 ///
-/// === Por que se fue ===
+/// == *** POR QUE ESTA CONSTANTE NO EXISTIA, Y LO QUE COSTO (2026-09-08) ====
 ///
-/// `CHANNEL_KICK(cap, secuencia)` hacia exactamente esto: resolver un handle,
-/// comprobar que es un canal, y llamar a `channel::service`. O sea **una
-/// operacion sobre un handle** -- que es la definicion de `INVOKE`. Tenia un
-/// numero de syscall propio por como nacio, no por lo que hace.
+/// `NR_WAIT` estaba aqui desde siempre y **`NR_INVOKE` no**. Vivia solo en el
+/// ABI (`syscalls/surface/puertas.rs`), y el despachador de `syscall/mod.rs` no
+/// lo importaba.
 ///
-/// Ahora es `CHANNEL_OP_KICK` sobre el canal, y la superficie baja de tres
-/// puertas a dos con una frontera que se puede decir en una linea:
+/// ** Y eso en Rust no es un error de compilacion: es un BINDING. Un nombre
+/// desconocido en un patron no falla -- **captura**, y casa con cualquier valor:
 ///
 /// ```text
-///   INVOKE   haz esto AHORA
-///   WAIT     despiertame CUANDO
+///    match frame.rax as u32 {
+///        NR_INVOKE => invoke(frame),   <- "matches any value", dijo rustc
+///        NR_WAIT   => wait(frame),     <- "no value can reach this"
+///        _         => unsupported(),   <- tampoco
+///    }
 /// ```
 ///
-/// Y esa frontera no es estetica: `WAIT` no se puede expresar con `INVOKE`
-/// porque lo unico que hace es **no devolver el turno**, y una llamada sincrona
-/// no puede decir eso sin mentir. Por eso quedan dos y no una.
+/// *** Las tres consecuencias, y ninguna daba error:
 ///
-/// === Por que el numero no se reutiliza ===
+/// ```text
+///    1. WAIT (rax=2) se despachaba a `invoke`. **La segunda puerta congelada
+///       no ha bloqueado NUNCA en la vida del proyecto.**
+///    2. cualquier numero de syscall desconocido tambien iba a `invoke`, en vez
+///       de que lo rechazara `unsupported()`. Las "dos puertas" eran UNA que
+///       aceptaba cualquier numero
+///    3. el histograma de clases contaba todo como INVOKE, y la fila de WAIT
+///       era cero porque nadie podia llegar a ella
+/// ```
 ///
-/// Un binario viejo que llame al 1 tiene que fallar **diciendolo**. Si el 1
-/// pasara a significar otra cosa, ese mismo binario haria algo que nadie pidio y
-/// no fallaria en ningun sitio -- la peor clase de rotura de ABI.
-pub(crate) const NR_CHANNEL_KICK: u32 = 0x01;
+/// ** Se cazo con un aviso del compilador que el build ESCONDIA. La leccion no
+/// es la constante: es que 97 avisos sin leer son un sitio donde esconderse.
+/// De ahi el trinquete de `avisos.py`.
+pub(crate) const NR_INVOKE: u32 = 0x00;
+/// **La segunda puerta.** `WAIT`: despiertame cuando.
 pub(crate) const NR_WAIT: u32 = 0x02;
 pub(crate) const CURRENT_TASK: u64 = 0xFFFF_FFFF_FFFF_FFFE;
 pub(crate) const TASK_OP_GET_PID: u64 = 0x01;

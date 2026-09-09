@@ -432,7 +432,7 @@ pub(super) fn smp_despertar(arg0: u64, arg1: u64) -> BmoStatus {
 //// * Escribe en el disco. Se apunta en CABINA ANTES y DESPUES, pase lo
 //// que pase: la primera operacion que cambia el almacen no puede ser
 //// silenciosa ni cuando funciona.
-pub(super) fn estratos_sellar(arg0: u64, arg1: u64) -> BmoStatus {
+pub(super) fn estratos_sellar(_arg0: u64, _arg1: u64) -> BmoStatus {
         crate::ring0::cabina::info(
             "estratos",
             "sellado pedido por un proceso de Ring 3",
@@ -464,7 +464,7 @@ pub(super) fn estratos_sellar(arg0: u64, arg1: u64) -> BmoStatus {
 //// vuelve a comprobar contra la ventana de escritura. Dejar que Ring 3
 //// dijera donde recortar seria un borrado apuntable a cualquier sector,
 //// incluida la ESP donde vive el arranque del dueno.
-pub(super) fn disco(arg0: u64, arg1: u64) -> BmoStatus {
+pub(super) fn disco(arg0: u64, _arg1: u64) -> BmoStatus {
         use crate::ring0::dev::disk::{self, Recorte};
         match arg0 {
             DISCO_OP_TRIM_LIBRE => {

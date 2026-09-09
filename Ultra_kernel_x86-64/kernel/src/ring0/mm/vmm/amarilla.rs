@@ -27,7 +27,7 @@
 
 use super::roja::{get_or_create, table};
 use super::verde::{ADDR_MASK, PTE_HUGE, PTE_PRESENT, PTE_USER, PTE_WRITABLE};
-use super::super::{phys, phys_to_virt, PAGE, PHYSMAP_SIZE};
+use super::super::{PAGE, PHYSMAP_SIZE};
 use bmo_fisica_juicio::se_puede_caminar;
 
 /// **Esta hoja es NUESTRA: liberarla al destruir el espacio de direcciones.**

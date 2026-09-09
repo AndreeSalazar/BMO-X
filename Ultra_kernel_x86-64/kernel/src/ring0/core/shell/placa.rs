@@ -21,7 +21,6 @@
 //! mejor prueba de que no es decorativa.
 
 use super::super::phase::s_log;
-use crate::ring0::plat::placa;
 
 /// **`placa` -- que le cuenta la placa base a BMO-X.**
 ///
