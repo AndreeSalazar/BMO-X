@@ -65,6 +65,7 @@ mod parseo;
 mod simbolos;
 mod sonda_param_array;
 mod sonda_resta_de_punteros;
+mod sonda_columnas_de_doom;
 mod sonda_layout_sha1;
 mod sonda_sha1;
 mod preprocesador;

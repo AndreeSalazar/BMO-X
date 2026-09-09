@@ -3157,3 +3157,96 @@ lo explicaria entera --un demo desincronizado acaba antes de tiempo y `demo_p`
 se sale-- **sin haberlo demostrado**. El proximo arranque tiene que decir tres
 cosas: si `IS TURBO!` desaparecio, si `[vivo]` sigue contando, y que dice
 `[vigia]`.
+
+---
+
+## Ep. 66 -- Ibamos a por los 300 ciclos y el suelo no era el suelo
+
+**2026-09-09.** El dueno pidio dos cosas: aplicar lo que quedaba dicho, y bajar
+la puerta a la meta de 300 ciclos. Ninguna de las dos acabo donde empezo.
+
+### 1. LAS BANDAS DE DOOM: dos zonas EXONERADAS, y ese es el resultado
+
+La foto del titulo salio PERFECTA --el arreglo de `signed` leyendose en el WAD--
+y `IS TURBO!` desaparecio: el demo se reproduce bien. Quedaban las bandas
+verticales de color plano. Dos hipotesis, las dos con la forma exacta del
+fichero sospechoso:
+
+```text
+   R_GetColumn        la bandera `-1` de `texturecolumnlump` leida como 65535
+   dc_iscale          `0xffffffffu / (unsigned)rw_scale` hecha CON signo -> 0
+```
+
+Las dos encajaban con la foto entera. **Las dos falsas: 22 casillas, 22
+verdes.** El fichero se queda (`sonda_columnas_de_doom.rs`), porque un descarte
+sin escribir se vuelve a sospechar.
+
+> Lo que sobrevive al descarte es el culpable. Para que el descarte valga algo,
+> tiene que quedar escrito QUE se descarto.
+
+### 2. ★★★ Y BUSCANDO LOS 300 CICLOS APARECIO ESTO
+
+`Ultra_userspace/medida/coste/src/main.rs`, linea 68:
+
+```text
+   const OP_PID: u64 = 0x0F;        y `TASK_OP_GET_PID` es 0x01
+                                    0x0F es `TASK_OP_CONSOLE_READ`
+```
+
+*** **La fila que la casa llama EL SUELO DEL SISTEMA estaba midiendo una lectura
+de consola.** De ese numero salen el techo de 960 y la meta de 300 que el dueno
+pedia alcanzar.
+
+★ Y el gemelo en C lo tenia bien: `coste_C.c` mide `BMO_OP_PID`, que `roja.h`
+define como `0x01` y un test de cruce de lenguaje ata al kernel. Los dos
+programas existen, con estas palabras, *"para que si difieren se sepa que uno
+miente"* -- y llevaban semanas midiendo operaciones distintas sin que nadie
+restara.
+
+### Por que ningun guardian podia verlo
+
+```text
+   R4 coteja `userland/src/lib.rs` contra el ABI    y ahi el numero esta BIEN
+   lo que estaba mal era una COPIA local, privada, dentro de un binario
+```
+
+** Y el fichero **ya hacia `use bmo_userland as bmo`**. Las siete constantes
+buenas estaban a una linea. Es la misma forma que el `signed` de esta manana y
+que el patron 47: *un numero que nadie compara con su original*.
+
+### R19, y lo que costo afinarla
+
+Las siete copias se BORRARON --lo que no se copia no se puede copiar mal-- y el
+contrato tiene una regla nueva:
+
+> **R19: ninguna app de Ring 3 declara su propia copia de una operacion.**
+
+[!] Su primera version dio SIETE incumplimientos y **los siete eran falsos**.
+Seis eran `desktop/calc.rs`, cuyos `OP_SUMA` y `OP_POR` son *los botones de una
+calculadora*; el septimo era `BG_TOP_FONDO`, un color, que casaba porque la
+expresion permitia cualquier prefijo antes de `OP_`. Dos discriminantes lo
+arreglaron, y los dos son principio y no parche:
+
+```text
+   el nombre EMPIEZA por la familia          `BG_TOP_FONDO` ya no casa
+   solo se juzga a quien CRUZA la puerta     `calc.rs` no menciona `invoke`
+```
+
+Una constante que nunca llega a una puerta no puede ser una operacion de puerta
+equivocada. **20 reglas, 90 casos, y R19 sabe decir que no.**
+
+### Lo que esto le hace a la meta de 300
+
+La fila `puerta` de `presupuesto.rs` queda **EN CUARENTENA**, con sus numeros
+intactos y un aviso encima. La cuenta de la meta --150 de cruce + 60 de prologo
++ 90 de dispatch-- sigue valiendo, porque es aritmetica del stub y no de la
+operacion. Lo que no vale es el 895 contra el que se compara.
+
+```text
+   antes de esta tarde   faltan 595 ciclos por localizar
+   ahora                 no se sabe. Hay que volver a medir.
+```
+
+[!] Y no se ha tocado un solo ciclo del stub. Optimizar contra una linea base
+que mide otra cosa es como se pierde una semana -- **el primer paso hacia los
+300 fue descubrir que 895 nunca fue el numero.**
