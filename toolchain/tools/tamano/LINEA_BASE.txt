@@ -1,0 +1,33 @@
+# Tamano de cada ejecutable de staging/, en bytes.
+# REPORTERO, no trinquete: ver toolchain/tools/tamano/tamano.py
+# Se regenera con:  py toolchain/tools/tamano/tamano.py --fijar
+ada/cierre.bex 1664
+apps/doom.bex 858240
+c/blit.bex 7164
+c/caja.bex 20172
+c/coste.bex 40437
+c/holac.bex 2695
+c/leer.bex 17786
+c/memc.bex 6288
+c/musica.bex 10342
+c/pregc.bex 3018
+c/ray.bex 32645
+c/scrollc.bex 6875
+c/sonda.bex 9495
+c/sonido.bex 6866
+c/vivaldi.bex 7761
+cobol/1/hola.bex 992
+cobol/10/maestro.bex 8568
+cobol/2/banco.bex 2152
+cobol/2/calc.bex 2328
+cobol/2/calcgui.bex 3768
+cobol/3/extracto.bex 3216
+cobol/4/batch.bex 2808
+cobol/5/concep.bex 3192
+cobol/6/carter.bex 3016
+cobol/7/cuentas.bex 6272
+cobol/8/cierre.bex 5008
+cobol/9/comisio.bex 9920
+inti/cpu.ibex 11200
+sys/d.bex 609112
+sys/precio.bex 29984

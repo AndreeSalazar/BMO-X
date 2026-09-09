@@ -318,12 +318,15 @@ impl Desktop {
     pub(crate) fn run_relayout(&mut self, p: &bmo::Pantalla) {
         self.run_box.relayout();
         if self.calc.visible {
+            // Una marca para el area entera. Ver `scene::erase_box`.
+            p.marcar(self.calc_pad.x, self.calc_pad.y,
+                     self.calc_pad.width, self.calc_pad.height);
             for f in 0..self.calc_pad.height {
                 for co in 0..self.calc_pad.width {
                     let (px, py) = (self.calc_pad.x + co, self.calc_pad.y + f);
                     let fondo =
                         crate::scene::scene_color(&self.run_box, self.win.visible, px, py, p.alto);
-                    p.punto(px, py, fondo);
+                    p.punto_ya_marcado(px, py, fondo);
                 }
             }
         }
