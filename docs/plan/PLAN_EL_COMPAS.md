@@ -122,7 +122,19 @@ corazon de este plan y no una de sus mejoras.
       ser mecanismo -- que es la doctrina de `NEUTRO/` aplicada al tiempo: **no
       se confia, se ACOTA**.
 
-- [ ] **E4 -- TICKLESS / TSC-DEADLINE.** Hoy el LAPIC va en modo PERIODICO a
+- [ ] **E4 -- TICKLESS / TSC-DEADLINE.** ★ Y es quien contesta *"se puede bajar
+      de 1 ms, a 0,1?"*: **hoy no, y no por lentitud.** Con el LAPIC en modo
+      periodico a 1 kHz, **un milisegundo es la unidad mas pequena que el
+      sistema sabe NOMBRAR** -- no hay forma de pedir un plazo de 100 us porque
+      no hay reloj que lo exprese. Con un disparo programado al instante exacto
+      (TSC-deadline) la unidad pasa a ser el ciclo, y 0,1 ms deja de ser un
+      numero raro.
+
+      [!] Pero eso es **precision de despertar**, no latencia de punta a punta:
+      el bus USB pone hasta 4 ms y el escaner de video hasta 16,7. Ver
+      [`PLAN_EL_PIXEL`](PLAN_EL_PIXEL.md), seccion 1.
+
+      Hoy el LAPIC va en modo PERIODICO a
       1 kHz (`s2_mem/main.rs`, `0x320 = 48 | (1<<17)`), asi que **cada tarea se
       come mil interrupciones por segundo**, cada una con `xsave`/`xrstor` del
       estado AVX. Con un disparo programado al siguiente instante que importa, si
@@ -132,6 +144,58 @@ corazon de este plan y no una de sus mejoras.
 
 - [ ] **E5 -- ORDENAR POR PLAZO (EDF).** Lo ultimo, y solo cuando existan plazos
       de verdad: `PLAN_EL_PLAZO`, bloque P3.
+
+- [ ] **E6 -- ★★★ LAS ANTEOJERAS.** Que una tarea pueda declarar *"mientras
+      corro, que no me toque nadie"*. Lo pidio el dueno el 09-09 y lo explico
+      mejor de lo que lo dice la literatura:
+
+      > *"no es mas velocidad: es que WAIT ponga trabas a otros puntos que no le
+      > interrumpan. Es concentrar al caballo con todo para ganar la carrera --
+      > cuando un caballo esta concentrado tiene ventaja."*
+
+      ** Y tiene nombre en la industria: **interrupt shielding** y **core
+      isolation**. Es lo que hace un sistema de trading o de audio antes que
+      cualquier optimizacion: **no acelerar el trabajo, sino quitarle de encima
+      todo lo que lo interrumpe.**
+
+      ### Por que hoy el caballo va distraido, con la cuenta
+
+      ```text
+         el LAPIC va en modo PERIODICO a 1 kHz  (s2_mem/main.rs, 0x320)
+         -> MIL interrupciones por segundo, POR NUCLEO, pase lo que pase
+         -> cada una con su `xsave`/`xrstor` del estado AVX
+         -> y DOOM solo en un nucleo las paga TODAS sin que nadie las use
+      ```
+
+      ★ El coste en ciclos es pequeno --del orden del 0,05 %-- y **ese no es el
+      dano**. El dano son las otras dos cosas: cada interrupcion **ensucia la
+      cache y el TLB** del que estaba trabajando, y **mete un punto de
+      expropiacion** cada milisegundo. Para el tiempo real eso significa que el
+      peor caso de cualquier cosa incluye siempre una interrupcion.
+
+      ### Y por que va por WAIT, y no por un syscall nuevo
+
+      Los dos syscalls estan CONGELADOS, y eso no se toca. Pero `WAIT` ya lleva
+      dentro la frase entera: *"despiertame cuando X, y no antes de Y"*. Lo que
+      falta es la otra mitad del contrato -- **lo que la tarea promete a cambio**:
+
+      ```text
+         hoy    WAIT(que, testigo, plazo)          "despiertame cuando"
+         E6     + el compas declarado (C, T)       "y necesito C sin que me
+                                                    toquen, cada T"
+      ```
+
+      *** Con eso `WAIT` deja de ser solo una puerta de salida y pasa a ser
+      **donde se declara el trato**: el que espera bien es el que puede pedir
+      que le dejen en paz cuando le toque. Es la pieza que une E2 (el aforo) con
+      lo que el dueno describio.
+
+      ⚠ **Sacrificio, y es grande**: una ventana en la que no se interrumpe a
+      alguien es una ventana en la que **nadie mas entra**. Si esa tarea se
+      cuelga dentro de su ventana, la maquina se queda -- que es exactamente la
+      azul que E0 vino a arreglar. Por eso las anteojeras **necesitan E3**
+      (estrangular al que se pasa) puesto ANTES: la ventana tiene que acabar por
+      reloj, no por confianza.
 
 ## ★★ Por que E1 va antes que E2, y no es negociable
 

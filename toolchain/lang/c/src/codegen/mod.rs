@@ -6,6 +6,14 @@ use crate::CError;
 
 /// Structs y uniones POR VALOR, en su propio fichero. Ver su cabecera para
 /// la ABI de agregados de BMO y para que hacen SysV y Win64 con esto mismo.
+// ** DECIDIR: lo que se sabe sin emitir un byte, y su REGLA.
+//
+// *** El emisor no decide. Si hay que elegir entre dos secuencias de bytes, la
+// eleccion se toma ahi dentro y en una funcion PURA. Nacio el 09-09 al
+// descubrir que el plegador de constantes llevaba meses completo y el emisor
+// de expresiones no le preguntaba. Ver `decidir/mod.rs`.
+mod decidir;
+
 mod agregados;
 /// INTERNAL LINKING: jumps, calls and function addresses. Everything emitted
 /// as a hole and filled in once the distance is known.
@@ -421,7 +429,7 @@ impl Codegen {
                             continue;
                         }
                     }
-                    let Some(valor) = Self::constante_de(&e.valor) else {
+                    let Some(valor) = decidir::roja::constante_de(&e.valor) else {
                         self.errors.push(format!(
                             "en la tabla global '{name}', el valor del offset {} no es una \
                              constante entera, ni una cadena, ni una funcion de esta unidad",
@@ -488,7 +496,7 @@ impl Codegen {
                 // Ahora se dice. Un cero inventado es la peor respuesta a "no se
                 // hacer esto": es un valor legitimo, asi que el error viaja
                 // hasta donde ya no se puede rastrear.
-                let literal = init.as_ref().and_then(Self::constante_de);
+                let literal = init.as_ref().and_then(|e| decidir::roja::constante_de(&e));
                 match (init, literal) {
                     (_, Some(n)) => {
                         let bytes: Vec<u8> = match size {
@@ -822,125 +830,15 @@ impl Codegen {
         match interior.as_ref() {
             Expr::Var(n) => Some((n.clone(), 0)),
             Expr::Subscript(n, idx) => {
-                let i = Self::constante_de(idx)?;
+                let i = decidir::roja::constante_de(idx)?;
                 Some((n.clone(), i * (self.paso_de_elemento(n) as i64)))
             }
             _ => None,
         }
     }
 
-    fn constante_de(e: &Expr) -> Option<i64> {
-        match e {
-            Expr::Int(n) => Some(*n),
-            // `int x = -5` es `Neg(Int(5))` en el AST, no `Int(-5)`.
-            Expr::Neg(interior) => Self::constante_de(interior).map(|v| -v),
-            Expr::Add(a, b) => {
-                Some(Self::constante_de(a)?.wrapping_add(Self::constante_de(b)?))
-            }
-            Expr::Sub(a, b) => {
-                Some(Self::constante_de(a)?.wrapping_sub(Self::constante_de(b)?))
-            }
-            Expr::Mul(a, b) => {
-                Some(Self::constante_de(a)?.wrapping_mul(Self::constante_de(b)?))
-            }
-            Expr::Div(a, b) => Self::constante_de(a)?.checked_div(Self::constante_de(b)?),
-            // * Lo que faltaba, y cada linea es una tabla de DOOM.
-            //
-            //   'M'        `midiheader[] = {'M','T','h','d', ...}`  (mus2mid.c)
-            //   1 << 16    `FRACUNIT`, o sea la unidad de TODA la aritmetica
-            //              del juego: `xspeed[] = {FRACUNIT, 47000, ...}`
-            //   ~ | & ^    mascaras de banderas en las tablas de estados
-            //
-            // El evaluador se habia quedado en las cuatro operaciones de la
-            // aritmetica, y una tabla que no se puede plegar no da un valor
-            // malo: **da un error y el fichero entero no compila**.
-            Expr::CharLit(c) => Some(*c as i64),
-            Expr::Mod(a, b) => Self::constante_de(a)?.checked_rem(Self::constante_de(b)?),
-            Expr::Shl(a, b) => {
-                Some(Self::constante_de(a)?.wrapping_shl(Self::constante_de(b)? as u32))
-            }
-            Expr::Shr(a, b) => {
-                Some(Self::constante_de(a)?.wrapping_shr(Self::constante_de(b)? as u32))
-            }
-            Expr::BitAnd(a, b) => Some(Self::constante_de(a)? & Self::constante_de(b)?),
-            Expr::BitOr(a, b) => Some(Self::constante_de(a)? | Self::constante_de(b)?),
-            Expr::BitXor(a, b) => Some(Self::constante_de(a)? ^ Self::constante_de(b)?),
-            Expr::BitNot(a) => Some(!Self::constante_de(a)?),
-            Expr::Not(a) => Some((Self::constante_de(a)? == 0) as i64),
-            // Un cast no cambia el VALOR de una constante entera, solo su
-            // anchura -- y la anchura la pone el subobjeto al escribirlo.
-            //
-            // * Y si dentro hay COMA FLOTANTE, se pliega y se trunca.
-            //
-            // `(fixed_t)(-.867*FRACUNIT)` -- asi escribe `am_map.c` las flechas
-            // del mapa, y es la forma normal de meter un numero real en punto
-            // fijo: se calcula en flotante **al compilar** y lo que se guarda
-            // es un entero. El programa no lleva un solo `float` dentro.
-            //
-            // Truncar hacia cero es lo que dice C de una conversion de
-            // flotante a entero, y por eso se hace con `as i64` y no
-            // redondeando: redondear daria otro numero, y el numero es el dato.
-            Expr::Cast(t, a) => Self::constante_de(a).or_else(|| {
-                if matches!(t, TypeSpec::Float | TypeSpec::Double) {
-                    return None;
-                }
-                Self::constante_flotante(a).map(|f| f as i64)
-            }),
-            _ => None,
-        }
-    }
 
-    /// Pliega una expresion constante que tiene coma flotante dentro.
-    ///
-    /// Solo se usa cuando el resultado va a un ENTERO: mientras BMO C no tenga
-    /// la ruta SSE en los datos, un global que se quede en flotante sigue
-    /// diciendo que no puede. Aqui el flotante es una forma de ESCRIBIR el
-    /// numero, no de guardarlo.
-    fn constante_flotante(e: &Expr) -> Option<f64> {
-        // Lo que ya se pliega como entero, se pliega como entero: asi el
-        // desplazamiento, las mascaras y el resto de operaciones que solo
-        // existen sobre enteros no hay que escribirlas dos veces. `FRACUNIT`
-        // es `(1<<16)`, y sin esta linea el `-.867*FRACUNIT` de DOOM no
-        // llegaba a plegarse por culpa del desplazamiento.
-        if let Some(n) = Self::constante_de(e) {
-            return Some(n as f64);
-        }
-        Some(match e {
-            Expr::FloatLit(f) => *f,
-            Expr::Int(n) => *n as f64,
-            Expr::CharLit(c) => *c as f64,
-            Expr::Neg(a) => -Self::constante_flotante(a)?,
-            Expr::Add(a, b) => Self::constante_flotante(a)? + Self::constante_flotante(b)?,
-            Expr::Sub(a, b) => Self::constante_flotante(a)? - Self::constante_flotante(b)?,
-            Expr::Mul(a, b) => Self::constante_flotante(a)? * Self::constante_flotante(b)?,
-            Expr::Div(a, b) => {
-                let d = Self::constante_flotante(b)?;
-                if d == 0.0 {
-                    return None;
-                }
-                Self::constante_flotante(a)? / d
-            }
-            Expr::Cast(_, a) => Self::constante_flotante(a)?,
-            _ => return None,
-        })
-    }
 
-    /// Redondea hacia arriba al multiplo de pagina. La cuenta del cargador.
-    fn hasta_pagina(n: usize) -> usize {
-        const PAGE: usize = 4096;
-        (n + PAGE - 1) & !(PAGE - 1)
-    }
-
-    /// Cual de las regiones contiene el offset `off`. Las regiones vienen
-    /// ordenadas por offset y son contiguas, asi que la busqueda binaria cae en
-    /// la que empieza en `off` o en la inmediatamente anterior.
-    fn region_de(regiones: &[(u32, u32, String)], off: u32) -> Option<usize> {
-        match regiones.binary_search_by(|r| r.0.cmp(&off)) {
-            Ok(i) => Some(i),
-            Err(0) => None,
-            Err(i) => Some(i - 1),
-        }
-    }
 
     /// * LOS CEROS NO SE GUARDAN: SE DECLARAN. La seccion `Bss`.
     ///
@@ -1040,7 +938,7 @@ impl Codegen {
             .chain(self.relocs_a_funcion.iter().map(|&(off, _)| off))
             .collect::<Vec<u32>>();
         for off in escrituras {
-            if let Some(i) = Self::region_de(&regiones, off) {
+            if let Some(i) = decidir::amarilla::region_de(&regiones, off) {
                 anclado[i] = true;
             }
         }
@@ -1052,7 +950,7 @@ impl Codegen {
             .filter_map(|(_, gname, _)| self.global_offsets.get(gname).map(|&(off, _)| off))
             .collect::<Vec<u32>>();
         for off in destinos {
-            if let Some(i) = Self::region_de(&regiones, off) {
+            if let Some(i) = decidir::amarilla::region_de(&regiones, off) {
                 anclado[i] = true;
             }
         }
@@ -1095,7 +993,7 @@ impl Codegen {
         // caer DENTRO de un global (una tabla se parchea por elementos), asi que
         // se traslada su region y se conserva la distancia al principio.
         let traducir = |viejo: u32| -> u32 {
-            match Self::region_de(&regiones, viejo) {
+            match decidir::amarilla::region_de(&regiones, viejo) {
                 Some(i) => nuevo_de[&regiones[i].0] + (viejo - regiones[i].0),
                 None => viejo,
             }
@@ -1463,6 +1361,27 @@ impl Codegen {
         // a rax (cvttsd2si). Las comparaciones dan int 0/1 (no son float) y se
         // manejan abajo. emit_fexpr_operand solo llama aqui para NO-floats, asi
         // que no hay recursion infinita.
+        // === *** LO QUE YA SE SABE NO SE CALCULA (2026-09-09) ================
+        //
+        // Antes que nada se le pregunta a `decidir/`. Si la expresion entera es
+        // una constante que no depende del signo, sale UNA instruccion en vez
+        // del arbol completo con sus `push`, sus `pop` y su operador.
+        //
+        // ** Y esto es lo que mata el `imul` de la suma de punteros: `p + 1`
+        // construye `Mul(Int(1), Int(tamano))` en el arbol, y ese producto llega
+        // aqui como una expresion suya. Plegar solo la raiz no lo habria visto
+        // -- `p + (1*8)` no es constante, porque `p` no lo es.
+        //
+        // [!] `recortar_a_32` se llama IGUAL despues, y eso no es prudencia: es
+        // lo unico que hace que esta rama y la larga sean la misma. Sin el, una
+        // constante que no cabe en `int` se guardaria entera aqui y truncada
+        // por el otro camino -- dos programas distintos segun por donde pase.
+        if let Some(v) = decidir::roja::constante_para_emitir(expr) {
+            self.emit_mov_rax_imm(v);
+            self.recortar_a_32(expr);
+            return;
+        }
+
         let saltar_guarda = core::mem::take(&mut self.sin_guarda_float);
         if !saltar_guarda && self.expr_is_float(expr) {
             self.emit_fexpr(expr);
@@ -1470,10 +1389,10 @@ impl Codegen {
             return;
         }
         match expr {
-            Expr::Int(n) => {
-                let v = *n as u64;
-                self.emit_asm(|a| { a.mov_imm64(bmo_sem_asm::x86_64::Reg::Rax, v).unwrap(); });
-            }
+            // ** SIETE BYTES EN VEZ DE DIEZ cuando el numero cabe en 32 bits.
+            // `48 C7 C0` extiende el signo, que es justo lo que un `i64` que
+            // cabe en `i32` necesita. Ver `emit_mov_rax_imm`.
+            Expr::Int(n) => self.emit_mov_rax_imm(*n),
             // El guard SSE de arriba ya captura los floats; este brazo solo
             // existe por exhaustividad (defensivo: trunca a entero).
             Expr::FloatLit(_) => {
@@ -1481,8 +1400,7 @@ impl Codegen {
                 self.code.extend_from_slice(&[0xF2, 0x48, 0x0F, 0x2C, 0xC0]); // cvttsd2si rax, xmm0
             }
             Expr::CharLit(c) => {
-                let v = *c as u64;
-                self.emit_asm(|a| { a.mov_imm64(bmo_sem_asm::x86_64::Reg::Rax, v).unwrap(); });
+                self.emit_mov_rax_imm(*c as i64);
             }
             Expr::StringLit(s) => {
                 // lea rax, [rip + disp] -- fixup patched in patch_string_fixups
@@ -2067,12 +1985,70 @@ impl Codegen {
         self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
     }
 
+    /// `a <op> b` en `rax`.
+    ///
+    /// === *** PRIMERO SE PREGUNTA, Y DESPUES SE EMITE (2026-09-09) =========
+    ///
+    /// Esta funcion emitia SIEMPRE las cinco piezas --calcula `a`, empuja,
+    /// calcula `b`, saca, opera-- aunque las dos fueran constantes conocidas.
+    /// Y en el bucle mas caliente de DOOM eso salia asi:
+    ///
+    /// ```text
+    ///    d8 = d8 + 1     ->  la suma de punteros construye 1 x 8 en el AST
+    ///                    ->  dos `movabsq` de diez bytes, un push, un pop
+    ///                        y un `imulq` PARA MULTIPLICAR UNO POR OCHO
+    ///                    ->  en cada vuelta, 192.000 veces por fotograma
+    /// ```
+    ///
+    /// ** El puerto de DOOM ya habia quitado ese `imul` a mano --lo dejo escrito
+    /// en su fuente-- y el generador lo devolvia. *Una optimizacion escrita en C
+    /// que el generador deshace no es una optimizacion: es un comentario.*
+    ///
+    /// *** Y el plegador ya existia y estaba completo. Lo que faltaba no era la
+    /// maquinaria: era que el que emite bytes supiera **a quien preguntar**. Esa
+    /// es la regla entera de `decidir/`.
+    ///
+    /// [!] La puerta es `constante_para_emitir` y NO `constante_de`: la segunda
+    /// pliega tambien `/`, `%` y `>>`, que dan otro numero segun el signo. Ver
+    /// la cabecera de `decidir/roja.rs`.
     fn emit_binop(&mut self, a: &Expr, b: &Expr, op: &[u8]) {
+        // ** SIN PILA CUANDO EL DERECHO ES UNA CONSTANTE. Ver
+        // `decidir::roja::solo_toca_rax`: el `push`/`pop` existe porque
+        // calcular el derecho puede pisar cualquier registro, y un `mov rax,
+        // imm` no pisa ninguno. El orden de los registros al llegar al operador
+        // es el mismo por los dos caminos: `rdx` el izquierdo, `rax` el derecho.
+        if decidir::roja::solo_toca_rax(b) {
+            self.emit_expr(a);
+            self.code.extend_from_slice(&[0x48, 0x89, 0xC2]); // mov rdx, rax
+            self.emit_expr(b);
+            self.code.extend_from_slice(op);
+            return;
+        }
         self.emit_expr(a);
         self.code.push(0x50);
         self.emit_expr(b);
         self.code.push(0x5A);
         self.code.extend_from_slice(op);
+    }
+
+    /// **Carga una constante en `rax`.** `mov rax, imm32` cuando cabe.
+    ///
+    /// ** Siete bytes en vez de diez, y no es por el tamano: `48 C7 C0` EXTIENDE
+    /// EL SIGNO del inmediato de 32 bits a 64, que es exactamente lo que un
+    /// `i64` que cabe en `i32` necesita. Para el resto queda el `movabs` de
+    /// diez, que es el unico que puede con los 64 bits.
+    ///
+    /// [!] **El ancho de un ensanchamiento** es la clase de fallo que este mes
+    /// se ha pagado cinco veces (ver `bmo-c-compilador-culpable`), asi que la
+    /// condicion se escribe con los limites del tipo y no con una mascara.
+    fn emit_mov_rax_imm(&mut self, v: i64) {
+        if v >= i32::MIN as i64 && v <= i32::MAX as i64 {
+            self.code.extend_from_slice(&[0x48, 0xC7, 0xC0]);
+            self.code.extend_from_slice(&(v as i32).to_le_bytes());
+        } else {
+            self.code.extend_from_slice(&[0x48, 0xB8]);
+            self.code.extend_from_slice(&v.to_le_bytes());
+        }
     }
     /// Comparacion entera `a <op> b` -> 0 o 1 en `rax`.
     ///
@@ -2084,6 +2060,18 @@ impl Codegen {
     /// derecho. Con operandos chicos el resultado parecia correcto de puro
     /// milagro; `printf("%d", x == y)` con una `x` grande imprimia basura.
     fn emit_cmp(&mut self, a: &Expr, b: &Expr, setcc: u8) {
+        // La misma regla que `emit_binop`: si el derecho es una constante, no
+        // hace falta la pila. Y en una comparacion es todavia mas frecuente --
+        // `x > 0`, `i < n`, `c == 'a'` son el bucle de cualquier programa.
+        if decidir::roja::solo_toca_rax(b) {
+            self.emit_expr(a);
+            self.code.extend_from_slice(&[0x48, 0x89, 0xC2]); // mov rdx, rax
+            self.emit_expr(b);
+            self.code.extend_from_slice(&[0x48, 0x39, 0xC2]); // cmp rdx, rax
+            self.code.extend_from_slice(&[0x0F, setcc, 0xC0]);
+            self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]);
+            return;
+        }
         self.emit_expr(a);
         self.code.push(0x50); // push rax (izquierdo)
         self.emit_expr(b); // rax = derecho
