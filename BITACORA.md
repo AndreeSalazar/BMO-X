@@ -2856,3 +2856,56 @@ instrumentos**, que hasta hoy se leian como un solo parrafo de numeros.
 *** El dia que haya un FONDO DE ESCRITORIO de verdad --una imagen-- el
 desenfoque pasa a tener sentido. Y entonces se hace **una vez**: el fondo no
 cambia, asi que su version borrosa tampoco.
+
+---
+
+## Ep. 62 -- Los 7.781 us del bombeo: partir el numero que no cuadra
+
+**2026-09-09.** El dueno: *"investiga el bombeo ese de 7781us, que es el mas
+gordo"*. Y lo es: `C/T = 1,95` sostenido en el hilo que decide la latencia de
+toda la entrada.
+
+### Lo que se descarto leyendo
+
+```text
+   la politica del barrido   TIENE `MAX_INTENTOS`: un aparato que no se sabe
+                             adoptar deja de intentarse. No hay bucle infinito
+   `Reabrir`                 solo toca puertos VACIOS, y es contabilidad: no
+                             escribe un byte al xHC
+   la regla del puerto tomado   un puerto en uso no se vuelve a tocar NUNCA,
+                             y su comentario cuenta el bug del 31-07 que la puso
+```
+
+★ Y el codigo nombra su propio precio en el sitio correcto: *"adoptar lleva un
+reset de puerto y esperas de verdad, **hasta un tercio de segundo**"*. O sea que
+**7,8 ms es una ESPERA**, no un bucle de cuentas.
+
+### Lo que no se puede saber leyendo, y por que
+
+`bombeo` no es un trabajo: **son cuatro**.
+
+```text
+   dos cambios de CR3    y con ellos dos vaciados enteros de la TLB
+   el drenaje del anillo  `bombear_interno`, con el barrido cada 500 ms dentro
+   el audio               `audio::latido`, que encola tramas isocronas
+   la foto de salud       `salud::refrescar`, que lee MMIO del xHC
+```
+
+*** Preguntarle a un numero que suma cuatro trabajos cual de ellos tarda **es
+preguntarle al total**. Es exactamente la forma del `cuerpo 1066` del 08-09 y
+del `blit 7833` del 09-09, y las dos veces la respuesta fue la misma: **partir**.
+
+### El metodo, que ya lleva tres aciertos esta semana
+
+```text
+   los 40 ms del compositor  ->  `cuerpo` y `puerta`      -> era la PUERTA
+   el blit de DOOM           ->  `expansion` y `volcado`  -> era la EXPANSION
+   `bombeo`                  ->  `anillo`, `audio`, `salud`
+```
+
+`PEOR_US` pasa de cinco ranuras a ocho, `pump_bus` se mide por dentro, y la caja
+`entrada` de la barra sabe los ocho nombres. El proximo arranque **dice cual**.
+
+[!] Y no se ha tocado ni una linea de la logica del USB. Esto no arregla nada:
+convierte una sospecha en una pregunta con respuesta. La diferencia entre las
+dos es la unica razon por la que esta semana ha rendido.

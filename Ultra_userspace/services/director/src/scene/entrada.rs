@@ -79,7 +79,13 @@ const ANCHO: u32 = 250;
 /// alguien anade un sexto trabajo alli y no aqui, esta tabla dira el nombre
 /// equivocado -- por eso hay un `?` para el indice que no conoce, en vez de
 /// recortar el indice y ensenar siempre el ultimo.
-const TRABAJOS: [&str; 5] = ["bombeo", "rescate", "emerg", "purga", "radar"];
+const TRABAJOS: [&str; 8] = [
+    "bombeo", "rescate", "emerg", "purga", "radar",
+    // ** Los tres de DENTRO de `bombeo`, desde el 09-09. El metal dijo
+    // `7781us/s bombeo` y `bombeo` son cuatro trabajos en uno: preguntarle al
+    // total cual tarda es preguntarle al total. Ver `dev/usb/bus.rs`.
+    "anillo", "audio", "salud",
+];
 
 /// Lo ultimo que se pinto. Ver [`super::huella`].
 static mut HUELLA: Huella = Huella::nueva();
