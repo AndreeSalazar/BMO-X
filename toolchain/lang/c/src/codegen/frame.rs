@@ -85,6 +85,91 @@ impl Codegen {
             }
         }
         self.frame_size = -cur;
+
+        // === *** EL TROQUEL: quien se lleva un hueco de la matriz ============
+        //
+        // Ver `decidir/registros.rs`: la regla es una frase --*una local cuya
+        // direccion nunca se toma no la puede pisar ningun puntero*-- y el
+        // escaner contesta que SI en la duda, asi que equivocarse aqui solo
+        // puede dejar la funcion en la pila.
+        //
+        // [!] Los que se van a un registro **conservan su hueco en la pila**, y
+        // eso es a proposito: recalcular `frame_size` sin ellos obligaria a que
+        // todo lo que sabe leer un `[rbp+off]` supiera tambien quien ya no esta.
+        // Se pagan ocho bytes de pila que nadie toca, y no se toca nada mas.
+        self.var_regs.clear();
+        if !super::decidir::registros::hay_direcciones(&func.body) {
+            let nombres: Vec<(String, i32, TypeSpec)> = self
+                .var_offsets
+                .iter()
+                .map(|(n, (o, t))| (n.clone(), *o, t.clone()))
+                .collect();
+            let mut cand = Vec::new();
+            for (n, off, t) in nombres {
+                // Un offset positivo es un PARAMETRO: vive en la pila del
+                // llamante y moverlo es otra conversacion.
+                if off >= 0 || !super::decidir::registros::cabe(&t) || self.var_is_array(&n) {
+                    continue;
+                }
+                let usos = super::decidir::registros::contar(&func.body, &n);
+                cand.push((n, usos));
+            }
+            for (n, r) in super::decidir::registros::repartir(cand) {
+                self.var_regs.insert(n, r);
+            }
+        }
+    }
+
+    /// `mov rax, rN` -- sacar un valor de la matriz.
+    ///
+    /// El registro ya guarda el valor con la anchura y el signo que su tipo
+    /// pide, porque se los dio [`Self::emit_guardar_en_registro`]. Por eso la
+    /// lectura es UNA instruccion y no mira el tipo: si mirara, serian dos
+    /// sitios decidiendo lo mismo -- el `[riesgo] ESPEJO` de la casa.
+    fn emit_leer_de_registro(&mut self, r: u8) {
+        self.code.extend_from_slice(&[0x49, 0x8B, 0xC0 + (r - 8)]);
+    }
+
+    /// `rax -> rN`, con la anchura y el signo que pide el tipo.
+    ///
+    /// *** ESTA FUNCION ES EL SITIO PELIGROSO DE TODO EL TROQUEL, y hay que
+    /// decirlo: tiene que dejar en el registro **exactamente** lo que dejaria
+    /// guardar en la pila y volver a leer. Un `int` se guarda en cuatro bytes y
+    /// se relee con `movsxd`; aqui eso se hace de una vez, al entrar.
+    ///
+    /// [!] El ancho de un ensanchamiento es la clase de fallo que este mes se
+    /// pago CINCO veces (ver `bmo-c-compilador-culpable`). Por eso cada tipo
+    /// tiene su linea y no hay ningun caso agrupado por comodidad.
+    fn emit_guardar_en_registro(&mut self, r: u8, tipo: &TypeSpec) {
+        // modrm con `reg` = rN y `rm` = rax: mod(11) | (rN&7)<<3 | 000.
+        //
+        // [!] Aqui habia `0xE0 + ((r - 8) << 3)`, y **el banco lo cazo con 102
+        // filas rojas**: para `r12` eso son 0xE0+32 = 0x100, que en un `u8` de
+        // release ENVUELVE a 0x00 -- y `modrm` 0x00 no es un registro: es
+        // `[rax]`, un operando de MEMORIA. El destino pasaba a ser la direccion
+        // que hubiera en `rax`.
+        //
+        // *** La base es 0xC0 (mod = 11, o sea "registro"), no 0xE0. 0xE0 ya
+        // llevaba dentro el `<<3` de `r12`, y sumarselo otra vez era contarlo
+        // dos veces. El desbordamiento de un `u8` fue el sintoma; el error era
+        // haber escrito la constante de un caso concreto como si fuera la base.
+        let reg = 0xC0 + ((r - 8) << 3);
+        match tipo {
+            // `movsx rN, al` / `movzx rN, al`
+            TypeSpec::Char => self.code.extend_from_slice(&[0x4C, 0x0F, 0xBE, reg]),
+            TypeSpec::UnsignedChar => self.code.extend_from_slice(&[0x4C, 0x0F, 0xB6, reg]),
+            // `movsx rN, ax` / `movzx rN, ax`
+            TypeSpec::Short => self.code.extend_from_slice(&[0x4C, 0x0F, 0xBF, reg]),
+            TypeSpec::UnsignedShort => self.code.extend_from_slice(&[0x4C, 0x0F, 0xB7, reg]),
+            // `movsxd rN, eax`: extiende el SIGNO, que es lo que hace la pila.
+            TypeSpec::Int => self.code.extend_from_slice(&[0x4C, 0x63, reg]),
+            // `mov rNd, eax`: escribir 32 bits pone a CERO la mitad de arriba.
+            TypeSpec::UnsignedInt => {
+                self.code.extend_from_slice(&[0x41, 0x89, 0xC0 + (r - 8)])
+            }
+            // Ocho bytes: no hay nada que ensanchar. `mov rN, rax`.
+            _ => self.code.extend_from_slice(&[0x49, 0x89, 0xC0 + (r - 8)]),
+        }
     }
 
     /// Guarda `rax` en `[rbp+disp]` con el tamano EXACTO de `tipo`.
@@ -133,6 +218,15 @@ impl Codegen {
     }
 
     pub(super) fn emit_store_var(&mut self, name: &str) {
+        // ** EL TROQUEL primero, y con el tipo: es lo unico que decide si hay
+        // que ensanchar con signo o con ceros. Ver `emit_guardar_en_registro`.
+        if let Some(&r) = self.var_regs.get(name) {
+            let tipo = self.var_offsets.get(name).map(|(_, t)| t.clone());
+            if let Some(t) = tipo {
+                self.emit_guardar_en_registro(r, &t);
+                return;
+            }
+        }
         if let Some(&(offset, ref typ)) = self.var_offsets.get(name) {
             let disp = offset;
             let rex8 = if disp >= -128 && disp <= 127 { 0x45 } else { 0x85 };
@@ -178,6 +272,13 @@ impl Codegen {
     }
 
     pub(super) fn emit_load_var(&mut self, name: &str) {
+        // ** EL TROQUEL primero. Un nombre en la matriz es un local escalar, o
+        // sea que no puede ser tambien una constante de enum, una funcion ni un
+        // array: los tres estan descartados en el reparto.
+        if let Some(&r) = self.var_regs.get(name) {
+            self.emit_leer_de_registro(r);
+            return;
+        }
         // Enum constants: emit integer literal directly
         if let Some(&val) = self.enum_values.get(name) {
             self.code.extend_from_slice(&[0xB8]); // mov eax, imm32

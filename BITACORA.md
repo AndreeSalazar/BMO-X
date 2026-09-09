@@ -2649,3 +2649,78 @@ Un guardian que grita cada vez que el proyecto avanza se apaga en una semana.
 ⚠ Y con su aviso puesto: **el tamano no es la velocidad**. Van juntos en el caso
 concreto de pasar de pila a registros y no en general. El juez sigue siendo
 `expansion N us` del `[perf]` de DOOM, y sigue sin hablar.
+
+---
+
+## Ep. 59 -- EL TROQUEL entra, y el banco me caza un `0x100` en un `u8`
+
+**2026-09-09.** El dueno dijo *"aplicalo, primero en C"*, y se aplico.
+
+### Lo que habilito el camino, y fue una comprobacion de dos minutos
+
+```text
+   que registros extendidos emite hoy BMO C?   r8, r9, r10 y r11. Y NINGUNO mas
+   -> r12..r15 estaban ENTEROS SIN USAR, y ademas son de los que una llamada
+      PRESERVA: un valor ahi sobrevive a un `call` sin que nadie lo guarde
+```
+
+**Esa es la matriz.** Cuatro huecos, y no se supusieron: se contaron.
+
+### La regla de seguridad es una frase, y no hay analisis de alias
+
+> **Una local cuya direccion nunca se toma no la puede pisar ningun puntero.**
+
+★★ Y el escaner **contesta que SI en la duda**: su brazo comodin da `true`, asi
+que una forma del arbol que no conozca deja la funcion entera en la pila --
+correcta y lenta. Es `PTE_NUESTRA` del kernel con otra moneda: *la duda se
+resuelve por el lado que solo cuesta*.
+
+### ★★★ Y EL BANCO ME CAZO, con 102 filas de 500
+
+```text
+   let reg = 0xE0 + ((r - 8) << 3);
+```
+
+Para `r12` eso son `0xE0 + 32 = 0x100`, que en un `u8` de release **ENVUELVE a
+0x00**. Y `modrm = 0x00` no es un registro: es `[rax]`, un operando de MEMORIA.
+El destino de cada escritura pasaba a ser la direccion que hubiera en `rax`.
+
+*** El desbordamiento fue el sintoma. **El error era haber escrito la constante
+de un caso concreto como si fuera la base**: `0xE0` ya llevaba dentro el `<<3`
+de `r12`, y sumarselo otra vez era contarlo dos veces. La base es `0xC0`.
+
+Y es la tercera vez esta semana que el banco caza algo mio en el acto. Un
+`[aparece] BANCO` no es una etiqueta: es la diferencia entre veinte segundos y
+un arranque en el Ryzen.
+
+### La medida, y no es la que se esperaba
+
+```text
+   el bucle interior de la expansion    instrucciones   accesos a MEMORIA
+   original                                   35              10
+   + las tres mirillas                        28               9
+   + EL TROQUEL                               28               2
+```
+
+★ **Las instrucciones NO bajan; los viajes a memoria caen un 78 %.** `j` vive en
+`r14` y `d8` en `r12`, y del bucle desaparecieron todos los `[rbp+disp]`. Lo que
+queda son movimientos entre registros -- el baile de la maquina de pila por
+`rax`, que es el escalon siguiente y no este.
+
+### Y los `.bex` CRECIERON, que es lo correcto
+
+```text
+   apps/doom.bex   858.240 -> 863.872   +5.632   +0,7 %
+   c/ray.bex        32.645 ->  33.157     +512   +1,6 %
+   ...5 de 30, y el total +0,4 %
+```
+
+Son los cuatro `push` y los cuatro `pop` de cada funcion que usa la matriz. **Y
+por esto `tamano` REPORTA y no manda**: un trinquete habria parado el build por
+un cambio que hace el codigo mas rapido. La cabecera del guardian ya lo decia el
+dia que se escribio -- *"un programa que crece puede estar creciendo por una
+razon excelente"*-- y le ha tocado el primero.
+
+[!] **Y sigue sin haber una sola medida de velocidad.** 500 filas verdes dicen
+que es CORRECTO; los bytes dicen que CAMBIO. Que sea mas rapido lo dice
+`expansion N us` en el Ryzen, y no ha hablado todavia.

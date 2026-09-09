@@ -177,6 +177,11 @@ struct Codegen {
     break_target: Vec<u32>,
     continue_target: Vec<u32>,
     var_offsets: HashMap<String, (i32, TypeSpec)>,
+    /// **EL TROQUEL**: que locales viven en un registro y en cual (12..15).
+    ///
+    /// Vacio = esta funcion no usa ninguno, y entonces el prologo no guarda
+    /// nada. Ver `decidir/registros.rs` y `docs/plan/PLAN_EL_TROQUEL.md`.
+    var_regs: HashMap<String, u8>,
     // bytes de stack locales de la funcion actual (arrays/structs con tamano REAL)
     frame_size: i32,
     /// La funcion que se esta emitiendo declara `...`?
@@ -290,6 +295,7 @@ impl Codegen {
             func_addr_fixups: Vec::new(),
             break_target: Vec::new(),
             continue_target: Vec::new(), var_offsets: HashMap::new(),
+            var_regs: HashMap::new(),
             frame_size: 0,
             es_variadica: false,
             sin_guarda_float: false,
@@ -1153,11 +1159,32 @@ impl Codegen {
                 self.code.extend_from_slice(&(stack_size as u32).to_le_bytes());
             }
         }
+        // === *** EL TROQUEL: guardar la matriz. Ver `decidir/registros.rs` ====
+        //
+        // Van DESPUES de `sub rsp` y no antes, y el orden es toda la
+        // correccion: los locales viven en `[rbp-1 .. -frame_size]`, asi que
+        // empujar aqui los deja POR DEBAJO y no pisa ninguno. Al reves, los
+        // cuatro registros aterrizarian encima de las primeras variables.
+        //
+        // ** Y son los CUATRO o ninguno, aunque solo se use uno: cuatro es par,
+        // y un numero par de `push` no cambia la paridad de alineacion de la
+        // pila que el resto del emisor ya tiene. Ocho instrucciones por funcion
+        // que use la matriz, y se amortizan en la primera vuelta de un bucle.
+        if !self.var_regs.is_empty() {
+            self.code.extend_from_slice(&[0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57]);
+        }
         for stmt in &func.body { self.emit_stmt(stmt); }
         self.emit_epilogue();
     }
 
     fn emit_epilogue(&mut self) {
+        // ** La matriz se devuelve ANTES de deshacer el marco, y en orden
+        // inverso. Aqui `rsp` apunta justo a los cuatro guardados porque toda
+        // expresion deja la pila como la encontro -- `emit_binop` empuja y saca
+        // en pareja-- y `Stmt::Return` llama a esto con la expresion ya acabada.
+        if !self.var_regs.is_empty() {
+            self.code.extend_from_slice(&[0x41, 0x5F, 0x41, 0x5E, 0x41, 0x5D, 0x41, 0x5C]);
+        }
         self.code.extend_from_slice(&[0x48, 0x89, 0xEC, 0x5D]); // mov rsp,rbp; pop rbp
         if self.is_entry_function {
             // Volver de `main` termina el proceso. Antes esto emitia
