@@ -227,6 +227,9 @@ pub const INFO_TSC_HZ: u64 = 0x05;
 /// dejan de leerse igual. Escalon **E1** de `docs/plan/PLAN_EL_COMPAS.md`: no se
 /// puede presupuestar lo que no se mide.
 pub const INFO_CPU_PROPIO: u64 = 0x4F;
+/// El ritmo del bus USB: `periodo_ms | peor_us << 16 | cual << 48`.
+/// Es el primer sumando de la latencia de la mano al pixel.
+pub const INFO_USB_RITMO: u64 = 0x50;
 /// La frecuencia efectiva del nucleo AHORA, en Hz. `0` = no se puede medir.
 /// Es una MEDIDA: dos lecturas seguidas dan la velocidad de ese intervalo.
 pub const INFO_CPU_HZ_REAL: u64 = 0x20;

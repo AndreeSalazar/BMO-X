@@ -2142,3 +2142,77 @@ el sitio con `[cuesta] MAQUINA`.
 [!] **Lo que este episodio NO demuestra**: que el escritorio vaya mas rapido. Eso
 lo dice el metal, no el desensamblador. Lo que esta probado es que la instruccion
 salio y que no queda ni un bucle del anterior. **El numero lo pone el Ryzen.**
+
+---
+
+## Ep. 53 -- El compositor dejo de ser el cuello, y entonces cambio la pregunta
+
+**2026-09-09**, la misma noche. Con `rep movsb` puesto y el papeleo de los glifos
+quitado, el compositor aporta **menos de un milisegundo** a un fotograma normal.
+Y ahi la pregunta correcta deja de ser *"cuanto tarda en pintar"* y pasa a ser
+**"cuanto tarda desde que muevo la mano hasta que lo veo"**. Caudal contra
+latencia: un motor grafico se juzga por la segunda.
+
+### El presupuesto de la mano al pixel
+
+```text
+   [2] el hilo del bus drena el anillo      <= 4 ms     BUS_PERIOD_MS
+   [3] el compositor se entera              <= 1 ms     el LATIDO, 1 kHz
+   [4] pinta y vuelca                        < 1 ms     (desde hoy)
+   [5] el ESCANER lo ensena                 <= 16,7 ms  y sin V-Sync
+```
+
+★★ **Lo que pone BMO-X de su parte es menos de 1 ms de ~22.** Los milisegundos
+estan en los dos EXTREMOS --el aparato que habla cuando quiere y el escaner que
+mira cuando quiere-- y ninguno de los dos es codigo del compositor. Seguir
+apretando el compositor es apretar la pieza que ya no aprieta.
+
+### ★★★ Y el 4 ms tiene un dueno que ya sabia la respuesta
+
+`BUS_PERIOD_MS = 4` es una constante, y su comentario razona sobre un **teclado**
+boot (*"pide que se le sondee cada 8-10 ms"*). El aparato que decide la latencia
+que se NOTA es el **raton**, y muchos piden 1 ms.
+
+```text
+   uhid/enumera.rs   LEE el bInterval del descriptor
+                     se lo PASA al Endpoint Context del xHC
+                     lo ESCRIBE en el log
+   bus.rs            drena el anillo a 250 Hz, pase lo que pase
+```
+
+> El aparato dice cada cuanto quiere hablar, el controlador se entera, y el hilo
+> que le escucha no se ha enterado.
+
+### El septimo instrumento donde nadie mira
+
+`ritmo()` y `peor_trabajo()` miden ese hilo desde hace semanas. **Los leia UN solo
+sitio: `cabina/cockpit.rs`, que es una pantalla de Ring 0** -- de donde no se
+vuelve. Van siete: CABINA, el testigo del USB, el pulso, el volcado, el modo del
+lienzo, `cuerpo`, y este.
+
+Ahora suben por `INFO_USB_RITMO` (campo 100 del contrato) y se ven en la barra:
+`entrada 4ms peor NNNus purga`. ** El `peor` se enciende cuando pasa del **80%
+del periodo**: si un solo trabajo de la vuelta se acerca a lo que dura la vuelta,
+el hilo no puede sostener su ritmo. Es `C/T` acercandose a 1 -- la cuenta de
+`PLAN_EL_COMPAS` aplicada al hilo que hoy decide la latencia de todo el sistema.
+Y es lo que dira si bajar a 1 ms cabe, en vez de adivinarlo.
+
+### La regla del pixel que se hizo pieza, y su excepcion
+
+`scene/huella.rs`: **lo que no cambia no se marca**. `testigo` lo hacia desde
+agosto; sus dos vecinos de barra, escritos despues, repintaban 650 px de ancho en
+cada fotograma sin que nadie lo decidiera. Era una costumbre de un fichero.
+
+★★ **Y el pulso NO la lleva, a proposito.** Su aguja es la prueba de vida del
+bucle: un instrumento de vida que se calla cuando no cambia nada se calla justo
+cuando el bucle se muere. Por **L4** --una regla se prueba diciendo que NO-- esa
+excepcion es lo que convierte la costumbre en regla.
+
+[!] Y su tamano, dicho sin vender: **~1 MB/s hoy**, porque la barra repinta 3-20
+veces por segundo. Lo que evita es el precio del EXITO -- a 60 fps los mismos
+chips serian 3,7 MB/s de pintar lo que ya estaba.
+
+Todo escrito en [`docs/plan/PLAN_EL_PIXEL.md`](docs/plan/PLAN_EL_PIXEL.md), con
+las siete reglas y su estado real.
+
+> Un orquestador que no manda en sus dos extremos no orquesta: acompana.

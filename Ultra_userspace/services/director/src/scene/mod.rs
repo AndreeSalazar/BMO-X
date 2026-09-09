@@ -71,6 +71,38 @@ pub(crate) mod testigo;
 /// **Lo que cuesta empujar un fotograma.** El par (peor, cajas) que decide
 /// si el troceado por cajas trabaja o degenero. Ver su cabecera.
 pub(crate) mod volcado;
+
+/// La regla de "no repintar lo que ya esta pintado", convertida en pieza.
+pub(crate) mod huella;
+
+/// Donde empieza la latencia: el ritmo del bus de entrada.
+pub(crate) mod entrada;
+
+/// **Olvidar lo pintado en la barra**, porque alguien la repinto por debajo.
+///
+/// == *** POR QUE ESTA EN UN SOLO SITIO ====================================
+///
+/// Los chips de la barra solo se repintan cuando su contenido cambia (ver
+/// [`huella`]). Eso trae una trampa que `testigo` ya se encontro en agosto: si
+/// alguien pinta la barra ENTERA por debajo, el chip sigue creyendo que su
+/// dibujo esta ahi, y lo que queda es un hueco.
+///
+/// > Un hueco vacio donde estaba la luz se lee como *"no hay problema"*, que es
+/// > la peor cosa que puede decir un instrumento que se borro.
+///
+/// ** Tres llamadas repartidas por `paint.rs` es exactamente como se anade un
+/// cuarto chip y se olvida la suya -- y ese fallo no da error: da un hueco. Aqui
+/// la lista esta en un sitio, y el que anada el quinto la ve.
+pub(crate) fn olvidar_la_barra() {
+    testigo::olvidar();
+    volcado::olvidar();
+    entrada::olvidar();
+    // [!] EL PULSO NO ESTA, y no es un olvido: no lleva huella. Su aguja es la
+    // prueba de vida del bucle, asi que **tiene que repintarse siempre** --su
+    // propio `amarilla.rs` lo dice desde el 08-09: *"lo que se ensena no es el
+    // valor, es que haya latido"*. Un chip que se calla cuando no cambia nada
+    // seria, justo aqui, un chip que se calla cuando el bucle se muere.
+}
 /// **La ventana del SONIDO** (F10). Reclama `KIND_AUDIO` al abrirse y lo
 /// DEVUELVE al cerrarse -- ver la cabecera del modulo: es lo unico que impide
 /// que el escritorio deje mudos a todos los programas que lanza.

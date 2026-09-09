@@ -221,7 +221,10 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         //
         // Un hueco vacio donde estaba la luz se lee como "no hay problema", que
         // es la peor cosa que puede decir un instrumento que se borro.
-        scene::testigo::olvidar();
+        // ** UNA llamada para los tres, y la lista vive en `scene`. Ver
+        // `scene::olvidar_la_barra`: tres olvidos repartidos por aqui es
+        // como se anade un chip y se olvida el suyo.
+        scene::olvidar_la_barra();
         dsk.win.taskbar_dirty = false;
     }
 
@@ -360,6 +363,12 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         // de "lento", que es justo la pregunta abierta del 08-09. Ver la
         // cabecera de `scene::volcado`.
         scene::volcado::refrescar(&p, &p.volcado());
+        // ** Y DONDE EMPIEZA LA LATENCIA: el ritmo del bus de entrada. El
+        // pulso y el volcado dicen lo que cuesta el fotograma; esto dice lo
+        // que se tarda en ENTERARSE de que hay que hacer uno, que es el
+        // primer sumando de la mano al pixel y no lo pone el compositor.
+        // Ver `scene::entrada` y `docs/plan/PLAN_EL_PIXEL.md`.
+        scene::entrada::refrescar(&p);
     }
 
     // -- El cursor del raton, ENCIMA de todo y lo ultimo --
