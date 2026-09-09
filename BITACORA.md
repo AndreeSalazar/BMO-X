@@ -3061,3 +3061,99 @@ Seis veces y media el periodo de 4 ms, y **sigue siendo un solo numero**. La
 particion en `anillo`/`audio`/`salud` esta compilada y esperando un arranque:
 hasta que corra, preguntarle al total cual de los tres tarda es preguntarle al
 total. Se deja tal cual, sin hipotesis -- que es lo que costo un dia el 09-09.
+
+---
+
+## Ep. 65 -- `GREEN: IS TURBO!`, o como una foto encontro el sexto fallo del codegen
+
+**2026-09-09.** El dueno manda una foto de DOOM jugando y dice *"se repite mismo
+patron pero cambio mucho"*. El fondo ya sale limpio (Ep. 64). Pero arriba a la
+izquierda, en rojo, hay una linea que no deberia estar:
+
+```text
+   GREEN: IS TURBO!
+```
+
+### ★★★ POR QUE ESA LINEA ES UN DIAGNOSTICO Y NO UN ADORNO
+
+`G_Ticker` solo la imprime cuando `cmd.forwardmove > 50`. Y **50 es el maximo
+que DOOM puede grabar** -- `TURBOTHRESHOLD` esta justo ahi por eso. O sea que el
+demo estaba entregando un numero **imposible**, y solo hay una forma:
+
+```c
+cmd->forwardmove = ((signed char)*demo_p++);   /* g_game.c:1936 */
+```
+
+Si ese cast no estrecha, un `-25` --andar hacia atras-- se lee como `231`.
+
+### El banco lo confirmo en 0,02 s, y luego dijo donde
+
+```text
+   (signed char)231           ->  231     y debe ser -25   MAL
+   signed char c; c = 231;    ->  231                      MAL
+   (signed short)65511        ->  65511                    MAL
+   short s = (short)65511;    ->  -25                      ok
+   char c = -25;              ->  -25                      ok
+```
+
+`short` bien y `signed short` mal **es toda la pista**: no era el codegen. Era el
+PARSEADOR. `parser/declarations.rs:923`:
+
+```rust
+Token::Signed => { self.advance(); TypeSpec::Int }
+```
+
+*** **`signed` era un sinonimo de `int` que ademas se tragaba el token de
+detras sin mirarlo.** Su hermano `unsigned`, cinco lineas mas arriba, si
+preguntaba -- con sus cinco casos y su `_ =>` que no avanza.
+
+Tres fallos en una linea:
+
+```text
+   `signed char x`   ->  un entero de 64 bits: no trunca, no extiende signo
+   `signed char` en una struct  ->  8 bytes en vez de 1: LA DISPOSICION CAMBIA
+   `signed x;`       ->  `advance` incondicional: se come el NOMBRE
+```
+
+### Lo que eso le hacia a DOOM, y son dos sitios que se ven en la pantalla
+
+```text
+   d_ticcmd.h   `signed char forwardmove;`      ->  el MANDO entero, y el demo
+   i_swap.h     `#define SHORT(x) ((signed short)(x))`
+                                                ->  CADA numero del WAD
+```
+
+★★ El segundo es el gordo: `SHORT()` es como DOOM lee todos los offsets de
+sprite, todas las columnas de textura y todos los vertices. Un offset negativo
+--que los hay-- salia como 65.511.
+
+### ★ Y EL BANCO ESTABA VERDE CON EL FALLO DENTRO
+
+500 filas, ninguna roja, y **ni una escribia `signed char`**. No es que el test
+fallara: es que el test no existia, y la palabra `signed` estaba en la gramatica
+desde el primer dia. El census del signo tenia 16 casillas y ninguna preguntaba
+por la unica palabra clave de C que este parseador no leia.
+
+> Una gramatica que acepta una palabra y la traduce mal no da un error: da un
+> programa que compila y hace otra cosa.
+
+Cuatro casillas nuevas en `probe_signedness`, y las cuatro estaban ROJAS.
+
+### El tamano, otra vez, y ahora en grande
+
+```text
+   `doom.bex`   865.408 B antes   865.408 B despues
+   bytes que difieren:  479.632   de 864.255
+```
+
+**Mas de la mitad del binario cambio y el reportero dijo `clean`.** El aviso que
+se escribio en su cabecera esta misma tarde (Ep. 64) queda demostrado el mismo
+dia con un caso cinco ordenes de magnitud mayor que el que lo motivo.
+
+### Lo que esto NO arregla, dicho antes de arrancar
+
+No se ha tocado el cuelgue. Lo que si hace es quitar de en medio una causa que
+lo explicaria entera --un demo desincronizado acaba antes de tiempo y `demo_p`
+se sale-- **sin haberlo demostrado**. El proximo arranque tiene que decir tres
+cosas: si `IS TURBO!` desaparecio, si `[vivo]` sigue contando, y que dice
+`[vigia]`.

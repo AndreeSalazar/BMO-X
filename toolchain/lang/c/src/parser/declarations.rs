@@ -920,7 +920,42 @@ impl Parser {
                     _ => TypeSpec::UnsignedInt,
                 }
             }
-            Token::Signed => { self.advance(); TypeSpec::Int }
+            // *** `signed` NO ES UN SINONIMO DE `int`, y aqui lo era.
+            //
+            // Esta linea decia `{ self.advance(); TypeSpec::Int }`: se tragaba
+            // el token siguiente SIN MIRARLO y contestaba `int`. O sea que
+            // `signed char` era un entero de 64 bits, y su hermano `unsigned`
+            // --justo aqui arriba-- si preguntaba.
+            //
+            // Lo que costaba, y se vio en el Ryzen el 09-09:
+            //
+            //    (signed char)231     ->  231, y debe ser -25 (no truncaba)
+            //    signed char campo;   ->  8 bytes en vez de 1 en la struct
+            //    signed <nombre>;     ->  se comia el NOMBRE de la variable
+            //
+            // El tercero es de esta misma linea: `advance` incondicional. En C,
+            // `signed` a secas es `int` legal, y el token de detras es el
+            // declarador.
+            //
+            // ** En DOOM eso son dos sitios que se notan en la pantalla:
+            // `d_ticcmd.h` (`signed char forwardmove`, o sea el mando entero) e
+            // `i_swap.h` (`#define SHORT(x) ((signed short)(x))`), que es como
+            // se lee CADA numero del WAD.
+            Token::Signed => {
+                match self.peek() {
+                    Token::Char => { self.advance(); TypeSpec::Char }
+                    Token::Short => { self.advance(); TypeSpec::Short }
+                    Token::Int => { self.advance(); TypeSpec::Int }
+                    Token::Long => {
+                        self.advance();
+                        if *self.peek() == Token::Long { self.advance(); TypeSpec::LongLong }
+                        else { TypeSpec::Long }
+                    }
+                    // `signed` a secas es `int`, y NO se avanza: lo que viene
+                    // detras es de otro.
+                    _ => TypeSpec::Int,
+                }
+            }
             Token::Float => TypeSpec::Float,
             Token::Double => TypeSpec::Double,
             // * `struct`/`union`, WITH or WITHOUT a tag, with or without a body.

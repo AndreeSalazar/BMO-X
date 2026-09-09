@@ -175,6 +175,41 @@ fn census() -> Vec<Cell> {
                        printf(\"%d %d\\n\", (int)c, (int)(c & 0x8000)); return 0; }",
             expects: "32773 32768",
         },
+        // ** THE FOUR THAT CAME FROM A PHOTO OF THE RYZEN, 2026-09-09.
+        //
+        // DOOM printed `GREEN: IS TURBO!`, which `G_Ticker` only prints when
+        // `cmd.forwardmove > 50` -- and 50 is the MOST that DOOM can record.
+        // The demo was handing over an impossible number, and there is only
+        // one way that happens: `((signed char)*demo_p++)` not narrowing.
+        //
+        // The cause was not in the codegen at all: `signed` was parsed as a
+        // synonym for `int` that swallowed the next token. See
+        // `parser/declarations.rs`.
+        Cell {
+            name: "signed char narrows on assign",
+            source: "int main() { signed char c; c = 231;                        printf(\"%d\n\", (int)c); return 0; }",
+            expects: "-25",
+        },
+        Cell {
+            // `G_ReadDemoTiccmd`, letter for letter.
+            name: "cast to signed char sign-extends",
+            source: "int main() { unsigned char b; b = 231;                        printf(\"%d\n\", (int)(signed char)b); return 0; }",
+            expects: "-25",
+        },
+        Cell {
+            // `i_swap.h`: `#define SHORT(x) ((signed short)(x))`, i.e. how
+            // EVERY number in the WAD is read.
+            name: "cast to signed short narrows",
+            source: "int main() { unsigned short u; u = 65511;                        printf(\"%d\n\", (int)(signed short)u); return 0; }",
+            expects: "-25",
+        },
+        Cell {
+            // The third one this bug had, and the quietest: `advance` was
+            // unconditional, so bare `signed` ate the DECLARATOR.
+            name: "bare signed is int, eats nothing",
+            source: "int main() { signed x; x = -25;                        printf(\"%d\n\", x); return 0; }",
+            expects: "-25",
+        },
     ]
 }
 
@@ -191,9 +226,14 @@ fn the_signedness_census_has_not_changed() {
     );
 }
 
-/// **EL CENSUS DEL SIGNO, al 2026-08-13.** Verde desde que el codegen pregunta
+/// **EL CENSUS DEL SIGNO, al 2026-09-09.** Verde desde que el codegen pregunta
 /// por el tipo antes de elegir la instruccion. Antes, las cuatro filas de
 /// `unsigned long` estaban rojas.
+///
+/// *** Y el 09-09 entraron cuatro mas, que estaban ROJAS y las trajo una FOTO:
+/// `signed` se parseaba como un sinonimo de `int` que ademas se tragaba el
+/// token de detras. Ni una de las 500 filas del banco escribia `signed char`,
+/// asi que el banco entero estaba verde con el fallo dentro. Ver el Ep. 65.
 const CENSUS: &str = "\
 unsigned >> with the top bit set GOOD
 int >> with the top bit (sar)  GOOD
@@ -211,4 +251,8 @@ unsigned long % with bit 63    GOOD
 unsigned long > with bit 63    GOOD
 split a u64 from the kernel    GOOD
 unsigned short bit 15          GOOD
+signed char narrows on assign  GOOD
+cast to signed char sign-extends GOOD
+cast to signed short narrows   GOOD
+bare signed is int, eats nothing GOOD
 ";
