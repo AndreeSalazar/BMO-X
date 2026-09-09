@@ -114,15 +114,32 @@ impl Scheduler {
     fn choose_next(&self) -> usize {
         let mut best = None;
         let mut best_priority = 0;
+        let idle = unsafe { IDLE };
         for offset in 1..=MAX_TASKS {
             let index = (self.current + offset) % MAX_TASKS;
+            // ** LA IDLE NO COMPITE. No se le da una prioridad mas baja porque
+            // `u8` no tiene nada por debajo de 0 y ahi viven las tareas de
+            // Ring 3; se la saca del concurso y se usa de ULTIMO RECURSO. Ver
+            // la nota de `IDLE`.
+            if index == idle {
+                continue;
+            }
             let task = self.tasks[index];
             if task.state == TaskState::Ready && (best.is_none() || task.priority > best_priority) {
                 best = Some(index);
                 best_priority = task.priority;
             }
         }
-        best.unwrap_or(self.current)
+        if let Some(i) = best {
+            return i;
+        }
+        // *** NADIE TIENE TRABAJO. Antes esto devolvia `self.current`, y una
+        // tarea que se acababa de bloquear seguia corriendo. Ahora se va a la
+        // idle, que hace `hlt` -- asi bloquearse BLOQUEA.
+        if idle < MAX_TASKS && self.tasks[idle].state == TaskState::Ready {
+            return idle;
+        }
+        self.current
     }
 
     /// Free kernel stacks of exited tasks and recycle their slots.
@@ -408,6 +425,33 @@ pub(super) static SCHED_LOCK: SpinLock = SpinLock::new("sched");
 pub(super) static mut SCHEDULER: Scheduler = Scheduler::new();
 
 pub(super) static mut TSC_FREQ: u64 = 0;
+
+/// **La ranura de la tarea IDLE**, o `MAX_TASKS` si todavia no existe.
+///
+/// == *** POR QUE HACE FALTA, Y LO QUE COSTO NO TENERLA (2026-09-08) ========
+///
+/// `choose_next` acababa en `best.unwrap_or(self.current)`: si nadie mas estaba
+/// listo, devolvia **la tarea actual**, y `schedule_locked` volvia sin cambiar.
+/// Con eso, una tarea que acababa de marcarse `Blocked` --`mark_wait` dentro de
+/// `wait_current_checked`-- **seguia corriendo**.
+///
+/// ** Y eso no dio la cara hasta que `WAIT` bloqueo de verdad por primera vez,
+/// el mismo dia. El escritorio pasaba por ahi miles de veces por segundo y
+/// volvia `Blocked` pero vivo; `on_timer` lo reprogramaba en CADA tic --su
+/// estado ya no era `Running`-- sellando un contexto nuevo cada vez, y uno de
+/// los viejos acabo restaurandose dos veces:
+///
+/// ```text
+///    BMO-X has stopped -- ROTTEN CONTEXT: the seal is gone
+///    motivo=01   sello=0x00000000   dueno=tid 0003
+///    pub0..pub3 = 80000209BB00 t03   <- la MISMA area, cuatro veces
+/// ```
+///
+/// *** Con una tarea idle siempre lista, `next != current` **siempre**, asi que
+/// bloquearse bloquea de verdad y ese camino deja de existir. Es el escalon
+/// **E0** de `docs/plan/PLAN_EL_COMPAS.md`, y dejo de ser opcional el dia que
+/// el metal lo pidio con una pantalla azul.
+static mut IDLE: usize = MAX_TASKS;
 
 
 pub(super) fn sched() -> &'static mut Scheduler {
@@ -1110,6 +1154,36 @@ pub fn wait_current_checked(
 /// cada parada**, y hay dos parkers latiendo a 250 Hz. Ver la nota de
 /// `on_timer`: ahora un quantum es de quien CORRE, asi que esto suelta el CPU
 /// en el tick siguiente.
+/// **El cuerpo de la tarea IDLE**: parar el CPU hasta la interrupcion siguiente.
+///
+/// `sti; hlt` y no `hlt` a secas: si esta tarea llegara con las interrupciones
+/// apagadas, un `hlt` sin ellas es una maquina muerta. Es el mismo par que usa
+/// el camino de reposo de `core/entry.rs`.
+///
+/// ** Y no cede ni mide nada: no tiene nada que ceder. Su unico trabajo es
+/// EXISTIR para que `choose_next` tenga siempre a quien darle el turno.
+pub extern "C" fn idle_thread(_arg: u64) -> ! {
+    loop {
+        unsafe { core::arch::asm!("sti; hlt", options(nostack, preserves_flags)) };
+    }
+}
+
+/// **Arranca la tarea IDLE.** Una vez, y cuanto antes: desde este momento
+/// bloquearse bloquea de verdad. Ver la nota de `IDLE`.
+pub fn init_idle() -> Option<u32> {
+    let tid = spawn_kernel(idle_thread as *const () as usize as u64, 0, 0)?;
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    for i in 0..MAX_TASKS {
+        if s.tasks[i].tid == tid {
+            unsafe { IDLE = i };
+            break;
+        }
+    }
+    Some(tid)
+}
+
+
 pub fn park_until(deadline_tsc: u64) {
     {
         let _g = SCHED_LOCK.lock();
