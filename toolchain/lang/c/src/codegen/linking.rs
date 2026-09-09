@@ -5,6 +5,9 @@
 //! [aparece]  METAL -- saltos y direcciones. Una reubicacion mal parcheada no
 //!            falla al compilar: salta a un sitio que no existe
 //!
+//! [carril]   AMARILLO -- hay que EJECUTAR para verlo: compila en verde y falla despues
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
+//!
 //! known at the moment they are emitted.
 //!
 //! === Why this is a file of its own ===
@@ -76,8 +79,8 @@ impl Codegen {
         // anterior. Relativas al inicio del codigo, que es lo que necesita un
         // `lea [rip+disp]`.
         let rodata_len: usize = self.strings.iter().map(|s| s.len() + 1).sum();
-        let va_rodata = super::decidir::amarilla::hasta_pagina(code_len);
-        let va_data = va_rodata + super::decidir::amarilla::hasta_pagina(rodata_len);
+        let va_rodata = super::decidir::imagen::hasta_pagina(code_len);
+        let va_data = va_rodata + super::decidir::imagen::hasta_pagina(rodata_len);
 
         // rodata: las cadenas. `off_en_seccion` es el offset DENTRO de rodata,
         // no dentro del bufer -- que es la distincion que este cambio introduce.
@@ -105,7 +108,7 @@ impl Codegen {
         // VA de un global es una cosa o la otra segun de que lado caiga su
         // offset -- y nadie mas en el compilador tiene que saberlo.
         let data_len = self.global_data.len();
-        let va_bss = va_data + super::decidir::amarilla::hasta_pagina(data_len);
+        let va_bss = va_data + super::decidir::imagen::hasta_pagina(data_len);
         for &(lea_offset, ref name) in &self.global_fixups {
             if let Some(&(off, _)) = self.global_offsets.get(name) {
                 let va = if (off as usize) < data_len {

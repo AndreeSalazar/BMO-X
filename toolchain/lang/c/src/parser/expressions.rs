@@ -5,6 +5,9 @@
 //! [aparece]  DENTRO -- una PRECEDENCIA mal puesta compila igual y calcula
 //!            otra cosa. `a - b * c` no da error: da un numero
 //!
+//! [carril]   ROJO     -- nadie te sujeta: compila, pasa el banco, y el sintoma sale LEJOS
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
+//!
 //!
 //! === Why this is a file of its own ===
 //!

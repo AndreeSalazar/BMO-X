@@ -5,6 +5,9 @@
 //! [aparece]  AQUI -- un byte que no es un token es un error de compilacion,
 //!            en la linea que lo trae
 //!
+//! [carril]   VERDE    -- si se rompe, ALGUIEN TE LO DICE antes de que salga de aqui
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
+//!
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Token {

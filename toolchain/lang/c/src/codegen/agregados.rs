@@ -5,6 +5,9 @@
 //! [aparece]  DENTRO -- structs por valor: copiar de menos deja medio objeto
 //!            sin inicializar
 //!
+//! [carril]   ROJO     -- nadie te sujeta: compila, pasa el banco, y el sintoma sale LEJOS
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
+//!
 //!
 //! === Por que esto es un fichero aparte ===
 //!

@@ -5,6 +5,9 @@
 //! [aparece]  DENTRO -- las preguntas que se le hacen a un tipo al emitir.
 //!            Contestar mal es emitir `div` donde iba `idiv`
 //!
+//! [carril]   ROJO     -- nadie te sujeta: compila, pasa el banco, y el sintoma sale LEJOS
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
+//!
 //!
 //! === Why this is a file of its own, and it is a rule ===
 //!

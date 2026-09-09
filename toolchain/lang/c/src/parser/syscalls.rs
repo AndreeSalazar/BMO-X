@@ -5,6 +5,9 @@
 //! [aparece]  METAL -- una puerta mal resuelta compila y solo falla cuando el
 //!            kernel la recibe
 //!
+//! [carril]   AMARILLO -- hay que EJECUTAR para verlo: compila en verde y falla despues
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
+//!
 //!
 //! === Why this is a file of its own ===
 //!

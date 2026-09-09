@@ -5,6 +5,9 @@
 //! [aparece]  DENTRO -- donde vive cada local. Un desplazamiento de mas pisa
 //!            la pila y el sintoma sale tres funciones despues
 //!
+//! [carril]   ROJO     -- nadie te sujeta: compila, pasa el banco, y el sintoma sale LEJOS
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
+//!
 //!
 //! === Why this is a file of its own ===
 //!

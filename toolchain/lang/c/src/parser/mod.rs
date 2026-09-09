@@ -5,6 +5,9 @@
 //! [aparece]  AQUI -- una gramatica que no casa no produce arbol: para y
 //!            senala
 //!
+//! [carril]   VERDE    -- si se rompe, ALGUIEN TE LO DICE antes de que salga de aqui
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
+//!
 
 pub mod preprocessor;
 /// Las listas `{ ... }`, en su propio fichero. Ver su cabecera para el porque del

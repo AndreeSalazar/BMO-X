@@ -4,6 +4,9 @@
 //!
 //! [aparece]  AQUI -- una forma que no existe se ve al parsear
 //!
+//! [carril]   VERDE    -- si se rompe, ALGUIEN TE LO DICE antes de que salga de aqui
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
+//!
 //!
 //! === Why this is a file of its own ===
 //!

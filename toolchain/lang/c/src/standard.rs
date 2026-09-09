@@ -5,6 +5,9 @@
 //! [aparece]  AQUI -- elegir mal el estandar apaga una palabra clave, y el
 //!            parser lo dice al momento
 //!
+//! [carril]   VERDE    -- si se rompe, ALGUIEN TE LO DICE antes de que salga de aqui
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
+//!
 //! Cada version es un TOML en forge/sem-asm/tables/standards/C/ (titulo propio),
 //! y todas se unen aqui en StandardFeatures: un solo mecanismo de gating.
 //!

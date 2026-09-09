@@ -2,6 +2,9 @@
 //!
 //! [aparece]  DENTRO -- el despachador de expresiones. Un byte de mas calcula
 //!            otra cosa en silencio
+//!
+//! [carril]   ROJO     -- nadie te sujeta: compila, pasa el banco, y el sintoma sale LEJOS
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
 
 use std::collections::HashMap;
 use bmo_abi::bef::writer::{BefBuilder, BefSection};
@@ -18,6 +21,10 @@ use crate::CError;
 // descubrir que el plegador de constantes llevaba meses completo y el emisor
 // de expresiones no le preguntaba. Ver `decidir/mod.rs`.
 mod decidir;
+
+// ** LOS TRES EMISORES. `emit_expr` eran 600 lineas y cincuenta formas en un
+// solo `match`. Ver `emitir/mod.rs`: el despacho sigue siendo EXHAUSTIVO.
+mod emitir;
 
 mod agregados;
 /// INTERNAL LINKING: jumps, calls and function addresses. Everything emitted
@@ -434,7 +441,7 @@ impl Codegen {
                             continue;
                         }
                     }
-                    let Some(valor) = decidir::roja::constante_de(&e.valor) else {
+                    let Some(valor) = decidir::plegado::constante_de(&e.valor) else {
                         self.errors.push(format!(
                             "en la tabla global '{name}', el valor del offset {} no es una \
                              constante entera, ni una cadena, ni una funcion de esta unidad",
@@ -501,7 +508,7 @@ impl Codegen {
                 // Ahora se dice. Un cero inventado es la peor respuesta a "no se
                 // hacer esto": es un valor legitimo, asi que el error viaja
                 // hasta donde ya no se puede rastrear.
-                let literal = init.as_ref().and_then(|e| decidir::roja::constante_de(&e));
+                let literal = init.as_ref().and_then(|e| decidir::plegado::constante_de(&e));
                 match (init, literal) {
                     (_, Some(n)) => {
                         let bytes: Vec<u8> = match size {
@@ -835,7 +842,7 @@ impl Codegen {
         match interior.as_ref() {
             Expr::Var(n) => Some((n.clone(), 0)),
             Expr::Subscript(n, idx) => {
-                let i = decidir::roja::constante_de(idx)?;
+                let i = decidir::plegado::constante_de(idx)?;
                 Some((n.clone(), i * (self.paso_de_elemento(n) as i64)))
             }
             _ => None,
@@ -943,7 +950,7 @@ impl Codegen {
             .chain(self.relocs_a_funcion.iter().map(|&(off, _)| off))
             .collect::<Vec<u32>>();
         for off in escrituras {
-            if let Some(i) = decidir::amarilla::region_de(&regiones, off) {
+            if let Some(i) = decidir::imagen::region_de(&regiones, off) {
                 anclado[i] = true;
             }
         }
@@ -955,7 +962,7 @@ impl Codegen {
             .filter_map(|(_, gname, _)| self.global_offsets.get(gname).map(|&(off, _)| off))
             .collect::<Vec<u32>>();
         for off in destinos {
-            if let Some(i) = decidir::amarilla::region_de(&regiones, off) {
+            if let Some(i) = decidir::imagen::region_de(&regiones, off) {
                 anclado[i] = true;
             }
         }
@@ -998,7 +1005,7 @@ impl Codegen {
         // caer DENTRO de un global (una tabla se parchea por elementos), asi que
         // se traslada su region y se conserva la distancia al principio.
         let traducir = |viejo: u32| -> u32 {
-            match decidir::amarilla::region_de(&regiones, viejo) {
+            match decidir::imagen::region_de(&regiones, viejo) {
                 Some(i) => nuevo_de[&regiones[i].0] + (viejo - regiones[i].0),
                 None => viejo,
             }
@@ -1359,627 +1366,6 @@ impl Codegen {
 
     fn emit_drop(&mut self) {}
 
-    // ---- Expression emit ----
-    fn emit_expr(&mut self, expr: &Expr) {
-        // Guard SSE: una expresion FLOTANTE que llega a la ruta entera esta en
-        // contexto entero (int x = 1.5; return d;) -> calcular en xmm y truncar
-        // a rax (cvttsd2si). Las comparaciones dan int 0/1 (no son float) y se
-        // manejan abajo. emit_fexpr_operand solo llama aqui para NO-floats, asi
-        // que no hay recursion infinita.
-        // === *** LO QUE YA SE SABE NO SE CALCULA (2026-09-09) ================
-        //
-        // Antes que nada se le pregunta a `decidir/`. Si la expresion entera es
-        // una constante que no depende del signo, sale UNA instruccion en vez
-        // del arbol completo con sus `push`, sus `pop` y su operador.
-        //
-        // ** Y esto es lo que mata el `imul` de la suma de punteros: `p + 1`
-        // construye `Mul(Int(1), Int(tamano))` en el arbol, y ese producto llega
-        // aqui como una expresion suya. Plegar solo la raiz no lo habria visto
-        // -- `p + (1*8)` no es constante, porque `p` no lo es.
-        //
-        // [!] `recortar_a_32` se llama IGUAL despues, y eso no es prudencia: es
-        // lo unico que hace que esta rama y la larga sean la misma. Sin el, una
-        // constante que no cabe en `int` se guardaria entera aqui y truncada
-        // por el otro camino -- dos programas distintos segun por donde pase.
-        if let Some(v) = decidir::roja::constante_para_emitir(expr) {
-            self.emit_mov_rax_imm(v);
-            self.recortar_a_32(expr);
-            return;
-        }
-
-        let saltar_guarda = core::mem::take(&mut self.sin_guarda_float);
-        if !saltar_guarda && self.expr_is_float(expr) {
-            self.emit_fexpr(expr);
-            self.code.extend_from_slice(&[0xF2, 0x48, 0x0F, 0x2C, 0xC0]); // cvttsd2si rax, xmm0
-            return;
-        }
-        match expr {
-            // ** SIETE BYTES EN VEZ DE DIEZ cuando el numero cabe en 32 bits.
-            // `48 C7 C0` extiende el signo, que es justo lo que un `i64` que
-            // cabe en `i32` necesita. Ver `emit_mov_rax_imm`.
-            Expr::Int(n) => self.emit_mov_rax_imm(*n),
-            // El guard SSE de arriba ya captura los floats; este brazo solo
-            // existe por exhaustividad (defensivo: trunca a entero).
-            Expr::FloatLit(_) => {
-                self.emit_fexpr(expr);
-                self.code.extend_from_slice(&[0xF2, 0x48, 0x0F, 0x2C, 0xC0]); // cvttsd2si rax, xmm0
-            }
-            Expr::CharLit(c) => {
-                self.emit_mov_rax_imm(*c as i64);
-            }
-            Expr::StringLit(s) => {
-                // lea rax, [rip + disp] -- fixup patched in patch_string_fixups
-                self.code.extend_from_slice(&[0x48, 0x8D, 0x05, 0, 0, 0, 0]);
-                let idx = self.strings.iter().position(|t| t == s).unwrap_or(0);
-                self.fixups.push(Fixup { lea_offset: self.code.len() - 4, string_idx: idx });
-            }
-            Expr::Var(name) => {
-                self.emit_load_var(name);
-            }
-            Expr::Call(name, args) => {
-                // * Las funciones de biblioteca que se emiten EN LINEA.
-                //
-                // No hay libreria que enlazar, y no es una carencia: es el
-                // modelo. Un `.bex` es una imagen entera y BEF no resuelve
-                // relocaciones contra un `.so`. Emitir el bucle cuesta treinta
-                // bytes y ahorra un enlazador, un formato de libreria y un
-                // cargador dinamico.
-                //
-                // Lo que se emite vive en `bmo_lower::memoria` (L1) porque
-                // "mueve estos bytes" no tiene semantica de lenguaje: COBOL
-                // mueve grupos y Ada asigna arrays con la misma emision. Aqui
-                // solo se pone el nombre que usa C.
-                if let Some(n) = self.emitir_biblioteca(name, args) {
-                    let _ = n;
-                    return;
-                }
-                // Special case: printf -> emit bmo_printf from userland_ring3
-                if name == "printf" && !args.is_empty() {
-                    self.emit_printf_variadic(args);
-                    return;
-                }
-                // La pareja de `printf`: se emiten EN LINEA por lo mismo -- aqui
-                // no hay libc que enlazar ni simbolo que nadie resuelva.
-                if name == "getchar" && args.is_empty() {
-                    self.emit_getchar();
-                    return;
-                }
-                if name == "scanf" && !args.is_empty() {
-                    self.emit_scanf(args);
-                    return;
-                }
-                // Llamada INDIRECTA? El nombre no es una funcion pero SI una
-                // variable -> contiene una direccion (puntero a funcion).
-                let is_indirect = !self.known_functions.contains(name)
-                    && (self.var_offsets.contains_key(name) || self.global_offsets.contains_key(name));
-
-                // -- Los argumentos, de derecha a izquierda --
-                //
-                // Cuantas ranuras ocupa cada uno lo dice el PARAMETRO, no la
-                // expresion: un `struct` de 12 bytes ocupa dos aunque quien lo
-                // pase sea una variable. Si no hay firma --llamada indirecta por
-                // puntero-- se supone una ranura, que es lo que era antes.
-                let tipos_param: Vec<TypeSpec> = self
-                    .firmas
-                    .get(name)
-                    .map(|(p, _)| p.clone())
-                    .unwrap_or_default();
-                let mut ranuras_total = 0u32;
-                for (i, arg) in args.iter().enumerate().rev() {
-                    match tipos_param.get(i) {
-                        Some(t) if self.es_agregado(t) => {
-                            let bytes = self.type_stack_size(t);
-                            ranuras_total += agregados::ranuras(bytes);
-                            self.emit_empuja_agregado(arg, bytes);
-                        }
-                        // Un parametro de coma flotante viaja como sus BITS.
-                        // Sin esto, `emit_expr` truncaria a entero y `fabs(-2.5)`
-                        // recibiria `-2`.
-                        Some(t) if Self::is_float_ty(t) => {
-                            ranuras_total += 1;
-                            let estrecho = matches!(t, TypeSpec::Float);
-                            self.emit_empuja_flotante(arg, estrecho);
-                        }
-                        _ => {
-                            ranuras_total += 1;
-                            self.emit_expr(arg);
-                            self.code.push(0x50); // push rax
-                        }
-                    }
-                }
-                // Devolver un agregado es un tercer mecanismo (puntero oculto)
-                // y todavia no esta. Se dice: devolver ocho bytes de un struct
-                // de doce seria la clase de mentira que este compilador no
-                // cuenta.
-                if let Some((_, ret)) = self.firmas.get(name) {
-                    if self.es_agregado(&ret.clone()) {
-                        self.errors.push(format!(
-                            "'{name}' devuelve un struct por valor, y eso aun no se compila \
-                             (pasa un puntero al destino como parametro)"
-                        ));
-                    }
-                }
-                if is_indirect {
-                    self.emit_load_var(name);                 // rax = direccion
-                    self.code.extend_from_slice(&[0xFF, 0xD0]); // call rax
-                } else {
-                    // call rel32 placeholder (directa)
-                    self.code.extend_from_slice(&[0xE8]);
-                    self.call_relocs.push(CallReloc { offset: self.code.len(), target: name.clone() });
-                    self.code.extend_from_slice(&[0, 0, 0, 0]);
-                    // Track stdlib imports for Ring 3 apps
-                    if self.target == TargetProfile::Ring3App && !self.function_offsets.contains_key(name) {
-                        self.stdlib_imports.insert(name.clone());
-                    }
-                }
-                // Se quita de la pila lo que se PUSO, que ya no es una ranura
-                // por argumento.
-                let n = ranuras_total * 8;
-                if n > 0 {
-                    if n <= 127 {
-                        self.code.extend_from_slice(&[0x48, 0x83, 0xC4, n as u8]);
-                    } else {
-                        self.code.extend_from_slice(&[0x48, 0x81, 0xC4]);
-                        self.code.extend_from_slice(&n.to_le_bytes());
-                    }
-                }
-            }
-            Expr::Syscall(def, args) => {
-                // x86-64 SysV ABI syscall convention:
-                // args: rdi, rsi, rdx, r10, r8, r9  ->  result in rax.
-                // El `mov <reg>, rax` lo emite el encoder sem-asm (antes era
-                // la tabla reg_mov de bytes a mano -- misma dup que COBOL).
-                use bmo_sem_asm::x86_64::Reg;
-                const ARG_REGS: [Reg; 6] =
-                    [Reg::Rdi, Reg::Rsi, Reg::Rdx, Reg::R10, Reg::R8, Reg::R9];
-                for (i, arg) in args.iter().enumerate() {
-                    if i < 6 {
-                        self.emit_expr(arg);          // rax = expr value
-                        let dst = ARG_REGS[i];
-                        self.emit_asm(|a| { a.mov_reg(dst, Reg::Rax).unwrap(); });
-                    }
-                }
-                self.code.extend_from_slice(&[0xB8]);        // mov eax, imm32
-                self.code.extend_from_slice(&def.nr.to_le_bytes());
-                self.emit_call_to_syscall_stub();
-            }
-            Expr::Assign(name, val) => {
-                // `p = q` con `p` agregado: se copian sus BYTES, todos.
-                //
-                // Antes caia al camino normal --`mov rax,[q]` + `mov [p],rax`--
-                // que se lleva ocho y deja el resto con lo que hubiera. Un
-                // struct de 12 se copiaba a medias, en silencio.
-                if let Some(t) = self.var_type_of(name) {
-                    if self.es_agregado(&t) {
-                        let bytes = self.type_stack_size(&t);
-                        let destino = Expr::Var(name.clone());
-                        self.emit_asigna_agregado(&destino, val, bytes);
-                        return;
-                    }
-                }
-                // Asignacion a variable float/double -> ruta SSE.
-                if self.var_type_of(name).map_or(false, |t| Self::is_float_ty(&t)) {
-                    self.emit_fexpr_operand(val);
-                    self.store_float_var(name);
-                } else {
-                    self.emit_expr(val);
-                    self.emit_store_var(name);
-                }
-            }
-            Expr::Neg(a) => self.emit_unario(a, 0xD8, expr),
-            // ** `!x` -- Y AQUI FALTABA EL `movzx`, QUE NO ES DECORATIVO.
-            //
-            // Era `test eax,eax` + `sete al`, y nada mas. `setcc` **solo escribe
-            // `al`**: los 56 bits altos de `rax` se quedan como estaban. Con un
-            // operando negativo --`rax = 0xFFFF_FFFF_FFFF_FFFA` para un -6-- el
-            // `sete` pone `al = 0` y deja `0xFFFF_FFFF_FFFF_FF00`, o sea
-            // **`!(-6)` valia -256**. Que en un `if` es VERDADERO.
-            //
-            // Lo que eso significa en C de verdad: `if (!strcmp(a, b))` --el
-            // idioma mas comun del lenguaje para comparar cadenas-- **acertaba
-            // cuando `a` era MENOR que `b`**, porque `strcmp` contesta negativo.
-            // En DOOM, `M_CheckParmWithArgs("-config", ...)` casaba con
-            // `-iwad` ('c' < 'i'), y por eso el juego anunciaba
-            // `saving config in apps/doom1.wad`: iba a escribir su
-            // configuracion ENCIMA DEL WAD.
-            //
-            // [!] La leccion ya estaba aprendida **en este mismo fichero**:
-            // `emit_cmp` lleva su `movzx` con un comentario que dice justo esto,
-            // *"el movzx del final NO es decorativo"*. Se aprendio en un sitio y
-            // no se aplico en el de al lado.
-            //
-            // Y el `test` pasa a 64 bits (`48 85 C0`) a proposito: `!p` sobre un
-            // puntero tiene que mirar el puntero ENTERO. Con `test eax,eax`, una
-            // direccion cuyos 32 bits bajos fueran cero se declaraba nula.
-            Expr::Not(a) => {
-                self.emit_expr(a);
-                self.code.extend_from_slice(&[0x48, 0x85, 0xC0]); // test rax, rax
-                self.code.extend_from_slice(&[0x0F, 0x94, 0xC0]); // sete al
-                self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
-            }
-            Expr::BitNot(a) => self.emit_unario(a, 0xD0, expr),
-            Expr::PreInc(name) => {
-                self.emit_inc_var(name);
-                // rax already has new value
-            }
-            Expr::PreDec(name) => {
-                self.emit_dec_var(name);
-            }
-            Expr::PostInc(name) => {
-                self.emit_load_var(name);
-                self.code.push(0x50); // push old value
-                self.emit_inc_var(name);
-                self.code.push(0x58); // pop rax (old value)
-            }
-            Expr::PostDec(name) => {
-                self.emit_load_var(name);
-                self.code.push(0x50);
-                self.emit_dec_var(name);
-                self.code.push(0x58);
-            }
-            // `*p` debe leer el TAMANO DEL APUNTADO, no siempre 8 bytes.
-            // Antes `*(p+1)` con `int *p` leia 8 bytes desde la posicion
-            // correcta, o sea dos enteros pegados: devolvia 504403158366158848
-            // en vez de 6.
-            Expr::Deref(a) => self.emit_leer_por_puntero(a),
-            Expr::AddrOf(inner) => {
-                match inner.as_ref() {
-                    Expr::Var(name) => {
-                        if let Some(&(offset, _)) = self.var_offsets.get(name) {
-                            if offset >= -128 && offset <= 127 {
-                                self.code.extend_from_slice(&[0x48, 0x8D, 0x45, offset as u8]);
-                            } else {
-                                self.code.extend_from_slice(&[0x48, 0x8D, 0x85]);
-                                self.code.extend_from_slice(&(offset as i32).to_le_bytes());
-                            }
-                        } else if self.global_offsets.contains_key(name) {
-                            self.code.extend_from_slice(&[0x48, 0x8D, 0x05, 0, 0, 0, 0]);
-                            self.global_fixups.push((self.code.len() - 4, name.clone()));
-                        } else if self.known_functions.contains(name) {
-                            // &myfunc -- direccion de la funcion
-                            self.emit_func_addr(name);
-                        } else { self.emit_xor_eax(); }
-                    }
-                    Expr::Subscript(name, idx) => {
-                        self.emit_subscript_addr(name, idx);
-                    }
-                    Expr::Deref(ptr) => {
-                        self.emit_expr(ptr); // rax = address of the pointed-to data
-                    }
-                    // ** LAS TRES QUE FALTABAN, y las tres MATARON A DOOM.
-                    //
-                    // `&c->defaults[i]` es `AddrOf(IndexPtr(..))`, y hasta el
-                    // 2026-08-13 caia en el `_` de abajo: la direccion salia
-                    // CERO, en silencio, y `SearchCollection` de `m_config.c`
-                    // devolvia `NULL` habiendo ENCONTRADO su entrada. DOOM se
-                    // mataba con `I_Error` a 56.465 lineas de aqui.
-                    //
-                    // Las tres son la version SIN CARGA de los brazos que ya
-                    // existen mas abajo: `Field`, `Arrow` e `IndexPtr` calculan
-                    // la direccion y luego llaman a `emit_load_elem`. Tomar la
-                    // direccion es exactamente eso menos el ultimo paso.
-                    Expr::IndexPtr(base, index) => {
-                        let elem = &self.pointee_type(base).unwrap_or(TypeSpec::Long);
-                        self.emit_index_ptr_addr(base, index, &elem.clone());
-                    }
-                    Expr::Field(base, _campo) => {
-                        let offset = &self.offset_de_valor(base, _campo);
-                        self.emit_expr_as_ptr(base);
-                        self.emit_add_offset(*offset);
-                    }
-                    Expr::Arrow(ptr, _campo) => {
-                        let offset = &self.offset_por_puntero(ptr, _campo);
-                        self.emit_expr(ptr);
-                        self.emit_add_offset(*offset);
-                    }
-                    // ** Y ESTE BRAZO YA NO RELLENA DE CEROS: GRITA.
-                    //
-                    // Era la tercera vez que el mismo `_ =>` mudo costaba un
-                    // dia de fotos --el `char *mapa` del raycaster
-                    // (`2bc13367`), las relocations que no existian
-                    // (`46506e51`), y esta--. El patron es siempre el mismo:
-                    // un brazo por defecto que produce un valor LEGITIMO (cero
-                    // es una direccion valida de escribir en cualquier
-                    // expresion) para el caso "no supe traducirlo".
-                    //
-                    // Un compilador que no sabe tomar una direccion tiene que
-                    // decirlo AQUI, donde la frase esta entera, y no dejar que
-                    // el programa lo descubra en metal.
-                    otro => {
-                        self.errors.push(format!(
-                            "no se de que forma tomar la direccion de esta expresion: {otro:?}"
-                        ));
-                        self.emit_xor_eax();
-                    }
-                }
-            }
-            Expr::Subscript(name, index) => {
-                // direccion exacta (array o puntero) + carga del TAMANO del elemento
-                self.emit_subscript_addr(name, index);
-                let elem = self.elem_type_of(name);
-                self.emit_load_elem(&elem);
-            }
-            // ** `E1 op= E2` con la direccion de `E1` calculada UNA vez.
-            Expr::AssignOp(lvalue, kind, rhs) => self.emit_assign_op(lvalue, *kind, rhs),
-            Expr::AssignSubscript(name, index, val) => {
-                self.emit_expr(val);          // rax = valor
-                self.code.push(0x50);         // push valor
-                self.emit_subscript_addr(name, index); // rax = direccion
-                self.code.push(0x5A);         // pop rdx = valor
-                let elem = self.elem_type_of(name);
-                self.emit_store_elem(&elem);  // [rax] = rdx (tamano exacto)
-                self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // rax = valor (resultado del assign)
-            }
-            Expr::IndexPtr(base, index) => {
-                let elem = &self.pointee_type(base).unwrap_or(TypeSpec::Long);
-                // p->arr[i]: direccion = base(puntero) + i*sizeof(elem), luego load
-                self.emit_index_ptr_addr(base, index, elem);
-                self.emit_load_elem(&elem.clone());
-            }
-            Expr::AssignIndexPtr(base, index, val) => {
-                let elem = &self.pointee_type(base).unwrap_or(TypeSpec::Long);
-                self.emit_expr(val);          // rax = valor
-                self.code.push(0x50);         // push valor
-                self.emit_index_ptr_addr(base, index, elem); // rax = direccion
-                self.code.push(0x5A);         // pop rdx = valor
-                self.emit_store_elem(&elem.clone());
-                self.code.extend_from_slice(&[0x48, 0x89, 0xD0]);
-            }
-            Expr::CallPtr(callee, args) => {
-                // *** `(*f)(x)` ES `f(x)`. Desreferenciar un puntero a funcion
-                // es un NO-OP, y aqui se emitia como una carga de memoria.
-                //
-                // C11 6.5.3.2p4: si el operando de `*` apunta a una funcion, el
-                // resultado es un DESIGNADOR DE FUNCION. Y 6.5.2.2p1 exige que
-                // lo llamado sea un puntero a funcion, asi que ese designador
-                // vuelve a decaer inmediatamente. Las tres formas son la misma:
-                //
-                //     f(x)      (*f)(x)      (**f)(x)
-                //
-                // ** Sin pelar el `*`, `emit_expr` cargaba OCHO BYTES DE LA
-                // DIRECCION DE LA FUNCION --o sea el principio de su codigo-- y
-                // llamaba a eso. El metal lo dijo con todas las letras el
-                // 2026-09-03, con DOOM ya jugandose:
-                //
-                //     #GP  ff d0  -> wipe_ScreenWipe+0xa8
-                //     *** PUNTERO NO CANONICO: bits 63:48 no copian el bit 47
-                //
-                // `f_wipe.c:282` escribe `rc = (*wipes[wipeno*3+1])(w, h, t)`,
-                // que es el estilo K&R de toda la vida. La tabla estaba BIEN
-                // --sus reubicaciones funcionan, `t[0](10)` acierta-- y lo que
-                // fallaba era la estrella.
-                //
-                // [!] Se pela en bucle: `(**f)(x)` es igual de legal.
-                let mut destino: &Expr = callee;
-                while let Expr::Deref(dentro) = destino {
-                    destino = dentro;
-                }
-                // (*fp)(args): args a la pila, callee da la direccion, call rax
-                for arg in args.iter().rev() {
-                    self.emit_expr(arg);
-                    self.code.push(0x50);
-                }
-                self.emit_expr(destino);                    // rax = direccion de la funcion
-                self.code.extend_from_slice(&[0xFF, 0xD0]); // call rax
-                let n = args.len() as u32 * 8;
-                if n > 0 {
-                    if n <= 127 { self.code.extend_from_slice(&[0x48, 0x83, 0xC4, n as u8]); }
-                    else { self.code.extend_from_slice(&[0x48, 0x81, 0xC4]); self.code.extend_from_slice(&n.to_le_bytes()); }
-                }
-            }
-            // Tras `emit_binop`: rdx = operando IZQUIERDO, rax = DERECHO.
-            // Los operadores conmutativos daban igual; los que no lo son
-            // estaban invertidos y nadie lo vio hasta ejecutarlos.
-            // `p + n` con `p` puntero avanza n ELEMENTOS, no n bytes. Antes
-            // sumaba bytes: con `int *p`, `*(p+1)` leia desde el byte 1 en
-            // vez del 4, o sea a caballo entre dos enteros.
-            Expr::Add(a, b) => {
-                if let Some(scale) = self.pointer_scale(a) {
-                    let scaled = Expr::Mul(b.clone(), Box::new(Expr::Int(scale as i64)));
-                    self.emit_binop(a, &scaled, &[0x48, 0x01, 0xD0]);
-                } else if let Some(scale) = self.pointer_scale(b) {
-                    let scaled = Expr::Mul(a.clone(), Box::new(Expr::Int(scale as i64)));
-                    self.emit_binop(&scaled, b, &[0x48, 0x01, 0xD0]);
-                } else {
-                    self.emit_binop(a, b, &[0x48, 0x01, 0xD0]);
-                }
-                self.recortar_a_32(expr);
-            }
-            // `a - b`. Antes: `sub rax, rdx` = b - a, o sea al reves.
-            // `10 - 3` daba -7.
-            Expr::Sub(a, b) => {
-                const SUB: &[u8] = &[
-                    0x48, 0x29, 0xC2, // sub rdx, rax   -> rdx = a - b
-                    0x48, 0x89, 0xD0, // mov rax, rdx
-                ];
-                // `p - n` retrocede n ELEMENTOS.
-                match (self.pointer_scale(a), self.pointer_scale(b)) {
-                    (Some(scale), None) => {
-                        let scaled = Expr::Mul(b.clone(), Box::new(Expr::Int(scale as i64)));
-                        self.emit_binop(a, &scaled, SUB);
-                    }
-                    // ** PUNTERO MENOS PUNTERO DA UN INDICE, NO UNOS BYTES.
-                    //
-                    // El comentario que habia aqui decia que este caso *"no se
-                    // deduce aqui"* -- o sea, hueco reconocido y sin cerrar. Y
-                    // el resultado era plausible y equivocado: con `int *`,
-                    // `b - a` sobre cinco elementos contestaba **20**.
-                    //
-                    // Es la cuenta inversa de `p + n`: aquella multiplica por el
-                    // tamano del elemento, esta divide. Y la division va CON
-                    // SIGNO, porque `a - b` con `a` antes que `b` es negativo y
-                    // eso es legal en C -- una division sin signo lo convertiria
-                    // en un numero gigante.
-                    //
-                    // Lo destapo la sonda del lenguaje, no un arranque.
-                    (Some(scale), Some(_)) if scale > 1 => {
-                        self.emit_binop(a, b, SUB);
-                        // mov rcx, scale ; cqo ; idiv rcx
-                        self.code.extend_from_slice(&[0x48, 0xC7, 0xC1]);
-                        self.code.extend_from_slice(&scale.to_le_bytes());
-                        self.code.extend_from_slice(&[0x48, 0x99]);
-                        self.code.extend_from_slice(&[0x48, 0xF7, 0xF9]);
-                    }
-                    _ => self.emit_binop(a, b, SUB),
-                }
-                self.recortar_a_32(expr);
-            }
-            Expr::Mul(a, b) => {
-                self.emit_binop(a, b, &[0x48, 0x0F, 0xAF, 0xC2]);
-                self.recortar_a_32(expr);
-            }
-            // `a / b` CON SIGNO. Antes hacia dos `pop` habiendo empujado una
-            // sola vez --se llevaba un valor de la pila que no era suyo-- y
-            // ademas dividia sin signo. `10 / 3` daba 0.
-            //
-            // ** Y SIN SIGNO es `div` con `rdx` a CERO, no `cqo`+`idiv`.
-            // `cqo` extiende el signo de `rax` a `rdx`, o sea que con el bit 63
-            // puesto deja `rdx = -1` y la division de 128 bits se hace sobre un
-            // dividendo negativo. Ver `expr_is_unsigned`.
-            Expr::Div(a, b) => {
-                if self.expr_is_unsigned(a) || self.expr_is_unsigned(b) {
-                    self.emit_binop(a, b, &[
-                        0x48, 0x89, 0xC1, // mov rcx, rax   -> divisor = b
-                        0x48, 0x89, 0xD0, // mov rax, rdx   -> dividendo = a
-                        0x48, 0x31, 0xD2, // xor rdx, rdx   -> la mitad alta, a cero
-                        0x48, 0xF7, 0xF1, // div rcx
-                    ])
-                } else {
-                    self.emit_binop(a, b, &[
-                        0x48, 0x89, 0xC1, // mov rcx, rax
-                        0x48, 0x89, 0xD0, // mov rax, rdx
-                        0x48, 0x99,       // cqo            -> extiende el signo
-                        0x48, 0xF7, 0xF9, // idiv rcx
-                    ])
-                }
-            }
-            // `a % b`: el resto queda en rdx.
-            Expr::Mod(a, b) => {
-                if self.expr_is_unsigned(a) || self.expr_is_unsigned(b) {
-                    self.emit_binop(a, b, &[
-                        0x48, 0x89, 0xC1, // mov rcx, rax
-                        0x48, 0x89, 0xD0, // mov rax, rdx
-                        0x48, 0x31, 0xD2, // xor rdx, rdx
-                        0x48, 0xF7, 0xF1, // div rcx
-                        0x48, 0x89, 0xD0, // mov rax, rdx  -> el resto
-                    ])
-                } else {
-                    self.emit_binop(a, b, &[
-                        0x48, 0x89, 0xC1, // mov rcx, rax
-                        0x48, 0x89, 0xD0, // mov rax, rdx
-                        0x48, 0x99,       // cqo
-                        0x48, 0xF7, 0xF9, // idiv rcx
-                        0x48, 0x89, 0xD0, // mov rax, rdx  -> el resto
-                    ])
-                }
-            }
-            // Comparaciones: si algun operando es float -> comisd (setcc unsigned);
-            // si no, la comparacion entera de siempre.
-            // Comparaciones enteras: todas comparan `a` contra `b` en ese
-            // orden y usan el setcc que les toca. Antes `<`, `>` y `>=`
-            // comparaban al reves --`1 < 2` daba 0-- porque la comparacion se
-            // hacia sobre `b - a` con el setcc de la forma directa.
-            Expr::Eq(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x94) } else { self.emit_cmp(a, b, 0x94) },
-            Expr::Neq(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x95) } else { self.emit_cmp(a, b, 0x95) },
-            // ** Las cuatro de ORDEN llevan DOS `setcc`: con signo y sin el.
-            //
-            // `setl`/`setb` no son la misma instruccion porque `<` no es la
-            // misma pregunta: `0x8000000000000000 > 1` es cierto para un
-            // `unsigned long` y falso para un `long`. Las de igualdad (`==`,
-            // `!=`) no cambian -- dos patrones de bits son iguales o no lo son,
-            // y eso no depende de como se lean.
-            //
-            // El `setcc` sin signo es el de flotante: `comisd` deja las
-            // banderas en la forma no ordenada, y esos son justo los codigos
-            // `setb`/`seta`/`setbe`/`setae`. Por eso el brazo de float ya los
-            // usaba y el entero no.
-            Expr::Lt(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x92) }
-                else if self.expr_is_unsigned(a) || self.expr_is_unsigned(b) { self.emit_cmp(a, b, 0x92) }
-                else { self.emit_cmp(a, b, 0x9C) },
-            Expr::Gt(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x97) }
-                else if self.expr_is_unsigned(a) || self.expr_is_unsigned(b) { self.emit_cmp(a, b, 0x97) }
-                else { self.emit_cmp(a, b, 0x9F) },
-            Expr::Le(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x96) }
-                else if self.expr_is_unsigned(a) || self.expr_is_unsigned(b) { self.emit_cmp(a, b, 0x96) }
-                else { self.emit_cmp(a, b, 0x9E) },
-            Expr::Ge(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x93) }
-                else if self.expr_is_unsigned(a) || self.expr_is_unsigned(b) { self.emit_cmp(a, b, 0x93) }
-                else { self.emit_cmp(a, b, 0x9D) },
-            Expr::BitAnd(a, b) => self.emit_binop(a, b, &[0x48, 0x21, 0xD0]),
-            Expr::BitXor(a, b) => self.emit_binop(a, b, &[0x48, 0x31, 0xD0]),
-            Expr::BitOr(a, b) => self.emit_binop(a, b, &[0x48, 0x09, 0xD0]),
-            // `a << b` / `a >> b`. Antes desplazaban el operando DERECHO por
-            // el izquierdo: `1 << 3` intentaba `3 << 1`.
-            //
-            // A la izquierda no hay dos versiones: `shl` y `sal` son la misma
-            // instruccion. A la derecha si -- `sar` copia el bit de signo y
-            // `shr` mete ceros -- y **manda el operando IZQUIERDO**, no la
-            // conversion usual: `1u >> x` es sin signo aunque `x` sea `int`.
-            Expr::Shl(a, b) => self.emit_desplazamiento(a, b, true, expr),
-            Expr::Shr(a, b) => self.emit_desplazamiento(a, b, false, expr),
-            // `&&` y `||` valen 0 o 1, no "el operando que quedo". Antes
-            // `0 || 3` daba 3: cortocircuitaba bien pero devolvia el valor
-            // crudo, y el estandar dice que el resultado es `int` 0/1.
-            Expr::LAnd(a, b) => {
-                let end = self.fresh_label();
-                self.emit_expr(a);
-                self.code.extend_from_slice(&[0x85, 0xC0]);
-                self.emit_jz_reloc(end);
-                self.emit_expr(b);
-                self.resolve_label(end);
-                self.emit_normalize_bool();
-            }
-            Expr::LOr(a, b) => {
-                let end = self.fresh_label();
-                self.emit_expr(a);
-                self.code.extend_from_slice(&[0x85, 0xC0]);
-                self.emit_jnz_reloc(end);
-                self.emit_expr(b);
-                self.resolve_label(end);
-                self.emit_normalize_bool();
-            }
-            Expr::Conditional(c, t, f) => {
-                let else_lbl = self.fresh_label();
-                let end_lbl = self.fresh_label();
-                self.emit_test_cond(c, else_lbl);
-                self.emit_expr(t);
-                self.emit_jmp_reloc(end_lbl);
-                self.resolve_label(else_lbl);
-                self.emit_expr(f);
-                self.resolve_label(end_lbl);
-            }
-            Expr::Field(base, campo) => self.emit_leer_campo(base, campo, Por::Valor),
-            Expr::Arrow(ptr, campo) => self.emit_leer_campo(ptr, campo, Por::Puntero),
-            Expr::AssignField(base, campo, val) => {
-                self.emit_guardar_campo(base, campo, Por::Valor, val)
-            }
-            Expr::AssignDeref(addr, val) => self.emit_guardar_por_puntero(addr, val),
-            Expr::AssignArrow(ptr, campo, val) => {
-                self.emit_guardar_campo(ptr, campo, Por::Puntero, val)
-            }
-            Expr::Intrinsic(name, args) => self.emit_intrinsic(name, args),
-            Expr::Cast(t, inner) => {
-                // cast REAL: trunca/extiende rax al tamano del tipo destino.
-                // Antes era no-op: (char)300 quedaba como 300.
-                self.emit_expr(inner);
-                match t {
-                    TypeSpec::Char => self.code.extend_from_slice(&[0x48, 0x0F, 0xBE, 0xC0]), // movsx rax, al
-                    TypeSpec::UnsignedChar => self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]), // movzx
-                    TypeSpec::Short => self.code.extend_from_slice(&[0x48, 0x0F, 0xBF, 0xC0]),
-                    TypeSpec::UnsignedShort => self.code.extend_from_slice(&[0x48, 0x0F, 0xB7, 0xC0]),
-                    TypeSpec::Int => self.code.extend_from_slice(&[0x48, 0x63, 0xC0]), // movsxd rax, eax
-                    TypeSpec::UnsignedInt => self.code.extend_from_slice(&[0x89, 0xC0]), // mov eax, eax (zero-ext)
-                    _ => {} // 64-bit y punteros: sin cambio de representacion
-                }
-            }
-            Expr::Comma(exprs) => {
-                for (i, e) in exprs.iter().enumerate() {
-                    self.emit_expr(e);
-                    if i < exprs.len() - 1 { self.emit_drop(); }
-                }
-            }
-        }
-    }
 
     // ---- Subscript helpers (array en memoria vs puntero-valor) ----
 
@@ -2018,11 +1404,11 @@ impl Codegen {
     /// la cabecera de `decidir/roja.rs`.
     fn emit_binop(&mut self, a: &Expr, b: &Expr, op: &[u8]) {
         // ** SIN PILA CUANDO EL DERECHO ES UNA CONSTANTE. Ver
-        // `decidir::roja::solo_toca_rax`: el `push`/`pop` existe porque
+        // `decidir::plegado::solo_toca_rax`: el `push`/`pop` existe porque
         // calcular el derecho puede pisar cualquier registro, y un `mov rax,
         // imm` no pisa ninguno. El orden de los registros al llegar al operador
         // es el mismo por los dos caminos: `rdx` el izquierdo, `rax` el derecho.
-        if decidir::roja::solo_toca_rax(b) {
+        if decidir::plegado::solo_toca_rax(b) {
             self.emit_expr(a);
             self.code.extend_from_slice(&[0x48, 0x89, 0xC2]); // mov rdx, rax
             self.emit_expr(b);
@@ -2068,7 +1454,7 @@ impl Codegen {
         // La misma regla que `emit_binop`: si el derecho es una constante, no
         // hace falta la pila. Y en una comparacion es todavia mas frecuente --
         // `x > 0`, `i < n`, `c == 'a'` son el bucle de cualquier programa.
-        if decidir::roja::solo_toca_rax(b) {
+        if decidir::plegado::solo_toca_rax(b) {
             self.emit_expr(a);
             self.code.extend_from_slice(&[0x48, 0x89, 0xC2]); // mov rdx, rax
             self.emit_expr(b);
