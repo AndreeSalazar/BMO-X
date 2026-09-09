@@ -3250,3 +3250,92 @@ operacion. Lo que no vale es el 895 contra el que se compara.
 [!] Y no se ha tocado un solo ciclo del stub. Optimizar contra una linea base
 que mide otra cosa es como se pierde una semana -- **el primer paso hacia los
 300 fue descubrir que 895 nunca fue el numero.**
+
+---
+
+## Ep. 67 -- `ciclos.bex`, y la puerta no se abarata: SE REPARTE
+
+**2026-09-09.** El dueno pidio dos cosas: un medidor mas profundo en C, y algo
+mas raro -- *"que se divida en 10 lo que MAS PUEDA para que llegue el destino"*.
+
+### [!] LA MITAD DE LA IDEA ES IMPOSIBLE, y hay que decirlo primero
+
+`syscall` y `sysretq` son **un par de instrucciones**. Microcodigo del CPU: leer
+dos MSR, cambiar CS/SS y el CPL, enmascarar RFLAGS, serializar el cauce. No hay
+forma de ejecutar un tercio de eso. El perfil los estima en ~150 ticks, y ese es
+el unico numero de toda la cuenta que **no ha bajado en treinta anos**.
+
+### ★★★ Y LA OTRA MITAD ES EXACTAMENTE CORRECTA
+
+Porque la pregunta buena no era la que parecia:
+
+```text
+   NO   como hago que cruzar cueste menos de 150
+   SI   como hago que 150 sirvan para DIEZ operaciones en vez de una
+```
+
+Una puerta cuesta `FIJO + TRABAJO`, y los dos se cobran a ritmos distintos: el
+fijo **una vez por CRUCE**, el trabajo **una vez por OPERACION**. Con N
+operaciones en una puerta, el coste por operacion es `FIJO/N + TRABAJO`.
+
+**El fijo se divide. El trabajo no.** Eso es la idea del dueno, palabra por
+palabra, aplicada a la pieza que si se puede partir.
+
+### ** COMO SE MIDE EL FIJO SIN INSTRUMENTAR EL STUB: un RECHAZO
+
+`INVOKE` sobre `CURRENT_TASK` con una operacion que no existe cae en
+`_ => unsupported()`. Cruza, guarda los 15 GPR, entra en `dispatch`, **no hace
+nada**, y vuelve.
+
+*** Un rechazo ES el coste fijo. Y la casa ya lo habia medido sin buscarlo:
+`medida/coste` lleva escrito que una sonda paso el campo `0` a `INFO` por error,
+cayo en el brazo por defecto y **salio 784 contra los 870 de una operacion de
+verdad**. Se leyo como *"la sonda estaba mal"*, se arreglo, y el 784 se tiro.
+
+> Era el numero mas valioso de los dos.
+
+Si aguanta --y hay que remedirlo: el 870 era el `CONSOLE_READ` del Ep. 66--
+entonces el fijo es el 90% y con **CUATRO operaciones por puerta se cumple la
+meta de 300**. Con 32, se llega a 110.
+
+### `c/ciclos.bex`: 7 escalones y una proyeccion
+
+```text
+   0 bucle vacio   1 llamada   2 rdtsc suelto (el termometro)
+   3 RECHAZO por operacion     4 RECHAZO por campo     <- el FIJO, por DOS vias
+   5 PID           6 INFO ticks
+   -> el reparto, y la tabla de N = 1..64 con la marca de donde cruza 300
+```
+
+★ Los DOS rechazos a proposito: si dan lo mismo, el fijo esta medido; si
+difieren, la diferencia es el camino hasta cada NO y el menor es la cota. Un
+solo camino no puede decir cual de las dos cosas esta pasando.
+
+### ** Y LOS DOS SYSCALLS CONGELADOS NO SE TOCAN
+
+Un lote no es un syscall nuevo: es una **operacion**.
+
+```text
+   INVOKE(CURRENT_TASK, OP_LOTE, puntero_al_array, n)
+```
+
+*** La superficie aguanta porque **la congelacion era de los syscalls, no de las
+operaciones**. Estaba pensado desde el principio y es la primera vez que cobra.
+
+### La tercera via, que gana mas que las dos
+
+Los campos de `INFO` que son contadores puros no necesitan cruzar NADA: en una
+pagina de solo lectura mapeada en la app, leerlos cuesta **~4 ticks** en vez de
+~870. No es dividir por 10, es dividir por 200 -- y BMO-X **ya lo hace** en un
+sitio: las teclas y el raton de una app en ventana, por un buzon en su propia
+memoria, cero syscalls.
+
+[!] Su precio: una pagina publicada es un contrato de FORMATO. Una puerta puede
+cambiar de version; una pagina compartida, no.
+
+### Lo que NO se ha hecho, y es a proposito
+
+Ni un ciclo del stub. `PLAN_LA_PUERTA_SE_PARTE.md` tiene cinco pasos y el
+primero es **M0: medir y no hacer nada mas** -- porque si al arrancar sale que
+el trabajo es la mayoria, el plan entero es el proyecto equivocado, y `ciclos`
+lo dice en pantalla con esas palabras.
