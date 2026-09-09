@@ -200,6 +200,16 @@ $cEjemplos = @(
     # algo puede pasar por la superficie o tiene que ser codigo enlazado --
     # empezando por el runtime de Python. Ver `docs/maestro/PYTHON_MAESTRO.md`.
     @{ src = 'toolchain\lang\c\examples\coste_C.c';     out = 'coste.bex'  ; dir = 'c' },
+    # *** DE QUE ESTA HECHA UNA PUERTA: parte los ticks en FIJO --lo que
+    # cuesta cruzar y volver-- y TRABAJO --lo que se pidio--, midiendo una
+    # puerta que el kernel RECHAZA. Un rechazo recorre la maquina entera y no
+    # hace nada, asi que ES el fijo, medido y no estimado.
+    #
+    # ** Y con eso proyecta la tabla del LOTE: si una puerta llevara N
+    # operaciones, el fijo se divide entre N y el trabajo no. Es lo unico que
+    # puede bajar la fila `puerta` de `presupuesto.rs` a su meta de 300 sin
+    # quitarle nada al trabajo. Ver `docs/plan/PLAN_LA_PUERTA_SE_PARTE.md`.
+    @{ src = 'toolchain\lang\c\examples\ciclos_C.c';    out = 'ciclos.bex' ; dir = 'c' },
     # LA MEDIDA DEL BLIT: memcpy a RAM contra memcpy al framebuffer (WC), y
     # un bucle de 8 bytes como tercera fila. Ver su cabecera.
     @{ src = 'toolchain\lang\c\examples\blit_C.c';      out = 'blit.bex'   ; dir = 'c' }
