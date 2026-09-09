@@ -54,8 +54,8 @@ use crate::text::decimal;
 
 /// Va detras del pulso, que ocupa 400 px desde `TRAS_TESTIGO`.
 const TRAS_PULSO: u32 = 176 + 400 + 8;
-/// Lo que ocupa: `volcado 8192K cajas 1` mas margen.
-const ANCHO: u32 = 250;
+/// Lo que ocupa: `volcado 12K pico 8100K cajas 3` mas margen.
+const ANCHO: u32 = 300;
 
 /// Por encima de esto, el volcado dejo de ser troceado y es la pantalla entera.
 ///
@@ -80,8 +80,8 @@ pub(crate) fn olvidar() {
 /// como *"hubo alguno"*, que es la unica pregunta que este chip le hace.
 fn firma(v: &bmo::Volcado) -> u64 {
     let ninguno = matches!(v.modo, bmo::Volcador::Ninguno) as u64;
-    ((v.peor / 1024) << 8) | ((v.cajas as u64 & 0x1F) << 3) | (ninguno << 1)
-        | (v.fotogramas != 0) as u64
+    ((v.peor / 1024) << 24) | ((v.ultimo / 1024) << 8)
+        | ((v.cajas as u64 & 0x1F) << 3) | (ninguno << 1) | (v.fotogramas != 0) as u64
 }
 
 /// **Pinta lo que cuesta el peor fotograma.** Se llama en las vueltas que pintan.
@@ -138,17 +138,39 @@ pub(crate) fn refrescar(p: &bmo::Pantalla, v: &bmo::Volcado) {
         return;
     }
 
+    // == *** EL ULTIMO VA PRIMERO, Y LO PIDIO EL METAL (2026-09-09) =========
+    //
+    // Primer arranque con esta caja puesta: `volcado 8100K cajas 1`. Y 8.100 KiB
+    // es EXACTAMENTE 1920x1080x4 -- la pantalla entera en una sola caja, que es
+    // el diagnostico de "el troceado degenero" que esta misma caja publicita.
+    //
+    // ** Pues no. Es el PRIMER fotograma: `activar_doble_bufer` marca la
+    // pantalla entera para igualar los dos bufferes, y `peor` no baja nunca.
+    //
+    // *** Un maximo que se olvida no es un maximo -- pero **un maximo que no
+    // caduca no sabe decir AHORA**, y esa es la pregunta que se hace mirando una
+    // barra. Las dos frases son verdad, asi que hacen falta LOS DOS numeros. El
+    // ultimo delante porque es el que contesta lo que se pregunta.
+    //
+    // La misma correccion, el mismo dia, en `dev/usb/bus.rs`: el `peor` del hilo
+    // del bus salio 7.666 us y tampoco se sabia si era el arranque.
+    let ultimo_kib = v.ultimo / 1024;
     let peor_kib = v.peor / 1024;
     let mut buf = [0u8; 10];
-    let n = decimal(peor_kib, &mut buf);
-    // En blanco cuando el peor fotograma ya no es un troceado sino la pantalla.
-    let tinta = if peor_kib >= PEOR_QUE_GRITA_KIB { INK } else { INK_DIM };
+    let n = decimal(ultimo_kib, &mut buf);
+    // En blanco cuando el ULTIMO fotograma ya no es un troceado sino la
+    // pantalla: eso si es un problema que esta pasando ahora.
+    let tinta = if ultimo_kib >= PEOR_QUE_GRITA_KIB { INK } else { INK_DIM };
     let tx = p.texto_bytes(tx, ty, &buf[..n], tinta);
+    let tx = p.texto(tx, ty, "K pico ", INK_DIM);
+    let n = decimal(peor_kib, &mut buf);
+    // El pico SIEMPRE en gris: es historia, y la historia no alarma.
+    let tx = p.texto_bytes(tx, ty, &buf[..n], INK_DIM);
     let tx = p.texto(tx, ty, "K cajas ", INK_DIM);
 
     let n = decimal(v.cajas as u64, &mut buf);
     // ** Y `cajas 1` con un peor grande es el diagnostico completo: el troceado
     // degenero. Por eso las dos van juntas y ninguna sola sirve.
-    let tinta = if v.cajas <= 1 && peor_kib >= PEOR_QUE_GRITA_KIB { INK } else { INK_DIM };
+    let tinta = if v.cajas <= 1 && ultimo_kib >= PEOR_QUE_GRITA_KIB { INK } else { INK_DIM };
     p.texto_bytes(tx, ty, &buf[..n], tinta);
 }

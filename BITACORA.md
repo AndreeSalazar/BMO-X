@@ -2216,3 +2216,89 @@ Todo escrito en [`docs/plan/PLAN_EL_PIXEL.md`](docs/plan/PLAN_EL_PIXEL.md), con
 las siete reglas y su estado real.
 
 > Un orquestador que no manda en sus dos extremos no orquesta: acompana.
+
+---
+
+## Ep. 54 -- La primera foto con los instrumentos puestos, y los dos mentian igual
+
+**2026-09-09.** Arranque con la barra completa. Todo lo que se predijo ayer se
+cumplio, y los dos instrumentos nuevos fallaron de la MISMA forma.
+
+### Lo que salio bien, y con el numero
+
+```text
+   latido 300/s  pinta 4  cuerpo 2  puerta 997
+```
+
+★ **`cuerpo 2`**: dos milisegundos de CPU por segundo. El compositor gasta el
+**0,2 % de un nucleo**, y 0,5 ms por fotograma pintado. La prediccion de ayer
+--*"menos de un milisegundo"*-- se cumple. `cuerpo + puerta = 999` de 1.000: la
+contabilidad cuadra sola.
+
+Y DOOM: **66 fps a 1600x1000 en x5**, con el volcado a **6,0 GB/s** hacia el
+framebuffer.
+
+### ★★★ Y los dos instrumentos nuevos dijeron lo mismo, mal
+
+```text
+   volcado 8100K cajas 1        <- 8.100 KiB es EXACTAMENTE 1920x1080x4
+   entrada 4ms 7666us bombeo    <- 7.666 us contra un periodo de 4.000
+```
+
+El primero parece *"el troceado degenero y se vuelca la pantalla entera"*. El
+segundo parece *"el hilo del bus no cabe en su periodo, `C/T` = 1,92"*. **Los dos
+son casi seguro el ARRANQUE**: el volcado completo que hace
+`activar_doble_bufer`, y la enumeracion del USB.
+
+*** Y ninguno de los dos podia decirlo, porque los dos son **maximos desde el
+arranque que no bajan nunca**. La cabecera de `Volcado::peor` lo defendia asi, y
+tenia razon a medias:
+
+```text
+   un maximo que se olvida no es un maximo        <- cierto
+   un maximo que no caduca no sabe decir AHORA    <- tambien cierto
+```
+
+Hacen falta **los dos numeros**, no uno mejor. Ahora el volcado dice
+`12K pico 8100K` --ultimo y pico-- y el ritmo del bus publica el peor del
+**ultimo segundo**, con su `/s` en la barra. El de siempre se queda para
+`cockpit.rs`, que es donde se audita.
+
+### ★★★ Y EL HALLAZGO: 35 instrucciones para escribir 8 bytes
+
+DOOM: `fotograma 14948 us, blit 7833, de ellos expansion 6738 + volcado 1063`.
+El volcado es perfecto. La expansion escribe 192.000 veces en RAM cacheada y
+tarda 30,2 M de ciclos: **157 ciclos por escritura**. Eso no lo hace ni un CPU
+con la cache apagada.
+
+Se compilo `expandir_fila` con BMO C y se desensamblo. Su bucle interior
+--`while (j > 0) { *d8 = par; d8++; j--; }`-- son **35 instrucciones**:
+
+```text
+   utiles                  1     movq %rdx,(%rax)
+   push/pop a memoria      8
+   movabsq de 10 bytes     3     para cargar los literales 0, 1 y 8
+   imulq                   1     PARA MULTIPLICAR 1 x 8
+```
+
+**El puerto de DOOM ya habia quitado ese `imul` a mano**, y lo dejo escrito:
+*"aqui no hay indices: hay dos punteros que caminan"*. El compilador lo devolvio,
+ahora para calcular el `sizeof` en tiempo de ejecucion, en cada vuelta.
+
+> Una optimizacion escrita en C que el generador de codigo deshace no es una
+> optimizacion: es un comentario.
+
+BMO C emite como una **maquina de pila**: todo por `rax`, operandos por
+`push`/`pop`, cada local en su hueco de `%rbp`. Eso no fue un error --es lo que
+hace que quepa y se pueda leer-- pero **nunca se midio lo que cuesta**, y por eso
+la cifra aparece hoy, por sorpresa, dentro de DOOM. Afecta a **todo `.bex` de C y
+C++**; INTI tiene su propio emisor y no pasa por ahi.
+
+[`docs/plan/PLAN_EL_CODEGEN.md`](docs/plan/PLAN_EL_CODEGEN.md) trae el
+desensamblado entero y cuatro escalones: tres son MIRILLAS (plegar constantes,
+literales sin `movabsq`, no pasar por la pila con un operando constante) y el
+cuarto ya es un asignador de registros, que es otro proyecto.
+
+⚠ **No se toca nada todavia**: este backend lo usan todos los `.bex`, y este mes
+ya se pagaron cinco fallos de codegen. Primero el numero, y la decision es del
+dueno.

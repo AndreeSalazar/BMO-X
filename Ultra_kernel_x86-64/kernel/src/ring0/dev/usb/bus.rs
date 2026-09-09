@@ -157,13 +157,75 @@ pub fn ritmo() -> (u64, u64, u64) {
 /// detras de la emergencia porque son dos motivos distintos por el mismo camino.
 const NOMBRES: [&str; 5] = ["bombeo", "rescate", "emergencia", "purga", "radar"];
 
-/// Lo peor que ha tardado cada uno, en microsegundos.
+/// Lo peor que ha tardado cada uno, en microsegundos. **Desde el arranque.**
 static mut PEOR_US: [u64; 5] = [0; 5];
+
+// == *** UN MAXIMO QUE NO CADUCA NO SABE DECIR "AHORA" (2026-09-09) =========
+//
+// Primer arranque con el ritmo en la barra, y salio esto:
+//
+//    entrada 4ms 7666us bombeo
+//
+// 7.666 us contra un periodo de 4.000: `C/T = 1,92`. El hilo no cabe en su
+// propio periodo... **o cupo mal UNA vez, en el arranque, mientras se enumeraba
+// el USB.** Y `PEOR_US` no puede distinguir las dos cosas, porque es un maximo
+// desde el arranque que no baja NUNCA.
+//
+// ** El mismo defecto que tiene `Volcado::peor` del compositor, y por la misma
+// razon: los dos se escribieron pensando en "el pico importa mas que la media"
+// --que es cierto-- y ninguno de los dos se pregunto **cuando** fue el pico.
+//
+//    un maximo que se olvida no es un maximo
+//    un maximo que no caduca no sabe decir AHORA
+//
+// Las dos frases son verdad, y por eso hacen falta LOS DOS numeros. El de
+// siempre se queda para `cockpit.rs`; el que sube a Ring 3 es el de la ultima
+// ventana, porque la pregunta que se hace mirando la barra es *"esta pasando?"*.
+
+/// Lo peor de cada uno DENTRO de la ventana que se esta midiendo.
+static mut PEOR_VENTANA: [u64; 5] = [0; 5];
+
+/// Lo peor de la ULTIMA ventana cerrada. Es lo que se publica.
+static mut PEOR_PUBLICO: [u64; 5] = [0; 5];
+
+/// TSC del principio de la ventana en curso. Cero = todavia no arranco.
+static mut VENTANA_T0: u64 = 0;
+
+/// **Cierra la ventana si ya paso un segundo.** Se llama al final de la vuelta.
+///
+/// Un segundo y no un cuarto: `bombeo` normal se mide en decenas de
+/// microsegundos, y una ventana corta llena de ceros no dice mas -- dice lo
+/// mismo parpadeando. Es la misma eleccion que hicieron las vitales del
+/// escritorio y el testigo del USB.
+fn cerrar_ventana(ahora: u64, hz: u64) {
+    if hz == 0 {
+        return;
+    }
+    unsafe {
+        if VENTANA_T0 == 0 {
+            VENTANA_T0 = ahora;
+            return;
+        }
+        if ahora.wrapping_sub(VENTANA_T0) < hz {
+            return;
+        }
+        VENTANA_T0 = ahora;
+        let v = &mut *core::ptr::addr_of_mut!(PEOR_VENTANA);
+        let pub_ = &mut *core::ptr::addr_of_mut!(PEOR_PUBLICO);
+        for i in 0..v.len() {
+            pub_[i] = v[i];
+            v[i] = 0;
+        }
+    }
+}
 
 /// `(nombre del que mas tardo alguna vez, sus microsegundos)`.
 pub fn peor_trabajo() -> (&'static str, u64) {
     unsafe {
-        let p = &*core::ptr::addr_of!(PEOR_US);
+        // ** EL DE LA VENTANA, no el de siempre. Ver `cerrar_ventana`: un maximo
+        // que no caduca contesta "paso alguna vez" a una pregunta que es
+        // "esta pasando". El de siempre se queda para `cockpit.rs`.
+        let p = &*core::ptr::addr_of!(PEOR_PUBLICO);
         let mut cual = 0usize;
         for i in 1..p.len() {
             if p[i] > p[cual] {
@@ -237,6 +299,11 @@ fn anota(i: usize, desde: u64, por_us: u64) -> u64 {
             let p = &mut *core::ptr::addr_of_mut!(PEOR_US);
             if us > p[i] {
                 p[i] = us;
+            }
+            // Y el de la ventana, que es el que sabe decir "ahora".
+            let v = &mut *core::ptr::addr_of_mut!(PEOR_VENTANA);
+            if us > v[i] {
+                v[i] = us;
             }
         }
     }
@@ -358,6 +425,10 @@ pub extern "C" fn bus_thread(_arg: u64) -> ! {
             scheduler::tsc_freq(),
         );
         anota(4, t, por_us);
+        // ** La ventana del peor caso se cierra AQUI, con la vuelta ya medida
+        // entera. Cerrarla antes dejaria el ultimo trabajo fuera de su propia
+        // ventana, que es como un contador se queda corto y nadie lo nota.
+        cerrar_ventana(scheduler::rdtsc(), scheduler::tsc_freq());
         unsafe {
             BUS_TURNS = BUS_TURNS.wrapping_add(1);
             // El latido se sella DESPUES de la vuelta, no antes: lo que
