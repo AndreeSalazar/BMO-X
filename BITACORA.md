@@ -2794,3 +2794,65 @@ El `[perf]` lleva ahora los seis numeros, los del menu y los que deciden:
 ```text
    [perf] vista: viewwidth=N viewheight=N anchoesc=N (set N/N shift=N | menu N/N)
 ```
+
+---
+
+## Ep. 61 -- Funciono, y la ventana de un segundo desmintio mi hipotesis
+
+**2026-09-09.** La foto trae DOOM **a pantalla completa**. El experimento del Ep.
+60 tenia dos respuestas y contesto la primera: **el fallo estaba en pasar los
+argumentos** a `R_SetViewSize`. Poner `setblocks` y `setdetail` al otro lado de
+la llamada lo arregla.
+
+★ Y eso deja una pista viva: `R_SetViewSize(10, 0)` no dejaba 10 y 0 en sus dos
+parametros. Es un fallo del compilador, `[aparece] DENTRO`, y sigue ahi.
+
+### La barra de este arranque, entera
+
+```text
+   latido 301/s  pinta 119  cuerpo 15  puerta 989
+   volcado 67K pico 8100K cajas 1     entrada 4ms 7781us/s bombeo
+```
+
+```text
+   pinta 119/s     antes 3-20. DOOM vivo y el escritorio componiendo
+   cuerpo 15 ms/s  el 1,5 % de un nucleo, CON DOOM corriendo
+   volcado 67K     el ULTIMO fotograma; el pico sigue siendo el arranque
+```
+
+★★ El instrumento del Ep. 54 hace exactamente lo que se le pidio: `67K` y
+`8100K` juntos, y ya nadie confunde *"esta pasando"* con *"paso una vez"*.
+
+### ★★★ Y ME DESMINTIO A MI, que es para lo que se puso
+
+```text
+   entrada 4ms 7781us/s bombeo      ->  C/T = 1,95
+```
+
+**7.781 us en el ULTIMO SEGUNDO** contra un periodo de 4.000. El 08-09 escribi
+que aquel `7666us` *"es casi seguro el arranque enumerando el USB"*. **Era
+falso.** El hilo del bus se pasa de su periodo casi al doble, sostenido, mientras
+DOOM corre -- y con `bombeo` como culpable, que es el drenaje del anillo.
+
+> Una hipotesis comoda duro un dia porque el instrumento no sabia decir *ahora*.
+> En cuanto supo, la tiro.
+
+Es el numero abierto mas gordo que queda, y esta en el suelo de la latencia:
+`PLAN_EL_PIXEL`, seccion 1.
+
+### Y la barra, que el dueno pidio "elegante, inspirado en Wayland con blur"
+
+[!] **Un desenfoque aqui no se veria, y eso es una respuesta y no una excusa.**
+Desenfocar necesita TEXTURA, y detras de la barra hay un degradado vertical que
+en sus 40 filas varia un 4 %. El desenfoque de un degradado es el mismo
+degradado -- 76.800 pixeles recorridos tres veces para no ver nada.
+
+★ Lo que de verdad despega un panel de Wayland del fondo no es el desenfoque: es
+el **FILO**. La barra era `0x0F131D` sobre un fondo que arriba es `0x1B2233`:
+casi el mismo color, y por eso se leia como una mancha. Ahora lleva una linea
+clara arriba, la oscura que ya tenia abajo, y **separadores entre los tres
+instrumentos**, que hasta hoy se leian como un solo parrafo de numeros.
+
+*** El dia que haya un FONDO DE ESCRITORIO de verdad --una imagen-- el
+desenfoque pasa a tener sentido. Y entonces se hace **una vez**: el fondo no
+cambia, asi que su version borrosa tampoco.
