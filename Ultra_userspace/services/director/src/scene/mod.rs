@@ -68,6 +68,9 @@ pub(crate) mod output;
 /// **La luz del bus USB en la barra**: si el teclado se muere, se ve sin abrir
 /// nada. E6 de `docs/componente/EL_TECLADO_EXIGE.md`.
 pub(crate) mod testigo;
+/// **Lo que cuesta empujar un fotograma.** El par (peor, cajas) que decide
+/// si el troceado por cajas trabaja o degenero. Ver su cabecera.
+pub(crate) mod volcado;
 /// **La ventana del SONIDO** (F10). Reclama `KIND_AUDIO` al abrirse y lo
 /// DEVUELVE al cerrarse -- ver la cabecera del modulo: es lo unico que impide
 /// que el escritorio deje mudos a todos los programas que lanza.
