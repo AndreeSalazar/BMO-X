@@ -139,7 +139,19 @@ RING0_DIR = "Ultra_kernel_x86-64/kernel/src/ring0"
 # ** Y por eso esto es una LISTA y no un `walk` de todo `Ultra_userspace`: se
 # nombra el arbol que se vigila. Lo que no esta aqui no esta vigilado, y eso se
 # puede leer de un vistazo en vez de deducirlo.
-CARRILES_FUERA_DEL_KERNEL = ("Ultra_userspace/services/director/src",)
+#
+# *** Y el 09-09 la lista se cobro su primer precio, que es exactamente el que
+# esta escrito arriba: se partio `userland/src/pantalla.rs` en carriles --el
+# fichero que mueve TODOS los pixeles del sistema-- y **no estaba vigilado**,
+# porque el unico arbol nombrado era el del director. Un carril sin juez otra
+# vez, y en el sitio con `[cuesta] MAQUINA`.
+#
+# La leccion no es "haber puesto un walk": es que una lista tiene que crecer con
+# el arbol, y por eso el segundo nombre entra el mismo dia que el corte.
+CARRILES_FUERA_DEL_KERNEL = (
+    "Ultra_userspace/services/director/src",
+    "Ultra_userspace/userland/src",
+)
 
 # -- R17: la CARA RUST del ABI, que tampoco llevaba letrero -------------------
 #

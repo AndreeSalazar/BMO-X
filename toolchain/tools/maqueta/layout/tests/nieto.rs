@@ -256,17 +256,25 @@ fn las_medidas_del_glifo_siguen_siendo_las_del_kernel() {
     // A second copy of a number is what turned `bmo.h` into a fourth copy, so
     // this reads the original off disk. It fails the day somebody changes the
     // font and forgets this crate -- which is the whole job of a guardian.
+    //
+    // ** 2026-09-09: the path moved, and this test is how we found out. It said
+    // `pantalla.rs` and `pantalla.rs` had become `pantalla/`, split into lanes.
+    // The font is the GREEN lane, so the two constants live there now.
+    //
+    // Reading a path is exactly what makes a guardian go blind when the tree
+    // moves -- so it must SHOUT, and it did. The alternative (walking the tree
+    // looking for the name) would have kept passing while pointing at nothing.
     let src = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../../../Ultra_userspace/userland/src/pantalla.rs"
+        "/../../../../Ultra_userspace/userland/src/pantalla/verde.rs"
     ))
-    .expect("pantalla.rs tiene que estar donde dice");
+    .expect("pantalla/verde.rs -- el carril de las letras -- tiene que estar donde dice");
 
     let leer = |name: &str| -> u32 {
         src.lines()
             .find_map(|l| l.split_once(&format!("pub const {name}: u32 = ")))
             .and_then(|(_, rest)| rest.trim_end_matches(';').trim().parse().ok())
-            .unwrap_or_else(|| panic!("no encontre {name} en pantalla.rs"))
+            .unwrap_or_else(|| panic!("no encontre {name} en pantalla/verde.rs"))
     };
 
     assert_eq!(GLIFO_ANCHO, leer("GLIFO_ANCHO"));
