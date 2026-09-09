@@ -40,6 +40,19 @@ un bucle lo hace mas grande y mas rapido a la vez.
 
 *** El juez de la velocidad sigue siendo el metal: `expansion N us` del `[perf]`
 de DOOM. Esto solo dice **que se movio**, no si se movio a mejor.
+
+⚠ Y el punto ciego, que se midio el 09-09
+==========================================
+
+    "MIDEN LO MISMO" NO ES "NO CAMBIO NADA".
+
+Las secciones del `.bex` van rellenadas a pagina, asi que un cambio pequeno cabe
+DENTRO del relleno y el total no se mueve. Ese dia se puso y se quito un
+`call` de 5 bytes en DOOM: este reportero dijo `clean` las dos veces y las dos
+imagenes **diferian en 20.252 bytes**.
+
+*** O sea que este fichero contesta *"cuanto ocupa"* y nunca *"es el mismo
+binario"*. Para lo segundo hay que comparar los bytes -- `cmp` -- y no un numero.
 """
 
 import argparse

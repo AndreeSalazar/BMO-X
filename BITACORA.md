@@ -2984,3 +2984,80 @@ distintos, y hasta hoy no habia forma de saber cual era.
 [!] Y lo que NO se ha hecho: inventar un arreglo. Con lo que hay en el log **no
 se puede saber** donde se queda, y esta semana ha demostrado tres veces que
 adivinar cuesta un dia y partir el numero cuesta un arranque.
+
+---
+
+## Ep. 64 -- El borrado que el fichero daba por hecho, y un log que era de ayer
+
+**2026-09-09.** El dueno trae foto y log otra vez, y dice tres cosas. Dos son
+observaciones suyas y una es un aviso que hay que devolverle antes de nada.
+
+### [!] EL LOG ES DE LA IMAGEN ANTERIOR, y por eso "es el mismo patron"
+
+```text
+   no hay `[vivo] fotograma N`   -> el latido de `main` no corrio
+   no hay `[vigia] ...`          -> el vigia de `TryRunTics` tampoco
+   `entrada 4ms 27345us/s bombeo` -> `bombeo` sigue siendo UN numero
+```
+
+Los tres instrumentos son de `2641a97e` y `e5531778`, o sea del build que aun no
+esta en el disco. **Un patron identico despues de un cambio que no se desplego
+no dice nada del cambio**: dice que la imagen es la misma. Se anota aqui porque
+es la tercera vez esta semana que un log llega antes que el flasheo, y la unica
+forma de que deje de costar una vuelta es tener escrito como se reconoce.
+
+### *** EL FALLO DE VERDAD: DOOM NUNCA LIMPIO LA PANTALLA AL ENTRAR
+
+El dueno lo dijo en cinco palabras --*"no limpia el fondo"*-- y la foto lo
+ensena: alrededor del juego se ve **la caja de Ejecutar con su `doom.bex` y la
+rejilla de iconos**, tal cual estaban.
+
+```text
+   `limpiar_pantalla()`  escrita, probada, y llamada desde DOS sitios:
+      Bloq Despl (cambiar escala)   OK
+      F12 (volver de ceder)         OK
+      DG_Init (reclamar el panel)   NO
+```
+
+*** Y el propio fichero afirmaba lo contrario. Cincuenta lineas mas abajo, desde
+el 09-01, hay un comentario que dice *"DG_Init reclama la pantalla y la
+LIMPIA"*, y hasta razona por que el `printf` va DESPUES del borrado. **Describia
+una llamada que no existia.** El comentario era correcto el dia que se escribio
+y la llamada se perdio; nadie lo comparo con el codigo porque un comentario no
+se compila.
+
+Por que se veia siempre y nunca se miro: a escala x5 DOOM ocupa el 77 % del
+panel. El 23 % de alrededor **no lo toca nadie** -- ni DOOM, que solo pinta su
+rectangulo centrado, ni el compositor, que ya no es dueno de la pantalla.
+
+> El que reclama la pantalla es el que tiene que dejarla como quiere
+> encontrarla. No hay nadie mas: ese es el contrato de `PANTALLA_RECLAMAR`.
+
+★ Y el camino de vuelta SI estaba bien --`lend_screen` repinta degradado, barra,
+rejilla, caja y olvida las huellas de los cuatro chips--. El agujero estaba solo
+en la ida, que es la mitad que nadie escribio dos veces.
+
+### ★ Y EL REPORTERO DE TAMANOS TIENE UN PUNTO CIEGO, dicho antes de que confunda
+
+`tamano.py` dijo `clean: los 30 ejecutables miden lo mismo`. Con el arreglo
+puesto y quitado, `doom.bex` mide **865.408 B las dos veces** -- y las dos
+imagenes **difieren en 20.252 bytes**.
+
+```text
+   la seccion va rellenada a pagina  ->  5 bytes de `call` caben en el relleno
+   el tamano no se movio             ->  el codigo si
+```
+
+No es un fallo suyo: mide lo que dice que mide. Pero *"miden lo mismo"* se lee
+como *"no cambio nada"*, y no es lo mismo. Queda escrito aqui y en su cabecera.
+
+### El numero que empeoro mientras se investigaba
+
+```text
+   `bombeo`   7.781 us/s  ->  27.345 us/s     C/T ~ 6,8
+```
+
+Seis veces y media el periodo de 4 ms, y **sigue siendo un solo numero**. La
+particion en `anillo`/`audio`/`salud` esta compilada y esperando un arranque:
+hasta que corra, preguntarle al total cual de los tres tarda es preguntarle al
+total. Se deja tal cual, sin hipotesis -- que es lo que costo un dia el 09-09.
