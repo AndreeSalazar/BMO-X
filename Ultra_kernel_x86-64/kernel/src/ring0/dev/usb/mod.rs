@@ -77,7 +77,7 @@ pub mod portero;
 /// El atajo que le devuelve la maquina al dueno. Politica, no driver.
 pub mod rescate;
 
-pub use bus::{bus_stats, bus_thread, peor_trabajo, ritmo, start_bus_thread};
+pub use bus::{bus_stats, bus_thread, peor_trabajo, ritmo, ritmo_y_peor, start_bus_thread};
 use bus::pump_bus;
 use rescate::{raw_key_from_owner, tecla_del_dueno};
 pub use panel::*;

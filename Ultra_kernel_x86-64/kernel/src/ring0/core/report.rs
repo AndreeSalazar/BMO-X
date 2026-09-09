@@ -51,6 +51,7 @@ const INFO_TSC_HZ: u64 = 0x05;
 /// dejan de leerse igual. Escalon **E1** de `docs/plan/PLAN_EL_COMPAS.md`: no se
 /// puede presupuestar lo que no se mide.
 const INFO_CPU_PROPIO: u64 = 0x4F;
+const INFO_USB_RITMO: u64 = 0x50;
 /// ** LA FRECUENCIA EFECTIVA, en Hz. `0` = no se puede medir.
 ///
 /// No es `INFO_TSC_HZ`: ese dice a que va el RELOJ de referencia, que no cambia
@@ -560,6 +561,9 @@ pub fn campo(n: u64) -> u64 {
         // pregunta, y su MMIO no esta ahi. Ver `dev/usb/salud.rs`.
         INFO_USB_SALUD => crate::ring0::dev::usb::salud::estado(),
         INFO_USB_AVERIAS => crate::ring0::dev::usb::salud::averias(),
+        // * Esta SI mira el hilo y no una foto, y puede: son dos `static`
+        // del propio kernel, sin MMIO de por medio. Ver `dev/usb/bus.rs`.
+        INFO_USB_RITMO => crate::ring0::dev::usb::ritmo_y_peor(),
         // * Las cuatro leen la foto que dejo `identify()` en el arranque, no el
         // aparato: mandar un IDENTIFY aqui seria hablarle al disco con el CR3
         // del programa que pregunta, y ademas robarle la unica ranura de

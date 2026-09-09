@@ -174,6 +174,57 @@ pub fn peor_trabajo() -> (&'static str, u64) {
     }
 }
 
+/// **El ritmo del bus y su peor trabajo, en un solo numero para Ring 3.**
+///
+/// ```text
+///    bits  0..15   el periodo del bus, en ms          (`BUS_PERIOD_MS`)
+///    bits 16..47   el peor trabajo visto, en us
+///    bits 48..55   cual de los cinco (indice en `NOMBRES`)
+/// ```
+///
+/// # *** POR QUE SUBE A RING 3, Y ES LA SEPTIMA VEZ (2026-09-09)
+///
+/// `ritmo()` y `peor_trabajo()` existen desde hace semanas y **las lee UN solo
+/// sitio: `cabina/cockpit.rs`, que es una pantalla de RING 0.** Y de Ring 0 no
+/// se vuelve: el dueno vive en el escritorio.
+///
+/// ** O sea que los dos numeros que deciden si BMO-X puede bajar la latencia de
+/// la entrada estaban donde no los ve nadie. Van seis instrumentos con esa misma
+/// forma --CABINA, el testigo del USB, el pulso, el volcado, el modo del
+/// lienzo, `cuerpo`-- y este es el septimo.
+///
+/// # Que pregunta contesta, y por que es LA pregunta del tiempo real
+///
+/// El camino de la mano al pixel empieza aqui: `BUS_PERIOD_MS = 4` son **hasta
+/// 4 ms** antes de que el sistema sepa siquiera que el raton se movio. Un raton
+/// declara su `bInterval` --muchos piden 1 ms-- y `uhid/enumera.rs` LO LEE, se
+/// lo pasa al Endpoint Context y lo escribe en el log. Y despues este hilo drena
+/// el anillo a 250 Hz pase lo que pase.
+///
+/// > El aparato dice cada cuanto quiere hablar, el controlador se entera, y el
+/// > hilo que le escucha no se ha enterado.
+///
+/// [!] Y bajar el periodo NO es gratis, que es justo para lo que sirve el otro
+/// campo: la vuelta hace cinco trabajos, y a 1 ms se harian **cuatro veces mas
+/// veces**. `peor_us` dice si caben. Con este numero la decision es un dato; sin
+/// el, es una opinion -- y LEY 24 dice que el hardware se PERFILA.
+pub fn ritmo_y_peor() -> u64 {
+    unsafe {
+        let p = &*core::ptr::addr_of!(PEOR_US);
+        let mut cual = 0usize;
+        for i in 1..p.len() {
+            if p[i] > p[cual] {
+                cual = i;
+            }
+        }
+        // Se satura en vez de envolver: un `peor` que da la vuelta se leeria
+        // como un numero pequeno, que es la mentira mas cara que puede decir un
+        // instrumento de peor caso.
+        let us = if p[cual] > 0xFFFF_FFFF { 0xFFFF_FFFF } else { p[cual] };
+        (BUS_PERIOD_MS & 0xFFFF) | (us << 16) | ((cual as u64) << 48)
+    }
+}
+
 /// Anota lo que tardo el trabajo `i` y devuelve el TSC de ahora, para encadenar.
 ///
 /// `por_us` en cero --sin TSC medido-- solo devuelve la hora: medir contra un

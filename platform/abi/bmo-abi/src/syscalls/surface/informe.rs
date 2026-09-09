@@ -45,6 +45,28 @@ pub const INFO_TSC_HZ: u64 = 0x05;
 /// puede presupuestar lo que no se mide.
 pub const INFO_CPU_PROPIO: u64 = 0x4F;
 
+/// **El ritmo del bus USB y su peor trabajo**, que es donde empieza la latencia.
+///
+/// ```text
+///    bits  0..15   el periodo del bus, en ms
+///    bits 16..47   el peor trabajo visto de la vuelta, en us
+///    bits 48..55   cual: 0 bombeo, 1 rescate, 2 emergencia, 3 purga, 4 radar
+/// ```
+///
+/// == *** POR QUE EXISTE: LA MANO Y EL PIXEL (2026-09-09) ==================
+///
+/// El periodo del bus es **el primer sumando** del camino de la mano al pixel, y
+/// hoy son 4 ms fijos. Un raton declara su `bInterval` en el descriptor --muchos
+/// piden 1-- y el sistema lo lee, se lo pasa al Endpoint Context y lo escribe en
+/// el log; **el hilo que drena el anillo sigue yendo a 250 Hz**.
+///
+/// ** El otro campo es el precio de arreglarlo: a 1 ms la vuelta se hace cuatro
+/// veces mas a menudo, y `peor_us` dice si cabe. Con esto la decision es un dato.
+///
+/// [!] Y hasta hoy los dos numeros solo los leia `cabina/cockpit.rs`, que es una
+/// pantalla de RING 0 -- de donde no se vuelve. Ver `docs/plan/PLAN_EL_PIXEL.md`.
+pub const INFO_USB_RITMO: u64 = 0x50;
+
 /// **La frecuencia efectiva del nucleo AHORA, en Hz.** `0` = no se puede medir.
 ///
 /// No es [`INFO_TSC_HZ`]: ese es el reloj de referencia, que no cambia nunca.
