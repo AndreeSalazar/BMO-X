@@ -138,6 +138,7 @@ impl Pantalla {
                 fotogramas: 0,
                 bytes: 0,
                 peor: 0,
+                ultimo: 0,
                 cajas: 0,
                 modo: Volcador::Ninguno,
             }),

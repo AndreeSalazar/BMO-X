@@ -86,6 +86,7 @@ impl Pantalla {
             fotogramas: v.fotogramas + 1,
             bytes: v.bytes + bytes,
             peor: v.peor.max(bytes),
+            ultimo: bytes,
             cajas: if peor_ahora { sucias.cajas().len() as u32 } else { v.cajas },
             modo: v.modo,
         });
@@ -166,6 +167,19 @@ pub struct Volcado {
     /// El fotograma mas caro visto. **El peor caso importa mas que la media**:
     /// un tiron se nota, y una media buena lo esconde.
     pub peor: u64,
+    /// ** LO QUE COSTO EL ULTIMO, y existe desde el 09-09 por una foto.
+    ///
+    /// El primer arranque con el medidor en la barra dijo `volcado 8100K
+    /// cajas 1`, que es EXACTAMENTE 1920x1080x4: la pantalla entera en una caja.
+    /// Y no significaba que el troceado hubiera degenerado -- es el PRIMER
+    /// fotograma, el que `activar_doble_bufer` marca entero para igualar los dos
+    /// bufferes.
+    ///
+    /// *** `peor` no baja nunca, y eso esta bien: un maximo que se olvida no es
+    /// un maximo. Pero un maximo que no caduca **no sabe decir AHORA**, y esa es
+    /// justo la pregunta que se hace mirando una barra de tareas. Hacen falta
+    /// los dos numeros, no uno mejor.
+    pub ultimo: u64,
     /// ** CAJAS SUCIAS DEL PEOR FOTOGRAMA, y es el numero que dice si el
     /// arreglo del 2026-08-12 sirvio de algo.
     ///

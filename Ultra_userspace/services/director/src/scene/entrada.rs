@@ -27,11 +27,16 @@
 //! # Que se lee aqui, y es un juicio de AFORO
 //!
 //! ```text
-//!    entrada 4ms peor 120us purga
-//!            |          |     |
-//!            |          |     +-- cual de los cinco trabajos de la vuelta
-//!            |          +-- lo peor que ha tardado UNO de ellos
+//!    entrada 4ms 120us/s purga
+//!            |     |        |
+//!            |     |        +-- cual de los cinco trabajos de la vuelta
+//!            |     +-- lo peor que tardo uno de ellos EN EL ULTIMO SEGUNDO
 //!            +-- cada cuanto late el bus: EL SUELO de la latencia
+//!
+//! *** `/s` y no a secas, porque el primer arranque enseno por que hace falta:
+//! salio `7666us` --el 192% del periodo-- y era el ARRANQUE enumerando el USB.
+//! Un maximo desde el arranque contesta *"paso alguna vez"* a una pregunta que
+//! es *"esta pasando"*. Ahora la ventana es de un segundo. Ver `dev/usb/bus.rs`.
 //! ```
 //!
 //! ** `peor` se enciende en blanco cuando pasa del **80% del periodo**, y eso no
@@ -62,8 +67,8 @@ use super::huella::{cambio, Huella};
 use super::{chip_box, INK, INK_DIM, TASKBAR};
 use crate::text::decimal;
 
-/// Detras del volcado, que ocupa 250 px desde `TRAS_PULSO`.
-const TRAS_VOLCADO: u32 = 176 + 400 + 8 + 250 + 8;
+/// Detras del volcado, que ocupa 300 px desde `TRAS_PULSO`.
+const TRAS_VOLCADO: u32 = 176 + 400 + 8 + 300 + 8;
 /// Lo que ocupa: `entrada 4ms peor 120us purga` mas margen.
 const ANCHO: u32 = 250;
 
@@ -128,7 +133,7 @@ pub(crate) fn refrescar(p: &bmo::Pantalla) {
     // vuelta, el ritmo no se puede sostener. `C/T` acercandose a 1.
     let tinta = if peor_us * 10 >= periodo_ms * 1000 * 8 { INK } else { INK_DIM };
     let tx = p.texto_bytes(tx, ty, &buf[..n], tinta);
-    let tx = p.texto(tx, ty, "us ", INK_DIM);
+    let tx = p.texto(tx, ty, "us/s ", INK_DIM);
 
     // El indice que esta tabla no conoce se dice, no se recorta: un `?` manda a
     // mirar `dev/usb/bus.rs`; recortarlo ensenaria `radar` para siempre.
