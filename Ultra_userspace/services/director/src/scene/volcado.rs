@@ -100,6 +100,9 @@ pub(crate) fn refrescar(p: &bmo::Pantalla, v: &bmo::Volcado) {
     if x + ANCHO >= p.ancho {
         return;
     }
+    // ** La raya que lo separa del instrumento de la izquierda. Sin ella los
+    // tres se leen como un solo parrafo de numeros. Ver `scene::SEPARADOR`.
+    p.rect(x - 5, y + 4, 1, h.saturating_sub(8), crate::scene::SEPARADOR);
     p.rect(x, y, ANCHO, h, TASKBAR);
     let ty = y + (h.saturating_sub(bmo::GLIFO_ALTO)) / 2;
     let tx = p.texto(x + 4, ty, "volcado ", INK_DIM);

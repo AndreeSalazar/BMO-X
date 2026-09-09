@@ -145,6 +145,32 @@ pub(crate) const BG: u32 = 0x0014_1A28;
 pub(crate) const TASKBAR: u32 = 0x000F_131D;
 /// El pelo de luz bajo la barra. Un borde entero seria una raya; esto separa.
 pub(crate) const TASKBAR_LINE: u32 = 0x0026_2F42;
+
+/// **El filo de arriba de la barra**, un punto mas claro que ella.
+///
+/// === Por que esto y no un desenfoque ===
+///
+/// El dueno lo pidio *"inspirado en Wayland con blur"*, y la respuesta honesta
+/// es que **aqui un desenfoque no se veria**: desenfocar necesita TEXTURA, y
+/// detras de la barra hay un degradado vertical que en sus 40 filas varia un
+/// 4 %. El desenfoque de un degradado es el mismo degradado.
+///
+/// ** Lo que de verdad hace que un panel de Wayland se vea despegado del fondo
+/// no es el desenfoque: es el FILO. Una linea de un pixel mas clara arriba y
+/// una mas oscura abajo, y el ojo lee "esto esta encima". Cuesta dos `rect` y
+/// se nota en la foto; un desenfoque de caja costaria recorrer 76.800 pixeles
+/// tres veces para no verse.
+///
+/// [!] El dia que haya un FONDO DE ESCRITORIO de verdad --una imagen-- el
+/// desenfoque pasa a tener sentido, y entonces se hace UNA vez: el fondo no
+/// cambia, asi que su version borrosa tampoco.
+pub(crate) const TASKBAR_TOP: u32 = 0x001C_2334;
+
+/// La raya que separa dos grupos de instrumentos en la barra.
+///
+/// Un grupo pegado a otro se lee como un solo bloque de texto. Con esto, el
+/// pulso, el volcado y la entrada se ven como TRES cosas, que es lo que son.
+pub(crate) const SEPARADOR: u32 = 0x001E_2636;
 pub(crate) const ACCENT: u32 = tema_gen::ACCENT;
 
 pub(crate) const TASKBAR_H: u32 = 40;
@@ -357,6 +383,10 @@ pub(crate) fn paint_background(p: &bmo::Pantalla) {
         y += height;
     }
     p.rect(0, 0, p.ancho, TASKBAR_H, TASKBAR);
+    // ** EL FILO. Una linea clara arriba y una oscura abajo, y la barra deja de
+    // ser una mancha del mismo color que el fondo. Ver `TASKBAR_TOP`: es lo que
+    // hace el trabajo que la gente le atribuye al desenfoque.
+    p.rect(0, 0, p.ancho, 1, TASKBAR_TOP);
     p.rect(0, TASKBAR_H - 1, p.ancho, 1, TASKBAR_LINE);
 }
 

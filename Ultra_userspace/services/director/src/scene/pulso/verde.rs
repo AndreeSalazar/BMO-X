@@ -66,6 +66,9 @@ pub(crate) fn pintar(p: &bmo::Pantalla, d: &Dictamen) {
     } else {
         return;
     };
+    // ** La raya que lo separa del testigo. Sin ella los instrumentos se leen
+    // como un solo parrafo de numeros. Ver `scene::SEPARADOR`.
+    p.rect(x - 5, y + 4, 1, h.saturating_sub(8), crate::scene::SEPARADOR);
     p.rect(x, y, ancho, h, TASKBAR);
     let ty = y + (h.saturating_sub(bmo::GLIFO_ALTO)) / 2;
     // ** EL NOMBRE DICE EL MODO. No es adorno: si el kernel no dio el latido,
