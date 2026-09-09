@@ -120,6 +120,21 @@ pub fn main(ctx: &mut BootContext) {
     kbar!(164, 0xFFFF_0000u32); // red: phys::init OK
     crate::ring0::mm::vmm::init();
     kbar!(176, 0xFF00_FFFFu32); // aqua: vmm::init OK
+    // == *** LA TAREA IDLE, y va AQUI: en cuanto hay marcos que dar =========
+    //
+    // Antes de esto, `choose_next` devolvia la tarea actual cuando nadie estaba
+    // listo -- asi que una tarea que se acababa de bloquear seguia corriendo.
+    // El 08-09 eso revento con `ROTTEN CONTEXT: the seal is gone` en cuanto
+    // `WAIT` empezo a bloquear de verdad. Ver la nota de `IDLE` en
+    // `scheduler/roja.rs` y el escalon E0 de `docs/plan/PLAN_EL_COMPAS.md`.
+    //
+    // [!] Y se DICE si no hubo ranura, en vez de seguir en silencio: sin ella
+    // el sistema vuelve al comportamiento que tumbo la maquina.
+    match crate::ring0::task::scheduler::init_idle() {
+        Some(t) => crate::ring0::cabina::id("sched", "tarea IDLE en pie, tid", t as u64),
+        None => crate::ring0::cabina::warn(
+            "sched", "SIN tarea IDLE: bloquearse no bloqueara", 0),
+    }
     let (frames_total, frames_free) = crate::ring0::mm::phys::stats();
     crate::ring0::dev::console::serial_write("[ring0] mm ready: frames free=");
     crate::ring0::dev::console::serial_write_u64(frames_free, 10);
