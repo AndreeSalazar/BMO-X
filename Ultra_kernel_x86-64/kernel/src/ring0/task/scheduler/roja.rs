@@ -58,6 +58,22 @@ pub struct Task {
     /// Top of the task's kernel stack (traps from Ring 3 land here via
     /// TSS.RSP0, and the SYSCALL entry reloads it from PerCpu).
     pub kernel_stack_top: u64,
+    /// **Ciclos que esta tarea ha CORRIDO de verdad**, sin contar los que paso
+    /// esperando turno. Escalon E1 de `docs/plan/PLAN_EL_COMPAS.md`.
+    ///
+    /// == *** NO SE PUEDE PRESUPUESTAR LO QUE NO SE MIDE (2026-09-08) =======
+    ///
+    /// Hasta hoy nadie sabia cuanto CPU habia usado una tarea. Ring 3 se media con
+    /// `rdtsc` de reloj de pared --`Tick::cuerpo_ms`-- y eso no distingue
+    /// *"trabaje"* de *"me echaron del CPU"*. El 08-09 esa confusion costo una
+    /// caza entera: salio `cuerpo 1066 ms` y de esos solo **2,36 us por vuelta**
+    /// eran trabajo; el resto era estar fuera.
+    ///
+    /// ** Un instrumento que atribuye mal no te deja ignorante: te MANDA a un
+    /// sitio. Con esto, quien pregunte recibe su tiempo y no el del reloj.
+    pub cpu_ciclos: u64,
+    /// Cuando entro al CPU esta vez. `0` = no esta corriendo.
+    pub entro_en: u64,
 }
 
 
@@ -77,6 +93,8 @@ impl Task {
         is_user: false,
         cr3: 0,
         kernel_stack_top: 0,
+        cpu_ciclos: 0,
+        entro_en: 0,
     };
 }
 
@@ -507,6 +525,23 @@ fn schedule_locked(s: &mut Scheduler, saliente: Saliente) {
         // roto.
         crate::ring0::plat::trap::seal(outgoing, s.tasks[s.current].tid);
     }
+    // == *** LA CONTABILIDAD DEL CPU, y va AQUI y en ningun otro sitio ======
+    //
+    // Este es el unico punto del kernel donde el CPU cambia de dueno de verdad
+    // --arriba hay dos `return` que NO cambian nada-- asi que cerrar el tramo
+    // del saliente y abrir el del entrante aqui es lo que hace que la suma no
+    // pueda descuadrar. Escalon E1 de `PLAN_EL_COMPAS.md`.
+    //
+    // ** `rdtsc` cuesta unas decenas de ciclos contra los miles de un cambio de
+    // contexto con `xsave`. Un contador que costara lo que mide no serviria.
+    let ahora = rdtsc();
+    if s.tasks[s.current].entro_en != 0 {
+        let corrido = ahora.wrapping_sub(s.tasks[s.current].entro_en);
+        s.tasks[s.current].cpu_ciclos =
+            s.tasks[s.current].cpu_ciclos.wrapping_add(corrido);
+        s.tasks[s.current].entro_en = 0;
+    }
+    s.tasks[next].entro_en = ahora;
     s.tasks[next].state = TaskState::Running;
     s.tasks[next].remaining_ticks = s.tasks[next].quantum;
     s.current = next;
@@ -724,6 +759,8 @@ pub fn spawn_kernel(entry: u64, arg: u64, priority: u8) -> Option<u32> {
         is_user: false,
         cr3: 0,
         kernel_stack_top: stack_top,
+        cpu_ciclos: 0,
+        entro_en: 0,
     };
     Some(tid)
 }
@@ -761,6 +798,8 @@ pub fn spawn_user(
         is_user: true,
         cr3,
         kernel_stack_top,
+        cpu_ciclos: 0,
+        entro_en: 0,
     };
     Some(tid)
 }
@@ -792,6 +831,27 @@ fn mark_wait(s: &mut Scheduler, key: u64, deadline: u64) {
         s.tasks[s.current].wait_key = key;
         s.tasks[s.current].wait_deadline = deadline;
     }
+}
+
+
+/// **Los ciclos que la tarea actual lleva CORRIDOS**, incluido el tramo abierto.
+///
+/// Sumar el tramo en curso importa: sin el, quien pregunte por su propio tiempo
+/// recibiria el de la ultima vez que lo echaron del CPU -- un numero que nunca
+/// incluye lo que esta haciendo ahora mismo.
+///
+/// Escalon **E1** de [`PLAN_EL_COMPAS.md`](../../../../../../docs/plan/PLAN_EL_COMPAS.md):
+/// *no se puede presupuestar lo que no se mide*.
+pub fn cpu_propio() -> u64 {
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    let t = &s.tasks[s.current];
+    let abierto = if t.entro_en != 0 {
+        rdtsc().wrapping_sub(t.entro_en)
+    } else {
+        0
+    };
+    t.cpu_ciclos.wrapping_add(abierto)
 }
 
 
