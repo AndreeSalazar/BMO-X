@@ -3339,3 +3339,108 @@ Ni un ciclo del stub. `PLAN_LA_PUERTA_SE_PARTE.md` tiene cinco pasos y el
 primero es **M0: medir y no hacer nada mas** -- porque si al arrancar sale que
 el trabajo es la mayoria, el plan entero es el proyecto equivocado, y `ciclos`
 lo dice en pantalla con esas palabras.
+
+---
+
+## Ep. 68 -- El metal parte la puerta, y tres cuartas partes del fijo son MIAS
+
+**2026-09-09.** `c/ciclos.bex` corrio en el Ryzen. Cuatro numeros nuevos y uno
+que me desmiente.
+
+### El reparto, medido
+
+```text
+   0. bucle vacio         min   11   media   124
+   1. llamada normal      min   32   media    38
+   2. rdtsc suelto        min  111   media   112
+   3. RECHAZO (op)        min  633   media   921
+   4. RECHAZO (campo)     min  745   media  1150
+   5. PID (la barata)     min  780   media  1061
+   6. INFO ticks          min  874   media  1320
+```
+
+```text
+   FIJO      633     el 81 %      -> el lote ES el proyecto correcto
+   TRABAJO   147     el 19 %
+```
+
+** Con **OCHO operaciones por puerta se cumple la meta de 300**, no cuatro: la
+proyeccion de esta manana uso el 784/86 viejo y salio optimista.
+
+### EL HALLAZGO QUE NADIE BUSCABA
+
+```text
+   el FIJO medido                   633 ticks
+   el cruce del silicio (estimado)  150 ticks
+   ------------------------------------------
+   lo que NO es el silicio          483 ticks   <- el 76 % del fijo
+```
+
+*** **Tres cuartas partes del coste fijo son codigo NUESTRO.** El prologo y el
+epilogo estan medidos en 30 + 30, asi que ~420 ticks viven entre el
+`call {dispatch}` y la primera linea util. Y ahi solo hay tres cosas, de las
+que **dos son instrumentos**.
+
+```rust
+pub fn current_tid() -> u32 {
+    let _g = SCHED_LOCK.lock();     // <-- UN CERROJO
+    let s = sched();
+    s.tasks[s.current].tid
+}
+```
+
+**Toda puerta de BMO-X cierra el planificador para leer un `u32`**, porque
+`registrar_publicacion(trap_rsp(), current_tid())` corre siempre. Y su gemelo
+`current_pid()` es identico -- lo que explica el otro numero: **147 ticks para
+leer un entero**, y lo que se paga no es la lectura, es el cerrojo.
+
+`registrar_publicacion` hace ademas dos escrituras volatiles y **una lectura
+volatil de `base + XSAVE_BV`**: una linea de pila que la via rapida ya no
+escribe desde que se fue el XSAVE, o sea probablemente FRIA.
+
+[!] Y esa contabilidad **la lee un solo sitio**: `plat/faults/roja.rs:598`, el
+informe de fallos. Corre en TODA puerta y se lee **solo cuando algo se cae**.
+
+> Es la frase que esta casa se escribio al retirar los cuatro sellos `rdtsc`:
+> **un instrumento que ya dio su numero y sigue cobrando es un peaje, no una
+> medida.** Van dos.
+
+### Los otros dos numeros, de propina
+
+```text
+   los dos rechazos difieren en 112    -> el `match` de 100 campos de `INFO`,
+                                          que paga TODA lectura de la barra
+   PID  min 780 / media 1061  (+36 %)  -> la expropiacion. Para el compositor
+   INFO min 874 / media 1320  (+51 %)     manda la MEDIA, y nadie la mira
+```
+
+### [!] Y `ciclos.bex` decia una cosa falsa: corregida
+
+Imprimia el termometro como *"111 ticks, DENTRO de cada fila"*. No lo esta:
+cada bloque hace DOS `rdtsc` para 4096 operaciones, o sea 0,05 ticks por
+operacion. Lo que si estaba dentro de todas las filas era el BUCLE, y no se
+restaba. Las dos cosas arregladas, y ahora esa linea dice lo que el escalon 2
+mide de verdad: **lo que costaria instrumentar la puerta**, que es justo lo que
+hacian los sellos retirados.
+
+Y se anade LA ASINTOTA, que era la pregunta: `FIJO/N + TRABAJO` tiende a
+`TRABAJO`, o sea que **el lote tiene un suelo y no es cero**.
+
+### El hot-unmapping, que el dueno pregunto y YA EXISTE
+
+Va en `PLAN_LA_PUERTA_SE_PARTE` seccion 6b. `vmm::unmap_page` con su `invlpg`
+lo usan SIETE sitios y `fb::release` es hot-unmapping de libro. **Por ciclos va
+en contra**: 2.025 paginas de framebuffer son 2.025 `invlpg`.
+
+*** Pero es el precio que la seccion 6 no habia dicho:
+
+```text
+   por la PUERTA   780 ticks/lectura   revocar es GRATIS (una generacion)
+   por la PAGINA     4 ticks/lectura   revocar cuesta DESMAPEAR
+```
+
+> El que no cruza la puerta no puede ser detenido en la puerta.
+
+Y dos limites: el desmapeo es **ciego con el DMA** (EL NEUTRO otra vez), y hoy
+es barato **por accidente** -- con un solo nucleo es un `invlpg` local; el dia
+que SMP funcione, cada uno de los siete sitios es un TLB shootdown con IPI.
