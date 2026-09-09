@@ -76,11 +76,37 @@ pub(crate) fn refrescar(p: &bmo::Pantalla, v: &bmo::Volcado) {
     let ty = y + (h.saturating_sub(bmo::GLIFO_ALTO)) / 2;
     let tx = p.texto(x + 4, ty, "volcado ", INK_DIM);
 
-    // ** SIN UN SOLO FOTOGRAMA NO SE PINTA UN CERO. Un cero aqui se leeria
-    // como "no cuesta nada", y lo que pasa es que todavia no ha volcado nadie.
-    // Es la leccion del `pulso 0/s` de ayer, un modulo mas alla.
+    // == *** EL MODO VA PRIMERO, Y ES EL HECHO MAS DECISIVO (2026-09-09) ===
+    //
+    // La primera version de este fichero pintaba `peor` y `cajas` y **no el
+    // modo**, y con eso escondia justo lo que mas importa saber:
+    //
+    // ```text
+    //    Directo   hay lienzo -> se dibuja en RAM y se vuelca la caja sucia
+    //    NINGUNO   no hay lienzo -> cada rect y cada glifo va DIRECTO a la
+    //              VRAM por PCIe, y `read()` LEE de la VRAM. Cien veces mas
+    //              caro, y el escritorio funciona igual de bien
+    // ```
+    //
+    // ** Y en modo `Ninguno` la trampa era doble: `volcar` sale por su `return`
+    // ANTES de contar, asi que `fotogramas` se queda en 0 para siempre y esta
+    // caja decia `sin volcar` -- que se lee como *"todavia nada"* y no como
+    // *"no hay lienzo"*. Dos estados muy distintos con el mismo texto: la
+    // misma clase de fallo que el `pulso 0/s`, y en el fichero de al lado.
+    //
+    // *** El arranque SI lo dice --`SIN doble bufer: no hubo bloque, pinto
+    // directo al panel`-- por la CONSOLA, que se va y la tapa el escritorio.
+    // Van SEIS instrumentos que decian la verdad donde nadie mira.
+    if matches!(v.modo, bmo::Volcador::Ninguno) {
+        // En blanco: no es un detalle de rendimiento, es cien veces el coste.
+        p.texto(tx, ty, "SIN LIENZO", INK);
+        return;
+    }
+
+    // Sin un solo fotograma no se pinta un cero. Aqui ya se sabe que hay
+    // lienzo, asi que esto significa lo que parece: no ha volcado nadie aun.
     if v.fotogramas == 0 {
-        p.texto(tx, ty, "sin volcar", INK_DIM);
+        p.texto(tx, ty, "aun nada", INK_DIM);
         return;
     }
 
