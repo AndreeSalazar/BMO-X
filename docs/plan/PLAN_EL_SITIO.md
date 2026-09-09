@@ -187,13 +187,64 @@ heredan los cinco restantes el dia que la enlacen.
 
 ---
 
-# 8. EL NOMBRE
+# 8. LAS TRES PREGUNTAS, Y DE AHI SALE EL NOMBRE
 
-`bmo-sitio` -- *"el sitio de cada valor"*. Corto, literal, y dice lo que hace
-sin prometer lo que no.
+El dueno lo ordeno mejor que este documento: *"el compilador procesa, pero si
+quieres mas, esto se encarga para que INTI procese; y si hablamos de x86-64 es
+esto en libreria, porque **INTI es agnostico**"*.
 
-[!] Pero el nombre lo pone el dueno. `CUPO` se rechazo por lo que recordaba en
-Peru, y esa clase de cosa no la puede saber quien escribe el plan.
+Escrito como tres preguntas, cada una con su dueno y ninguno sabiendo el
+trabajo de los otros dos:
+
+```text
+   INTI        decide QUE hay que calcular       semantica     AGNOSTICO
+   el molde    decide DONDE vive cada valor      arquitectura  x86-64 / RISC-V
+   sem-asm     decide QUE BYTES son              codificacion  x86-64 / RISC-V
+```
+
+★★ Y eso convierte esta capa en **la frontera de abajo del toolchain**, con la
+misma forma que las tres de la raiz (`V-ABI` arriba, `PERFIL` abajo, `NEUTRO` al
+lado): es donde el software agnostico deja de serlo. LEY 24 dice que el hardware
+se PERFILA y el software es agnostico -- **aqui esta la linea exacta donde se
+cruza**, y hasta hoy no tenia sitio.
+
+## Los candidatos, y el argumento de cada uno
+
+```text
+   Motor de Sintesis Bare-Metal   lo que le recomendaron al dueno
+   bmo-sitio                      lo que proponia este plan
+   bmo-molde                      el que aguanta la metafora hasta el final
+```
+
+⚠ **`sintesis` ya esta cogida.** En hardware, *sintesis* es HDL -> puertas
+logicas. Quien venga de ese mundo --y son justo los que interesan a un proyecto
+bare-metal-- leera otra cosa. Un nombre que ensena algo falso a los que mas
+saben es el peor de los nombres posibles para una pieza que quiere ser escuela.
+
+[!] Y `motor` **vende de mas**, que es lo que esta casa no hace nunca. Esto son
+~2.000 lineas de un algoritmo conocido. `huella`, `testigo`, `aforo`, `compas`
+-- ninguno promete mas de lo que hay, y por eso los documentos se creen.
+
+## ★★★ Por que `MOLDE` aguanta
+
+La casa ya tiene una prueba para las metaforas --`COMPAS`/`AFORO` la paso-- y es
+que sigan siendo ciertas hasta el ultimo detalle:
+
+```text
+   lo fundido no tiene forma propia    INTI es agnostico
+   el molde es de la arquitectura      x86-64 tiene 16 huecos; RISC-V, 32
+   se cambia el molde, misma aleacion  el backend nuevo es otra TABLA (S2)
+   el molde no decide QUE se funde     no conoce ningun lenguaje
+   *** lo que no cabe, SE DERRAMA      y el termino tecnico de un valor que
+                                       no cabe en un registro es, literalmente,
+                                       **spill**: derrame
+```
+
+Esa ultima linea es la que decide: **la metafora cae encima del termino tecnico
+sin forzarla.** Un valor derramado va a la pila, igual que el metal que no cupo.
+
+[!] Y aun asi el nombre lo pone el dueno. `CUPO` se rechazo por lo que recordaba
+en Peru, y esa clase de cosa no la puede saber quien escribe el plan.
 
 ---
 
