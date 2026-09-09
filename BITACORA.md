@@ -2724,3 +2724,73 @@ razon excelente"*-- y le ha tocado el primero.
 [!] **Y sigue sin haber una sola medida de velocidad.** 500 filas verdes dicen
 que es CORRECTO; los bytes dicen que CAMBIO. Que sea mas rapido lo dice
 `expansion N us` en el Ryzen, y no ha hablado todavia.
+
+---
+
+## Ep. 60 -- La pantalla partida de DOOM: el instrumento miraba al otro lado de la valla
+
+**2026-09-09.** El dueno trajo la foto de siempre: DOOM con la **mitad izquierda
+jugando y la mitad derecha con la pantalla de TITULO**, y las columnas gordas.
+*"Analiza por que se ve asi siempre."*
+
+### Lo que la foto dice, y ya estaba escrito en el fuente
+
+```text
+   la vista 3D ocupa la mitad izquierda   porque MIDE la mitad: viewwidth=80
+   las columnas se ven gordas             detalle bajo: de dos en dos
+   la mitad derecha tiene el TITULO       el motor nunca pasa por ahi
+   la barra de estado esta perfecta       la pinta otra ruta
+```
+
+No es geometria rota: es una **ventana de vista mal puesta**. Y por la formula
+de DOOM, con `setblocks=10` y `setdetail=0` tiene que salir 320:
+
+```text
+   scaledviewwidth = setblocks*32        10 -> 320
+   viewwidth = scaledviewwidth>>detailshift    con 0 -> 320
+```
+
+### ★★★ Y AQUI ESTA EL FALLO, Y ES EL DE TODO EL MES
+
+La linea de `[perf]` decia **`blocks=10 detalle=0`** -- los dos correctos-- con
+un `viewwidth=80` que con esos numeros **es imposible**. Y no mentia: imprimia
+
+```c
+   viewwidth, viewheight, screenblocks, detailLevel
+```
+
+`screenblocks` y `detailLevel` son las variables **del MENU**. Las que calculan
+son `setblocks`, `setdetail` y `detailshift`, que es donde `R_SetViewSize` deja
+sus argumentos.
+
+> Los tres numeros eran ciertos y no hablaban del mismo lado. **Esa es la unica
+> forma de que un instrumento mienta sin equivocarse.**
+
+*** Y el motivo de que leyera esos y no los otros es de manual: `detailshift`
+estaba en `r_main.h` y `setblocks`/`setdetail` **no estaban declarados en ningun
+sitio alcanzable**. Un instrumento lee lo que tiene a mano.
+
+Van NUEVE con esta forma en dos dias -- y esta es la primera en la que las dos
+variables se PARECEN, que es lo que la hizo durar.
+
+### El arreglo, que ademas es un experimento con dos respuestas limpias
+
+La vuelta del 05-09 fijo `screenblocks=10` y `detailLevel=0`, y el Ryzen siguio
+dando 80: **esos dos no calculan nada**. Ahora se ponen los de dentro --
+`setblocks`, `setdetail`, `setsizeneeded`-- al OTRO lado de la llamada:
+
+```text
+   si la pantalla se arregla   el fallo estaba en PASAR LOS ARGUMENTOS
+   si sigue partida            el fallo esta en `*` o en `>>`, y entonces
+                               es del compilador y no de DOOM
+```
+
+[!] Y no es tapar: en BMO-X el menu de DOOM no se alcanza, asi que esto no es
+una preferencia del usuario -- es una constante que hasta hoy se escribia en el
+sitio equivocado.
+
+El `[perf]` lleva ahora los seis numeros, los del menu y los que deciden:
+
+```text
+   [perf] vista: viewwidth=N viewheight=N anchoesc=N (set N/N shift=N | menu N/N)
+```
