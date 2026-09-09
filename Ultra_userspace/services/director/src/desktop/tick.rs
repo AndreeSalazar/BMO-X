@@ -232,8 +232,10 @@ pub(crate) struct Tick {
     dormidas_por_segundo: u32,
     /// `rdtsc` justo antes de ceder, y `0` si todavia no se cedio nunca.
     cedio_en: u64,
-    /// `rdtsc` del principio de esta vuelta.
+    /// `rdtsc` del principio de esta vuelta. Reloj de PARED.
     inicio: u64,
+    /// Ciclos de CPU PROPIOS al principio de esta vuelta. Ver `ceder`.
+    cpu_inicio: u64,
     /// The open sample: when it started (cycles) and at which pass.
     sample_at: u64,
     sample_loops: u32,
@@ -302,6 +304,7 @@ impl Tick {
             dormidas_por_segundo: 0,
             cedio_en: 0,
             inicio: 0,
+            cpu_inicio: 0,
             quarter: false,
             sample_at: 0,
             sample_loops: 0,
@@ -342,6 +345,7 @@ impl Tick {
             self.suma_puerta = self.suma_puerta.wrapping_add(now.wrapping_sub(self.cedio_en));
         }
         self.inicio = now;
+        self.cpu_inicio = bmo::info(bmo::INFO_CPU_PROPIO);
         self.quarter = now.wrapping_sub(self.quarter_at) >= self.ciclos_de(QUARTER_MS);
         if self.quarter {
             self.quarter_at = now;
@@ -494,8 +498,18 @@ impl Tick {
         let antes = bmo::ciclos();
         let con_reloj = self.tsc_hz != 0 && self.tsc_hz != NO_CLOCK;
         if con_reloj {
-            self.suma_cuerpo = self.suma_cuerpo
-                .wrapping_add(antes.wrapping_sub(self.inicio));
+            // ** EL CUERPO SE MIDE CON EL RELOJ DE CPU PROPIO, no con el de
+            // pared (2026-09-08). `INFO_CPU_PROPIO` cuenta los ciclos que esta
+            // tarea ha CORRIDO; `bmo::ciclos()` cuenta los que han pasado.
+            // Cuando al compositor lo echan del CPU en mitad de su vuelta, el
+            // segundo sube y el primero no -- y esa diferencia es exactamente
+            // lo que confundio la caza del 08-09. Escalon E1 de
+            // `docs/plan/PLAN_EL_COMPAS.md`.
+            let cpu = bmo::info(bmo::INFO_CPU_PROPIO);
+            if cpu != 0 && self.cpu_inicio != 0 {
+                self.suma_cuerpo = self.suma_cuerpo
+                    .wrapping_add(cpu.wrapping_sub(self.cpu_inicio));
+            }
             self.cedio_en = antes;
         }
         if self.latido == 0 {

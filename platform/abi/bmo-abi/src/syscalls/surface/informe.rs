@@ -30,6 +30,21 @@ pub const INFO_RAM_MARCOS_LIBRES: u64 = 0x04;
 /// maquina, no un numero nominal de la etiqueta.
 pub const INFO_TSC_HZ: u64 = 0x05;
 
+/// **Los ciclos que ESTA tarea ha corrido de verdad**, sin los que paso
+/// esperando turno.
+///
+/// == *** POR QUE HACE FALTA, Y LO QUE COSTO NO TENERLO (2026-09-08) ========
+///
+/// Ring 3 solo podia medirse con `rdtsc`, que es RELOJ DE PARED: no distingue
+/// *"trabaje"* de *"me echaron del CPU"*. El 08-09 esa confusion costo una caza
+/// entera -- el compositor decia `cuerpo 1066 ms` y de esos solo **2,36 us por
+/// vuelta** eran trabajo suyo.
+///
+/// ** Con esto, "el compositor trabaja mucho" y "al compositor no le dan turno"
+/// dejan de leerse igual. Escalon **E1** de `docs/plan/PLAN_EL_COMPAS.md`: no se
+/// puede presupuestar lo que no se mide.
+pub const INFO_CPU_PROPIO: u64 = 0x4F;
+
 /// **La frecuencia efectiva del nucleo AHORA, en Hz.** `0` = no se puede medir.
 ///
 /// No es [`INFO_TSC_HZ`]: ese es el reloj de referencia, que no cambia nunca.

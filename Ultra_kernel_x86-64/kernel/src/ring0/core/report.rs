@@ -37,6 +37,20 @@ const INFO_RAM_LIBRE: u64 = 0x02;
 const INFO_RAM_MARCOS: u64 = 0x03;
 const INFO_RAM_MARCOS_LIBRES: u64 = 0x04;
 const INFO_TSC_HZ: u64 = 0x05;
+/// **Los ciclos que ESTA tarea ha corrido de verdad**, sin los que paso
+/// esperando turno.
+///
+/// == *** POR QUE HACE FALTA, Y LO QUE COSTO NO TENERLO (2026-09-08) ========
+///
+/// Ring 3 solo podia medirse con `rdtsc`, que es RELOJ DE PARED: no distingue
+/// *"trabaje"* de *"me echaron del CPU"*. El 08-09 esa confusion costo una caza
+/// entera -- el compositor decia `cuerpo 1066 ms` y de esos solo **2,36 us por
+/// vuelta** eran trabajo suyo.
+///
+/// ** Con esto, "el compositor trabaja mucho" y "al compositor no le dan turno"
+/// dejan de leerse igual. Escalon **E1** de `docs/plan/PLAN_EL_COMPAS.md`: no se
+/// puede presupuestar lo que no se mide.
+const INFO_CPU_PROPIO: u64 = 0x4F;
 /// ** LA FRECUENCIA EFECTIVA, en Hz. `0` = no se puede medir.
 ///
 /// No es `INFO_TSC_HZ`: ese dice a que va el RELOJ de referencia, que no cambia
@@ -292,6 +306,7 @@ pub fn campo(n: u64) -> u64 {
         INFO_RAM_MARCOS => phys::stats().0,
         INFO_RAM_MARCOS_LIBRES => phys::stats().1,
         INFO_TSC_HZ => crate::ring0::task::scheduler::tsc_freq(),
+        INFO_CPU_PROPIO => crate::ring0::task::scheduler::cpu_propio(),
         // La UNICA fila de esta tabla que MIDE en vez de consultar. Cuesta dos
         // `rdmsr`, y por eso puede vivir en un camino que se repinta.
         INFO_CPU_HZ_REAL => crate::ring0::cpu::frequency::medir(),
