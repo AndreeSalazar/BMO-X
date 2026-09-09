@@ -24,6 +24,18 @@ use core::arch::asm;
 const MSR_IA32_SPEC_CTRL: u32 = 0x0000_0048;
 const MSR_IA32_PRED_CMD:  u32 = 0x0000_0049;
 const MSR_IA32_TSX_CTRL:  u32 = 0x0000_0122;
+/// ** DECLARADO Y NO USADO A PROPOSITO, y por eso lleva `allow` con motivo.
+///
+/// Es el SPEC_CTRL **propio de AMD**, el camino de las piezas viejas que no
+/// traen el arquitectonico. Este CPU --Zen 3-- si trae el `0x48` de arriba, asi
+/// que la mitigacion va por ahi y esta nunca se toca.
+///
+/// [!] No se borra, y la diferencia importa: **un `const` muerto en un fichero
+/// de mitigaciones se lee como cobertura que no existe**, y borrarlo sin decir
+/// nada esconde que hay un segundo camino para otro silicio. Queda con su
+/// motivo escrito, que es lo unico que distingue una decision de un descuido.
+/// Ver LEY 24: el hardware se PERFILA, y este perfil es el del Ryzen 5 5600X.
+#[allow(dead_code)]
 const MSR_AMD_SPEC_CTRL:  u32 = 0xC001_0115;
 
 const SPEC_CTRL_IBRS: u64 = 1 << 0;

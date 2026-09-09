@@ -14,11 +14,7 @@
 
 use boot_context::BootContext;
 
-use crate::ring0::task::landing;
-use crate::ring0::task::bex;
-use crate::ring0::obj::channel;
-use crate::ring0::mm::{self, phys, vmm};
-use crate::ring0::task::scheduler;
+use crate::ring0::mm::{self, vmm};
 use crate::ring0::plat::trap;
 
 /// Paginas de pila de Ring 3. **Se DERIVA de `vmm::USER_STACK_SIZE`**, que es

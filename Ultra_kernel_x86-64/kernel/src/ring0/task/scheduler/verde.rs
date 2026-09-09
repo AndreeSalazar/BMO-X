@@ -23,7 +23,7 @@
 //! colgarse ahi convierte un volcado legible en una maquina muda. Un valor a
 //! medias es aceptable para un diagnostico; no arrancar, no.
 
-use super::roja::{sched, Task, SCHEDULER, SCHED_LOCK, SWITCH_SNAP, TSC_FREQ};
+use super::roja::{sched, SCHEDULER, SCHED_LOCK, SWITCH_SNAP, TSC_FREQ};
 use crate::ring0::mm;
 
 pub const MAX_TASKS: usize = 64;

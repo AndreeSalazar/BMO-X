@@ -27,7 +27,7 @@ use super::*;
 //// panel del kernel si no, exactamente como antes. Lo nuevo rodea a lo
 //// viejo en vez de romperlo: los cinco demos embebidos siguen hablando
 //// por el panel sin cambiar una linea.
-pub(super) fn console_write(arg0: u64, arg1: u64) -> BmoStatus {
+pub(super) fn console_write(arg0: u64, _arg1: u64) -> BmoStatus {
         let pid = scheduler::current_pid();
         match crate::ring0::obj::console::output_of(pid) {
             Some(idx) => {
@@ -61,7 +61,7 @@ pub(super) fn console_write(arg0: u64, arg1: u64) -> BmoStatus {
         BmoStatus::ok_value(0)
 }
 
-pub(super) fn console_read(arg0: u64, arg1: u64) -> BmoStatus {
+pub(super) fn console_read(arg0: u64, _arg1: u64) -> BmoStatus {
         let _ = arg0;
         let pid = scheduler::current_pid();
         match crate::ring0::obj::console::output_of(pid) {

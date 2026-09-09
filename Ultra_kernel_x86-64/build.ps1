@@ -228,6 +228,9 @@ Guardian 'Validating L6a: no new module over the line' `
 Guardian 'Validating plan checkboxes are verifiable' `
     'toolchain\tools\casillas\casillas.py' 'las casillas' `
     'casillas: una casilla no se puede comprobar (ver arriba)'
+Guardian 'Validating compiler warnings do not grow' `
+    'toolchain\tools\avisos\avisos.py' 'los avisos del compilador' `
+    'avisos: los avisos del compilador SUBIERON (ver arriba)'
 Guardian 'Validating commit scopes' `
     'toolchain\tools\ambitos\ambitos.py' 'los ambitos de los commits' `
     'ambitos: un commit usa un ambito que no esta en AMBITOS.txt (ver arriba)'

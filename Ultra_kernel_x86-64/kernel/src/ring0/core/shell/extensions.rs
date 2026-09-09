@@ -32,7 +32,7 @@
 
 use super::super::dashboard::dashboard_log_color;
 use super::ui::{row, L, SH_TITLE, SH_VALUE};
-use crate::ring0::cpu_vendor::features::{self, Group, Use};
+use crate::ring0::cpu_vendor::features::{self, Group};
 
 /// Los ocho grupos, en el orden en que se pintan. Es el mismo orden que declara
 /// `Feat::group`, escrito aqui porque un enum no se puede recorrer solo.

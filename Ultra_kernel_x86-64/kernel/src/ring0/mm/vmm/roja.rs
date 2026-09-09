@@ -27,11 +27,11 @@
 //! que lo que le pasa a esa funcion ya paso por un juez.
 
 use super::verde::{
-    fisica_exacta, translate, ADDR_MASK, PTE_HUGE, PTE_PRESENT, PTE_USER, PTE_WRITABLE,
+    translate, ADDR_MASK, PTE_HUGE, PTE_PRESENT, PTE_USER, PTE_WRITABLE,
     USER_IMAGE_BASE,
 };
-use super::amarilla::{map_page, map_page_propia, unmap_page, PTE_NUESTRA};
-use super::super::{phys, phys_to_virt, PAGE};
+use super::amarilla::{map_page_propia, unmap_page, PTE_NUESTRA};
+use super::super::{phys, phys_to_virt};
 
 
 static mut KERNEL_PML4: u64 = 0;

@@ -24,7 +24,7 @@
 
 use super::*;
 
-pub(super) fn dir_abrir(arg0: u64, arg1: u64) -> BmoStatus {
+pub(super) fn dir_abrir(arg0: u64, _arg1: u64) -> BmoStatus {
         let _ = arg0;
         let pid = scheduler::current_pid();
         let ruta = ruta_tomar(pid);
@@ -36,7 +36,7 @@ pub(super) fn dir_abrir(arg0: u64, arg1: u64) -> BmoStatus {
 
 //// El eslabon que faltaba: el kernel sabia leer y escribir archivos y
 //// Ring 3 no tenia con que pedirselo.
-pub(super) fn archivo_abrir(arg0: u64, arg1: u64) -> BmoStatus {
+pub(super) fn archivo_abrir(arg0: u64, _arg1: u64) -> BmoStatus {
         let _ = arg0;
         let pid = scheduler::current_pid();
         let ruta = ruta_tomar(pid);
@@ -46,7 +46,7 @@ pub(super) fn archivo_abrir(arg0: u64, arg1: u64) -> BmoStatus {
         }
 }
 
-pub(super) fn archivo_asinc(arg0: u64, arg1: u64) -> BmoStatus {
+pub(super) fn archivo_asinc(arg0: u64, _arg1: u64) -> BmoStatus {
         let _ = arg0;
         let pid = scheduler::current_pid();
         let ruta = ruta_tomar(pid);
@@ -56,7 +56,7 @@ pub(super) fn archivo_asinc(arg0: u64, arg1: u64) -> BmoStatus {
         }
 }
 
-pub(super) fn archivo_crear(arg0: u64, arg1: u64) -> BmoStatus {
+pub(super) fn archivo_crear(arg0: u64, _arg1: u64) -> BmoStatus {
         let _ = arg0;
         let pid = scheduler::current_pid();
         let ruta = ruta_tomar(pid);
@@ -66,7 +66,7 @@ pub(super) fn archivo_crear(arg0: u64, arg1: u64) -> BmoStatus {
         }
 }
 
-pub(super) fn mi_paquete(arg0: u64, arg1: u64) -> BmoStatus {
+pub(super) fn mi_paquete(_arg0: u64, _arg1: u64) -> BmoStatus {
         let pid = scheduler::current_pid();
         // La ruta la sabe el KERNEL, no el programa. Si no la recuerda --los
         // binarios que el propio kernel embebe no vienen de ninguna-- se
@@ -80,7 +80,7 @@ pub(super) fn mi_paquete(arg0: u64, arg1: u64) -> BmoStatus {
         }
 }
 
-pub(super) fn consola_crear(arg0: u64, arg1: u64) -> BmoStatus {
+pub(super) fn consola_crear(arg0: u64, _arg1: u64) -> BmoStatus {
         let _ = arg0;
         match crate::ring0::obj::console::create(scheduler::current_pid()) {
             Ok(handle) => BmoStatus::ok_value(handle),

@@ -34,7 +34,6 @@
 //! ha podido calcular, y cuando el escritorio muere guarda sus ultimas cuatro
 //! lineas para poder decir DONDE. No presume de no fallar: presume de contarlo.
 
-use super::*;
 
 /// Ancho de la mascara del kanji.
 pub(crate) const KANJI_ANCHO: u32 = 74;

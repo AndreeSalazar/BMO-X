@@ -49,7 +49,6 @@
 //! funciones serian dos copias de ese bucle, y la segunda se quedaria atras.
 
 use super::proc::*;
-use super::*;
 // ** Los mismos `use` que tenia `proc.rs`: el reparto mueve texto, y el texto
 // movido necesita los nombres que usaba donde estaba.
 use crate::ring0::mm::{self, phys, vmm};

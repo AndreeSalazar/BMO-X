@@ -43,7 +43,6 @@
 //! them with poison.
 
 use core::arch::{asm, naked_asm};
-use crate::ring0::task::percpu;
 use super::ops::*;
 use super::dispatch;
 

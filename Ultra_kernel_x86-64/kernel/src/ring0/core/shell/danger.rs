@@ -26,7 +26,7 @@ use super::super::phase::s_log;
 // de ese comando.
 
 pub(crate) fn shell_ktest() {
-    match crate::ring0::task::scheduler::spawn_kernel(ktest_main as usize as u64, 0xB0, 1) {
+    match crate::ring0::task::scheduler::spawn_kernel(ktest_main as *const () as usize as u64, 0xB0, 1) {
         Some(tid) => {
             crate::ring0::dev::console::serial_write("[ktest] spawned tid=");
             crate::ring0::dev::console::serial_write_u64(tid as u64, 10);

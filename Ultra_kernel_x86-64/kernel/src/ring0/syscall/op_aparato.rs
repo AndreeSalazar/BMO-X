@@ -32,7 +32,7 @@ use super::*;
 //// esta cargado AHORA: durante un SYSCALL desde Ring 3, CR3 sigue
 //// siendo el del llamante -- el cambio de CR3 solo ocurre en un cambio
 //// de contexto, y aqui todavia no ha habido ninguno.
-pub(super) fn input_claim(arg0: u64, arg1: u64) -> BmoStatus {
+pub(super) fn input_claim(arg0: u64, _arg1: u64) -> BmoStatus {
         let _ = arg0;
         match crate::ring0::obj::input::claim(scheduler::current_pid()) {
             Ok(handle) => BmoStatus::ok_value(handle),
@@ -40,7 +40,7 @@ pub(super) fn input_claim(arg0: u64, arg1: u64) -> BmoStatus {
         }
 }
 
-pub(super) fn framebuffer_claim(arg0: u64, arg1: u64) -> BmoStatus {
+pub(super) fn framebuffer_claim(arg0: u64, _arg1: u64) -> BmoStatus {
         let _ = arg0;
         match crate::ring0::obj::fb::claim(
             scheduler::current_pid(),
@@ -60,7 +60,7 @@ pub(super) fn framebuffer_claim(arg0: u64, arg1: u64) -> BmoStatus {
 //// mas, porque es de donde hay que DESMAPEAR: el proceso sigue vivo y
 //// dejarle las paginas seria dejarle escribir en una pantalla que ya no
 //// es suya.
-pub(super) fn entrada_soltar(arg0: u64, arg1: u64) -> BmoStatus {
+pub(super) fn entrada_soltar(arg0: u64, _arg1: u64) -> BmoStatus {
         let _ = arg0;
         match crate::ring0::obj::input::release(scheduler::current_pid()) {
             Ok(()) => BmoStatus::ok_value(0),
@@ -68,7 +68,7 @@ pub(super) fn entrada_soltar(arg0: u64, arg1: u64) -> BmoStatus {
         }
 }
 
-pub(super) fn pantalla_soltar(arg0: u64, arg1: u64) -> BmoStatus {
+pub(super) fn pantalla_soltar(arg0: u64, _arg1: u64) -> BmoStatus {
         let _ = arg0;
         match crate::ring0::obj::fb::release(
             scheduler::current_pid(),
@@ -79,7 +79,7 @@ pub(super) fn pantalla_soltar(arg0: u64, arg1: u64) -> BmoStatus {
         }
 }
 
-pub(super) fn audio_claim(arg0: u64, arg1: u64) -> BmoStatus {
+pub(super) fn audio_claim(arg0: u64, _arg1: u64) -> BmoStatus {
         let _ = arg0;
         match crate::ring0::obj::audio::claim(scheduler::current_pid()) {
             Ok(handle) => BmoStatus::ok_value(handle),
@@ -87,7 +87,7 @@ pub(super) fn audio_claim(arg0: u64, arg1: u64) -> BmoStatus {
         }
 }
 
-pub(super) fn audio_release(arg0: u64, arg1: u64) -> BmoStatus {
+pub(super) fn audio_release(arg0: u64, _arg1: u64) -> BmoStatus {
         let _ = arg0;
         match crate::ring0::obj::audio::release(scheduler::current_pid()) {
             Ok(()) => BmoStatus::ok_value(0),
@@ -108,7 +108,7 @@ pub(super) fn audio_release(arg0: u64, arg1: u64) -> BmoStatus {
 //// `arg1` = el modo: 0 despertar - 1 PARAR - 2 la prueba de reparto.
 //// Devuelve 1 si encontro un aparato de reproduccion. Los NUMEROS van a
 //// CABINA: son ocho y por la puerta cabe uno.
-pub(super) fn audio_censo(arg0: u64, arg1: u64) -> BmoStatus {
+pub(super) fn audio_censo(_arg0: u64, _arg1: u64) -> BmoStatus {
         let hubo = unsafe { crate::ring0::dev::usb::audio::censar() };
         BmoStatus::ok_value(hubo as u64)
 }
