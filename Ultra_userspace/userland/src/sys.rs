@@ -80,6 +80,51 @@ pub fn channel_kick(cap: u64, _secuencia: u64) -> Status {
 
 /// `WAIT` -- bloquearse hasta que la secuencia del esperable pase de `visto`,
 /// o hasta que venza el plazo. `esperable = 0` es dormir a secas.
+///
+/// == *** EL CENSO DE LAS ESPERAS (2026-09-08) =============================
+///
+/// Se barrio el arbol entero preguntando *"quien espera, y con que"*, despues
+/// de descubrir que esta puerta **no habia bloqueado nunca** (el despachador
+/// del kernel tenia un solo brazo; ver `ring0/syscall/ops.rs`, `NR_INVOKE`).
+///
+/// # Ring 3: aqui manda `WAIT`, y no habia alternativa legitima
+///
+/// ```text
+///    dormir_un_rato          `wait(0,0,20ms)`   ya lo usaba
+///    Tick::ceder             `wait(latido,..)`  el latido del hardware
+///    splash::wait_ms         GIRABA cediendo    -> arreglado, duerme a trozos
+///    salir()                 `loop { yield }`   es un por-si-acaso tras EXIT,
+///                                               y no vuelve nunca. Se deja
+/// ```
+///
+/// *** Y lo que costo tenerlo roto: la fase 2 de `lend_screen` --el bucle que
+/// dura **una partida entera de DOOM**-- llamaba a `dormir_un_rato` creyendo
+/// que dormia. No dormia: giraba a CPU completa robandole turnos al juego. El
+/// comentario de ese bucle afirma que *"un juego de un solo hilo tiene el
+/// nucleo entero por construccion"*, y era falso justo cuando lo lanzaba el
+/// escritorio.
+///
+/// # Ring 0: los giros que SI son legitimos, y por que
+///
+/// ```text
+///    disco / red / USB / reinicio    handshakes de hardware con plazos de
+///                                    MICROsegundos, y varios corren ANTES de
+///                                    que exista el planificador. No hay a
+///                                    quien cederle el turno
+///    los `hlt` de idle y de muerte   son el final del camino, no una espera
+///    park_until                      la version de kernel de esto mismo: un
+///                                    hilo no puede llamar a un syscall
+/// ```
+///
+/// ** No se puede `WAIT` sobre un registro que cambia en 50 us: el coste de
+/// dormirse es mayor que la espera. La regla que sale del censo es esa:
+///
+/// > Si lo que esperas tarda mas que un cambio de contexto, DUERME. Si tarda
+/// > menos, gira -- y escribe por que.
+///
+/// [!] Y queda una espera de kernel sin resolver: `park_until` suelta el CPU en
+/// el tic siguiente y no en el acto. Es el escalon P2.2 de
+/// `docs/plan/PLAN_EL_PLAZO.md`.
 #[inline(always)]
 pub fn wait(esperable: u64, visto: u64, timeout_ns: u64) -> Status {
     syscall(NR_WAIT, esperable, visto, timeout_ns, 0, 0)

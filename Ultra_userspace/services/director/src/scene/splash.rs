@@ -62,6 +62,12 @@ const CON_AVISO_MS: u64 = 1100;
 /// justo los segundos que haga falta LEERLO. Lo que se arregla es que fuera
 /// obligatoria: ahora cualquier tecla la cierra. Quien necesita leerla, la lee;
 /// quien no, no paga.
+/// El trozo en que se parte la espera, para poder mirar la tecla entre medias.
+///
+/// 4 ms es el periodo del bus USB: una tecla no puede llegar mas fresca, asi que
+/// dormir menos seria despertarse para preguntar por algo que no ha cambiado.
+const TROZO_MS: u64 = 4;
+
 fn wait_ms(ms: u64, input: Option<&bmo::Entrada>) {
     let hz = bmo::info(bmo::INFO_TSC_HZ);
     if hz == 0 {
@@ -79,7 +85,18 @@ fn wait_ms(ms: u64, input: Option<&bmo::Entrada>) {
                 return;
             }
         }
-        bmo::yield_screen();
+        // ** SE DUERME, NO SE CEDE (2026-09-08). Aqui ponia `yield_screen()`, y
+        // la propia cabecera de esta funcion decia por que estaba mal: *"un
+        // `spin` de 900 ms en un sistema preemptivo es 900 ms robados al resto
+        // de las tareas"*. Ceder no roba el quantum, pero **deja la tarea
+        // DESPIERTA**: el planificador la mira en cada ronda para que vuelva a
+        // no hacer nada.
+        //
+        // Con `wait` queda bloqueada y sale de la lista de listos. El plazo es
+        // corto porque esto TAMBIEN sondea una tecla: 4 ms es el latido del bus
+        // USB, o sea que la tecla no puede llegar mas fresca de todas formas.
+        // Ver el censo de esperas en `sys::wait`.
+        bmo::wait(0, 0, TROZO_MS * 1_000_000);
     }
 }
 
