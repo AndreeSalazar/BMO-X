@@ -155,10 +155,26 @@ pub fn ritmo() -> (u64, u64, u64) {
 /// El orden no es de gusto y ya estaba escrito en el bucle: el rescate va justo
 /// detras del bombeo porque su tecla acaba de entrar en la cola, y la purga
 /// detras de la emergencia porque son dos motivos distintos por el mismo camino.
-const NOMBRES: [&str; 5] = ["bombeo", "rescate", "emergencia", "purga", "radar"];
+const NOMBRES: [&str; 8] = [
+    "bombeo", "rescate", "emergencia", "purga", "radar",
+    // *** LOS TRES DE DENTRO DE `bombeo`, 2026-09-09.
+    //
+    // El metal dijo `7781us/s bombeo` contra un periodo de 4.000: el hilo no
+    // cabe en su propio periodo, sostenido, y no era el arranque -- la ventana
+    // de un segundo lo desmintio.
+    //
+    // ** Y `bombeo` no es UNA cosa: son cuatro. Dos cambios de `CR3`, el
+    // drenaje del anillo, el audio y la foto de salud. Preguntarle a un numero
+    // que suma cuatro trabajos cual de ellos tarda es preguntarle al total.
+    //
+    // *** Partir el numero que no cuadra es el metodo que ha funcionado esta
+    // semana entera: los 40 ms del compositor se partieron en `cuerpo` y
+    // `puerta`, el blit en `expansion` y `volcado`, y los dos contestaron.
+    "anillo", "audio", "salud",
+];
 
 /// Lo peor que ha tardado cada uno, en microsegundos. **Desde el arranque.**
-static mut PEOR_US: [u64; 5] = [0; 5];
+static mut PEOR_US: [u64; 8] = [0; 8];
 
 // == *** UN MAXIMO QUE NO CADUCA NO SABE DECIR "AHORA" (2026-09-09) =========
 //
@@ -183,10 +199,10 @@ static mut PEOR_US: [u64; 5] = [0; 5];
 // ventana, porque la pregunta que se hace mirando la barra es *"esta pasando?"*.
 
 /// Lo peor de cada uno DENTRO de la ventana que se esta midiendo.
-static mut PEOR_VENTANA: [u64; 5] = [0; 5];
+static mut PEOR_VENTANA: [u64; 8] = [0; 8];
 
 /// Lo peor de la ULTIMA ventana cerrada. Es lo que se publica.
-static mut PEOR_PUBLICO: [u64; 5] = [0; 5];
+static mut PEOR_PUBLICO: [u64; 8] = [0; 8];
 
 /// TSC del principio de la ventana en curso. Cero = todavia no arranco.
 static mut VENTANA_T0: u64 = 0;
@@ -355,7 +371,12 @@ pub(super) fn pump_bus() {
     if switched {
         vmm::switch_to(kpml4);
     }
+    // ** Cada trozo con su ranura. `por_us` en cero --sin TSC medido-- hace que
+    // `anota` solo devuelva la hora, asi que esto es gratis en ese caso.
+    let por_us = crate::ring0::task::scheduler::tsc_freq() / 1_000_000;
+    let mut t = crate::ring0::task::scheduler::rdtsc();
     bombear_interno();
+    t = anota(5, t, por_us);
     // *** EL AUDIO COME AQUI, y no en su propio hilo.
     //
     // Una trama isocrona dura 1 ms y este latido son 4, asi que se encolan
@@ -366,11 +387,13 @@ pub(super) fn pump_bus() {
     // [!] Y no hace nada si nadie lo armo: abrir el tubo es seguro, empujar
     // tramas es trafico. Ver `audio::armar_silencio`.
     super::audio::latido();
+    t = anota(6, t, por_us);
     // ** LA FOTO DE SALUD SE SACA AQUI DENTRO, y ese es su sitio exacto: leer
     // el estado de un endpoint recorre el Device Context y `USBSTS` es MMIO, y
     // las dos cosas solo estan mapeadas en el PML4 que acabamos de cargar.
     // Sacarla desde `OP_INFO` --con el CR3 del que pregunta-- seria un `#PF`.
     super::salud::refrescar();
+    anota(7, t, por_us);
     if switched {
         vmm::switch_to(previous);
     }
