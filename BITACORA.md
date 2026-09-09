@@ -2909,3 +2909,78 @@ del `blit 7833` del 09-09, y las dos veces la respuesta fue la misma: **partir**
 [!] Y no se ha tocado ni una linea de la logica del USB. Esto no arregla nada:
 convierte una sospecha en una pregunta con respuesta. La diferencia entre las
 dos es la unica razon por la que esta semana ha rendido.
+
+---
+
+## Ep. 63 -- El numero que llevaba el dia entero esperando, y lo que NO dice
+
+**2026-09-09.** La foto del metal trae el juez del compilador.
+
+### ★★★ LA EXPANSION: 6.738 -> 2.918 us
+
+```text
+                          us      ciclos    por escritura util
+   antes (esta manana)   6.738    30,3 M         157,6
+   AHORA                 2.918    13,1 M          68,3
+```
+
+**Un 57 % menos, y de 157 a 68 ciclos por escritura de 8 bytes.** Es todo lo del
+09-09 junto --las tres mirillas y EL TROQUEL-- medido donde importaba: el bucle
+mas caliente de DOOM, en el Ryzen.
+
+Y `viewwidth=320 anchoesc=320 (set 10/0 shift=0 | menu 10/0)`: **los seis numeros
+de acuerdo por primera vez**. El instrumento arreglado confirma su propio
+arreglo.
+
+### ★★ PERO EL FOTOGRAMA CASI NO SE MUEVE, y eso es la mitad de la noticia
+
+```text
+   antes   fotograma 14.948   blit 7.833   ->  lo que NO es blit:  7.115 us
+   ahora   fotograma 14.536   blit 4.150   ->  lo que NO es blit: 10.386 us
+```
+
+El blit baja 3.683 us... y **lo demas sube 3.271**. No es casualidad: la vista
+paso de `viewwidth=80` a `320`, o sea que **DOOM renderiza CUATRO VECES MAS
+COLUMNAS**. Los dos cambios del dia se cancelaron casi exacto.
+
+> El compilador pago el arreglo de la pantalla. Mismos 68 fps, y ahora se ve el
+> juego entero en vez de un cuarto.
+
+[!] Y hay que decirlo asi y no *"el compilador no sirvio"*: sin el, ver la
+pantalla completa habria costado bajar a ~40 fps.
+
+### Lo que el log dice del cuelgue, que es menos de lo que parece
+
+```text
+   no hay `ring3 fault`      -> no es una excepcion
+   no hay mensaje de error   -> `I_Error` no corrio (y su `stderr` SI se ve:
+                                `tables/stdio.h` lo manda a la consola)
+   `main` es un `for(;;)`    -> DOOM no puede salir por su propio pie
+```
+
+*** Las tres juntas dejan una sola lectura: **se queda dentro de un tick**. Y de
+las cuatro fases de `doomgeneric_Tick` --`I_StartFrame`, `TryRunTics`,
+`S_UpdateSounds`, `D_Display`-- solo una espera a algo.
+
+★ Y ese bucle **tiene salida**: si `I_GetTime()` avanza un tic, sale. O sea que
+solo se queda si **el reloj se para**.
+
+### Los dos instrumentos, y ninguno arregla nada
+
+```text
+   [vigia] en `TryRunTics`   cuenta las vueltas del bucle de espera y, a las
+                             20.000, dice `lowtic`, `gametic`, `counts`, el
+                             tiempo y `entertic`. Con eso el cuelgue tiene
+                             NOMBRE y numeros en vez de una pantalla quieta
+   [vivo]  en `main`         una linea cada 256 fotogramas
+```
+
+★★ El segundo separa dos estados que **hoy se ven identicos**: *"se colgo"* y
+*"sigue vivo y lo que se callo fue el `[perf]`"*. Se arreglan en sitios
+distintos, y hasta hoy no habia forma de saber cual era.
+
+> Un instrumento callado y un sistema muerto se ven igual.
+
+[!] Y lo que NO se ha hecho: inventar un arreglo. Con lo que hay en el log **no
+se puede saber** donde se queda, y esta semana ha demostrado tres veces que
+adivinar cuesta un dia y partir el numero cuesta un arranque.
