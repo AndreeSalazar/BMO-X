@@ -87,7 +87,7 @@ under it is a slogan.
 
 | | |
 |---|---|
-| Boots UEFI -> Ring 0 -> Ring 3 | kernel up at **47 ms**, first composed frame at **1.210 ms** |
+| Boots UEFI -> Ring 0 -> Ring 3 | kernel up at **47 ms**. The desktop's 1.100 ms nap was removed on 2026-09-08 -- it now waits only if something was **not** handed over; the new figure is not yet measured on metal |
 | Runs its own compilers' output | COBOL, C and Ada binaries, launched from disk |
 | Decimal arithmetic that is exact | a bank batch totalling `$1,135.00` from a file it read |
 | USB keyboard and mouse | xHCI + HID written here, no BIOS help |
@@ -98,6 +98,9 @@ under it is a slogan.
 | Plays DOOM | full width with the status bar, 1600x1000 scaled x5, **27 fps** -- every pixel expanded and blitted by the CPU, no GPU |
 | 12 cores doing real work | a kernel-side workload measured at **11,52x** over one core |
 | Explains its own crashes in Spanish | a page fault inside the framebuffer prints `ESCRIBIA EN LA PANTALLA QUE YA NO ES SUYA -- fila 231`, not just an address |
+| Both frozen syscalls in use | `WAIT` had **one** call site in the whole repo until 2026-09-08 -- and it was a plain sleep. The compositor is now its first real user, blocking on the hardware beat. ⚠ It still spins when the machine is idle (nobody else is Ready, so the scheduler has nowhere to switch); that is `P2.2` in [`PLAN_EL_PLAZO.md`](docs/plan/PLAN_EL_PLAZO.md) |
+| Survives its own userspace dying | DOOM launched **five times**, Ring 3 killed in between, the system never broke |
+| Measures where its own second goes | the taskbar shows `latido N/s  pinta N  cuerpo Nms  puerta Nms` -- loop rate, frames that painted, and the split between working and waiting for a turn |
 
 ### Watch it boot
 

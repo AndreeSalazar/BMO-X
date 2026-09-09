@@ -377,6 +377,78 @@ tres primeros **ya han ejecutado en el Ryzen**.
 > esta APARCADO con plan escrito** (`PLAN_VULKAN.md`), que no es lo mismo que
 > descartado. Siguen fuera Wine y la libc completa.
 
+## ★★★★ 2026-09-08 -- EL FANTASMA DEL PLANIFICADOR, Y `WAIT` ESTRENADO
+
+La sesion mas larga de caza del proyecto, y acabo en un teorema. Todo salio de
+una frase del dueno: *"los FPS dependen de un teclado que no tiene sentido"*.
+
+### Lo que se arreglo, en orden, y cada uno destapaba al siguiente
+
+```text
+   1. el suelo de repintado eran DOCE MIL VUELTAS DE BUCLE (`BLINK`)
+      -> la unica fuente de tiempo del compositor era EL TECLADO
+   2. el shell de Ring 0 giraba a CPU completa preguntando por un teclado
+      que `input::yielded()` le prohibe leer
+   3. `WAIT` llevaba desde siempre SIN ESTRENAR: un solo uso en todo el repo
+   4. el handle del latido no podia leer su propia cuenta (le faltaba
+      `RIGHT_READ`) -> `WAIT` no durmio NI UNA VEZ
+   5. *** EL FANTASMA: `on_timer` daba el resto del quantum a tareas que ya
+      estaban `Blocked` -> dos parkers a 250 Hz retenian hasta 1.000 ms de
+      cada segundo, HALTADOS, y a prioridad 2 nadie se lo quitaba
+```
+
+### El numero, medido en el Ryzen el mismo dia
+
+```text
+   antes del arreglo   latido 9/s       cuerpo 1     puerta 33750
+   despues             latido 79026/s   pinta 4      cuerpo 700   puerta 283
+```
+
+De nueve vueltas por segundo a **79.026**. Y con DOOM lanzado **cinco veces**,
+matando Ring 3 entre medias, sin romper el sistema. Ver `BITACORA.md`, Ep. 49-51.
+
+### La leccion que ordena las cinco
+
+★★ **El giro era el disfraz.** El compositor nunca tuvo una parte justa: tenia la
+parte del que gira, que arrebata cada hueco. Cada capa de giro que se quito hizo
+el fantasma mas audible --20 ms, 300 ms, 3.700 ms para volver de un `yield`-- y
+la PRIMERA lectura ya lo gritaba. **El numero no empeoro: el disfraz se fue
+adelgazando.**
+
+★ Y en el idioma del tiempo real: no era un problema de prioridad --la asignacion
+cumple Rate Monotonic-- era de **utilizacion**. `C/T = 100 %` del hilo del bus, y
+con eso lo de abajo no es lento: es **inplanificable**.
+
+### Lo demas de la tanda
+
+- **`scene/pulso` es carpeta con CARRILES** (`amarilla.rs` / `verde.rs`): sus dos
+  averias fueron de significado y ninguna de dibujo. Y con ella llego **R18** --
+  la regla de los carriles se cobra ahora tambien FUERA del kernel, porque los
+  letreros estaban y **ningun guardian los miraba**. Un eje sin juez es prosa.
+- **`desktop/mod.rs` estaba en 976 lineas, veinticuatro del techo de L6a.** `Tick`
+  salio a `desktop/tick.rs` (431 + 575). Movimiento mecanico, y el compilador dio
+  una segunda opinion sobre el corte: E0451, trece campos privados que solo podia
+  construir otro fichero.
+- **Entrar a Ring 3 ya no cuesta 1.100 ms de siesta.** La intro se espera **solo
+  si algo no se cedio**; el dia bueno deja de pagar el precio del dia malo. Se
+  retiro `GATO_MS` (1.600 ms muertos desde el truco de Santa Monica).
+- **Bloq Num ya no convierte el numpad en flechas.** Era un MODO INVISIBLE, y lo
+  cambiaba la tecla que el dueno mas pulsaba -- porque era su unica forma de
+  forzar un fotograma.
+- **El contador de reglas del contrato se CUENTA**, no se escribe. Decia
+  "DIECISIETE" y eran 19, con el aviso escrito dos lineas mas abajo.
+- **`PLAN_EL_PLAZO.md`**: V-Sync, VBlank y la deuda de planificacion. Su primera
+  linea es un NO -- sin driver de pantalla no hay VBlank, y ese driver vive en
+  NEUTRO.
+
+### ⚠ Lo que NO se arreglo, y hay que saberlo
+
+`park_until` suelta el CPU en el tic siguiente y no en el acto: **hasta 500 ms de
+cada segundo** entre los dos parkers. Y con la maquina ociosa `schedule_locked`
+no cambia de tarea --nadie mas esta listo-- asi que `WAIT` vuelve sin dormir y el
+compositor gira a 79.000 vueltas gastando un nucleo. Funciona, y no es lo que
+tiene que ser. El escalon se llama **P2.2** y esta en `PLAN_EL_PLAZO.md`.
+
 ## ★★★ 2026-08-08 -- LOS PLANES ESCRITOS: DOOM, AUTO-CURACION, Y EL AUDIO QUE NO EXISTE
 
 Dos documentos nuevos, con el mismo formato que `PLAN_BANCA.md`: casillas,

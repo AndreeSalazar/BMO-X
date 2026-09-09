@@ -1855,3 +1855,166 @@ mirar**, que es lo que hace falta dentro de seis meses:
 ★★ **La frase que resume los tres**: hoy una app de BMO-X **puede ensenar, y no
 la puedes tocar**. Cuando eso cambie, no cambia para la calculadora: cambia para
 todas las que vengan detras.
+
+---
+
+## Ep. 49 -- El medidor que se veia igual vivo que muerto
+**Sintoma**: *"los FPS dependen de un teclado que no tiene sentido: tengo que
+pulsar el bloq numerico SOLO para ver 1 frame que cambia"*.
+
+**Culpable**: el suelo de repintado del compositor eran **DOCE MIL VUELTAS DE
+BUCLE** (`BLINK`), y ese bucle no tiene freno. Sin tecla, sin raton y sin app
+naciendo, el fotograma no pintaba. **La unica fuente de tiempo del compositor
+era el teclado.** Se cambio por `Tick::quarter`, medido con el TSC.
+
+**Y entonces empezo el episodio de verdad.** Para saber si el bucle giraba se
+puso un numero en la barra --`loops_per_second`, que existia desde hacia meses y
+**solo se pintaba dentro de las ventanas de CPU y memoria, que se abren con una
+tecla**. El unico numero que dice si el escritorio esta vivo estaba detras de la
+cosa cuya muerte habia que diagnosticar.
+
+Se puso en la barra. El dueno lo probo y trajo: *"veo pulso una sola vez y se
+congela"*. **Y no era la maquina: era el instrumento.** `loops_per_second` se
+calcula UNA vez por segundo, asi que entre dos calculos el numero es constante y
+la caja no se repintaba. Correcto, y absolutamente inutil:
+
+```text
+   el bucle VIVO y el numero quieto      se ve igual
+   el bucle MUERTO                       se ve igual
+```
+
+Se le puso una AGUJA que gira con cada cuarto de segundo. Segunda vuelta al
+metal y segunda mentira: **`pulso 0/s`**. El cero no era un ritmo bajo -- era
+una medida que **nadie tomo**, porque sin reloj de referencia `Tick::pulse` sale
+por su rama de emergencia antes de calcularlo. Y ese cero apuntaba al bucle, que
+es justo donde NO estaba el fallo.
+
+**Moraleja**: **un medidor cuyo estado sano se ve identico a su estado roto no
+mide: es un adorno con cifras.** Y las tres preguntas que hay que hacerle a un
+instrumento antes de escribirlo:
+
+```text
+   1. se llega a el SIN la cosa que puede estar rota?
+   2. su estado sano se ve DISTINTO del roto en todo momento?
+   3. cuando NO tiene la respuesta, lo dice, o da un valor por defecto?
+```
+
+★ Un cero es una medida. Si esa medida no se tomo, pintarla es inventarla -- con
+la cara de un dato bueno. Mismo linaje que el `unwrap_or(0)` del Ep. 45.
+
+★★ Y por eso `scene/pulso` acabo siendo **carpeta con carriles**: sus DOS averias
+fueron de significado y ninguna de dibujo, y mientras las dos cosas vivian en la
+misma funcion, un cambio de donde cae un numero y un cambio de que DICE ese
+numero se leian igual en el diff.
+
+## Ep. 50 -- El syscall que llevaba desde siempre sin estrenar
+**Sintoma**: el dueno, mirando la arquitectura: *"tengo 2 syscalls, INVOKE y
+WAIT, pero WAIT casi no se usaba. Creo que es momento de darle su oportunidad."*
+
+**Culpable**: tenia razon, y era literal. `WAIT` se usaba en **UN** sitio de todo
+el repo --`dormir_un_rato`, con esperable `0`, o sea un `sleep`-- y
+`latido_esperar` no lo llamaba **nadie**. La pieza S3 del suelo de Ring 3 se
+construyo entera, se documento, se le puso envoltorio de userland y no se
+estreno.
+
+> Un sistema con dos puertas donde una solo sabe dormir un plazo no tiene dos
+> puertas: tiene una y media.
+
+Se monto el bucle del compositor en el LATIDO. **Y fallo en el metal**, con un
+numero que no dejaba duda: `latido 12937/s  cuerpo 1066  puerta 29`. Trece mil
+vueltas pidiendo dormir mil.
+
+```text
+   latido::claim   cap::grant(..., RIGHT_WAIT, ...)   SOLO ese derecho, y su
+                   comentario decia "aqui no se lee nada, se espera"
+   latido_cuenta   es un INVOKE -> resuelve con RIGHT_READ -> FALLA siempre
+   .unwrap_or(0)   se traga el fallo -> `visto` = 0 PARA SIEMPRE
+   WAIT            `current != observed` (0) -> vuelve EN EL ACTO
+```
+
+★ El comentario de `claim` era **falso en su propio fichero**: doce lineas mas
+abajo, `operation()` contesta a `LATIDO_OP_CUENTA`. O sea que el brazo
+`KIND_LATIDO` de `invoke` era **codigo inalcanzable desde el dia uno** y
+`latido_cuenta` contestaba `None` a todo el mundo. No se vio leyendo: se vio en
+el metal.
+
+★★ **Y lo caro no fue no dormir: fue dejar de CEDER.** `Tick::ceder` habia
+sustituido a un `yield_screen()` incondicional, asi que el escritorio se quedo el
+nucleo entero y el teclado y el raton del dueno **parecieron ignorados**.
+
+**Moraleja**: **una optimizacion que se apaga sola tiene que apagarse hacia el
+LADO SEGURO.** Esta se apagaba hacia el peor que habia. La invariante que faltaba
+--y que ahora esta-- es que el bucle no puede acabar una vuelta sin soltar el
+turno, haga `WAIT` lo que haga.
+
+[!] Y el arreglo tuvo el mismo agujero que el fallo: deducia "durmio o no"
+comparando lo que devuelve `WAIT`, y `WAIT` **miente cuando falla** (un error
+trae `value = 0`, que con el testigo en 0 se confunde con "durmio"). Ahora lo
+juzga el reloj. **Preguntarle al mecanismo por su propio estado es preguntarle al
+sospechoso.**
+
+## Ep. 51 -- EL FANTASMA: un quantum regalado a quien ya dormia
+**Sintoma**: con `WAIT` durmiendo por fin, el escritorio **empeoro**:
+`latido 9/s  pinta 3  cuerpo 1  puerta 33750`. Un milisegundo de trabajo y
+**treinta y tres segundos esperando turno**. El dueno lo vio como *"1 frame cada
+10 o 20 segundos"* y pregunto lo que habia que preguntar: *"mi kernel esta como
+borracho? Encuentras un fantasma?"*.
+
+**Y lo mas incomodo del episodio**: el escritorio empeoro **al hacer lo
+correcto**. Mientras giraba se peleaba por el CPU y arrancaba 12.937 vueltas; en
+cuanto se puso a dormir como debe, desaparecio.
+
+**Culpable**, y estaba escrito en tres sitios del propio kernel:
+
+```text
+   park_until    llama a `mark_wait`, que marca Blocked y NO reprograma -- no
+                 puede: el cambio de contexto se consuma en el epilogo del
+                 trap, y esto no es un trap. Se queda haciendo `hlt`.
+   on_timer      le daba el resto de su quantum a `s.current` SIN mirar si
+                 seguia `Running`  -> hasta 4 ms de CPU HALTADA por parada
+   y no hay uno, hay DOS parkers: el hilo del bus late 250 veces por segundo
+   choose_next   prioridad ESTRICTA, y su propio comentario lo avisaba:
+                 "un orden estricto EXCLUYE"
+```
+
+★★★ **La aritmetica que lo nombra**: 250 aparcadas por segundo x hasta 4 ms
+retenidos = **hasta 1.000 ms de cada segundo**. El hilo del bus podia retener el
+nucleo entero, haltado, sin hacer nada -- y a prioridad 2 nadie se lo quitaba. En
+el idioma del tiempo real: `C/T = 100 %`, y con eso todo lo de abajo no es lento,
+es **inplanificable**. Es un teorema, no una opinion.
+
+**El arreglo es una condicion, no un mecanismo nuevo**: si la tarea actual ya no
+esta `Running`, su quantum no es suyo. **Un quantum es de quien CORRE.** Medido
+en el Ryzen el mismo dia:
+
+```text
+   antes:   latido 9/s        cuerpo 1     puerta 33750
+   despues: latido 79026/s    pinta 4      cuerpo 700    puerta 283
+```
+
+De nueve a **setenta y nueve mil**. Y con DOOM lanzado cinco veces, matando
+Ring 3 entre medias, sin romper el sistema.
+
+**Moraleja**: **el giro era el disfraz.** El escritorio nunca tuvo una parte
+justa -- tenia la parte del que gira, que arrebata cada hueco. Cada capa de giro
+que se quito hizo el fantasma mas audible, en proporcion exacta:
+
+```text
+   giraban los dos            50/s        20 ms en volver
+   el shell se durmio         12937/s     (WAIT roto: seguia girando)
+   el escritorio se durmio    4/s         300 ms
+                              9/s         3.700 ms
+```
+
+★ **El numero no empeoro: el disfraz se fue adelgazando.** Y la PRIMERA lectura
+ya lo gritaba --un `yield_screen()` tardando 20 ms en volver en una maquina
+ociosa-- y se leyo culpando al shell de Ring 0. El shell era *una* capa; el suelo
+era el fantasma.
+
+[!] Y queda dicho lo que NO se arreglo, que es la mitad que falta: `park_until`
+suelta el CPU en el tic siguiente y no en el acto, o sea hasta **500 ms de cada
+segundo** entre los dos parkers. Y con la maquina ociosa `schedule_locked` no
+cambia de tarea --nadie mas esta listo-- asi que `WAIT` vuelve sin dormir y el
+compositor gira a 79.000. Funciona y gasta un nucleo. La tecnica que falta tiene
+nombre --**reschedule forzado por interrupcion software**-- y vive en
+[`PLAN_EL_PLAZO.md`](docs/plan/PLAN_EL_PLAZO.md), escalon P2.2.
