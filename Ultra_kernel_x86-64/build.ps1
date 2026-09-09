@@ -493,6 +493,28 @@ if ($fantasmas.Count -gt 0) {
     Write-Host '    staging: ningun .bex sobrante de un build anterior' -ForegroundColor DarkGray
 }
 
+# -- ** QUE LE HIZO ESTE CAMBIO A LOS 25 PROGRAMAS ------------------
+#
+# Va AQUI y no arriba con los guardianes porque necesita los `.bex` ya escritos.
+# Y no es un trinquete: un programa puede crecer con razon. REPORTA -- ver
+# toolchain/tools/tamano/tamano.py, y el aviso de que el tamano no es la
+# velocidad esta en su cabecera.
+# [!] NO va por `Guardian`: esa funcion solo ensena las lineas `clean:` y mata
+# si el script devuelve distinto de cero. Este REPORTA, asi que se le deja
+# hablar entero y nunca decide nada.
+Step 'Comparing executable sizes with the baseline'
+$tamanoPy = Join-Path (Split-Path -Parent $root) 'toolchain/tools/tamano/tamano.py'
+$tamanoBin = (Get-Command python -ErrorAction SilentlyContinue)
+if (-not (Test-Path $tamanoPy)) { Fail ('guardian MUERTO: falta ' + $tamanoPy) }
+if ($tamanoBin) {
+    $env:PYTHONIOENCODING = 'utf-8'
+    & $tamanoBin.Source $tamanoPy | ForEach-Object {
+        Write-Host ('    ' + $_) -ForegroundColor DarkGray
+    }
+} else {
+    Write-Host '    [!] python no encontrado: no se comparan los tamanos' -ForegroundColor Yellow
+}
+
 # -- Validate outputs ----------------------------------------------
 Step 'Validating outputs'
 $uefi_chain = Join-Path $target (Join-Path 'uefi_chain' (Join-Path 'x86_64-unknown-uefi' (Join-Path 'release' 'uefi_chain.efi')))

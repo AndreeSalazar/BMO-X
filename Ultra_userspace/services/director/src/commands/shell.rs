@@ -145,10 +145,12 @@ pub(crate) fn calculator(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
         // silencio: la bandera seguiria puesta de la vez anterior.
         dsk.calc.keys = false;
         // Devolver esa zona a la escena.
+        // Una marca para el area entera. Ver `scene::erase_box`.
+        p.marcar(dsk.calc_pad.x, dsk.calc_pad.y, dsk.calc_pad.width, dsk.calc_pad.height);
         for f in 0..dsk.calc_pad.height {
             for co in 0..dsk.calc_pad.width {
                 let (px, py) = (dsk.calc_pad.x + co, dsk.calc_pad.y + f);
-                p.punto(px, py, scene_color(&dsk.run_box, dsk.win.visible, px, py, p.alto));
+                p.punto_ya_marcado(px, py, scene_color(&dsk.run_box, dsk.win.visible, px, py, p.alto));
             }
         }
     }

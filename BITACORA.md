@@ -2580,3 +2580,72 @@ pasaria de `[aparece] DENTRO` a `AQUI`, que es de dias a gratis.
 Escrito como `C5` en `docs/plan/PLAN_EL_CODEGEN.md`, con su aviso: el arbol gana
 un campo, el parser tiene que rellenarlo, y **un arbol medio anotado es peor que
 uno sin anotar**. Se hace de una vez o no se hace.
+
+---
+
+## Ep. 58 -- El 68 a 1 estaba clonado en CINCO sitios, y uno era el arrastre
+
+**2026-09-09.** El dueno pidio arreglar el retraso del escritorio que habia
+reportado: *"cuando movi todo la pantalla en terminal TODO rapido se ve como que
+se retrasa"*.
+
+### Los dos sospechosos que NO eran
+
+```text
+   la consola      son SEIS lineas de salida (`LINEAS`), y ya tenia un enum
+                   `Repinta` de tres niveles. No es ella
+   el scroll       `di()` sube seis filas de un array. Tampoco
+```
+
+### ★★★ El que si era: `p.punto` con `scene_color`, en CINCO bucles
+
+```rust
+for y in tira.y0..tira.y1 {
+    for x in tira.x0..tira.x1 {
+        p.punto(x, y, scene_color(c, visible, x, y, p.alto));
+    }
+}
+```
+
+`punto` **marca**, y marcar copia `Sucias` --136 bytes-- dos veces: **272 bytes
+de papeleo por pixel**. Es el mismo 68 a 1 que se cazo en `glifo` esa misma
+manana, **clonado en cinco sitios de este arbol y sin arreglar en ninguno**.
+
+```text
+   scene::erase_box        325.500 px ->  88,5 MB de papeleo   por UNA pulsacion
+   scene::erase_moved        4.800 px ->   1,3 MB              por CADA movimiento
+                                                               del raton, hasta 250/s
+   keys: el conmutador                                         por pulsacion
+   desktop: run_relayout                                       por pulsacion
+   shell: cerrar la calc                                       por orden
+```
+
+★★ **`erase_moved` es el del arrastre**, y es el unico que corre por evento del
+raton: **326 MB/s solo en APUNTAR** mientras arrastras una ventana. Eso es lo que
+el dueno estaba sintiendo.
+
+Arreglo: una `marcar` por region y `punto_ya_marcado` dentro. Los pixeles son
+identicos; lo que se va es la contabilidad.
+
+[!] Y `erase_box` llevaba escrito en su cabecera *"unos 325k pixeles sobre
+memoria de video sin cache, que no es gratis"*. **Culpaba a la memoria de
+video**: con doble bufer eso escribe en el LIENZO, que es RAM cacheada. Lo caro
+nunca fue el pixel -- eran los 88 MB de apuntarlo.
+
+### Y el instrumento que faltaba: `tamano`
+
+El 09-09 tres mirillas del codegen encogieron todos los `.bex` un 6 %, y eso se
+supo **sumando a mano dos listados del build**. El dato salia en pantalla las dos
+veces y nadie los comparaba.
+
+`toolchain/tools/tamano/` guarda los 30 y ensena el delta en cada pasada. **Y
+cazo su primer cambio en su primera pasada**: `sys/d.bex 609624 -> 609112`, que
+es este mismo arreglo.
+
+[!] **REPORTA, no manda**, y a proposito: `avisos` y `fases` paran el build
+porque un aviso nuevo siempre es malo, pero un programa puede crecer con razon.
+Un guardian que grita cada vez que el proyecto avanza se apaga en una semana.
+
+⚠ Y con su aviso puesto: **el tamano no es la velocidad**. Van juntos en el caso
+concreto de pasar de pila a registros y no en general. El juez sigue siendo
+`expansion N us` del `[perf]` de DOOM, y sigue sin hablar.

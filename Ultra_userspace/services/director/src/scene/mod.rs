@@ -763,10 +763,21 @@ pub(crate) fn paint_field(p: &bmo::Pantalla, c: &RunBox, path: &[u8], cur: usize
 pub(crate) fn erase_box(p: &bmo::Pantalla, c: &RunBox) {
     // Su sombra tambien, por el mismo motivo que en `erase_window`:
     // esconder con Ctrl+Alt dejaba la misma huella en L.
+    // ** UNA marca para los 325.000 pixeles, no 325.000 marcas.
+    //
+    // *** `punto` MARCA, y marcar copia `Sucias` --136 bytes-- dos veces: **272
+    // bytes de papeleo por pixel**. En este rectangulo eso son ~88 MB movidos
+    // para APUNTAR un trabajo de 1,3 MB. Es el mismo 68 a 1 que se cazo en
+    // `glifo` el 09-09, y estaba clonado en CINCO sitios de este arbol.
+    //
+    // [!] Y la cabecera de arriba culpaba a la memoria de video --*"sobre
+    // memoria de video sin cache, que no es gratis"*--. Con doble bufer esto
+    // escribe en el LIENZO, que es RAM cacheada: lo caro nunca fue el pixel.
+    p.marcar(c.x, c.y, c.w() + SHADOW_RIGHT, c.h() + SHADOW_BOTTOM);
     for row in 0..c.h() + SHADOW_BOTTOM {
         for col in 0..c.w() + SHADOW_RIGHT {
             let (x, y) = (c.x + col, c.y + row);
-            p.punto(x, y, scene_color(c, false, x, y, p.alto));
+            p.punto_ya_marcado(x, y, scene_color(c, false, x, y, p.alto));
         }
     }
 }
@@ -876,10 +887,20 @@ pub(crate) fn erase_moved(
         if tira.vacio() {
             continue;
         }
+        // *** ESTE ES EL QUE CORRE POR CADA MOVIMIENTO DEL RATON, y por eso era
+        // el que se notaba: arrastrar una ventana dispara este bucle hasta 250
+        // veces por segundo --el ritmo del bus USB-- y cada pixel pagaba 272
+        // bytes de contabilidad. Una marca por tira y se acabo.
+        p.marcar(
+            tira.x0.max(0) as u32,
+            tira.y0.max(0) as u32,
+            (tira.x1 - tira.x0).max(0) as u32,
+            (tira.y1 - tira.y0).max(0) as u32,
+        );
         for y in tira.y0..tira.y1 {
             for x in tira.x0..tira.x1 {
                 let (x, y) = (x as u32, y as u32);
-                p.punto(x, y, scene_color(c, visible, x, y, p.alto));
+                p.punto_ya_marcado(x, y, scene_color(c, visible, x, y, p.alto));
             }
         }
     }
