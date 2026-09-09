@@ -2018,3 +2018,127 @@ cambia de tarea --nadie mas esta listo-- asi que `WAIT` vuelve sin dormir y el
 compositor gira a 79.000. Funciona y gasta un nucleo. La tecnica que falta tiene
 nombre --**reschedule forzado por interrupcion software**-- y vive en
 [`PLAN_EL_PLAZO.md`](docs/plan/PLAN_EL_PLAZO.md), escalon P2.2.
+
+---
+
+## Ep. 52 -- El cuello de botella era una PALABRA, y estaba escrita 155 veces
+
+**2026-09-09.** El dueno pidio romper el cuello de botella del camino `Directo`.
+La primera respuesta fue descartar cinco sospechosos leyendo --el fusionador de
+cajas, `read()`, `sincronizar_lectura`, `paint_background`, `Table::compose`-- y
+calcular que un fotograma moviendo el raton mueve ~135 KB, o sea 0,4 ms. No
+cuarenta.
+
+★ **Y lo primero fue una correccion mia**: la foto de `cuerpo 795` que yo mismo
+habia citado como *"39,7 ms por fotograma"* es **anterior a E1**. En ese arranque
+`cuerpo` era reloj de pared y no habia tarea idle, asi que ese numero incluye el
+tiempo que el compositor paso EXPULSADO del CPU. Cite reloj de pared como si
+fuera CPU -- exactamente el fallo contra el que yo habia escrito la advertencia
+dentro de `cuerpo_ms` dos mensajes antes. Los 39,7 ms no valen.
+
+### Lo que si estaba medido, y donde estaba de verdad el cuello
+
+```text
+   volcar la pantalla entera   8,3 MB a ~300 MB/s  =  27,6 ms
+   el presupuesto a 60 Hz                             16,7 ms
+```
+
+Y al abrir `volcar` aparecio la causa, en una palabra:
+
+```rust
+(self.panel.add(off + i) as *mut u64).write_volatile(a | (b << 32));
+```
+
+★★★ **`volatile` le PROHIBE al compilador tocar ese bucle.** No lo puede
+vectorizar, no lo puede convertir en `rep movsb`, no puede juntar dos escrituras.
+La semantica es *"emite exactamente esto, tantas veces como lo escribi"*. **El
+bucle que se lee es el bucle que corre.**
+
+```text
+   volcar la pantalla entera   1.036.800 escrituras de 8 B
+   limpiar la pantalla entera  2.073.600 escrituras de 4 B
+   rect                        un `write_volatile` POR PIXEL, en 155 sitios
+```
+
+### ★★ Lo contraintuitivo: la casa ya lo sabia, y el ABI lo tenia escrito
+
+```text
+   bmo-lower/memoria.rs       `memcpy`/`memset` de TODO programa de C son
+                              `rep movsb`/`rep stosb` desde el 13-08
+   objetos.rs, FB_OP_BYTES    "es lo que hace falta para llenar la pantalla
+                              entera con un `rep stosd` sin multiplicar nada"
+```
+
+**El ABI declaraba un campo cuyo comentario dice para que existe, y el compositor
+era el ultimo sitio de la casa que seguia moviendo pixeles a mano.** Un `.bex` de
+C copiaba mas rapido que el escritorio. Y la cifra lo grita: aquel bucle byte a
+byte daba **214 MB/s**; el blit de aqui se midio en **~300 MB/s**. Es el mismo
+error escrito dos veces.
+
+### El segundo cuello, y estaba en el carril VERDE
+
+`glifo` llamaba a `punto` por cada bit encendido, y `punto` **marca**. `Sucias`
+son 136 bytes dentro de una `Cell`, o sea `get()` + `set()` = **272 bytes
+copiados por pixel**:
+
+```text
+   la barra de tareas, un fotograma    ~110 letras, ~4.950 pixeles
+   lo que esos pixeles PINTAN                   19,3 KiB
+   lo que su contabilidad COPIA              1.315,0 KiB
+   -----------------------------------------------------
+   razon papeleo / trabajo                        68 a 1
+```
+
+★★★ **Un carril VERDE no es un carril barato.** El color dice lo que arriesgas al
+TOCARLO, no lo que cuesta EJECUTARLO. Buscar rendimiento solo en lo rojo es como
+se pasan los sesenta y ocho a uno por delante de las narices. `rect` ya marcaba
+una vez desde agosto; `glifo` no lo habia copiado.
+
+### La prueba, y son las de esta casa: se desensamblo
+
+```text
+   rep movsb    2 sitios con `cld` delante  -> los dos caminos de `volcar`
+   rep stosd  172 sitios, TODOS con `cld`   -> `rect` y `limpiar`, incrustados
+                                               por el compilador en cada
+                                               llamador
+```
+
+Los 172 con su `cld` son la prueba de que no quedo ni un bucle viejo escondido:
+si alguno hubiera sobrevivido, la cuenta no cuadraria.
+
+[!] **Y una correccion de la casa a la casa**: `memoria.rs` cerro su `cld` con
+*"nadie en BMO emite `std`, asi que en la practica sobra siempre"*. **Es falso en
+este binario** -- `compiler_builtins` trae un `memmove` con camino hacia atras que
+pone `DF` (`4008a400: fd`). Lo restaura antes del `ret`, asi que no hay fallo;
+pero la frase de la que colgaba "sobra siempre" no era cierta.
+
+### Lo que esto NO es
+
+★ **No es zero copy.** Zero copy es el **page flip**: no mover nada y cambiar la
+direccion que lee el escaner. Sigue bloqueado --tras `ExitBootServices` el GOP no
+existe-- y es el escalon 8 de `LA_RAM.md`.
+
+> Mientras el hardware obligue a copiar, el trabajo es que la copia obligada
+> cueste UNA instruccion y no un millon.
+
+### El corte: `pantalla.rs` pasa a CARRILES, y el corte lo eligio el cuello
+
+```text
+   roja.rs      MOVER PIXELES     memoria cruda, cuenta en un registro  MAQUINA
+   amarilla.rs  LA CONTABILIDAD   le dice al rojo CUANTO copiar         APARATO
+   verde.rs     LAS LETRAS        `punto` encima de `punto`             NADA
+```
+
+★★ La prueba de que el corte era el bueno estaba **dentro del propio fichero
+desde agosto**: la cabecera de `Volcador` ya decia que el compositor tiene tres
+capas --POLITICA, DIBUJO, VOLCADO-- y que *"solo en el volcado una GPU cambia
+algo"*. Los carriles son esas capas con su semaforo puesto.
+
+Y R18 se cobro su primer precio el mismo dia: `userland/src` **no estaba en la
+lista de arboles vigilados**, asi que el fichero que mueve todos los pixeles del
+sistema se habria partido en carriles sin juez. Un carril sin juez otra vez, y en
+el sitio con `[cuesta] MAQUINA`.
+
+[!] **Lo que este episodio NO demuestra**: que el escritorio vaya mas rapido. Eso
+lo dice el metal, no el desensamblador. Lo que esta probado es que la instruccion
+salio y que no queda ni un bucle del anterior. **El numero lo pone el Ryzen.**
