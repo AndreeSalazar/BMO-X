@@ -2302,3 +2302,113 @@ cuarto ya es un asignador de registros, que es otro proyecto.
 ⚠ **No se toca nada todavia**: este backend lo usan todos los `.bex`, y este mes
 ya se pagaron cinco fallos de codegen. Primero el numero, y la decision es del
 dueno.
+
+---
+
+## Ep. 55 -- El emisor no decide: la regla primero, y luego el codigo
+
+**2026-09-09.** El dueno lo puso en ese orden: *"vamos a cambiar reglas de
+modular codegen POR COMPLETO, con reglas que son para facilitar y asi no tener
+muchos problemas"*. Primero la ley, despues tocar. Y acerto tres veces.
+
+### La regla, y es toda la carpeta
+
+```text
+   DECIDIR   que hay que emitir     PURO: entra un AST, sale un numero
+   EMITIR    los bytes              una tabla, sin elegir nada
+   COLOCAR   donde va cada cosa     el `.bex`
+```
+
+> **El emisor no decide.** Si hay que elegir entre dos secuencias de bytes, la
+> eleccion se toma ANTES y en una funcion pura.
+
+★★ Mezclados, una optimizacion es un parche sobre bytes que no se puede probar
+sin arrancar la maquina. Separados, es una funcion que devuelve `Some(8)` en vez
+de `None` -- y eso se prueba con un `assert_eq!` en milisegundos.
+
+`codegen/decidir/` nace con dos carriles: `roja.rs` (el plegado, `[cuesta] DATO`)
+y `amarilla.rs` (las cuentas de la imagen, `TAREA`). **No hay verde, y se dice
+por que**: aqui no hay nada que se pueda tocar sin miedo, e inventar un verde
+para tener los tres seria decir que algo es seguro porque falta un fichero.
+
+### ★★★ Y el plegador YA ESTABA COMPLETO
+
+`constante_de` lleva meses resolviendo `1 << 16` y las flechas del mapa de DOOM
+para los inicializadores. **El emisor de expresiones no le preguntaba.**
+
+```text
+   lo que faltaba NO era la maquinaria
+   era que el que emite bytes supiera A QUIEN PREGUNTAR
+```
+
+### ★★ EL BANCO CAZO LA PRIMERA VERSION, Y ESO ES LA MITAD DEL EPISODIO
+
+Plegar cualquier constante puso **5 de las 500 filas en rojo** en el acto, entre
+ellas el propio escalado de DOOM y el censo de signo. El motivo no era el
+plegado: era el **RECORTE**. El emisor llama a `recortar_a_32` en unas ramas y no
+en otras, y la de un literal suelto es de las que no:
+
+```text
+   Expr::Int(0x80000000)   la rama larga NO recorta -> 2.147.483.648
+   plegado + recorte       `movsxd` extiende el signo -> ...FF80000000
+                           y `span >= 0x80000000` pasa a ser FALSO
+```
+
+*** Asi que la puerta del emisor pliega **solo `+`, `-` y `*`**, que son las tres
+ramas que SI recortan justo despues. Con eso el camino corto y el largo son el
+mismo **por construccion y no por revision**. Y son exactamente las que hacian
+falta: la suma de punteros construye un `Mul` de dos constantes.
+
+> Un plegador que contesta a todo es un plegador en el que no se puede confiar
+> para nada. **L4**: una regla se prueba diciendo que NO.
+
+### Las tres mirillas, y lo que midieron
+
+```text
+   C1  plegar constantes           el `imul` de 1 x 8 desaparece
+   C2  literales sin `movabsq`     siete bytes en vez de diez
+   C3  sin PILA cuando el derecho
+       es constante                dos accesos a memoria menos por operacion
+```
+
+El bucle interior de la expansion de DOOM, desensamblado antes y despues:
+
+```text
+   instrucciones   35 -> 28
+   imul             1 -> 0
+   movabsq          4 -> 0
+   push/pop        10 -> 2        <- esto es lo que importa
+```
+
+★ Y el resultado que no se buscaba, en el build entero:
+
+```text
+   doom.bex     911.359 -> 857.087 B   -6,0 %   (54 KB menos de codigo)
+   los diez .bex de C          -6,0 % de media, hasta -9,0 %
+```
+
+[!] **500 de 500 filas verdes.** Y sigue sin haber una sola medida en metal: lo
+que esta probado es el desensamblado y el banco. El `expansion N us` del `[perf]`
+de DOOM es el juez, y todavia no ha hablado.
+
+### Y la idea del dueno que se convirtio en escalon: LAS ANTEOJERAS
+
+> *"no es mas velocidad: es que WAIT ponga trabas a otros puntos que no le
+> interrumpan. Es concentrar al caballo con todo para ganar la carrera."*
+
+Tiene nombre --**interrupt shielding**, **core isolation**-- y es lo que hace un
+sistema de audio o de trading antes que cualquier optimizacion. Hoy el LAPIC va
+PERIODICO a 1 kHz: **mil interrupciones por segundo por nucleo**, cada una con su
+`xsave`/`xrstor`, aunque DOOM este solo y no las use ninguna. El coste en ciclos
+es pequeno; el dano son la cache que ensucian y el punto de expropiacion que
+meten **cada milisegundo**.
+
+Y va por `WAIT` sin tocar los dos syscalls congelados, porque `WAIT` ya dice
+*"despiertame cuando X"* y solo le falta la otra mitad: *"y necesito C sin que me
+toquen, cada T"*. Escalon **E6** de [`PLAN_EL_COMPAS`](docs/plan/PLAN_EL_COMPAS.md).
+
+★ Y de paso contesta lo del 0,1 ms: **hoy no se puede, y no por lentitud**. Con
+el LAPIC periodico a 1 kHz, un milisegundo es la unidad mas pequena que el
+sistema sabe **NOMBRAR**. Con TSC-deadline la unidad pasa a ser el ciclo -- pero
+eso es precision de despertar, no latencia de punta a punta: el bus USB sigue
+poniendo 4 ms y el escaner 16,7.

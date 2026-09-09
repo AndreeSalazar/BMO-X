@@ -148,9 +148,17 @@ RING0_DIR = "Ultra_kernel_x86-64/kernel/src/ring0"
 #
 # La leccion no es "haber puesto un walk": es que una lista tiene que crecer con
 # el arbol, y por eso el segundo nombre entra el mismo dia que el corte.
+#
+# *** Y el 09-09, por segunda vez el mismo dia: `toolchain/lang/c/src/codegen`
+# estreno `decidir/`, la carpeta que separa **lo que el compilador SABE** de lo
+# que emite. Sus carriles tampoco tenian juez.
+#
+# Es el arbol con mas alcance de los tres: lo que sale de ahi son TODOS los
+# `.bex` de C y de C++ del sistema.
 CARRILES_FUERA_DEL_KERNEL = (
     "Ultra_userspace/services/director/src",
     "Ultra_userspace/userland/src",
+    "toolchain/lang/c/src",
 )
 
 # -- R17: la CARA RUST del ABI, que tampoco llevaba letrero -------------------
