@@ -63,13 +63,46 @@ const LOTE: u64 = 4096;
 /// Bloques por medida. El **minimo** de estos es la respuesta.
 const VUELTAS: u64 = 16;
 
-const NR_INVOKE: u32 = 0;
-const TAREA_ACTUAL: u64 = 0xFFFF_FFFF_FFFF_FFFE;
-const OP_PID: u64 = 0x0F;
-const OP_INFO: u64 = 0x13;
-const OP_MI_PAQUETE: u64 = 0x25;
-const ARCH_TAMANO: u64 = 0x03;
-const ARCH_CERRAR: u64 = 0x04;
+// *** SIETE NUMEROS COPIADOS A MANO, Y UNO ESTABA MAL. 2026-09-09.
+//
+// Aqui habia esto:
+//
+// ```text
+//    const OP_PID: u64 = 0x0F;    <- y `TASK_OP_GET_PID` es 0x01
+// ```
+//
+// `0x0F` es `TASK_OP_CONSOLE_READ`. O sea que **la fila que este programa
+// llama "la puerta pelada" --y que la casa llama EL SUELO DEL SISTEMA-- estaba
+// midiendo una lectura de consola**, no un PID.
+//
+// ** Lo que eso contaminaba, y no es poco:
+//
+// ```text
+//    `presupuesto.rs`  la fila `puerta`, con su techo 960 y su meta 300, dice
+//                      textualmente "INVOKE de `BMO_OP_PID` sobre la tarea
+//                      actual [...] nada puede costar menos que esto"
+//    la meta de 300    se justifica como 150 de cruce + 60 de prologo + 90 de
+//                      dispatch, contra un total que no era de esa operacion
+// ```
+//
+// *** Y el gemelo en C lo tenia BIEN: `coste_C.c:556` mide `BMO_OP_PID`, que su
+// cabecera define como `0x01` y un test de cruce de lenguaje ata a
+// `TASK_OP_GET_PID`. Los dos programas existen *"para que si difieren, se sepa
+// que uno miente"* -- y llevaban semanas midiendo operaciones distintas.
+//
+// [!] LA CAUSA NO FUE EL NUMERO: fue la COPIA. Este fichero ya hacia
+// `use bmo_userland as bmo` en la linea de arriba, y la libreria publica los
+// siete. El guardian del build coteja 96 operaciones de userland contra el ABI
+// y **no podia ver estas**, porque no eran las de userland: eran unas locales
+// con el mismo aspecto. Es el patron 47 otra vez, y el mismo del `signed`: un
+// numero que nadie compara con su original.
+//
+// Por eso ahora no se corrige el 0x0F -- se BORRAN los siete. Lo que no se
+// copia no se puede copiar mal.
+use bmo::{
+    ARCH_OP_CERRAR as ARCH_CERRAR, ARCH_OP_TAMANO as ARCH_TAMANO, CURRENT_TASK as TAREA_ACTUAL,
+    NR_INVOKE, OP_GET_PID as OP_PID, OP_INFO, OP_MI_PAQUETE,
+};
 /// **`INFO_TICKS`, y el numero importa.**
 ///
 /// La primera sonda paso `0` aqui creyendo que *"da igual el campo, lo que se
@@ -510,7 +543,7 @@ pub extern "C" fn _start() -> ! {
     // la ventana y la llenarian de algo que no se estaba midiendo.
     let puertas0 = bmo::info(bmo::INFO_SYSCALL_CUENTA);
     let ciclos0 = bmo::info(bmo::INFO_SYSCALL_CICLOS);
-    let (pelada_min, pelada_media) = medir(|n| unsafe { puertas(TAREA_ACTUAL, OP_PID, 0, n) });
+    let (pelada_min, pelada_media) = medir(|n| unsafe { puertas(TAREA_ACTUAL, OP_PID as u64, 0, n) });
     let puertas_d = bmo::info(bmo::INFO_SYSCALL_CUENTA) - puertas0;
     let ciclos_d = bmo::info(bmo::INFO_SYSCALL_CICLOS) - ciclos0;
     // -- la ventana esta cerrada; a partir de aqui se puede imprimir --
@@ -569,16 +602,16 @@ pub extern "C" fn _start() -> ! {
     // **byte a byte identico** en las tres y no puede explicar ninguna
     // diferencia -- que es justo lo que el programa de C no podia garantizar,
     // porque alli la fila del handle lee una variable y la otra un literal.
-    let paquete = bmo::invoke(TAREA_ACTUAL, OP_MI_PAQUETE as u32, 0, 0, 0).value;
+    let paquete = bmo::invoke(TAREA_ACTUAL, OP_MI_PAQUETE, 0, 0, 0).value;
     let filas = [
-        Fila { nombre: "1 pid    (pseudo-cap, op barata)", cap: TAREA_ACTUAL, op: OP_PID, a0: 0 },
+        Fila { nombre: "1 pid    (pseudo-cap, op barata)", cap: TAREA_ACTUAL, op: OP_PID as u64, a0: 0 },
         Fila {
             nombre: "2 ticks  (misma cap, op gorda)  ",
             cap: TAREA_ACTUAL,
-            op: OP_INFO,
+            op: OP_INFO as u64,
             a0: CAMPO_TICKS,
         },
-        Fila { nombre: "3 tamano (cap REAL, op gorda)   ", cap: paquete, op: ARCH_TAMANO, a0: 0 },
+        Fila { nombre: "3 tamano (cap REAL, op gorda)   ", cap: paquete, op: ARCH_TAMANO as u64, a0: 0 },
     ];
 
     let mut minimos = [0u64; 3];
@@ -676,7 +709,7 @@ pub extern "C" fn _start() -> ! {
         } else {
             di!(l, "   ...dentro/fuera de dispatch: NO MEDIDO, hace falta el metro\n");
         }
-        bmo::invoke(paquete, ARCH_CERRAR as u32, 0, 0, 0);
+        bmo::invoke(paquete, ARCH_CERRAR, 0, 0, 0);
     } else {
         di!(l, "   fila 3 NO SE MIDIO: el kernel no recuerda mi imagen\n");
     }

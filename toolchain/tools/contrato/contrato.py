@@ -99,6 +99,12 @@ RE_OPS = re.compile(
     r"const\s+(\w+_OP_\w+|SYSCALL_CLASS_\w+|ES_NODO_\w+|ES_TXT_\w+|DISCO_TRIM_\w+)"
     r"\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+|\d+)"
 )
+# ** R19: la MISMA forma pero sin `pub`, que es como se cuela. `coste` tenia
+# `const OP_PID: u64 = 0x0F;` -- privada, dentro de un binario, sin juez.
+RE_OPS_PRIV = re.compile(
+    r"(?m)^\s*const\s+(OP_\w+|ARCH_OP_\w+|ES_NODO_\w+|ES_TXT_\w+)"
+    r"\s*:\s*u\d+\s*=\s*(0x[0-9A-Fa-f_]+|\d+)\s*;"
+)
 RE_OPS_USER = re.compile(
     r"(?m)^\s*pub const\s+(\w*OP_\w+|ES_NODO_\w+|ES_TXT_\w+|DISCO_TRIM_\w+)"
     r"\s*:\s*u\d+\s*=\s*(0x[0-9A-Fa-f_]+|\d+)\s*;"
@@ -618,6 +624,61 @@ def r9_los_carriles_del_modulo(carpetas):
     return quejas
 
 
+def r19_nadie_se_copia_una_operacion(copias):
+    """R19 -- **una app de Ring 3 no declara su propia copia de una operacion.**
+
+    == De donde sale, y con fecha ==
+
+    El **2026-09-09**, buscando de donde salen los 895 ciclos de una puerta, se
+    leyo `Ultra_userspace/medida/coste/src/main.rs`:
+
+    ```text
+       const OP_PID: u64 = 0x0F;      y `TASK_OP_GET_PID` es 0x01
+                                      0x0F es `TASK_OP_CONSOLE_READ`
+    ```
+
+    *** O sea que **la fila que la casa llama EL SUELO DEL SISTEMA estaba
+    midiendo una lectura de consola**, y de ese numero salen el techo de 960 y
+    la meta de 300 de `presupuesto.rs`.
+
+    Su gemelo en C lo tenia bien --`coste_C.c` usa `BMO_OP_PID`, que `roja.h`
+    define como 0x01 y un test de cruce de lenguaje ata al kernel--. Los dos
+    programas existen para que una discrepancia delate una mentira, y llevaban
+    semanas midiendo operaciones distintas.
+
+    == Por que R4 no podia verlo ==
+
+    R4 coteja `userland/src/lib.rs` contra el ABI, y ahi el numero estaba BIEN:
+    `OP_GET_PID = 0x01`. Lo que estaba mal era una copia local en otro fichero,
+    con el mismo aspecto y sin juez. **El fichero ya importaba la libreria**:
+    las constantes buenas estaban a una linea.
+
+    > R4 pregunta si el numero publicado es correcto.
+    > R19 pregunta si alguien esta usando OTRO numero.
+
+    Son dos preguntas, y la segunda es la que ha costado tres veces: el patron
+    47 de la casa (una tabla que leen los cinco frontends), el `signed` del
+    mismo dia, y esto.
+
+    == [!] Lo que esta regla SACRIFICA (L3) ==
+
+    Una app no puede declarar una operacion que la libreria todavia no publique.
+    Eso es un coste real: una sonda que quiera pedir algo experimental tiene que
+    anadirlo primero a `userland/src/lib.rs`, donde R4 lo va a juzgar.
+
+    Y es el sacrificio correcto: **una operacion que una app puede pedir y la
+    libreria no publica es superficie del sistema sin contrato**, que es
+    exactamente lo que R14 ya prohibe en C. Esto es R14 para Rust.
+    """
+    quejas = []
+    for fichero, nombre, valor in copias:
+        quejas.append(
+            "%s declara `%s = 0x%X` en vez de usar el de `bmo_userland` (R19)"
+            % (fichero, nombre, valor)
+        )
+    return quejas
+
+
 def r18_los_carriles_fuera_del_kernel(vias, arboles):
     """R18 -- **R9 fuera del kernel, y que el arbol vigilado siga estando.**
 
@@ -797,6 +858,61 @@ def cargar():
     return kern, abi, mask, ops_kernel, ops_abi, ops_user
 
 
+def copias_de_operacion():
+    """Recorre las apps de Ring 3 y devuelve toda constante con FORMA de
+    operacion que no viva en la libreria.
+
+    ** Por PATRON y no por lista, igual que `RE_OPS`: una app nueva entra sola.
+    Una lista de ficheros vigilados se queda corta el dia que alguien crea el
+    siguiente, y ese dia el guardian dice COMPLETE sin mirar.
+    """
+    fuera = []
+    for arbol in RING3_APPS:
+        d = os.path.join(raiz(), arbol.replace("/", os.sep))
+        if not os.path.isdir(d):
+            raise SystemExit("guardian MUERTO: falta el arbol " + arbol)
+        for dp, dn, fn in os.walk(d):
+            # `target/` es lo que escribe cargo, no lo que escribe nadie.
+            dn[:] = [x for x in dn if x != "target"]
+            for n in sorted(fn):
+                if not n.endswith(".rs"):
+                    continue
+                ruta = os.path.join(dp, n)
+                with open(ruta, "r", encoding="utf-8", errors="replace") as f:
+                    txt = f.read()
+                rel = os.path.relpath(ruta, raiz()).replace(os.sep, "/")
+                # ** SOLO SE JUZGA A QUIEN CRUZA LA PUERTA, y esto no es
+                # indulgencia: es la definicion.
+                #
+                # La primera version de R19 dio SIETE incumplimientos y los
+                # siete eran falsos. Seis eran `desktop/calc.rs`, cuyos
+                # `OP_SUMA`, `OP_POR` y `OP_CIENTO` son **los botones de una
+                # calculadora**: se llaman igual y no cruzan nada. El septimo
+                # era `tema_gen.rs` con `BG_TOP_FONDO`, que casaba porque la
+                # expresion permitia un prefijo cualquiera antes de `OP_`.
+                #
+                # Una constante que nunca llega a una puerta **no puede ser una
+                # operacion de puerta equivocada**. Un fichero que no menciona
+                # `invoke` ni `syscall` no llega. Es la misma forma que R14, que
+                # tampoco juzga un literal que no cruza.
+                #
+                # [!] Y es una aproximacion, dicho: un fichero podria pasarle la
+                # constante a otro que si cruza. Para eso haria falta seguir el
+                # dato, y esto es un `grep`. Lo que se gana --cazar la copia en
+                # el fichero que la usa-- vale mas que la exactitud que falta,
+                # porque asi es como aparecio la de `coste`.
+                if "invoke" not in txt and "syscall" not in txt:
+                    continue
+                for nombre, valor in RE_OPS_USER.findall(txt):
+                    fuera.append((rel, nombre, como_numero(valor)))
+                # ** Y la forma SIN `pub`, que es la que tenia `coste`: una
+                # constante privada de un binario. Es la que hay que cazar --
+                # la publica al menos se ve desde fuera.
+                for nombre, valor in RE_OPS_PRIV.findall(txt):
+                    fuera.append((rel, nombre, como_numero(valor)))
+    return fuera
+
+
 def comprobar():
     kern, abi, mask, ops_kernel, ops_abi, ops_user = cargar()
     base = linea_base_leer()
@@ -827,6 +943,11 @@ def comprobar():
     # sesenta lineas mas abajo, en un sitio que no tiene nada que ver.
     for arbol in CARRILES_FUERA_DEL_KERNEL:
         vias_fuera.update(carpetas_de_carriles(arbol))
+    # ** R19: NADIE SE COPIA UNA OPERACION. R4 pregunta si el numero publicado
+    # es correcto; esta pregunta si alguien esta usando OTRO. Ver la regla.
+    copias = copias_de_operacion()
+    quejas += [("R19 una app se copia una operacion", q)
+               for q in r19_nadie_se_copia_una_operacion(copias)]
     quejas += [("R18 L6g los carriles fuera del kernel", q)
                for q in r18_los_carriles_fuera_del_kernel(
                    vias_fuera, CARRILES_FUERA_DEL_KERNEL)]

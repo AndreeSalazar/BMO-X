@@ -305,6 +305,38 @@ def autoprueba():
     exige("R18(sin arboles declarados)",
           r18_los_carriles_fuera_del_kernel({}, ()), False)
 
+    # -- R19: nadie se copia una operacion ----------------------------------
+    #
+    # ** El caso de verdad, con el numero de verdad: `coste` declaraba
+    # `OP_PID = 0x0F` cuando `TASK_OP_GET_PID` es `0x01`, o sea que media
+    # CONSOLE_READ y lo llamaba el suelo del sistema.
+    exige("R19(una copia)",
+          r19_nadie_se_copia_una_operacion(
+              [("Ultra_userspace/medida/coste/src/main.rs", "OP_PID", 0x0F)]))
+    exige("R19(varias)",
+          r19_nadie_se_copia_una_operacion(
+              [("a/b.rs", "OP_X", 1), ("c/d.rs", "ARCH_OP_Y", 2)]))
+    # Y el caso bueno: nadie se copia nada. Sin esta casilla, una regla que
+    # se quejara SIEMPRE tambien pasaria por guardian.
+    exige("R19(ninguna copia)", r19_nadie_se_copia_una_operacion([]), False)
+
+    # ** Y LA EXPRESION, que es donde estuvo el fallo de la primera version:
+    # `\w*OP_\w+` casaba `BG_TOP_FONDO` --un color-- porque el prefijo era
+    # libre. Aqui se prueba lo que tiene que casar y lo que NO.
+    def casa(txt):
+        return [n for n, _ in RE_OPS_PRIV.findall(txt)]
+
+    casos[0] += 1
+    nombres.append("R19(la expresion)")
+    debe = "    const OP_PID: u64 = 0x0F;" + chr(10)
+    no_debe = ("    const BG_TOP_FONDO: u32 = 0x1B2233;" + chr(10)
+               + "    const TOPE_DE_ALGO: u64 = 7;" + chr(10))
+    if casa(debe) != ["OP_PID"]:
+        fallos.append("R19: la expresion no ve `const OP_PID` -- %s" % casa(debe))
+    if casa(no_debe):
+        fallos.append("R19: la expresion casa lo que no es una operacion -- %s"
+                      % casa(no_debe))
+
     # -- R10: el semaforo ---------------------------------------------------
     CA = "//! [carril]  ROJO      porque si" + chr(10)
     exige("R10(con color)", r10_el_semaforo({"plat/spin.rs": CA}), False)

@@ -88,6 +88,36 @@ pub static PRESUPUESTO: Presupuestos = Presupuestos {
     // desde Ring 3. Es el suelo del sistema: no resuelve ningun handle, asi que
     // nada puede costar menos que esto.
     //
+    // == [!][!] ESTA FILA ESTA EN CUARENTENA DESDE EL 2026-09-09 ==================
+    //
+    // *** Las cifras de abajo NO SON DE ESTA OPERACION, y hay que decirlo antes
+    // de que alguien vuelva a razonar con ellas.
+    //
+    // `Ultra_userspace/medida/coste` --uno de los dos programas que miden esta
+    // fila-- declaraba `const OP_PID: u64 = 0x0F` cuando `TASK_OP_GET_PID` es
+    // `0x01`. **`0x0F` es `TASK_OP_CONSOLE_READ`.** O sea que la mitad Rust de
+    // la medida llevaba semanas cronometrando una lectura de consola.
+    //
+    // ```text
+    //    el gemelo en C   `coste_C.c` mide `BMO_OP_PID` = 0x01     BIEN
+    //    el de Rust       media 0x0F                                MAL
+    // ```
+    //
+    // ** Y de aqui salen las DOS cifras de esta fila: el techo de 960 ("915 fue
+    // la peor de las tres tandas") y la meta de 300 ("150 de cruce + 60 de
+    // prologo + 90 de dispatch"). La cuenta de la meta sigue siendo valida --es
+    // aritmetica del stub, no de la operacion-- pero **el 895 contra el que se
+    // compara no lo es**, y sin el no se sabe si faltan 595 ciclos o menos.
+    //
+    // [!] NO SE TOCAN LOS NUMEROS. Un techo se aprieta con lo que el metal
+    // confirmo, y lo que el metal confirmo fue otra cosa: hay que volver a
+    // medir. Hasta ese arranque, esta fila **no deriva ninguna decision**.
+    //
+    // ** Lo que ya esta hecho para que no vuelva a pasar: R19 del contrato --
+    // *ninguna app de Ring 3 declara su propia copia de una operacion*-- y las
+    // siete constantes de `coste` borradas en favor de las de `bmo_userland`,
+    // que es donde R4 las juzga. Ver `toolchain/tools/contrato/contrato.py`.
+    //
     // Un trinquete se aprieta con lo que YA se consiguio, nunca con lo que se
     // cree que se va a conseguir. Historia de este techo:
     //

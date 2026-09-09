@@ -36,6 +36,9 @@ OPS_KERNEL = "Ultra_kernel_x86-64/kernel/src/ring0/syscall/ops.rs"
 OBJ_KERNEL = "Ultra_kernel_x86-64/kernel/src/ring0/obj"
 SURFACE_ABI = "platform/abi/bmo-abi/src/syscalls/surface"
 USERLAND = "Ultra_userspace/userland/src/lib.rs"
+# ** R19: los arboles de Ring 3 donde una app NO puede copiarse una
+# operacion. Ver `r19_nadie_se_copia_una_operacion`.
+RING3_APPS = ("Ultra_userspace/medida", "Ultra_userspace/services")
 
 # -- L6e: MODULAR PRECISA. El vocabulario CERRADO de lo que cuesta un fallo.
 #
