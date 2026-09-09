@@ -355,6 +355,11 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         // se ESPERA. Armarla es trabajo del modulo --`pulso::de`-- y no de
         // aqui: este fichero es el que menos tiene que saber de las dos cosas.
         scene::pulso::refrescar(&p, &scene::pulso::de(&dsk.tick));
+        // ** Y AL LADO, LO QUE CUESTA EL FOTOGRAMA. El pulso dice el TIEMPO
+        // --`cuerpo`-- y esto los BYTES; uno sin el otro no distingue "mucho"
+        // de "lento", que es justo la pregunta abierta del 08-09. Ver la
+        // cabecera de `scene::volcado`.
+        scene::volcado::refrescar(&p, &p.volcado());
     }
 
     // -- El cursor del raton, ENCIMA de todo y lo ultimo --
