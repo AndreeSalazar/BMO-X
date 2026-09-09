@@ -1,5 +1,10 @@
 //! **DECIDIR: lo que el compilador SABE sin emitir un byte.**
 //!
+//! [fase]     EMISION
+//!
+//! [aparece]  BANCO -- es el letrero de la carpeta: no emite nada
+//!
+//!
 //! # *** LA REGLA DE ESTA CARPETA, Y ES TODA SU RAZON DE SER
 //!
 //! > **El emisor no decide.** Si hay que elegir entre dos secuencias de bytes,

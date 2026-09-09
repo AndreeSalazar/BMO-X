@@ -1,5 +1,11 @@
 //! C Preprocessor -- handles #define, #include, #ifdef, #if, #endif.
 //!
+//! [fase]     SINTAXIS
+//!
+//! [aparece]  DENTRO -- *** LA PEOR DE TODAS: un `#if` mal evaluado compila LA
+//!            RAMA EQUIVOCADA sin decir nada. No hay error, hay otro programa
+//!
+//!
 //! Runs before the tokenizer. Expands macros, resolves includes,
 //! evaluates conditional compilation, and outputs a clean source string.
 

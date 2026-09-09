@@ -1,0 +1,3 @@
+# Ficheros de BMO C que declaran [fase] y [aparece].
+# Trinquete: SOLO PUEDE SUBIR. Ver toolchain/tools/fases/fases.py
+34

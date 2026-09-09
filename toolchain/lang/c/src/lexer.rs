@@ -1,4 +1,10 @@
 //! Lexer de BMO C -- Source a Tokens (con linea real por token).
+//!
+//! [fase]     LEXICO
+//!
+//! [aparece]  AQUI -- un byte que no es un token es un error de compilacion,
+//!            en la linea que lo trae
+//!
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Token {

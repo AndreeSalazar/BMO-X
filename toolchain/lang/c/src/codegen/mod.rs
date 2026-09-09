@@ -1,3 +1,8 @@
+//! [fase]     EMISION
+//!
+//! [aparece]  DENTRO -- el despachador de expresiones. Un byte de mas calcula
+//!            otra cosa en silencio
+
 use std::collections::HashMap;
 use bmo_abi::bef::writer::{BefBuilder, BefSection};
 use bmo_abi::bef::relocations::{Relocation, SEC_CODE, SEC_DATA, SEC_RODATA};

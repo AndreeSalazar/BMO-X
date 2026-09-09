@@ -1,5 +1,11 @@
 //! **Structs y uniones POR VALOR**: copiarlos, pasarlos y devolverlos.
 //!
+//! [fase]     EMISION
+//!
+//! [aparece]  DENTRO -- structs por valor: copiar de menos deja medio objeto
+//!            sin inicializar
+//!
+//!
 //! === Por que esto es un fichero aparte ===
 //!
 //! Todo lo demas que emite BMO C cabe en un registro. Un `int`, un puntero, un

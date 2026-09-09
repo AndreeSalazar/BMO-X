@@ -1,5 +1,11 @@
 //! **EL JUEZ UNICO DE "QUE TIPO ES ESTA EXPRESION".**
 //!
+//! [fase]     TIPOS
+//!
+//! [aparece]  DENTRO -- el juez del signo y del ancho. Los CINCO fallos del 01
+//!            al 04-09 salieron por aqui, y todos aparecieron dentro de DOOM
+//!
+//!
 //! [carril]  ROJO      de aqui sale el offset que se graba en el arbol
 //!
 //! [cuesta]  DATO -- lo que este fichero conteste lo escriben DOS consumidores

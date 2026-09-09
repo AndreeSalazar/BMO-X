@@ -1,4 +1,9 @@
 //! C Abstract Syntax Tree -- expression nodes.
+//!
+//! [fase]     ARBOL
+//!
+//! [aparece]  AQUI -- una forma que no existe no se puede construir
+//!
 
 use super::types::*;
 

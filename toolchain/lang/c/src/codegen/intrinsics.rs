@@ -1,5 +1,11 @@
 //! **INTRINSICS AND THE KERNEL DOOR**: what is not translated is invoked.
 //!
+//! [fase]     EMISION
+//!
+//! [aparece]  METAL -- lo que no se traduce se invoca: solo el kernel puede
+//!            decir si la puerta era esa
+//!
+//!
 //! === Why this is a file of its own ===
 //!
 //! An intrinsic is not a C function: it is a NAME the compiler recognises and

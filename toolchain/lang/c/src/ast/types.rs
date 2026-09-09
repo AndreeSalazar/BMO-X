@@ -1,4 +1,9 @@
 //! C Abstract Syntax Tree -- type system definitions.
+//!
+//! [fase]     ARBOL
+//!
+//! [aparece]  AQUI -- idem
+//!
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeSpec {

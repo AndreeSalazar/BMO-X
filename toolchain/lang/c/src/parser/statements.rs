@@ -1,5 +1,10 @@
 //! **STATEMENTS** -- the shapes that do not produce a value.
 //!
+//! [fase]     SINTAXIS
+//!
+//! [aparece]  AQUI -- una forma que no existe se ve al parsear
+//!
+//!
 //! === Why this is a file of its own ===
 //!
 //! It is the smallest of the grammar halves and the most regular: nine forms,

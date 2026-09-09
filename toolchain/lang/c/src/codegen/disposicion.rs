@@ -1,5 +1,11 @@
 //! **LA DISPOSICION, del lado del codegen: colocarla y COTEJARLA.**
 //!
+//! [fase]     IMAGEN
+//!
+//! [aparece]  DENTRO -- cotejar la disposicion con el frontend. Si los dos
+//!            lados discrepan, el campo se lee corrido
+//!
+//!
 //! [carril]  ROJO      un offset mal puesto no da error: da el campo de al lado
 //!
 //! [cuesta]  DATO -- de aqui salen los offsets con los que se emiten cargas y

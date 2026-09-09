@@ -1,4 +1,10 @@
 //! C Parser -- tokens a AST (gramatica completa) + preprocesador.
+//!
+//! [fase]     SINTAXIS
+//!
+//! [aparece]  AQUI -- una gramatica que no casa no produce arbol: para y
+//!            senala
+//!
 
 pub mod preprocessor;
 /// Las listas `{ ... }`, en su propio fichero. Ver su cabecera para el porque del

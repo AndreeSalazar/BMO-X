@@ -1,5 +1,11 @@
 //! **THE STACK FRAME**: where each local lives and how it is read back.
 //!
+//! [fase]     EMISION
+//!
+//! [aparece]  DENTRO -- donde vive cada local. Un desplazamiento de mas pisa
+//!            la pila y el sintoma sale tres funciones despues
+//!
+//!
 //! === Why this is a file of its own ===
 //!
 //! BMO C has no register allocation: **every variable lives on the stack**, in

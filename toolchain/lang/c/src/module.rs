@@ -1,3 +1,8 @@
+//! [fase]     ARBOL
+//!
+//! [aparece]  AQUI -- juntar dos unidades: un simbolo repetido o ausente lo
+//!            dice el enlazado
+
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::fs;

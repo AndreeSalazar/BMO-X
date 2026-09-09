@@ -1,5 +1,10 @@
 //! **La entrada de C**: `getchar` y `scanf`.
 //!
+//! [fase]     EMISION
+//!
+//! [aparece]  METAL -- `getchar` y `scanf` necesitan un teclado de verdad
+//!
+//!
 //! === Por que esto es un fichero aparte ===
 //!
 //! Es la mitad que faltaba de `printf`, y no se parece a ella en nada. Escribir

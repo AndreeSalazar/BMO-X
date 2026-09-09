@@ -130,6 +130,37 @@ corazon de este plan y no una de sus mejoras.
       (TSC-deadline) la unidad pasa a ser el ciclo, y 0,1 ms deja de ser un
       numero raro.
 
+      ### ★★ Y la pregunta del dueno: *"no se puede dividir? 0,5 + 0,5"*
+
+      **Se puede, y son DOS registros que ya estan escritos** (`s2_mem/main.rs`):
+
+      ```text
+         0x3E0 = 3            el DIVISOR: hoy divide el reloj del bus entre 16
+         0x380 = hz / 1000    la CUENTA: cuantos de esos hasta disparar
+         0x320 = 48|(1<<17)   el modo: PERIODICO, o sea "y vuelta a empezar"
+      ```
+
+      Poner `hz / 2000` da 2 kHz. Es **una escritura**, y funciona.
+
+      ⚠ Pero eso no exprime: **multiplica el coste**. Cada disparo cuesta lo
+      mismo --entrada, `xsave`, manejador, `xrstor`, salida-- asi que el doble de
+      disparos es el doble de gasto para el mismo trabajo. Partir un tick en dos
+      mitades da dos ticks, no medio.
+
+      ★★★ **Y el truco que buscabas existe: es esa idea DADA LA VUELTA.** En vez
+      de partir mas fino, se quita el bit 17 --modo de UN SOLO DISPARO-- y se le
+      programa el instante exacto del proximo evento que importa:
+
+      ```text
+         hoy        1.000 disparos por segundo, y nadie puede decir por que el 743
+         un disparo  N disparos, y CADA UNO TIENE DUENO Y MOTIVO
+      ```
+
+      *** Eso es literalmente *"que cada uno diga que aporta"*. La diferencia es
+      que no se consigue dividiendo mas: se consigue **no disparando cuando no
+      hace falta**. Y de regalo, cuando de verdad hagan falta 100 us se piden --
+      sin pagar diez mil por segundo el resto del tiempo.
+
       [!] Pero eso es **precision de despertar**, no latencia de punta a punta:
       el bus USB pone hasta 4 ms y el escaner de video hasta 16,7. Ver
       [`PLAN_EL_PIXEL`](PLAN_EL_PIXEL.md), seccion 1.
@@ -196,6 +227,35 @@ corazon de este plan y no una de sus mejoras.
       azul que E0 vino a arreglar. Por eso las anteojeras **necesitan E3**
       (estrangular al que se pasa) puesto ANTES: la ventana tiene que acabar por
       reloj, no por confianza.
+
+- [ ] **E7 -- ★ LAS ANTEOJERAS SOLAS, sin que nadie las pida.** La otra mitad
+      de la idea del dueno, y la trajo asi:
+
+      > *"eso lo veia MAS para cuando BMO-X, si pasa 15 minutos, se automatiza
+      > para concentrar TODO en un objetivo. Es como un plus."*
+
+      E6 es **declarada**: la tarea pide su ventana. E7 es **ganada**: una tarea
+      que lleva mucho rato con el foco y sin nadie compitiendo **se gana las
+      anteojeras sin declarar nada**. Nadie tiene que cambiar su programa.
+
+      ```text
+         el foco lo tiene UNO
+         nadie mas esta listo desde hace N minutos
+         -> el temporizador deja de disparar por costumbre
+         -> los avisos que no son suyos esperan al final de su tramo
+      ```
+
+      ★★ Y encaja con la ley de la casa sin anadir nada: `EL ORQUESTAL` ya dice
+      que **el foco decide CUANTO y no QUIEN**. Esto es esa frase llevada hasta
+      el final -- un foco sostenido no sube de prioridad, **le quitan las
+      distracciones**.
+
+      ⚠ **Sacrificio, y aqui es de gusto y no de ingenieria**: un sistema que
+      cambia de comportamiento a los quince minutos **se comporta distinto de
+      como lo probaste**. Es la clase de cosa que hace que un fallo salga solo en
+      sesiones largas -- justo el modo de fallo mas caro que tiene esta casa. Si
+      se hace, la barra tiene que DECIRLO: un modo invisible es el `[riesgo]
+      SILENCIO` con otro nombre, y ya costo el Bloq Num.
 
 ## ★★ Por que E1 va antes que E2, y no es negociable
 

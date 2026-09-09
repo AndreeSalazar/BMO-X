@@ -1,4 +1,10 @@
 //! Estandares de C soportados (C89..C23) -- el modulo de las VERSIONES.
+//!
+//! [fase]     LEXICO
+//!
+//! [aparece]  AQUI -- elegir mal el estandar apaga una palabra clave, y el
+//!            parser lo dice al momento
+//!
 //! Cada version es un TOML en forge/sem-asm/tables/standards/C/ (titulo propio),
 //! y todas se unen aqui en StandardFeatures: un solo mecanismo de gating.
 //!
