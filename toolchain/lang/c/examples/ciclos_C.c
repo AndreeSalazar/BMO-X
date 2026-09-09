@@ -167,6 +167,7 @@ int main(void) {
     unsigned long long total;
     unsigned long long sumidero;
     unsigned long long termometro;
+    unsigned long long bucle;
     unsigned long long fijo_op;
     unsigned long long fijo_campo;
     unsigned long long fijo;
@@ -196,6 +197,10 @@ int main(void) {
     }
     anotar(mejor, total);
     fila("0. bucle vacio       ");
+    /* ** Se guarda para RESTARLO. Esta dentro de todas las filas de
+     * abajo, asi que sin restarlo cada puerta lleva el bucle sumado --
+     * son pocos ticks, pero son ticks que no son de la puerta. */
+    bucle = g_min;
 
     /* -- 1. una llamada normal ---------------------------------------- */
     mejor = 0; total = 0;
@@ -249,7 +254,7 @@ int main(void) {
     }
     anotar(mejor, total);
     fila("3. RECHAZO (op)      ");
-    fijo_op = g_min;
+    fijo_op = g_min - bucle;
 
     /* -- 4. PUERTA RECHAZADA (campo inexistente de INFO) -------------- */
     mejor = 0; total = 0;
@@ -268,7 +273,7 @@ int main(void) {
     }
     anotar(mejor, total);
     fila("4. RECHAZO (campo)   ");
-    fijo_campo = g_min;
+    fijo_campo = g_min - bucle;
 
     /* -- 5. la puerta mas barata que SI hace algo --------------------- */
     mejor = 0; total = 0;
@@ -283,7 +288,7 @@ int main(void) {
     }
     anotar(mejor, total);
     fila("5. PID (la barata)   ");
-    pid = g_min;
+    pid = g_min - bucle;
 
     /* -- 6. una mas gorda, todavia sin handle ------------------------- */
     mejor = 0; total = 0;
@@ -299,7 +304,7 @@ int main(void) {
     }
     anotar(mejor, total);
     fila("6. INFO ticks        ");
-    info = g_min;
+    info = g_min - bucle;
 
     /* == EL REPARTO ================================================== */
 
@@ -331,8 +336,23 @@ int main(void) {
     if (info > fijo) {
         printf("  trabajo de INFO             %5llu ticks\n", info - fijo);
     }
-    printf("  el termometro (rdtsc)       %5llu ticks, dentro de cada fila\n",
+    /* ** ESTA LINEA DECIA UNA COSA FALSA Y SE CORRIGE, 2026-09-09.
+     *
+     * Decia *"el termometro, dentro de cada fila"*, y NO lo esta: cada
+     * bloque hace DOS `__rdtsc()` para 4096 operaciones, o sea 0,05 ticks
+     * por operacion. El escalon 2 mide un `rdtsc` POR VUELTA, que es otra
+     * cosa -- lo que costaria el instrumento SI se usara por operacion, que
+     * es lo que hacian los cuatro sellos del stub antes de retirarse.
+     *
+     * Lo que si esta dentro de todas las filas es el BUCLE, y por eso se
+     * resta de las cinco de puerta antes de repartir nada. */
+    printf("  un `rdtsc` por operacion    %5llu ticks -- lo que costaria
+",
            termometro);
+    printf("                                    instrumentar la puerta
+");
+    printf("  el bucle, ya restado        %5llu ticks
+", bucle);
 
     /* == ** LA PROYECCION: repartir el fijo entre N operaciones ======= */
 
@@ -353,6 +373,25 @@ int main(void) {
         n = n * 2;
     }
     printf("\n");
+    /* *** LA ASINTOTA, y es la respuesta a *"podemos bajar mas y mas"*.
+     *
+     * `FIJO/N + TRABAJO` tiende a `TRABAJO` cuando N crece. O sea que **el
+     * lote tiene un suelo y no es cero**: es lo que cuesta hacer la
+     * operacion. Sin esta linea la tabla invita a creer que con N grande se
+     * llega a nada, y a partir de cierto N el lote deja de comprar. */
+    printf("
+");
+    printf("  *** EL SUELO DEL LOTE son %llu ticks (N infinito), no cero:
+",
+           trabajo);
+    printf("      es el TRABAJO, y un lote no lo toca. Para bajar de ahi hay
+");
+    printf("      que abaratar el trabajo, o NO CRUZAR (pagina de solo
+");
+    printf("      lectura). Ver PLAN_LA_PUERTA_SE_PARTE, seccion 6.
+");
+    printf("
+");
     printf("  [!] Es un TECHO, no una promesa: un lote de verdad tiene que\n");
     printf("      escribir sus N respuestas, y eso cuesta. Lo que esta tabla\n");
     printf("      dice es CUANTO hay para ganar. Ver PLAN_LA_PUERTA_SE_PARTE.\n");
