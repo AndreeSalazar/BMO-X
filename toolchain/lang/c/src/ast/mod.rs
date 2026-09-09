@@ -5,6 +5,9 @@
 //! [aparece]  AQUI -- es una fachada de re-exportacion: si falta algo, no
 //!            compila el compilador
 //!
+//! [carril]   VERDE    -- si se rompe, ALGUIEN TE LO DICE antes de que salga de aqui
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
+//!
 
 pub mod types;
 pub mod expr;

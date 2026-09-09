@@ -2,6 +2,9 @@
 //!
 //! [aparece]  AQUI -- juntar dos unidades: un simbolo repetido o ausente lo
 //!            dice el enlazado
+//!
+//! [carril]   VERDE    -- si se rompe, ALGUIEN TE LO DICE antes de que salga de aqui
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};

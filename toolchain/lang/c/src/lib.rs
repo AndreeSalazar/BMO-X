@@ -1,6 +1,9 @@
 //! [fase]     ARBOL
 //!
 //! [aparece]  AQUI -- la fachada de la crate
+//!
+//! [carril]   VERDE    -- si se rompe, ALGUIEN TE LO DICE antes de que salga de aqui
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
 
 pub mod codegen;
 pub mod ast;

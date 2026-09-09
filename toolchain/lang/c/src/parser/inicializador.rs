@@ -5,6 +5,9 @@
 //! [aparece]  DENTRO -- una lista mal repartida llena una tabla con los
 //!            valores corridos. Las tablas de DOOM son esto
 //!
+//! [carril]   ROJO     -- nadie te sujeta: compila, pasa el banco, y el sintoma sale LEJOS
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
+//!
 //!
 //! === Por que esto es un fichero aparte ===
 //!

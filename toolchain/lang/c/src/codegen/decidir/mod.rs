@@ -4,6 +4,9 @@
 //!
 //! [aparece]  BANCO -- es el letrero de la carpeta: no emite nada
 //!
+//! [carril]   VERDE    -- si se rompe, ALGUIEN TE LO DICE antes de que salga de aqui
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
+//!
 //!
 //! # *** LA REGLA DE ESTA CARPETA, Y ES TODA SU RAZON DE SER
 //!
@@ -70,5 +73,5 @@
 //!        era emision disfrazada
 //! ```
 
-pub(super) mod amarilla;
-pub(super) mod roja;
+pub(super) mod imagen;
+pub(super) mod plegado;

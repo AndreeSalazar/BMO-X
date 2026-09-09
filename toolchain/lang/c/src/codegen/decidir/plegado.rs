@@ -1,4 +1,4 @@
-//! **CARRIL ROJO** -- EL PLEGADO. Lo que se puede saber al compilar.
+//! **EL PLEGADO** -- lo que se puede saber al compilar.
 //!
 //! [fase]     EMISION
 //!
@@ -7,10 +7,10 @@
 //!            caza el banco; la misma decision dentro del emisor habria salido
 //!            en DOOM
 //!
+//! [carril]   VERDE -- y NO se elige: sale de su `[aparece]` (BANCO).
+//!            Ver la tabla en toolchain/tools/fases/fases.py
 //!
-//! [carril]  ROJO      es la unica parte de `decidir/` cuyo resultado acaba
-//!                     DENTRO de un numero que el programa usa. Lo demas dice
-//!                     donde van las cosas; esto dice CUANTO valen.
+//!
 //!
 //! [cuesta]  DATO -- un numero mal plegado no da error: da otro programa. Aqui
 //!           se resuelven `1 << 16` --el `FRACUNIT` de toda la aritmetica de

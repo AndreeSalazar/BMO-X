@@ -5,6 +5,9 @@
 //! [aparece]  METAL -- lo que no se traduce se invoca: solo el kernel puede
 //!            decir si la puerta era esa
 //!
+//! [carril]   AMARILLO -- hay que EJECUTAR para verlo: compila en verde y falla despues
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
+//!
 //!
 //! === Why this is a file of its own ===
 //!

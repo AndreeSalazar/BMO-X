@@ -2493,3 +2493,90 @@ QUIEN. Un foco sostenido no sube de prioridad -- **le quitan las distracciones**
 Escalon `E7` de `PLAN_EL_COMPAS`, con su aviso: un sistema que cambia de
 comportamiento a los quince minutos se comporta distinto de como lo probaste, y
 eso tiene que decirlo la barra o es el Bloq Num otra vez.
+
+---
+
+## Ep. 57 -- El semaforo del compilador se DEDUCE, y el guardian me cazo a mi
+
+**2026-09-09.** Tres peticiones del dueno, y la tercera es la que manda:
+
+> *"el estandar es semaforo de rojo y verde, EL PORQUE. Lo otro es DIVIDIR
+> todos los archivos que emiten. Y ya no aplicaremos como lineal sino DINAMICO
+> PURO, con reglas que pides en C, **para que el compilador no tenga que
+> ADIVINAR**."*
+
+### ★★★ El color no se elige: se DEDUCE de quien te caza
+
+En Ring 0 el semaforo se elige --*"que arriesgo si lo toco"*-- porque el fallo
+se paga donde esta. En un compilador eso no vale: lo que decide el riesgo de
+tocar una pieza **no es lo que hace, es quien la va a cazar**.
+
+```text
+   AQUI      -> VERDE      el compilador te lo dice antes de que salga
+   BANCO     -> VERDE      500 filas te sujetan
+   EMULADOR  -> AMARILLO   hay que ejecutar para verlo
+   METAL     -> AMARILLO   hace falta un arranque
+   DENTRO    -> ROJO       nadie te sujeta; sale lejos de la causa
+```
+
+** Y `fases.py` lo **COMPRUEBA** en vez de leerlo: un `[carril]` que no cuadra
+con su `[aparece]` es una de las dos etiquetas mintiendo.
+
+### ★★ Y en el primer arranque me caza a MI, con cuatro
+
+```text
+   decidir/roja.rs      [aparece] BANCO  y [carril] ROJO      no cuadran
+   emitir/amarilla.rs   [aparece] DENTRO y [carril] AMARILLO  no cuadran
+   emitir/verde.rs      [aparece] METAL  y [carril] VERDE     no cuadran
+   emitir/mod.rs        [aparece] BANCO  y [carril] AMARILLO  no cuadran
+```
+
+*** Y el guardian tenia razon: **habia reusado tres palabras para dos ejes
+distintos.** `roja/amarilla/verde` como NOMBRE de carril es un reparto en tres
+de una carpeta; `[carril] ROJO` es quien te sujeta. Coincidian a veces y por
+casualidad -- que es el `[riesgo] ESPEJO` de esta casa escrito con etiquetas.
+
+Las carpetas se renombraron **por lo que de verdad separan**:
+
+```text
+   decidir/plegado.rs     decidir/imagen.rs
+   emitir/valor.rs        emitir/direccion.rs      emitir/orden.rs
+```
+
+Y `toolchain/lang/c/src` **salio** de `CARRILES_FUERA_DEL_KERNEL` -- entro y
+salio el mismo dia. Un guardian mirando un arbol donde ya no hay nada que juzgar
+es el guardian MUERTO que R18 existe para evitar.
+
+### La division de los que emiten
+
+`emit_expr` eran **600 lineas y cincuenta formas** en un solo `match`. Ahora:
+
+```text
+   valor.rs      23 formas   aritmetica, signo, ancho, comparaciones   ROJO
+   direccion.rs  19 formas   variables, punteros, campos, indices      ROJO
+   orden.rs       8 formas   llamadas, cortocircuitos, secuencia       AMARILLO
+```
+
+★★ **El despacho se queda EXHAUSTIVO y sin comodin**, y es la unica decision de
+diseno del corte: el dia que nazca una forma nueva de expresion, **el compilador
+de Rust para ahi** y obliga a decidir de que color es. Partirlo en tres `if` que
+devolvieran `bool` habria sido mas corto y habria perdido justo eso.
+
+`codegen/mod.rs`: **2.238 -> 1.617 lineas**. 500 de 500 filas verdes.
+
+### Y lo que queda, que es lo que el dueno pidio de verdad: C5
+
+*"Que el compilador no tenga que ADIVINAR"*. Hoy el emisor **vuelve a deducir el
+tipo cada vez que lo necesita** -- `expr_is_unsigned`, `expr_is_float`,
+`recorte_de`, `pointer_scale`: **41 preguntas contadas**, y cada una recorre el
+arbol otra vez para contestar lo que ya se sabia.
+
+★★★ Y no es rendimiento: **es donde viven los cinco fallos del mes.** `div`
+donde iba `idiv`, `shr` donde iba `sar`, un recorte que no se aplica -- los tres
+son la misma frase: *el emisor pregunto y le contestaron mal*. Con el tipo
+resuelto UNA vez y cargado en el arbol, no hay nada que preguntar. Y `tipos.rs`
+pasaria de `[aparece] DENTRO` a `AQUI`, que es de dias a gratis.
+
+Escrito como `C5` en `docs/plan/PLAN_EL_CODEGEN.md`, con su aviso: el arbol gana
+un campo, el parser tiene que rellenarlo, y **un arbol medio anotado es peor que
+uno sin anotar**. Se hace de una vez o no se hace.

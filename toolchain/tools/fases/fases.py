@@ -86,6 +86,30 @@ APARECE = ("AQUI", "BANCO", "EMULADOR", "METAL", "DENTRO")
 
 RE_FASE = re.compile(r"^//!\s*\[fase\]\s+([A-Z]+)\s*$", re.M)
 RE_APARECE = re.compile(r"^//!\s*\[aparece\]\s+([A-Z]+)\b", re.M)
+RE_CARRIL = re.compile(r"^//!\s*\[carril\]\s+([A-Z]+)\b", re.M)
+
+# *** EL SEMAFORO DEL COMPILADOR SE DERIVA, NO SE OPINA.
+#
+# El dueno lo pidio el 09-09 asi: "la regla en el compilador, el estandar es
+# semaforo de rojo y verde, EL PORQUE". Y el porque ya estaba medido: el color
+# de una pieza de compilador es **quien te sujeta si la rompes**.
+#
+#    AQUI      -> VERDE      el compilador te lo dice antes de que salga
+#    BANCO     -> VERDE      500 filas te sujetan
+#    EMULADOR  -> AMARILLO   hay que ejecutar para verlo
+#    METAL     -> AMARILLO   hace falta un arranque
+#    DENTRO    -> ROJO       nadie te sujeta; sale lejos de la causa
+#
+# ** Y por eso este guardian lo COMPRUEBA en vez de leerlo. Un `[carril]` que no
+# cuadra con su `[aparece]` es una de las dos etiquetas mintiendo, y con dos
+# escritas a mano eso pasa el primer dia que alguien tenga prisa.
+#
+# *** La diferencia con el semaforo de Ring 0 es toda la idea: alli el color se
+# elige --"que arriesgo si lo toco"-- porque el fallo se paga donde esta. Aqui
+# el color se DEDUCE, porque lo que decide el riesgo de tocar una pieza de
+# compilador no es lo que hace: es **quien la va a cazar**.
+COLOR_DE = {"AQUI": "VERDE", "BANCO": "VERDE", "EMULADOR": "AMARILLO",
+            "METAL": "AMARILLO", "DENTRO": "ROJO"}
 
 
 def ficheros():
@@ -151,6 +175,16 @@ def main():
         if ma.group(1) not in APARECE:
             quejas.append("%s inventa un [aparece]: %s. Los que hay son %s"
                           % (rel, ma.group(1), ", ".join(APARECE)))
+        mc = RE_CARRIL.search(txt)
+        if mc is None:
+            quejas.append("%s declara [fase] y no [carril]. El semaforo del "
+                          "compilador sale de su [aparece]: %s -> %s"
+                          % (rel, ma.group(1), COLOR_DE[ma.group(1)]))
+        elif mc.group(1) != COLOR_DE[ma.group(1)]:
+            quejas.append("%s dice [aparece] %s y [carril] %s, y no cuadran: "
+                          "%s se sujeta con %s. Una de las dos miente"
+                          % (rel, ma.group(1), mc.group(1), ma.group(1),
+                             COLOR_DE[ma.group(1)]))
         por_fase.setdefault(mf.group(1), []).append(rel)
         if ma.group(1) == "DENTRO":
             dentro.append(rel)

@@ -1,14 +1,14 @@
-//! **CARRIL AMARILLO** -- LA IMAGEN. Donde cae cada cosa dentro del `.bex`.
+//! **LA IMAGEN** -- donde cae cada cosa dentro del `.bex`.
 //!
 //! [fase]     IMAGEN
 //!
 //! [aparece]  METAL -- las cuentas del reparto: si no cuadran, el cargador del
 //!            kernel rechaza el fichero
 //!
+//! [carril]   AMARILLO -- y NO se elige: sale de su `[aparece]` (METAL).
+//!            Ver la tabla en toolchain/tools/fases/fases.py
 //!
-//! [carril]  AMARILLO  no calcula ningun valor del programa: calcula SITIOS.
-//!                     Equivocarse aqui no cambia lo que el programa piensa,
-//!                     cambia donde lo guarda.
+//!
 //!
 //! [cuesta]  TAREA -- un reparto mal hecho no arranca, o lo rechaza el cargador
 //!           al leerlo. Se ve al momento y en el sitio, que es exactamente lo

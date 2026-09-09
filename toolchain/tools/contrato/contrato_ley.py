@@ -149,16 +149,25 @@ RING0_DIR = "Ultra_kernel_x86-64/kernel/src/ring0"
 # La leccion no es "haber puesto un walk": es que una lista tiene que crecer con
 # el arbol, y por eso el segundo nombre entra el mismo dia que el corte.
 #
-# *** Y el 09-09, por segunda vez el mismo dia: `toolchain/lang/c/src/codegen`
-# estreno `decidir/`, la carpeta que separa **lo que el compilador SABE** de lo
-# que emite. Sus carriles tampoco tenian juez.
+# *** Y el 09-09 el compilador de C entro en esta lista... y salio el mismo dia.
+# Merece contarse, porque es la unica vez que un arbol se ha ido de aqui:
 #
-# Es el arbol con mas alcance de los tres: lo que sale de ahi son TODOS los
-# `.bex` de C y de C++ del sistema.
+#    entro    `codegen/decidir/` y `codegen/emitir/` se partieron en carriles
+#             roja/amarilla/verde, como manda L6g
+#    salio    el guardian NUEVO del compilador --`toolchain/tools/fases/`-- lo
+#             comprobo y dijo que los colores NO cuadraban con su `[aparece]`
+#
+# ** Y tenia razon: en el compilador el color no se ELIGE, se DEDUCE de quien te
+# caza si lo rompes. Reusar las tres palabras para dos ejes distintos era el
+# `[riesgo] ESPEJO` escrito con etiquetas. Las carpetas se renombraron por lo
+# que de verdad separan --`plegado`/`imagen`, `valor`/`direccion`/`orden`-- y
+# el arbol se fue de esta lista.
+#
+# *** No se quedo "por si acaso": un guardian mirando un arbol donde ya no hay
+# nada que juzgar es exactamente el guardian MUERTO que R18 existe para evitar.
 CARRILES_FUERA_DEL_KERNEL = (
     "Ultra_userspace/services/director/src",
     "Ultra_userspace/userland/src",
-    "toolchain/lang/c/src",
 )
 
 # -- R17: la CARA RUST del ABI, que tampoco llevaba letrero -------------------

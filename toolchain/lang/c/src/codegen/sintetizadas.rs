@@ -5,6 +5,9 @@
 //! [aparece]  BANCO -- el catalogo de funciones emitidas: cada una tiene su
 //!            fila
 //!
+//! [carril]   VERDE    -- si se rompe, ALGUIEN TE LO DICE antes de que salga de aqui
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
+//!
 //!
 //! Esto vivia dentro de `codegen/mod.rs`, que llego a **2962 lineas**. Salio
 //! aqui por la misma razon por la que salieron `agregados` y `entrada`: no

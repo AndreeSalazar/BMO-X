@@ -5,6 +5,9 @@
 //! [aparece]  BANCO -- `printf` es lo unico que el banco compara letra por
 //!            letra. Si se rompe, se ve en la fila
 //!
+//! [carril]   VERDE    -- si se rompe, ALGUIEN TE LO DICE antes de que salga de aqui
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
+//!
 //!
 //! === Why this is a file of its own, and it is the clearest case here ===
 //!

@@ -5,6 +5,9 @@
 //! [aparece]  DENTRO -- un declarador mal leido da un TIPO equivocado, y el
 //!            tipo se paga mucho despues
 //!
+//! [carril]   ROJO     -- nadie te sujeta: compila, pasa el banco, y el sintoma sale LEJOS
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
+//!
 //!
 //! === Why this is a file of its own, and it is the biggest one ===
 //!

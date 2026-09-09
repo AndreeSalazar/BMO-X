@@ -4,6 +4,9 @@
 //!
 //! [aparece]  METAL -- `getchar` y `scanf` necesitan un teclado de verdad
 //!
+//! [carril]   AMARILLO -- hay que EJECUTAR para verlo: compila en verde y falla despues
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
+//!
 //!
 //! === Por que esto es un fichero aparte ===
 //!

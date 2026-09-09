@@ -5,6 +5,9 @@
 //! [aparece]  DENTRO -- `a[i]`, `*p` y `p + n`. Un paso de elemento equivocado
 //!            lee el vecino
 //!
+//! [carril]   ROJO     -- nadie te sujeta: compila, pasa el banco, y el sintoma sale LEJOS
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
+//!
 //!
 //! === Why this is a file of its own ===
 //!

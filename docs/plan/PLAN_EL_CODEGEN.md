@@ -152,6 +152,37 @@ miran dos o tres instrucciones seguidas y las sustituyen.
       ⚠ Y su sacrificio es el que importa: **es donde un compilador deja de
       poder leerse de una sentada**, que es la propiedad por la que existe este.
 
+- [ ] **C5 -- ★★★ QUE EL COMPILADOR NO TENGA QUE ADIVINAR.** Lo pidio el dueno
+      el 09-09 con esas palabras, y es el escalon mas profundo de la lista.
+
+      Hoy el emisor **vuelve a deducir el tipo cada vez que lo necesita**:
+      `expr_is_unsigned`, `expr_is_float`, `recorte_de`, `pointer_scale`. Son
+      **41 preguntas contadas** repartidas por los ficheros que emiten, y cada una
+      recorre el arbol otra vez para contestar lo que ya se sabia.
+
+      ```text
+         lo que hay    el arbol lleva la FORMA, y el tipo se adivina al emitir
+         C5            el arbol lleva su TIPO YA RESUELTO, y el emisor lo lee
+      ```
+
+      ★★ Y no es una optimizacion: **es donde viven los cinco fallos del mes**.
+      `div` donde iba `idiv`, `shr` donde iba `sar`, un recorte de 32 que no se
+      aplica -- los tres son la misma frase: *el emisor pregunto y le
+      contestaron mal*. Con el tipo resuelto una vez, en un sitio y por escrito,
+      **no hay nada que preguntar**.
+
+      *** Es la regla de `decidir/` llevada hasta el final: si decidir una vez y
+      cargar la respuesta ya quito un `imul` de un bucle, decidir el TIPO una
+      vez quita la clase de fallo entera. Y mueve `tipos.rs` de `[aparece]
+      DENTRO` a `AQUI`: un tipo que no cuadra se ve al anotarlo, no dentro de
+      DOOM.
+
+      ⚠ **Sacrificio, y es el mayor de los cinco**: el AST gana un campo por
+      nodo, el parser tiene que rellenarlo, y **durante la mudanza conviven las
+      dos formas de contestar**. Un arbol medio anotado es peor que uno sin
+      anotar, porque el que lee no sabe cual manda. Se hace de una vez o no se
+      hace.
+
 ## ★★ Como se mide cada escalon, y no de oidas
 
 ```text

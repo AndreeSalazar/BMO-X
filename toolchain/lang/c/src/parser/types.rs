@@ -5,6 +5,9 @@
 //! [aparece]  DENTRO -- la disposicion de un agregado: un campo desplazado se
 //!            lee como basura, y lejos
 //!
+//! [carril]   ROJO     -- nadie te sujeta: compila, pasa el banco, y el sintoma sale LEJOS
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
+//!
 //! donde cae cada campo.
 //!
 //! # *** 2026-09-02: ESTE FICHERO YA NO ES UN COMPROBADOR DE TIPOS

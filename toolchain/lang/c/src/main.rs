@@ -1,6 +1,9 @@
 //! [fase]     ARBOL
 //!
 //! [aparece]  AQUI -- el mando de la linea de ordenes
+//!
+//! [carril]   VERDE    -- si se rompe, ALGUIEN TE LO DICE antes de que salga de aqui
+//!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
 
 use std::env;
 use std::fs;
