@@ -231,6 +231,15 @@ Guardian 'Validating plan checkboxes are verifiable' `
 Guardian 'Validating compiler warnings do not grow' `
     'toolchain\tools\avisos\avisos.py' 'los avisos del compilador' `
     'avisos: los avisos del compilador SUBIERON (ver arriba)'
+# ** EL EJE PROPIO DEL COMPILADOR DE C: donde nace un fallo y DONDE APARECE.
+#
+# Un compilador falla distinto a un kernel: en Ring 0 el fallo se paga donde
+# esta, y aqui se paga LEJOS -- todo en verde, y el sintoma dentro de DOOM tres
+# semanas despues. Este guardian ensena la lista de los `DENTRO`, que es el mapa
+# de los sitios donde el banco NO protege. Ver toolchain/tools/fases/fases.py
+Guardian 'Validating BMO C declares where its failures appear' `
+    'toolchain/tools/fases/fases.py' 'las fases de BMO C' `
+    'fases: un fichero de BMO C perdio su [fase] o inventa un valor (ver arriba)'
 Guardian 'Validating commit scopes' `
     'toolchain\tools\ambitos\ambitos.py' 'los ambitos de los commits' `
     'ambitos: un commit usa un ambito que no esta en AMBITOS.txt (ver arriba)'

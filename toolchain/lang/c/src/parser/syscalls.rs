@@ -1,5 +1,11 @@
 //! **THE SYSCALL PASS** -- validate the calls, then resolve their names.
 //!
+//! [fase]     SINTAXIS
+//!
+//! [aparece]  METAL -- una puerta mal resuelta compila y solo falla cuando el
+//!            kernel la recibe
+//!
+//!
 //! === Why this is a file of its own ===
 //!
 //! Because it is not grammar: it is a **walk over an already-built tree**, done

@@ -1,3 +1,7 @@
+//! [fase]     ARBOL
+//!
+//! [aparece]  AQUI -- la fachada de la crate
+
 pub mod codegen;
 pub mod ast;
 pub mod module;

@@ -1,4 +1,9 @@
 //! C Abstract Syntax Tree -- statement nodes.
+//!
+//! [fase]     ARBOL
+//!
+//! [aparece]  AQUI -- idem
+//!
 
 use super::expr::Expr;
 use super::types::TypeSpec;

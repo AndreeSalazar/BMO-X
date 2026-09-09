@@ -1,5 +1,11 @@
 //! **CARRIL AMARILLO** -- LA IMAGEN. Donde cae cada cosa dentro del `.bex`.
 //!
+//! [fase]     IMAGEN
+//!
+//! [aparece]  METAL -- las cuentas del reparto: si no cuadran, el cargador del
+//!            kernel rechaza el fichero
+//!
+//!
 //! [carril]  AMARILLO  no calcula ningun valor del programa: calcula SITIOS.
 //!                     Equivocarse aqui no cambia lo que el programa piensa,
 //!                     cambia donde lo guarda.

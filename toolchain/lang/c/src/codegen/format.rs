@@ -1,5 +1,11 @@
 //! **`printf`**: the only part of the compiler that emits an INTERPRETER.
 //!
+//! [fase]     EMISION
+//!
+//! [aparece]  BANCO -- `printf` es lo unico que el banco compara letra por
+//!            letra. Si se rompe, se ve en la fila
+//!
+//!
 //! === Why this is a file of its own, and it is the clearest case here ===
 //!
 //! Everything else BMO C emits is a translation: an expression in the source

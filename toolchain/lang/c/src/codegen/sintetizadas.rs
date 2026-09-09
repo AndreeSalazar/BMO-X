@@ -1,5 +1,11 @@
 //! **Las funciones SINTETIZADAS** -- el catalogo, y quien emite cada cuerpo.
 //!
+//! [fase]     EMISION
+//!
+//! [aparece]  BANCO -- el catalogo de funciones emitidas: cada una tiene su
+//!            fila
+//!
+//!
 //! Esto vivia dentro de `codegen/mod.rs`, que llego a **2962 lineas**. Salio
 //! aqui por la misma razon por la que salieron `agregados` y `entrada`: no
 //! porque el fichero fuera largo, sino porque **este trozo tiene una frontera

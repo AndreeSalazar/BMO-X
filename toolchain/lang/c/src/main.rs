@@ -1,3 +1,7 @@
+//! [fase]     ARBOL
+//!
+//! [aparece]  AQUI -- el mando de la linea de ordenes
+
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};

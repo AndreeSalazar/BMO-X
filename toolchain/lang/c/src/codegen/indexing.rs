@@ -1,5 +1,11 @@
 //! **INDEXING AND POINTERS**: turning `a[i]`, `*p` and `p + n` into an address.
 //!
+//! [fase]     EMISION
+//!
+//! [aparece]  DENTRO -- `a[i]`, `*p` y `p + n`. Un paso de elemento equivocado
+//!            lee el vecino
+//!
+//!
 //! === Why this is a file of its own ===
 //!
 //! Because the five spellings C offers for reaching an element --`a[i]`,

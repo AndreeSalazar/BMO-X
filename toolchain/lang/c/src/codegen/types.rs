@@ -1,5 +1,11 @@
 //! **THE QUESTIONS YOU ASK A TYPE**: is it floating point? is it unsigned?
 //!
+//! [fase]     TIPOS
+//!
+//! [aparece]  DENTRO -- las preguntas que se le hacen a un tipo al emitir.
+//!            Contestar mal es emitir `div` donde iba `idiv`
+//!
+//!
 //! === Why this is a file of its own, and it is a rule ===
 //!
 //! Because the codegen computes EVERYTHING in `rax`, which means **the type is

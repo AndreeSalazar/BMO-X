@@ -1,4 +1,10 @@
 //! C Abstract Syntax Tree -- re-exports all sub-modules.
+//!
+//! [fase]     ARBOL
+//!
+//! [aparece]  AQUI -- es una fachada de re-exportacion: si falta algo, no
+//!            compila el compilador
+//!
 
 pub mod types;
 pub mod expr;

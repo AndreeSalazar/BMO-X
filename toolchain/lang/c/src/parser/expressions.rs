@@ -1,5 +1,11 @@
 //! **EXPRESSIONS** -- the precedence ladder, from comma down to primary.
 //!
+//! [fase]     SINTAXIS
+//!
+//! [aparece]  DENTRO -- una PRECEDENCIA mal puesta compila igual y calcula
+//!            otra cosa. `a - b * c` no da error: da un numero
+//!
+//!
 //! === Why this is a file of its own ===
 //!
 //! Because the seventeen methods in here are **one algorithm**, not seventeen

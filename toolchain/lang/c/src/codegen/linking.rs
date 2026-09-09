@@ -1,4 +1,10 @@
 //! **INTERNAL LINKING**: the jumps, the calls and the addresses that are not
+//!
+//! [fase]     IMAGEN
+//!
+//! [aparece]  METAL -- saltos y direcciones. Una reubicacion mal parcheada no
+//!            falla al compilar: salta a un sitio que no existe
+//!
 //! known at the moment they are emitted.
 //!
 //! === Why this is a file of its own ===

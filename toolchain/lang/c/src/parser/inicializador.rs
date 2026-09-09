@@ -1,5 +1,11 @@
 //! **Listas de inicializacion**: `{1, 2}`, `{.x = 1, .y = 2}`, `{[3] = 7}`.
 //!
+//! [fase]     SINTAXIS
+//!
+//! [aparece]  DENTRO -- una lista mal repartida llena una tabla con los
+//!            valores corridos. Las tablas de DOOM son esto
+//!
+//!
 //! === Por que esto es un fichero aparte ===
 //!
 //! Es el unico sitio de C donde el **tipo** y la **sintaxis** tienen que

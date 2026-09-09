@@ -2412,3 +2412,84 @@ el LAPIC periodico a 1 kHz, un milisegundo es la unidad mas pequena que el
 sistema sabe **NOMBRAR**. Con TSC-deadline la unidad pasa a ser el ciclo -- pero
 eso es precision de despertar, no latencia de punta a punta: el bus USB sigue
 poniendo 4 ms y el escaner 16,7.
+
+---
+
+## Ep. 56 -- Un compilador no falla como un kernel, y por eso necesita su propio eje
+
+**2026-09-09.** El dueno miro los carriles del codegen y dijo que no bastaban:
+
+> *"el modulo nivel 3 es bueno PERO no es suficiente. Hablo de modular propio
+> que tenga enfoque en C, porque si es archivo y codegen hasta AST TODO SON
+> valiosos, en sentido de POR QUE cada uno, para no tener sorpresas. El
+> compilador de C es algo que considero DELICADO."*
+
+★★★ Y la razon por la que tiene razon cabe en dos lineas:
+
+```text
+   en Ring 0      un fallo se paga DONDE ESTA: la maquina se para o se corrompe
+   en un          un fallo se paga LEJOS: el compilador acaba en verde, el .bex
+   compilador     se escribe, el emulador pasa, y el sintoma sale dentro de un
+                  juego de 900 KB, tres semanas despues y en otro fichero
+```
+
+**Esa DISTANCIA es el problema entero de un compilador**, y ninguno de los ejes
+de la casa la nombraba: `[cuesta]` dice cuanto duele y `[riesgo]` dice por que
+fallara -- **ninguno dice DONDE LO VAS A VER**.
+
+### Las dos etiquetas nuevas, y la segunda es la herramienta
+
+```text
+   [fase]     LEXICO SINTAXIS ARBOL TIPOS EMISION IMAGEN
+
+   [aparece]  AQUI       el compilador lo dice, en su linea        gratis
+              BANCO      una de las 500 filas se pone roja         segundos
+              EMULADOR   compila, y el emulador lo caza            minutos
+              METAL      el emulador pasa, y falla en el Ryzen     un arranque
+              DENTRO     todo pasa y sale dentro de un programa
+                         grande, lejos de su causa                 DIAS
+```
+
+★ **La escala esta ordenada por lo que cuesta encontrarlo**, y ese orden ES la
+informacion. Los cinco fallos de codegen del 01 al 04-09 eran `DENTRO` los cinco.
+
+### El mapa de las sorpresas: 13 de 34
+
+```text
+   LEXICO 2   SINTAXIS 7   ARBOL 8   TIPOS 3   EMISION 11   IMAGEN 3
+   -> y en TRECE de ellos el fallo aparece LEJOS. Ahi el banco no protege.
+```
+
+Y el peor de la lista tiene nombre: **`parser/preprocessor.rs`**. Un `#if` mal
+evaluado **compila la rama equivocada sin decir nada**. No hay error: hay otro
+programa. Ni un guardian del mundo lo ve.
+
+★★ Y `codegen/decidir/roja.rs` es la prueba de que el eje sirve: plegar de mas
+puso **5 de 500 filas rojas en el acto**. Una decision PURA la caza el banco; la
+misma decision dentro del emisor habria salido en DOOM. Por eso la regla *"el
+emisor no decide"* no es de estilo -- **mueve un fichero de `DENTRO` a `BANCO`**,
+que es de dias a segundos.
+
+`toolchain/tools/fases/fases.py`, trinquete en 34 y cableado al build.
+
+### Y de paso, dos respuestas
+
+**El divisor del LAPIC.** El dueno pregunto si se podia partir el tick,
+*"0,5 + 0,5 para llegar a 1 kHz, y que cada uno diga que aporta"*. Se puede, y
+son dos registros ya escritos (`0x3E0 = 3`, el divisor; `0x380 = hz/1000`, la
+cuenta): poner `hz/2000` da 2 kHz con **una escritura**.
+
+⚠ Pero eso no exprime, **multiplica**: cada disparo cuesta lo mismo, asi que el
+doble de disparos es el doble de gasto. ★★★ **El truco que buscaba es esa idea
+dada la vuelta**: quitar el bit 17 --un solo disparo-- y programar el instante
+del proximo evento que importa. Entonces no hay mil disparos ciegos: hay N, y
+**cada uno tiene dueno y motivo**. Eso es literalmente *"que cada uno diga que
+aporta"*, conseguido no disparando en vez de dividiendo.
+
+**Los quince minutos.** *"Que si pasa 15 minutos se automatice para concentrar
+TODO en un objetivo"*. Es `E6` pero **ganada en vez de declarada**, y encaja con
+la ley sin anadir nada: `EL ORQUESTAL` ya dice que el foco decide CUANTO y no
+QUIEN. Un foco sostenido no sube de prioridad -- **le quitan las distracciones**.
+Escalon `E7` de `PLAN_EL_COMPAS`, con su aviso: un sistema que cambia de
+comportamiento a los quince minutos se comporta distinto de como lo probaste, y
+eso tiene que decirlo la barra o es el Bloq Num otra vez.

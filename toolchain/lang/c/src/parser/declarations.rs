@@ -1,5 +1,11 @@
 //! **DECLARATIONS AND DECLARATORS** -- the hard half of C's grammar.
 //!
+//! [fase]     SINTAXIS
+//!
+//! [aparece]  DENTRO -- un declarador mal leido da un TIPO equivocado, y el
+//!            tipo se paga mucho despues
+//!
+//!
 //! === Why this is a file of its own, and it is the biggest one ===
 //!
 //! Because in C a declaration is not "type, then name". It is a **type built

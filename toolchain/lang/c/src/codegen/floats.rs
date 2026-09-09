@@ -1,5 +1,11 @@
 //! **FLOATING POINT**: the only value that does not travel in `rax`.
 //!
+//! [fase]     EMISION
+//!
+//! [aparece]  DENTRO -- [!] y con una cicatriz: NUEVE pruebas de coma flotante
+//!            estan en verde y NINGUNA ejecuta. Aqui el banco no protege
+//!
+//!
 //! === Why this is a file of its own ===
 //!
 //! Because a `double` breaks the assumption everything else is built on. The

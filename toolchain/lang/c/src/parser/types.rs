@@ -1,4 +1,10 @@
 //! **LA DISPOSICION, del lado del frontend** -- cuanto mide cada agregado y
+//!
+//! [fase]     TIPOS
+//!
+//! [aparece]  DENTRO -- la disposicion de un agregado: un campo desplazado se
+//!            lee como basura, y lejos
+//!
 //! donde cae cada campo.
 //!
 //! # *** 2026-09-02: ESTE FICHERO YA NO ES UN COMPROBADOR DE TIPOS
