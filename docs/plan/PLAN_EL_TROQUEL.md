@@ -1,4 +1,4 @@
-# PLAN EL SITIO -- donde vive un valor, decidido UNA vez para todos
+# PLAN EL TROQUEL -- la geometria de los registros, estampada de un golpe
 
 > Propuesta del dueno, **2026-09-09**, y la trajo mirando la jerarquia de caches:
 >
@@ -130,7 +130,7 @@ El dueno lo dijo como *"INTI ya no seria compilador sino libreria"*. No:
    INTI el LENGUAJE          se queda. Es "el C de BMO-X" y tiene su gramatica
    inti/emisor-x86_64        se queda. Depende de `bmo-inti-front`, o sea que
                              esta acoplado al arbol de INTI: no es generico
-   la libreria del SITIO     es NUEVA, vive en `forge/`, y no sale de INTI --
+   EL TROQUEL               es NUEVA, vive en `forge/`, y no sale de INTI --
                              INTI es su primer CLIENTE, que no es lo mismo
 ```
 
@@ -198,7 +198,7 @@ trabajo de los otros dos:
 
 ```text
    INTI        decide QUE hay que calcular       semantica     AGNOSTICO
-   el molde    decide DONDE vive cada valor      arquitectura  x86-64 / RISC-V
+   el TROQUEL  decide DONDE encaja cada valor      arquitectura  x86-64 / RISC-V
    sem-asm     decide QUE BYTES son              codificacion  x86-64 / RISC-V
 ```
 
@@ -208,43 +208,129 @@ lado): es donde el software agnostico deja de serlo. LEY 24 dice que el hardware
 se PERFILA y el software es agnostico -- **aqui esta la linea exacta donde se
 cruza**, y hasta hoy no tenia sitio.
 
-## Los candidatos, y el argumento de cada uno
+## ★★★ EL NOMBRE: **TROQUEL**, y lo puso el dueno
+
+Un troquel estampa una forma sobre metal **de un golpe**. No amasa: da una
+decision seca y sale la pieza. Y el vocabulario entero viene puesto:
 
 ```text
-   Motor de Sintesis Bare-Metal   lo que le recomendaron al dueno
-   bmo-sitio                      lo que proponia este plan
-   bmo-molde                      el que aguanta la metafora hasta el final
+   el DIBUJO del troquel    la arquitectura: x86-64, o RISC-V
+   la MATRIZ                el espacio de los registros -- 16 huecos, o 32
+   la REBARBA               *** lo que escapo por el borde y no cupo dentro
 ```
 
-⚠ **`sintesis` ya esta cogida.** En hardware, *sintesis* es HDL -> puertas
-logicas. Quien venga de ese mundo --y son justo los que interesan a un proyecto
-bare-metal-- leera otra cosa. Un nombre que ensena algo falso a los que mas
-saben es el peor de los nombres posibles para una pieza que quiere ser escuela.
+*** **`rebarba` es el hallazgo.** El termino tecnico de un valor que no cabe en
+un registro es `spill`, y una rebarba no es *"lo que se cayo"*: es, por
+definicion, **el material que escapo por el borde del troquel**. Cae encima de
+la palabra tecnica sin forzar nada. Un valor con rebarba va a la pila igual que
+el metal sobrante.
 
-[!] Y `motor` **vende de mas**, que es lo que esta casa no hace nunca. Esto son
-~2.000 lineas de un algoritmo conocido. `huella`, `testigo`, `aforo`, `compas`
--- ninguno promete mas de lo que hay, y por eso los documentos se creen.
+### ⚠ Dos correcciones al argumento con el que llego el nombre
 
-## ★★★ Por que `MOLDE` aguanta
-
-La casa ya tiene una prueba para las metaforas --`COMPAS`/`AFORO` la paso-- y es
-que sigan siendo ciertas hasta el ultimo detalle:
+El caso a favor traia dos frases que hay que arreglar antes de que se repitan:
 
 ```text
-   lo fundido no tiene forma propia    INTI es agnostico
-   el molde es de la arquitectura      x86-64 tiene 16 huecos; RISC-V, 32
-   se cambia el molde, misma aleacion  el backend nuevo es otra TABLA (S2)
-   el molde no decide QUE se funde     no conoce ningun lenguaje
-   *** lo que no cabe, SE DERRAMA      y el termino tecnico de un valor que
-                                       no cabe en un registro es, literalmente,
-                                       **spill**: derrame
+   "la fisica del golpe instantaneo (0,1 ns)"
+      -> NO. El troquel actua en tiempo de COMPILACION, no de ejecucion.
+         Pero la version correcta es MAS fuerte: el programa paga CERO. La
+         decision se tomo una vez, en la maquina del que compila, y el `.bex`
+         ya nace con los valores en su sitio. No hay 0,1 ns: no hay
+         nanosegundos en absoluto
+
+   "determinista y SIN MARGEN DE ERROR"
+      -> Al reves, y esto importa. Es de las piezas con MAS margen de error
+         del sistema: un registro mal asignado corrompe en silencio y el
+         sintoma sale lejisimos. En la escala de `fases.py` seria
+         **[aparece] DENTRO, carril ROJO**. No es un pero: es lo que dice que
+         NECESITA SU BANCO antes de que nadie confie en ella
 ```
 
-Esa ultima linea es la que decide: **la metafora cae encima del termino tecnico
-sin forzarla.** Un valor derramado va a la pila, igual que el metal que no cupo.
+### Los que se descartaron, y por que
+
+```text
+   Motor de Sintesis Bare-Metal   `sintesis` ya esta cogida: en hardware es
+                                  HDL -> puertas logicas, y quien viene de ese
+                                  mundo es justo el publico de un proyecto
+                                  bare-metal. Y `motor` vende de mas, que es lo
+                                  que esta casa no hace: `huella`, `testigo`,
+                                  `aforo`, `compas` -- ninguno promete mas de
+                                  lo que hay, y por eso se creen
+   bmo-molde                      aguantaba, pero `derrame` es mas vago que
+                                  `rebarba`, y un molde sugiere algo lento y
+                                  viscoso. Un troquel da UNA decision
+   bmo-sitio                      nombraba la respuesta, no el trabajo
+```
 
 [!] Y aun asi el nombre lo pone el dueno. `CUPO` se rechazo por lo que recordaba
 en Peru, y esa clase de cosa no la puede saber quien escribe el plan.
+
+---
+
+# 9. ★★ COMO SE VERA -- y lo primero es lo que NO va a cambiar
+
+Pregunta del dueno: *"si entra en BMO-X, cambia el comportamiento? Para ver los
+cambios en general, ya sabes, DOOM y otros"*. Si, pero no en todas partes, y la
+mitad de la respuesta es la mitad que no cambia.
+
+```text
+   NO CAMBIA NADA          el escritorio y el kernel son RUST, compilados por
+                           `rustc`. El troquel no los toca ni de lejos
+   CAMBIA                  todo `.bex`: DOOM, los 13 ejemplos de C, los 12 de
+                           COBOL, el de Ada y las sondas de INTI
+```
+
+[!] Y eso hay que tenerlo delante para no atribuirle al troquel un `cuerpo 2` o
+un `latido 300/s` que son de otro compilador.
+
+## Los tres jueces, y ya existen los tres
+
+```text
+   1. el banco de BMO C        500 filas que EJECUTAN. Es el primero que
+                               habla, en 0,3 s, y ya cazo cinco de quinientas
+                               el 09-09 con un plegado de mas
+   2. el tamano de los .bex    el build imprime los 25. Menos instrucciones
+                               es menos bytes, y se ve sin arrancar la maquina
+   3. `expansion N us`         el `[perf]` de DOOM. **Este es EL juez**: es
+                               donde vivian los 157 ciclos por escritura
+```
+
+★ Del 09-09 quedan **28 instrucciones y dos accesos a la pila** en ese bucle. De
+las 28, unas catorce son ir y venir a los huecos de `%rbp` -- exactamente lo que
+el troquel quita. Pero **cuanto de eso son los 157 ciclos no se sabe**, porque
+el metal no ha hablado desde el cambio del compilador.
+
+## ★★★ Y la primera version puede ser TONTA y ganar casi todo
+
+Esto es lo que abarata el plan entero, y conviene decirlo antes de que alguien
+se asuste con "analisis de alias":
+
+> **Una variable local cuya direccion nunca se toma no la puede pisar ningun
+> puntero.** No hay nada que analizar: es una propiedad que se ve mirando si
+> aparece un `&` sobre ella.
+
+Y eso cubre justo lo que importa: los contadores de bucle, los indices, los
+punteros que caminan. En el bucle de la expansion son `j` y `d8`, y **ninguno
+de los dos tiene su direccion tomada**.
+
+```text
+   version tonta    los locales sin `&` viven en registros. Cero analisis
+   version lista    alias declarado por el lenguaje -> INTI. Eso es S3
+```
+
+*** La tonta se puede escribir sin que INTI declare nada, y **beneficia a C
+igual** -- que hoy tiene un suelo de cero, porque una maquina de pila no usa un
+registro JAMAS. Pasar de "nunca" a "cuando es obviamente seguro" es el salto
+grande; declarar el alias es el ultimo tramo, no el primero.
+
+## Lo que faltaria para verlo de un vistazo
+
+El build ya imprime el tamano de los 25 programas, pero **nadie los compara con
+los de ayer**. Una linea base de tamanos --como `avisos` y como `fases`-- haria
+que cualquier cambio del toolchain ensenara de golpe su efecto sobre los 25.
+
+[!] Con un aviso: **el tamano no es la velocidad**. Van juntos en este caso
+concreto --pasar de pila a registros quita instrucciones-- y no en general. Seria
+un REPORTERO, no un trinquete: los programas pueden crecer con razon.
 
 ---
 
