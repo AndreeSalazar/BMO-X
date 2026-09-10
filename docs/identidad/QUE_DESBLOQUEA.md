@@ -35,7 +35,7 @@ arbol.
 > por eso el numero envejecio sin que nadie lo notara. La segunda: **dos puertas
 > es la FORMA, 88 es el TAMANO**, y prometer que la superficie cabe en la cabeza
 > hay que hacerlo con el numero de hoy. Donde va lo que crece sin tocar la
-> puerta esta en [`META-SDK_HARD.md`](../../META-SDK_HARD.md) 1.1: *comodidad es
+> puerta esta en [`META-SDK_HARD.md`](../../FUERO/META-SDK_HARD.md) 1.1: *comodidad es
 > cabecera, autoridad es operacion*.
 
 > **Al 2026-08-11: 2 syscalls y 39 operaciones.** Cuando este documento se

@@ -232,7 +232,7 @@ inventar nada mas.
 
 ## 5.3 -- NO ES LEY, aunque lo parezca
 
-★ Distincion que ya esta en [`EL_FUERO.md`](../../EL_FUERO.md) 2.6b y conviene
+★ Distincion que ya esta en [`EL_FUERO.md`](../../FUERO/EL_FUERO.md) 2.6b y conviene
 repetir porque se lee al reves con facilidad:
 
 ```text

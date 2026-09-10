@@ -140,5 +140,5 @@ comprueba en 69 segundos sin arrancar la maquina.
 
 Ver [`README.md`](README.md) (por que esta carpeta no tiene anillo),
 [`FRONTERA.txt`](FRONTERA.txt) (lo que no entra, y de quien es) y
-[`META-SDK_HARD.md`](../META-SDK_HARD.md) seccion 3 (las siete reglas de REX, que son
+[`META-SDK_HARD.md`](../FUERO/META-SDK_HARD.md) seccion 3 (las siete reglas de REX, que son
 las de la libreria y no las del estandar).

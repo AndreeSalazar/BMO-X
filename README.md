@@ -588,10 +588,10 @@ because the reason a decision was made is worth more than the decision.
 
 | Document | What is in it |
 |---|---|
-| ★ **[EL_FUERO.md](EL_FUERO.md)** | **Start here if you want to build on BMO-X.** What the system grants you, what it demands back, and what it deliberately does not grant. Not an SDK -- a charter |
-| **[META-KERNEL_HARD.md](META-KERNEL_HARD.md)** | The law of the machine. A rule exists only if it carries the component that demands it and the number it demands |
-| **[META-APP_HARD.md](META-APP_HARD.md)** | The law of an app. What BMO-X demands of anything that wants to be one, and what it gives back |
-| **[META-SDK_HARD.md](META-SDK_HARD.md)** | The law of **REX**: the nine `<bmo/...>` headers an app is written with, and the two tests that keep a library from becoming a framework |
+| ★ **[EL_FUERO.md](FUERO/EL_FUERO.md)** | **Start here if you want to build on BMO-X.** What the system grants you, what it demands back, and what it deliberately does not grant. Not an SDK -- a charter |
+| **[META-KERNEL_HARD.md](FUERO/META-KERNEL_HARD.md)** | The law of the machine. A rule exists only if it carries the component that demands it and the number it demands |
+| **[META-APP_HARD.md](FUERO/META-APP_HARD.md)** | The law of an app. What BMO-X demands of anything that wants to be one, and what it gives back |
+| **[META-SDK_HARD.md](FUERO/META-SDK_HARD.md)** | The law of **REX**: the nine `<bmo/...>` headers an app is written with, and the two tests that keep a library from becoming a framework |
 | **[ARQUITECTURA.md](ARQUITECTURA.md)** | The full technical picture: layout, boot path, the operation table, the allocator, the complete status list |
 | **[BITACORA.md](BITACORA.md)** | The build log, episode by episode. **Every bug that cost a day is written down with its root cause** |
 | **[AVANCES.md](AVANCES.md)** | What is done, what is waiting for a boot, and the photographs |

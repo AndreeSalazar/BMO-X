@@ -288,7 +288,7 @@ no puede saber cada trozo:
 > falsable la medida --*el stub no sabe que operacion se pidio*--, pero por eso
 > el guardian de L7 **no puede juzgar esta tabla**: solo juzga generaciones que
 > son crates, donde la relacion esta declarada. Ver L7c en
-> [`META-KERNEL_HARD.md`](../META-KERNEL_HARD.md).
+> [`META-KERNEL_HARD.md`](../FUERO/META-KERNEL_HARD.md).
 
 | # | pieza | veces | coste | generacion | fila |
 |---|---|---|---|---|---|

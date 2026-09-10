@@ -1,6 +1,6 @@
 # docs/ -- el indice, y la regla de donde va cada cosa
 
-> ## ★ LA LEY VA DELANTE: [`META-KERNEL_HARD.md`](../META-KERNEL_HARD.md)
+> ## ★ LA LEY VA DELANTE: [`META-KERNEL_HARD.md`](../FUERO/META-KERNEL_HARD.md)
 >
 > **Antes de escribir un documento nuevo aqui, se lee esa.** No es una
 > formalidad: es la que dice que una regla sin numero al lado es una
@@ -14,7 +14,7 @@
 > puede TACHAR*. Son dos caras de lo mismo, asi que no tienen familia: tienen
 > pareja.
 >
-> ## ★ Y TIENE HERMANA: [`META-APP_HARD.md`](../META-APP_HARD.md)
+> ## ★ Y TIENE HERMANA: [`META-APP_HARD.md`](../FUERO/META-APP_HARD.md)
 >
 > Escrita el 2026-08-18, un anillo mas arriba y con la misma forma. La del
 > kernel la firma **el silicio**; la de una app la firma **la superficie del
@@ -25,7 +25,7 @@
 > esta maquina, es lo que la maquina existe para alojar. Es una LEY, no un
 > capitulo.
 >
-> ## ★ Y SON TRES: [`META-SDK_HARD.md`](../META-SDK_HARD.md)
+> ## ★ Y SON TRES: [`META-SDK_HARD.md`](../FUERO/META-SDK_HARD.md)
 >
 > Del mismo dia. La ley de **REX**, la libreria con la que se escribe una app --
 > las nueve cabeceras `<bmo/...>` que ya existian y no tenian nombre. La firma
@@ -36,7 +36,7 @@
 > una comodidad es una cabecera y cuando es una operacion nueva.** Su indice
 > vive al lado de los ficheros, en `toolchain/forge/sem-asm/tables/bmo/`.
 >
-> ## ★★ Y LAS TRES SE REPARTEN EN UNA: [`EL_FUERO.md`](../EL_FUERO.md)
+> ## ★★ Y LAS TRES SE REPARTEN EN UNA: [`EL_FUERO.md`](../FUERO/EL_FUERO.md)
 >
 > Las leyes dicen **que esta prohibido y por que**. El FUERO dice **que hay,
 > donde esta y por donde se empieza** -- lo que BMO-X le concede a quien quiera
@@ -364,7 +364,7 @@ puerta, dos preguntas. Lee la generacion que cada crate declara en su cabecera
 generacion depende de otra **mas alta**, o sea cuando el conocimiento sube.
 
 ★ Juzga **crates y no ficheros**, y el motivo esta en L7c de
-[`META-KERNEL_HARD.md`](../META-KERNEL_HARD.md): en una cadena de llamadas la
+[`META-KERNEL_HARD.md`](../FUERO/META-KERNEL_HARD.md): en una cadena de llamadas la
 dependencia se invierte --`entry.rs`, que es abuelo, hace `use super::dispatch`
 y nombra al padre-- asi que un guardian que leyera los `use` habria condenado
 codigo correcto el primer dia. Entre crates la relacion esta **declarada**, no

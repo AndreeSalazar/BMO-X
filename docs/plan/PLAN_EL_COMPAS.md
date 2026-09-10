@@ -19,7 +19,7 @@ Un quantum contesta *"cuanto tardo en interrumpirte"*. Esa es la respuesta del
 contrario:
 
 > *multiplexar es ser generoso, orquestar es ser **CELOSO*** --
-> [`EL ORQUESTAL`](../../META-KERNEL_HARD.md)
+> [`EL ORQUESTAL`](../../FUERO/META-KERNEL_HARD.md)
 
 ★★ **Y un quantum no sabe decir que NO.** Solo divide. Por **L4** --una regla se
 prueba diciendo que no-- un quantum no es una politica: es una aritmetica.
@@ -113,7 +113,7 @@ corazon de este plan y no una de sus mejoras.
       suma `U` y **rechaza** al que no quepa. Aqui el planificador aprende a
       decir que NO, que es lo que lo convierte en politica.
       ⚠ **Sacrificio**: el formato `.bex` gana un campo (ver
-      [`META-APP_HARD.md`](../../META-APP_HARD.md)), y el que no lo declare
+      [`META-APP_HARD.md`](../../FUERO/META-APP_HARD.md)), y el que no lo declare
       necesita un valor por defecto **que no mienta**. Un defecto generoso
       convierte el aforo en un adorno.
 

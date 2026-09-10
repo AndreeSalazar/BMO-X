@@ -160,7 +160,7 @@ de lineas repetidas cuatro veces.
 
 **Sin esto**: el patron de fallo numero uno de este arbol -- dos listas de lo
 mismo que derivan en silencio, exactamente lo que le paso a `ORDENES` en el
-Ep. 39 de [`BITACORA.md`](BITACORA.md).
+Ep. 39 de [`BITACORA.md`](../BITACORA.md).
 
 ### R-REX5 -- Se EXTRAE de dos apps, no se disena para diez
 
@@ -192,7 +192,7 @@ y a partir de ese dia sus apps y las de la casa ya no son del mismo sistema.
 Una libc esconde lo que cuesta una llamada. REX no: si una operacion cruza la
 puerta y eso son **969 ciclos** --dos testigos, 953 y 969, un 1,7% de
 diferencia, en
-[`LA_PUERTA_POR_DENTRO.md`](docs/componente/LA_PUERTA_POR_DENTRO.md)-- la
+[`LA_PUERTA_POR_DENTRO.md`](../docs/componente/LA_PUERTA_POR_DENTRO.md)-- la
 cabecera lo dice donde el que la usa lo va a leer.
 
 **Sin esto**: alguien escribe un bucle de un millon de llamadas porque la
@@ -277,10 +277,10 @@ equivocado y es el unico correcto: **`tables/` es la puerta de los terceros**
 de tapar una pieza sin bifurcar el repo.
 
 ★ El problema nunca fue el sitio: era que **no estaba en ningun indice**. Es el
-Ep. 39 de [`BITACORA.md`](BITACORA.md) otra vez --*"una funcion que no se
+Ep. 39 de [`BITACORA.md`](../BITACORA.md) otra vez --*"una funcion que no se
 anuncia no es discreta: no esta"*-- y alli el arreglo tampoco fue mover `ext`,
 fue anunciarla en las dos listas. Aqui igual: REX tiene su indice al lado de los
-ficheros y se anuncia desde la raiz, desde [`docs/README.md`](docs/README.md) y
+ficheros y se anuncia desde la raiz, desde [`docs/README.md`](../docs/README.md) y
 desde su hermana.
 
 ---
@@ -291,7 +291,7 @@ desde su hermana.
 |---|---|---|
 | **el enlace de COBOL y de Ada** | REX es C (9 cabeceras) y Rust (`bmo-rt`). Los otros dos lenguajes de la casa no tienen enlace | `R-REX4`: la tabla y lo generado |
 | **entrada dentro de una ventana** | `entrada.h` habla por relevo de pantalla entera | la casilla 4 de [`META-APP_HARD.md`](META-APP_HARD.md) |
-| **sonido de verdad** | `sonido.h` y `musica.h` existen; debajo hay un contrato y el altavoz del PC. No hay driver HDA ni isocrono por USB | [`AUDIO_MAESTRO.md`](docs/maestro/AUDIO_MAESTRO.md) |
+| **sonido de verdad** | `sonido.h` y `musica.h` existen; debajo hay un contrato y el altavoz del PC. No hay driver HDA ni isocrono por USB | [`AUDIO_MAESTRO.md`](../docs/maestro/AUDIO_MAESTRO.md) |
 | **hilos** | no hay hilos de Ring 3, y `toolchain/lang/c/BRECHA.md` lo dice cuatro veces | SMP cableado, y no antes |
 | **mas de un fichero por proyecto** | ★ el techo real del creador de fuera: hoy es **una sola unidad de traduccion** | compilacion separada |
 
@@ -320,7 +320,7 @@ cabecera de REX.
 Ver [`EL_FUERO.md`](EL_FUERO.md) (el reparto entero: que se concede y que se
 exige), [`META-KERNEL_HARD.md`](META-KERNEL_HARD.md) (la ley de la maquina),
 [`META-APP_HARD.md`](META-APP_HARD.md) (la ley de una app),
-[`QUE_DESBLOQUEA.md`](docs/identidad/QUE_DESBLOQUEA.md) (que desbloquea que, y
+[`QUE_DESBLOQUEA.md`](../docs/identidad/QUE_DESBLOQUEA.md) (que desbloquea que, y
 por que no es el lenguaje) y
-[`LA_PUERTA_POR_DENTRO.md`](docs/componente/LA_PUERTA_POR_DENTRO.md) (lo que
+[`LA_PUERTA_POR_DENTRO.md`](../docs/componente/LA_PUERTA_POR_DENTRO.md) (lo que
 cuesta cruzar).

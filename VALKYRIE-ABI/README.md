@@ -187,8 +187,8 @@ BUENA: mide que exista y que cuadre.
 ---
 
 Ver [`LEY.md`](LEY.md) (las cuatro reglas, una a una),
-[`META-SDK_HARD.md`](../META-SDK_HARD.md) (que es REX y que no entra en el),
-[`META-KERNEL_HARD.md`](../META-KERNEL_HARD.md) (L0, L1, L3 y L4, que son las
+[`META-SDK_HARD.md`](../FUERO/META-SDK_HARD.md) (que es REX y que no entra en el),
+[`META-KERNEL_HARD.md`](../FUERO/META-KERNEL_HARD.md) (L0, L1, L3 y L4, que son las
 que obligan a que esto tenga jueces y no prosa) y
-[`EL_FUERO.md`](../EL_FUERO.md) (el reparto entero: que se concede y que se
+[`EL_FUERO.md`](../FUERO/EL_FUERO.md) (el reparto entero: que se concede y que se
 exige).
