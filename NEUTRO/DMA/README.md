@@ -85,6 +85,9 @@ ejes, dos cuerpos de trabajo previo, dos maestros.
        QUE_PIDE.txt                 que solicita un aparato de verdad --las
                                     CUATRO promesas-- y por que las pruebas
                                     del DMA viajan pegadas al trabajo real
+       DESDE_LA_RAM.txt             el DMA que NO toca la RAM, la direccion
+                                    en la que el aparato LEE, y las reglas
+                                    vistas desde el marco en vez del aparato
 
    docs/maestro/DMA_MAESTRO.md      que copiar del mundo sobre disciplina DMA
    docs/maestro/IOMMU_MAESTRO.md    que copiar sobre AMD-Vi / VT-d / SMMU
