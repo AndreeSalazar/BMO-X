@@ -422,16 +422,48 @@ for a memory write.** `MWAITX` sleeps on a write. `hlt` was never the tool --
 it was the habit. Measured on the Ryzen: **57,2 W with twelve cores up,
 against 58,9 W with one** -- twelve now cost less than one did.
 
-### [!] Where the comparison stops, said plainly
+### 5. And the strictness is not the opposite of that -- it is what protects it
 
-Hopper wanted programming open to *anyone*; English keywords in COBOL were an
-accessibility argument. **BMO-X is not that.** It is deliberately strict, it
-refuses more than it accepts, and [`FUERO/`](FUERO/) exists to write down what
-the system does *not* grant.
+This section used to say the comparison *stopped* at strictness. That was the
+wrong reading, and the author corrected it: **strictness is not a departure
+from Hopper's argument, it is the thing that makes it hold.**
 
-The overlap is in the **method** -- let the machine carry what the human was
-carrying -- not in the audience. Claiming otherwise would be the kind of
-comfortable half-truth this whole README is built to avoid.
+You do not delegate to something that can lie to you. The moment a compiler
+quietly emits a stub that looks like it works, or a kernel reports a number the
+program made up, the work comes straight back to the human -- who now has to
+verify everything, which is more work than before the machine helped.
+
+```text
+   strict WITH THE USER      puts obstacles in the way          -> it gets in the way
+   strict WITH ITSELF        refuses to be corrupted            -> you can let go
+```
+
+*** BMO-X is the second one, and the difference is the whole point. The rules
+do not point at the person using the system: **they point inward**. An
+unimplemented feature is refused with a reason instead of stubbed. A `.bex`
+still ships with `sig_algo = 0` and the trust anchor empty -- and that is
+written down as a debt with a name rather than hidden behind a green check. The
+sixteen guardians exist to say NO to *this codebase*, not to its users.
+
+> A system that lets itself be corrupted does not stop working for its owner.
+> It starts working for whoever corrupted it -- and the owner is the last to
+> find out.
+
+That is why the two halves belong together and are not a compromise between
+them: **the machine can carry the work precisely because it will not lie about
+having carried it.** Hopper's delegation needs BMO-X's refusal to be worth
+anything, and the refusal would be pointless bureaucracy without the
+delegation.
+
+### [!] Where it really does differ
+
+Hopper wanted programming open to *anyone*, and the English keywords in COBOL
+were an accessibility argument. BMO-X is not aiming at that: it is one author's
+machine first, and [`FUERO/`](FUERO/) and [REX](toolchain/forge/sem-asm/tables/bmo/) exist so
+third parties
+can build on it **on stated terms**, not so the system fits everyone.
+
+The divergence is the audience. It was never the strictness.
 
 ---
 
