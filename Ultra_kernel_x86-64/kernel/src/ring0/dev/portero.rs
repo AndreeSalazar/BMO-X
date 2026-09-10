@@ -106,6 +106,42 @@ static mut FUNCIONES: u32 = 0;
 static mut INTERESA: u32 = 0;
 /// Y de esas, cuantas se quedan SIN CODIGO.
 static mut SIN_CODIGO: u32 = 0;
+/// **Cuantos aparatos con DMA declara `NEUTRO/CENSO.txt`** -- los que tienen
+/// fichero, o sea AHCI, NIC y xHCI.
+///
+/// [!] ES UNA COPIA, y lleva juez a proposito: `toolchain/tools/censo-neutro`
+/// comprueba en cada build que este numero y las filas del censo digan lo
+/// mismo. Sin ese guardian seria exactamente el fallo que R19 del contrato
+/// acaba de nombrar -- un numero que nadie compara con su original.
+pub const APARATOS_CENSADOS: u32 = 3;
+
+/// **CUANTAS FUNCIONES TIENEN EL BIT DE MAESTRO DEL BUS ENCENDIDO.**
+///
+/// *** Es el paso N3 del plan (R5b de `NEUTRO/REQUISITOS.md`): el censo del
+/// neutro contra LA MAQUINA, y no contra el codigo. R5a --codigo contra
+/// censo-- corre en el build desde el 07-09; esta mitad **solo se puede ver
+/// arrancando**, porque el build no puede mirar el bus PCI.
+///
+/// # Por que ESTE bit y no otra cosa
+///
+/// La pregunta del censo no es *cuantos aparatos hay*: es **quien puede
+/// escribir en la RAM por su cuenta**. Y PCI la contesta con un bit -- el 2
+/// del registro Command, `Bus Master Enable`:
+///
+/// ```text
+///    BME = 0   el aparato solo contesta cuando le preguntan
+///    BME = 1   *** puede iniciar transacciones: alcanza la RAM SOLO
+/// ```
+///
+/// ** Esa es la tercera condicion de `NEUTRO/FRONTERA.txt` --*alcanza la RAM
+/// por DMA, sin capability y sin pedir turno*-- leida del silicio en vez de
+/// escrita a mano.
+///
+/// [!] Y LO QUE PUEDE DESCUBRIR NO ES SOLO UN OLVIDO NUESTRO: el firmware
+/// entrega la maquina con aparatos ya vivos. Un BME encendido que este kernel
+/// no encendio es **la ventana del arranque** que `IOMMU_MAESTRO.md` describe,
+/// medida en vez de supuesta.
+static mut MAESTROS: u32 = 0;
 
 /// `(funciones en el bus, de clase interesante, sin codigo)`.
 pub fn stats() -> (u32, u32, u32) {
@@ -122,6 +158,7 @@ pub fn censar() {
     let mut funciones = 0u32;
     let mut interesa = 0u32;
     let mut sin_codigo = 0u32;
+    let mut maestros = 0u32;
     for bus in 0u16..=255 {
         let bus = bus as u8;
         for dev in 0u8..32 {
@@ -138,6 +175,12 @@ pub fn censar() {
                     continue;
                 }
                 funciones += 1;
+                // ** El bit 2 del registro Command (offset 0x04). Se mira
+                // ANTES del filtro de `interesante`: un maestro de una clase
+                // que no nos interesa sigue alcanzando la RAM igual.
+                if cfg_read32(bus, dev, func, 0x04) & 0b100 != 0 {
+                    maestros += 1;
+                }
                 let vendor = (vd & 0xFFFF) as u16;
                 let device = (vd >> 16) as u16;
                 let clase = cfg_read32(bus, dev, func, 0x08);
@@ -157,6 +200,30 @@ pub fn censar() {
         FUNCIONES = funciones;
         INTERESA = interesa;
         SIN_CODIGO = sin_codigo;
+        MAESTROS = maestros;
+    }
+    // == *** N3 / R5b: EL CENSO CONTRA LA MAQUINA =========================
+    //
+    // ** `APARATOS_CENSADOS` es un numero copiado de `NEUTRO/CENSO.txt`, y
+    // esta casa acaba de aprender lo que cuesta una copia sin juez (R19 del
+    // contrato, el `OP_PID` que era `CONSOLE_READ`). Asi que **este no esta
+    // sin juez**: `toolchain/tools/censo-neutro` comprueba en cada build que
+    // diga lo mismo que las filas del censo.
+    //
+    // > Un numero copiado con guardian es una cita. Sin guardian es una
+    // > suposicion con cara de dato.
+    if maestros > APARATOS_CENSADOS {
+        crate::ring0::cabina::warn(
+            "portero",
+            "maestros del bus que el censo del neutro NO conoce (N1)",
+            (maestros - APARATOS_CENSADOS) as u64,
+        );
+    } else {
+        crate::ring0::cabina::count(
+            "portero",
+            "maestros del bus, y el censo los conoce a todos",
+            maestros as u64,
+        );
     }
     crate::ring0::cabina::count("portero", "funciones de PCI en la placa", funciones as u64);
     if sin_codigo != 0 {

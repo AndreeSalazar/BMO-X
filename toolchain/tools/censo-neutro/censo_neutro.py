@@ -141,6 +141,35 @@ def filas_del_censo():
     return filas, saltadas
 
 
+# == *** LA CITA DEL PORTERO, Y POR QUE LLEVA JUEZ ==========================
+#
+# `dev/portero.rs` compara los maestros del bus PCI contra cuantos aparatos
+# declara este censo (paso N3 / R5b). Para eso necesita el numero, y un numero
+# copiado a mano es lo que R19 del contrato acaba de nombrar: el `OP_PID` de
+# `medida/coste` que llevaba semanas siendo `CONSOLE_READ`.
+#
+# > Un numero copiado CON guardian es una cita. Sin guardian es una
+# > suposicion con cara de dato.
+PORTERO = os.path.join(BASE, "dev", "portero.rs")
+RE_CENSADOS = re.compile(r"APARATOS_CENSADOS:\s*u32\s*=\s*(\d+)")
+
+
+def la_cita_del_portero(filas):
+    """Queja si el numero de `portero.rs` no es el de filas con fichero."""
+    if not os.path.exists(PORTERO):
+        return ["falta dev/portero.rs: la cita del censo no se puede comprobar"]
+    with open(PORTERO, "r", encoding="utf-8", errors="replace") as fh:
+        m = RE_CENSADOS.search(fh.read())
+    if not m:
+        return ["dev/portero.rs ya no declara APARATOS_CENSADOS: la cita"
+                " desaparecio y con ella el aviso del arranque"]
+    dice = int(m.group(1))
+    if dice != len(filas):
+        return ["dev/portero.rs dice %d aparatos censados y el censo tiene %d"
+                " fila(s) con fichero" % (dice, len(filas))]
+    return []
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
@@ -188,6 +217,10 @@ def main():
                 "%s: el censo dice x%d en %s y el codigo etiqueta %d sitio(s)"
                 % (aparato, veces, ruta, n))
 
+    # ** Y la cita del portero: el numero que `dev/portero.rs` compara en el
+    # arranque contra los maestros del bus PCI (N3 / R5b).
+    quejas += la_cita_del_portero(filas)
+
     if quejas:
         print("el censo del neutro y el codigo NO dicen lo mismo:")
         for q in quejas:
@@ -198,8 +231,9 @@ def main():
         print("  parte del sistema que nadie sabe que existe.")
         return 1 if args.check else 0
 
-    print("clean: el censo del neutro cuadra con el codigo -- %d aparato(s) con "
-          "fichero, %d sitio(s) que etiquetan, %d fila(s) sin codigo que mirar"
+    print("clean: el censo del neutro cuadra con el codigo -- %d aparato(s) con"
+          " fichero, %d sitio(s) que etiquetan, %d fila(s) sin codigo que mirar,"
+          " y el portero cita el mismo numero"
           % (len(del_censo), sum(codigo.values()), saltadas))
     return 0
 
