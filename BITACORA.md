@@ -4076,3 +4076,83 @@ escribiendo en el.
 ** Y los dos ultimos mandan sobre el color **por delante de la RAM baja**, por
 la misma razon que `soltados`: quedarse sin memoria es incomodo; un bufer
 reasignado con un aparato dentro es corrupcion esperando su turno.
+
+---
+
+## Ep. 77 -- N2: el juez cableado, y el juicio que casi sale circular
+
+**2026-09-09.** El paso que llevaba dos episodios bloqueado, desbloqueado por N4.
+
+### *** EL FALLO QUE APARECIO AL EMPEZAR: EL JUICIO ERA CIRCULAR
+
+La primera forma de cablearlo era construir el `Marco` con lo que trae el
+llamante: `base = phys`, `bytes = lo que pide`. Y entonces *"cabe dentro del
+marco"* sale que si **siempre**, porque los dos lados vienen del mismo sitio.
+
+> Preguntarle a la peticion si la peticion esta bien.
+
+*** El `Marco` tiene que salir del **ASIGNADOR**: quien es el titular, quien lo
+tiene en vuelo, y que una pagina mide una pagina. Eso el llamante no lo sabe, y
+por eso puede juzgarle.
+
+** Consecuencia: se pregunta **pagina a pagina**. Una lectura directa puede
+cruzar varias --`tramo_dma` devuelve un tramo contiguo, no una pagina-- y cada
+una tiene su propio titular.
+
+### Y `Peticion` gano un campo al cablearlo: `prestando`
+
+```text
+   `Marco.en_vuelo_para`   un HECHO sobre el marco: quien lo tiene
+   `Peticion.prestando`    una AUTORIDAD: yo, el kernel, cedo esto
+```
+
+*** Sin el, el camino DIRECTO era imposible de aprobar: el bufer del que llamo
+no es del aparato **y no lo va a ser nunca**, asi que ningun hecho sobre el
+marco podia justificarlo. Lo que lo justifica es que alguien con derecho lo cede.
+
+[!] Y ese campo **no protege de nada por si solo** -- quien lo pone a `true` se
+lo esta concediendo a si mismo. Lo que hace es separar dos casos que antes eran
+uno, para que el juez pueda ser ESTRICTO con el corral.
+
+### EL ESCALON QUE SOLO RECHAZA UNO DE LOS SEIS VETOS
+
+Esto es el camino del DISCO, o sea el del ARRANQUE. Una regla mia mal afinada
+aqui no da un aviso: **deja la maquina sin poder leer su propio sistema**, y ni
+siquiera queda log porque el log vive en el disco.
+
+```text
+   DeOtroAparato   *** SE RECHAZA. Dos aparatos sobre el mismo bufer no tiene
+                   lectura buena ninguna
+   los otros 5     se CUENTAN en `DMA_VETOS` y se dicen. Son reglas que
+                   todavia no han visto un arranque
+```
+
+Es la forma que esta casa ya eligio en su comprobacion mas arriesgada --
+`vmm::es_tabla`, que deja pasar `Anonimo`--:
+
+> Se corta solo lo que no tiene explicacion inocente. Lo demas se cuenta.
+
+### Y una incoherencia mia que cace a tiempo
+
+El juez recorria N paginas y el bit en vuelo marcaba UNA. Una lectura directa de
+varias paginas dejaba las demas sin marcar -- **libres de que alguien las
+reasignara con el disco escribiendo dentro**, que es justo el fallo que el bit
+existe para cazar.
+
+> Un juez que mira N paginas y un bit que marca UNA es peor que ninguno de los
+> dos: da la impresion de cubrir el tramo.
+
+### El censo del neutro me caza, con razon y sin ella
+
+`dev/disk/transfer.rs` tuvo que **preguntar** si un marco es de un aparato, y el
+guardian le pidio una fila de censo por leer la etiqueta que el propio censo
+vigila. Su razonamiento ya estaba a medias escrito --salta los comentarios-- asi
+que se extiende solo: **comparar tampoco es etiquetar**.
+
+[!] Un guardian que hace mas caro consultar su propia tabla se convierte en el
+motivo de que nadie la consulte.
+
+### De paso, el trinquete de avisos baja de 39 a 38
+
+Reescribir el cuerpo de `mandar_lectura` se llevo un `unsafe` anidado que
+sobraba desde antes.

@@ -374,7 +374,22 @@ Un plan que no diga donde acaba es propaganda.
   cuenta de marcos en vuelo al apagar es **CERO**, igual que `soltados` en N3
   del censo del neutro.
 
-- [ ] **N2 -- EL EMBUDO LLAMA AL JUEZ. Despues de N4, no antes.**
+- [x] **N2 -- HECHO el 2026-09-09, despues de N4 como el propio plan corrigio.**
+
+  El juez se pregunta **PAGINA A PAGINA**, y eso no es celo: es lo unico que
+  hace que el juicio no sea circular. El `Marco` sale del ASIGNADOR --titular,
+  quien lo tiene en vuelo, y que una pagina mide una pagina-- y no de lo que
+  diga el que pide.
+
+  ** Y `Peticion` gano un campo mas al cablearlo: `prestando`. `en_vuelo_para`
+  es un HECHO sobre el marco; lo que justifica el prestamo no es un hecho, es
+  que **alguien con derecho lo cede**.
+
+  [!] **Y solo se RECHAZA uno de los seis vetos: `DeOtroAparato`.** Esto es el
+  camino del disco, o sea el del arranque: una regla mal afinada aqui no da un
+  aviso, deja la maquina sin poder leer su propio sistema. Los otros cinco se
+  cuentan en `DMA_VETOS` y se dicen. Es la forma de `vmm::es_tabla`, que deja
+  pasar `Anonimo` por el mismo motivo.
   Hoy el juez existe y **no lo llama nadie**. Ponerlo en el camino pide cambiar
   la firma de los que escriben descriptores para que pidan `Prenda` en vez de
   `u64`, y eso toca `platform/drivers/{ahci,xhci}` y quien los llama en Ring 0

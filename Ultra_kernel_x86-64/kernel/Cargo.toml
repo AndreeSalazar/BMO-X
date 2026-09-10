@@ -28,6 +28,9 @@ bmo-estratos = { path = "../../platform/drivers/storage/estratos" }
 # y el juez vive en `platform/shared/` porque **alli se puede probar** (L7b).
 bmo-identify = { path = "../../platform/drivers/storage/identify" }
 bmo-disco-juicio = { path = "../../platform/shared/bmo-disco-juicio" }
+# EL JUEZ DEL DMA: se le puede dar esta direccion fisica a este aparato? Paso
+# N2 de docs/plan/PLAN_EL_NEUTRO_VIGILADO.md.
+bmo-dma-juicio = { path = "../../platform/shared/bmo-dma-juicio" }
 # El FORMATO de TRIM: un rango de LBA convertido en descriptores de
 # `DATA SET MANAGEMENT`. Fuera del kernel por lo mismo que los dos de arriba --
 # un descriptor mal empaquetado no da un fallo, hace que el disco olvide

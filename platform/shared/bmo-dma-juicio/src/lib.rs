@@ -180,6 +180,28 @@ pub struct Peticion {
     /// guarda la direccion en 32+32 bits y la longitud en **22**, y ese es el
     /// campo que se desborda en silencio.
     pub bits_de_cuenta: u32,
+    /// **EL KERNEL DECLARA QUE ESTA PRESTANDO ESTE MARCO.**
+    ///
+    /// *** Este campo nacio el 2026-09-09 al cablear el juez de verdad (N2), y
+    /// arregla un fallo de diseno del propio juez:
+    ///
+    /// ```text
+    ///    `Marco.en_vuelo_para`   es un HECHO sobre el marco: quien lo tiene
+    ///    `Peticion.prestando`    es una AUTORIDAD: yo, que soy el kernel y
+    ///                            soy quien reparte la memoria, cedo este
+    ///                            marco a este aparato para esta operacion
+    /// ```
+    ///
+    /// ** Sin el, el camino DIRECTO de una lectura era imposible de aprobar:
+    /// el bufer del que llamo no es del aparato **y no lo va a ser nunca**, asi
+    /// que ningun hecho sobre el marco podia justificarlo. Lo que lo justifica
+    /// no es una propiedad del marco: es que **alguien con derecho lo cede**.
+    ///
+    /// [!] Y por eso este campo NO PROTEGE DE NADA por si solo -- quien lo pone
+    /// a `true` se lo esta concediendo a si mismo. Lo que si hace es separar
+    /// dos casos que antes eran uno, para que el juez pueda ser ESTRICTO con el
+    /// corral y solo comprobar lo comprobable en el prestamo.
+    pub prestando: bool,
 }
 
 /// Por que NO. Cada uno nombra una pregunta de la cabecera.
@@ -211,24 +233,29 @@ pub enum Veto {
 pub fn juzgar(p: Peticion, m: Marco) -> Result<Prenda, Veto> {
     // 1 y 2. De quien es esto, y hay DOS formas legitimas de que sea suyo.
     //
-    // ** El orden importa: se mira primero el prestamo porque es el caso
-    // ESTRECHO --un aparato concreto, ahora-- y `es_neutro` es el ancho. Si un
-    // marco esta prestado a otro, eso se dice con nombre en vez de dejarlo caer
-    // en `NoEsDeUnAparato`, que mandaria a mirar el sitio equivocado.
-    match m.en_vuelo_para {
-        // Caso 2: prestado, y al que pide.
-        Some(a) if a == p.aparato => {}
-        // Prestado a OTRO. Es el fallo mas peligroso de los seis --dos
-        // aparatos sobre el mismo bufer-- y por eso tiene su propio veto.
-        Some(a) => return Err(Veto::DeOtroAparato { suyo: a, pide: p.aparato }),
-        None => {
-            // Caso 1: su propio corral.
-            if !m.es_neutro {
-                return Err(Veto::NoEsDeUnAparato);
-            }
-            if m.aparato != p.aparato {
-                return Err(Veto::DeOtroAparato { suyo: m.aparato, pide: p.aparato });
-            }
+    // ** Se mira PRIMERO si otro lo tiene en vuelo, y eso vale para los dos
+    // casos: **ni el dueno del corral puede escribir en un bufer que otro
+    // aparato esta usando ahora mismo**. Es el unico veto que no tiene
+    // explicacion inocente ninguna.
+    if let Some(a) = m.en_vuelo_para {
+        if a != p.aparato {
+            return Err(Veto::DeOtroAparato { suyo: a, pide: p.aparato });
+        }
+    }
+    // ** Y si NO se esta prestando, entonces tiene que ser su corral. Esa es
+    // toda la diferencia entre los dos casos:
+    //
+    // ```text
+    //    prestando = false   el marco tiene que ser SUYO. Estricto
+    //    prestando = true    el kernel lo cede. Solo se comprueba que nadie
+    //                        mas lo tenga, y la aritmetica de abajo
+    // ```
+    if !p.prestando {
+        if !m.es_neutro {
+            return Err(Veto::NoEsDeUnAparato);
+        }
+        if m.aparato != p.aparato {
+            return Err(Veto::DeOtroAparato { suyo: m.aparato, pide: p.aparato });
         }
     }
     // 3. Pide algo. Va antes que la aritmetica porque con `bytes == 0` la
