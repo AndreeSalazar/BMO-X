@@ -219,7 +219,7 @@ fn marcar_el_tramo(phys: u64, bytes: u64, poner: bool) {
         if poner {
             mm::phys::en_vuelo(p, mm::phys::APARATO_AHCI);
         } else {
-            mm::phys::aterrizo(p);
+            mm::phys::aterrizo(p, mm::phys::APARATO_AHCI);
         }
         p += mm::PAGE;
     }

@@ -1,22 +1,89 @@
 //! **EL DUENO DE CADA MARCO: la columna que el mapa de bits no tiene.**
 //!
-//! [carril]  AMARILLO  no reparte RAM ni toca la memoria de nadie: da una
-//!                     OPINION sobre un marco. Es peligroso de creer
+//! [carril]  ROJO      el VOCABULARIO de los tres: el byte por marco,
+//!                     `indice`, `de_byte` y las cinco cuentas
 //!
-//! [cuesta]  MAQUINA -- una etiqueta equivocada rehusa una devolucion buena, y
-//!           un marco que no vuelve es un marco perdido. Uno no se nota; el
-//!           mismo error en un camino que corre en cada muerte de proceso se
-//!           come la RAM hasta que no arranca nada.
+//! [cuesta]  MAQUINA -- `indice` decide QUE marco se toca. Errarlo por uno no
+//!           equivoca una respuesta: marca al vecino, y entonces las tres
+//!           preguntas de esta carpeta contestan de otro marco (L6e)
 //!
 //! [riesgo]  ESPEJO SILENCIO
 //!           ESPEJO   -- son DOS tablas sobre los mismos marcos: el mapa de
-//!                       bits dice si esta entregado, esta dice a quien. Pueden
-//!                       discrepar, y cuando discrepen la que manda es el mapa
-//!                       de bits -- aqui no se reparte memoria.
-//!           SILENCIO -- **un marco sin etiquetar contesta `Anonimo`, y eso se
-//!                       lee igual que "todo en orden"**. La cobertura parcial
-//!                       se disfraza de salud. Por eso `cubiertos()` existe y
-//!                       por eso el veredicto se llama `SinOpinion` y no `Ok`.
+//!                       bits dice si esta entregado, esta dice a quien.
+//!                       Cuando discrepen manda el mapa de bits, porque aqui
+//!                       no se reparte memoria
+//!           SILENCIO -- **un marco sin etiquetar contesta `Anonimo`, y eso
+//!                       se lee igual que "todo en orden"**. La cobertura
+//!                       parcial se disfraza de salud. Por eso `cubiertos()`
+//!                       existe y por eso el veredicto se llama `SinOpinion`
+//!                       y no `Ok` (L6f)
+//!
+//! # [!] POR QUE UN FICHERO QUE NO CAMBIA NADA ES EL ROJO
+//!
+//! La primera version de esta cabecera puso `CARRILERA` --*no es un carril,
+//! es el vocabulario*-- y **R10 la rechazo en el build**, que es lo que R10
+//! esta para hacer. Al tener que elegir un color de verdad salio el argumento
+//! que faltaba:
+//!
+//! ```text
+//!    UN CIMIENTO NO PUEDE SER MAS VERDE QUE EL MAS ROJO DE LOS QUE LO USAN
+//! ```
+//!
+//! `indice` y `de_byte` los llaman los tres carriles. Un fallo aqui **sale
+//! por el rojo tambien** -- el bit de vuelo puesto en el marco de al lado no
+//! da fault, no tiene sintoma y se ve tres arranques despues. Pintar de verde
+//! lo que sostiene a un rojo es como se cuela un fallo rojo por un fichero
+//! que nadie mira.
+//!
+//! ** Y a cambio este fichero se gana el derecho a ser ABURRIDO: aqui no se
+//! decide nada, no hay una sola rama que elija por alguien. Solo dice que es
+//! que. Lo unico que se puede hacer con un cimiento rojo es que no piense.
+//!
+//! # *** EL REPARTO, Y EL COLOR NO LO ELIGE NADIE
+//!
+//! Los tres carriles escriben en EL MISMO BYTE. Si el color saliera de *lo
+//! que una pieza toca*, los tres serian del mismo color y el letrero no diria
+//! nada. Sale de otro sitio:
+//!
+//! ```text
+//!    **COMO SE ENTERA UNO DE QUE FALLO**
+//!
+//!    roja.rs      EL VUELO      nadie avisa. Se ve tres arranques despues,
+//!                 nibble alto   con otra cara -- un dato ajeno en la memoria
+//!                               de otro. Por eso se CUENTA          ROJO
+//!
+//!    amarilla.rs  EL MARCADO    `vmm::es_tabla` se planta y lo dice con
+//!                 nibble bajo   nombre en CABINA. Se pierde lo que dependia
+//!                               de esa etiqueta, no la maquina     AMARILLO
+//!
+//!    verde.rs     LAS CUENTAS   ni un `mut` sale de ahi. Devuelve un numero
+//!                 solo lee      feo y decide quien pregunto           VERDE
+//! ```
+//!
+//! ** Es la misma regla que el `[aparece]` de BMO C: **el carril lo decide
+//! DONDE APARECE el fallo, no una opinion sobre su gravedad.** Y aqui da un
+//! resultado que la intuicion no daba -- el marcado es el que puede negarle
+//! una tabla de paginas al `vmm`, o sea el que suena mas grave, y aun asi es
+//! el amarillo: **porque grita**.
+//!
+//! # [!] Y LA PARTICION ENCONTRO ALGO, QUE ES PARA LO QUE SIRVE
+//!
+//! El `///` de `neutros()` habia quedado pegado encima de `en_vuelo`: la
+//! documentacion de una funcion describiendo otra, en el mismo `rustdoc`, sin
+//! que ningun compilador tenga forma de objetar. Al repartir por carril hubo
+//! que decidir a cual iba cada linea, y ahi se cayo sola.
+//!
+//! > Partir por ejes no es ordenar. Es hacer preguntas que estando junto todo
+//! > nadie hace.
+//!
+//! # Lo que NO se partio, y por que
+//!
+//! `Titular`, `TABLA`, `indice` y las cinco cuentas se quedan aqui. No es
+//! comodidad: **son de los tres**. Bajar `indice` al carril rojo obligaria al
+//! amarillo a subir a por el, y una dependencia entre carriles convierte el
+//! letrero de la carpeta en decoracion -- que es exactamente lo que R9 le
+//! objeto a este fichero cuando quiso vivir dentro de `phys/`.
+//!
 //!
 //! # *** POR QUE EXISTE: el fichero de al lado promete esto en su titulo
 //!
@@ -80,6 +147,7 @@
 //! paga entero y a proposito: la alternativa era medio byte por marco (2 MiB y
 //! dieciseis clases) y empaquetar nibbles dentro de una decision de vida o
 //! muerte para ahorrar 2 MiB de quince mil no es un ahorro, es una trampa.
+
 
 use super::{PAGE, PHYSMAP_SIZE};
 
@@ -290,230 +358,19 @@ static mut EN_VUELO_PISADOS: u64 = 0;
 /// bufer. Se rechaza Y se cuenta.
 static mut EN_VUELO_CHOQUES: u64 = 0;
 
-/// Apuntar para que se pidio un marco. Lo llama `alloc_frame_de`.
-pub fn marcar(phys: u64, q: Titular) {
-    if let Some(i) = indice(phys) {
-        let antes = tabla()[i];
-        // *** SE CONSERVA EL NIBBLE ALTO. Marcar un marco no cambia si tiene
-        // un DMA en vuelo: son dos preguntas distintas sobre el mismo byte, y
-        // pisar una al contestar la otra es como se pierde un aterrizaje.
-        tabla()[i] = (antes & 0xF0) | (q as u8);
-        // La cuenta del neutro, en O(1). Ver la nota de arriba.
-        let era = (antes & 0x0F) == Titular::Neutro as u8;
-        let es = q == Titular::Neutro;
-        unsafe {
-            if es && !era {
-                NEUTROS_VIVOS += 1;
-            } else if era && !es {
-                NEUTROS_VIVOS = NEUTROS_VIVOS.saturating_sub(1);
-                NEUTROS_SOLTADOS = NEUTROS_SOLTADOS.wrapping_add(1);
-            }
-            // == *** UN MARCO QUE CAMBIA DE TITULAR CON UN DMA EN VUELO ====
-            //
-            // ** Se detecta AQUI, desde el lado del marcado, y NO en el camino
-            // de devolucion. Es la misma decision que la cuenta del neutro de
-            // arriba y por el mismo motivo: ese camino es ROJO, es donde vive
-            // la azul del 07-09, y `NEUTRO/REQUISITOS.md` (R4) dice que no se
-            // toca hasta haberla reproducido.
-            //
-            // *** Un marco que cambia de titular con el nibble alto puesto es
-            // **un bufer reasignado mientras un aparato todavia escribia en
-            // el**. No da fault y no tiene sintoma: da un dato ajeno
-            // apareciendo en la memoria de otro, mas tarde.
-            //
-            // > Es el fallo que `EL_NEUTRO` lleva describiendo sin poder
-            // > nombrar: la azul de la purga, el xHC muerto y el asignador
-            // > colgado A LA VEZ.
-            //
-            // [!] Y NO SE IMPIDE. Se CUENTA y se dice. Negarse a marcar desde
-            // aqui seria decidir en el camino rojo con un dato que todavia no
-            // se ha ganado la confianza -- y un asignador que rechaza un marco
-            // por una sospecha deja la maquina sin memoria, que es peor que el
-            // fallo que evita. Primero el numero; la barrera, cuando el numero
-            // lleve arranques diciendo cero.
-            if (antes & 0xF0) != 0 && (antes & 0x0F) != (q as u8) {
-                EN_VUELO_PISADOS = EN_VUELO_PISADOS.wrapping_add(1);
-            }
-        }
-    }
-}
+mod amarilla;
+mod roja;
+mod verde;
 
-/// **De quien es?** `Nadie` si esta libre o si cae fuera del espejo.
-pub fn titular_de(phys: u64) -> Titular {
-    match indice(phys) {
-        Some(i) => Titular::de_byte(tabla()[i]),
-        None => Titular::Nadie,
-    }
-}
+// *** LOS TRES CARRILES SE REEXPORTAN, asi que `mm::titular::marcar` sigue
+// escribiendose igual desde los 34 sitios que llaman al asignador. Partir por
+// dentro no puede costarle una linea a quien llama: si costara, la particion
+// se estaria pagando con el diff de otro.
+pub use amarilla::{marcar, puede_soltar, titular_de, Veredicto};
+pub use roja::{aterrizo, en_vuelo, en_vuelo_de, APARATO_AHCI, APARATO_GPU,
+               APARATO_NIC, APARATO_XHCI};
+pub use verde::{cubiertos, neutros, vuelos};
 
-/// El veredicto de `puede_soltar`, con las tres respuestas separadas.
-///
-/// ** `SinOpinion` NO es `Adelante`, y son dos variantes distintas a proposito.
-/// Juntarlas haria que "no lo se" y "lo he comprobado" se contaran igual, que
-/// es exactamente el `[riesgo] SILENCIO` de la cabecera.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Veredicto {
-    /// Los dos declararon y coinciden.
-    Adelante,
-    /// Alguno de los dos no declaro. Se deja pasar.
-    SinOpinion,
-    /// Los dos declararon y DIFIEREN: `(quien lo tiene, quien lo suelta)`.
-    NoEsTuyo(Titular, Titular),
-}
-
-/// **Puede `quien` soltar este marco?** Ver la regla en la cabecera.
-pub fn puede_soltar(phys: u64, quien: Titular) -> Veredicto {
-    let tiene = titular_de(phys);
-    if tiene == Titular::Anonimo || tiene == Titular::Nadie || quien == Titular::Anonimo {
-        return Veredicto::SinOpinion;
-    }
-    if tiene == quien {
-        Veredicto::Adelante
-    } else {
-        Veredicto::NoEsTuyo(tiene, quien)
-    }
-}
-
-/// **Cuantos marcos llevan una etiqueta de verdad**, o sea ni libres ni
-/// anonimos.
-///
-/// Es la unica defensa contra el `[riesgo] SILENCIO`: si esto se queda en
-/// cifras bajas, el juez esta callado porque no sabe, no porque todo vaya bien.
-/// Lo dice el informe de la purga, junto a los marcos que volvieron.
-pub fn cubiertos() -> u64 {
-    let t = tabla();
-    let mut n = 0u64;
-    for i in 0..MARCOS {
-        let b = t[i];
-        if b >= 2 {
-            n += 1;
-        }
-    }
-    n
-}
-
-// == LOS APARATOS, NUMERADOS -- y el orden NO es de gusto ==================
-//
-// ** Son las filas de `NEUTRO/CENSO.txt` en su orden, y esa es toda la regla.
-// Un numero que no sale de la lista de quien alcanza la RAM por su cuenta
-// seria un aparato que nadie censo escribiendo en la memoria de alguien.
-//
-// [!] El CERO esta reservado a proposito: significa **nada en vuelo**. Por eso
-// se empieza en 1, y por eso `en_vuelo` rechaza el 0 en vez de aceptarlo como
-// un aparato mas.
-
-/// El HBA del disco. Fila 1 del censo.
-pub const APARATO_AHCI: u8 = 1;
-/// La tarjeta de red. Fila 2.
-pub const APARATO_NIC: u8 = 2;
-/// El controlador USB. Fila 3.
-pub const APARATO_XHCI: u8 = 3;
-/// La grafica, cuando llegue. Fila 4, hoy sin tarjeta.
-pub const APARATO_GPU: u8 = 4;
-
-/// **`(marcos de aparato, veces que uno se solto)`.** La cifra de `NEUTRO/`.
-///
-/// Va aparte de [`cubiertos`] a proposito. `cubiertos` contesta *"cuanto sabe
-/// el juez"*; esto contesta *"cuanta RAM de esta maquina esta fuera del celo"*.
-///
-/// ```text
-///    vivos     PEQUENO Y QUIETO. Los aparatos piden al arrancar y ya.
-///              Si sube en marcha, alguien reparte DMA en caliente
-///    soltados  ** CERO. Cualquier otra cosa es N3 rota, y con su cuenta
-/// ```
-///
-/// Las dos son de leer un `static`: la cuenta la lleva [`marcar`], que es el
-/// unico sitio por el que un marco cambia de dueno. Preguntar esto **no
-/// recorre nada**, asi que se puede poner en un panel que se repinta.
-/// **PONER UN MARCO EN VUELO PARA UN APARATO.** Se llama al programar el
-/// descriptor, ANTES de tocar la campana.
-///
-/// Devuelve `false` y no toca nada si:
-///
-/// ```text
-///    el marco cae fuera del espejo      no hay donde apuntarlo
-///    `aparato` es 0 o pasa de 15        no cabe en el nibble
-///    ya esta en vuelo para OTRO         *** dos aparatos, un bufer
-/// ```
-///
-/// ** El tercero se RECHAZA en vez de sobreescribir, y esa es la decision de
-/// esta funcion. Sobreescribir dejaria al primer aparato escribiendo en un
-/// bufer que el sistema cree del segundo, y el aterrizaje del segundo borraria
-/// la marca del primero: **dos fallos silenciosos por el precio de uno**.
-///
-/// [!] Y volver a ponerlo en vuelo para EL MISMO aparato SI vale, y no suma:
-/// un driver que reprograma el mismo bufer antes de que el anterior termine
-/// esta haciendo algo suyo, y contarlo dos veces dejaria la cuenta sin poder
-/// llegar a cero nunca.
-pub fn en_vuelo(phys: u64, aparato: u8) -> bool {
-    if aparato == 0 || aparato > 15 {
-        return false;
-    }
-    let i = match indice(phys) {
-        Some(i) => i,
-        None => return false,
-    };
-    let antes = tabla()[i];
-    let quien = (antes & 0xF0) >> 4;
-    if quien != 0 && quien != aparato {
-        unsafe { EN_VUELO_CHOQUES = EN_VUELO_CHOQUES.wrapping_add(1) };
-        return false;
-    }
-    tabla()[i] = (antes & 0x0F) | (aparato << 4);
-    if quien == 0 {
-        unsafe { EN_VUELO_VIVOS += 1 };
-    }
-    true
-}
-
-/// **ATERRIZO: el aparato dijo que termino.** Se llama al consumir el fin.
-///
-/// ** Devuelve `false` si el marco no estaba en vuelo, y eso NO es inocente:
-/// significa que se consumio un fin que nadie pidio, o que alguien ya lo
-/// consumio antes. Quien llama decide si eso le importa; aqui se contesta.
-pub fn aterrizo(phys: u64) -> bool {
-    let i = match indice(phys) {
-        Some(i) => i,
-        None => return false,
-    };
-    let antes = tabla()[i];
-    if antes & 0xF0 == 0 {
-        return false;
-    }
-    tabla()[i] = antes & 0x0F;
-    unsafe { EN_VUELO_VIVOS = EN_VUELO_VIVOS.saturating_sub(1) };
-    true
-}
-
-/// **QUIEN tiene un DMA en vuelo hacia este marco**, si es que alguno.
-///
-/// Es lo que `bmo-dma-juicio` pide como `en_vuelo_para`: el campo que hasta hoy
-/// nadie podia rellenar con la verdad.
-pub fn en_vuelo_de(phys: u64) -> Option<u8> {
-    let i = indice(phys)?;
-    match (tabla()[i] & 0xF0) >> 4 {
-        0 => None,
-        a => Some(a),
-    }
-}
-
-/// **Las tres cuentas del vuelo**: `(vivos, pisados, choques)`.
-///
-/// ```text
-///    vivos     lo que hay ahora. Al apagar, CERO
-///    pisados   ** CERO. Un marco reasignado con DMA dentro
-///    choques   ** CERO. Dos aparatos pidiendo el mismo bufer
-/// ```
-///
-/// Las tres son de leer un `static`: preguntar esto no recorre nada, asi que
-/// cabe en un panel que se repinta -- igual que [`neutros`].
-pub fn vuelos() -> (u64, u64, u64) {
-    unsafe { (EN_VUELO_VIVOS, EN_VUELO_PISADOS, EN_VUELO_CHOQUES) }
-}
-
-pub fn neutros() -> (u64, u64) {
-    unsafe { (NEUTROS_VIVOS, NEUTROS_SOLTADOS) }
-}
 
 /// **EL GUARDIAN DEL TECHO**, y corre en compilacion.
 ///
