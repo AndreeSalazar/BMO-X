@@ -7,15 +7,24 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   126 casillas ABIERTAS en 18 planes
+   143 casillas ABIERTAS en 19 planes
     77 hechas
      2 planes CUMPLIDOS (ni una casilla pendiente)
-     6 en plan/ SIN NI UNA CASILLA -- ver el final
+     5 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
 
 ---
 
 # Los planes VIVOS, el que mas debe primero
+
+## [`PLAN_AUTOCURACION.md`](PLAN_AUTOCURACION.md) -- 17 abiertas, 0 hechas
+
+*El plan de la AUTO-CURACION: de informar a actuar*
+
+- [ ] 1.0 (S) ★ Contar lo que queda del muerto DESPUES de revocar y
+- [ ] 1.1 (S) Si algo no volvio, la linea sale en ROJO y dice que no
+- [ ] 1.2 (S) La misma comprobacion en EXIT: una salida limpia tambien
+- ... y 14 mas
 
 ## [`PLAN_EL_GUARDIAN.md`](PLAN_EL_GUARDIAN.md) -- 15 abiertas, 0 hechas
 
@@ -196,7 +205,6 @@ contesta. Este guardian los nombra en cada build para que la
 deuda tenga nombre en vez de ser un fichero mas.
 
 - [`PLAN_ALMACENAMIENTO.md`](PLAN_ALMACENAMIENTO.md) -- 205 lineas
-- [`PLAN_AUTOCURACION.md`](PLAN_AUTOCURACION.md) -- 159 lineas
 - [`PLAN_DIRECTOR.md`](PLAN_DIRECTOR.md) -- 981 lineas
 - [`PLAN_EL_ASISTENTE.md`](PLAN_EL_ASISTENTE.md) -- 676 lineas
 - [`PLAN_EL_SILICIO.md`](PLAN_EL_SILICIO.md) -- 815 lineas
