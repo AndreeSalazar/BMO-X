@@ -24,7 +24,7 @@
 
 ---
 
-# ~~PASO 1~~ -- `TASK_OP_MI_PADRE = 0x26` ✅ HECHO
+# [x] ~~PASO 1~~ -- `TASK_OP_MI_PADRE = 0x26` ✅ HECHO
 
 Una superficie se le ofrece al DIRECTOR, y el programa **no tiene otra forma de
 nombrarlo**. Donde quedo cada pieza:
@@ -54,7 +54,7 @@ es un error: es la respuesta correcta a "quien compone para mi".
 
 ---
 
-# ~~PASO 2~~ -- El lado del DIRECTOR ✅ HECHO (falta metal)
+# [x] ~~PASO 2~~ -- El lado del DIRECTOR ✅ HECHO (falta metal)
 
 `Ultra_userspace/services/director/src/scene/surface.rs`. Una `Table` de cuatro
 cajas, y en el bucle principal tres puntos: **recoger** al principio,
@@ -134,7 +134,7 @@ declararse bastante para la imagen, o `malloc` devuelve 0 y no hay ventana.
 
 ---
 
-# ★ PASO 2b -- portar `ray.bex` a una ventana ✅ HECHO
+# [x] ★ PASO 2b -- portar `ray.bex` a una ventana ✅ HECHO
 
 La prueba de que esto vale. Dibuja en la superficie en vez de en el framebuffer y
 aparece en una caja con sus tres botones. Cuatro cosas, en orden:
@@ -172,6 +172,30 @@ superficie sin pedir ficheros: **`superficie.h` leia `__bmo_bloque_cap` sin
 traerlo** --lo declaraba `archivo.h`-- asi que una app que solo queria una
 ventana no compilaba, y el error nombraba un simbolo con dos guiones bajos que
 el programa no habia escrito nunca. De ahi sale `<bmo/bloque.h>`.
+
+---
+
+# [!] 2c NO SE MARCO, Y NO ES UN OLVIDO (2026-09-10)
+
+Al ponerle casillas a este plan aparecio un lio que hay que deshacer antes de
+poder marcarlas: **hay DOS secciones numeradas 2c.3**.
+
+```text
+   linea 309   ## 2c.3 -- De quien son las teclas, que ya esta contestado
+   linea 368   # 2c.3 -- `ray.bex` RECIBE UNA TECLA EN SU VENTANA. HECHO 23-08
+```
+
+** La segunda dice HECHO y la primera no, y **no son la misma cosa**: una es el
+reparto de quien recibe las teclas y la otra es la prueba de que llegan. Marcar
+las cinco de 2c a ojo seria decidir por parecido, que es exactamente lo que
+`casillas.py` existe para impedir.
+
+*** Asi que se marca lo que el documento dice sin ambiguedad --siete casillas--
+y 2c queda con su numeracion nombrada. Renumerarlo es una pasada aparte, y hay
+que hacerla con el codigo delante, no con la memoria.
+
+  > Marcar una casilla por lo que uno recuerda es como dar por buena una
+  > medida por lo que uno esperaba.
 
 ---
 
@@ -365,7 +389,7 @@ emisor de MAQUETA nunca supo donde estaba la ventana.
 
 ---
 
-# ★★★ 2c.3 -- `ray.bex` RECIBE UNA TECLA EN SU VENTANA. HECHO el 2026-08-23
+# [x] ★★★ 2c.3 -- `ray.bex` RECIBE UNA TECLA EN SU VENTANA. HECHO el 2026-08-23
 
 > Pedido asi por el dueno: *"solo iniciar con el DOOM en Ring 3 tiene que ser
 > como uso MUY GENERALES de app, ventanas, TODO ESO"*. Y con el remate que
@@ -729,7 +753,7 @@ app lo pida -- pero entonces sera una concesion con nombre, no un descuido.
                                  camino que acaba de recorrer `mouse.rs`
 ```
 
-# PASO 3 -- Cerrar sin ser root ✅ HECHO el 2026-08-19
+# [x] PASO 3 -- Cerrar sin ser root ✅ HECHO el 2026-08-19
 
 *"opcion para cerrar fuerte"* suena a boton y es **autoridad**: matar un proceso
 ajeno. Si el DIRECTOR puede matar a cualquiera *porque es el DIRECTOR*, eso es
@@ -776,7 +800,7 @@ espacio del que muere con `cr3_de_pid`.
 
 ---
 
-# PASO 4 -- Prioridad por FOCO ✅ HECHO el 2026-08-19
+# [x] PASO 4 -- Prioridad por FOCO ✅ HECHO el 2026-08-19
 
 > **La prioridad no es un atributo del proceso. Es una consecuencia de a donde
 > mira el usuario.**
@@ -860,7 +884,7 @@ vez que el foco estuviera en una app.
 
 ---
 
-# PASO 5 -- El rename ✅ HECHO el 2026-08-19
+# [x] PASO 5 -- El rename ✅ HECHO el 2026-08-19
 
 Los cuatro estaban hechos, asi que el nombre ya estaba **cobrado**: *un nombre
 describe algo hecho, no una intencion.*

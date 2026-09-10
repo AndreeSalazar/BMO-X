@@ -62,8 +62,23 @@ RAIZ = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")
 PLANES = os.path.join(RAIZ, "docs", "plan")
 INDICE = os.path.join(PLANES, "ABIERTO.md")
 
-HECHA = re.compile(r"^\s*[-*]?\s*\[[xX]\]\s*(.*)$")
-FALTA = re.compile(r"^\s*[-*]?\s*\[ \]\s*(.*)$")
+# == *** UNA CASILLA TAMBIEN PUEDE SER UN ENCABEZADO (2026-09-10) =========
+#
+# La primera version pedia que la linea empezara por `- [ ]`, y por eso dijo
+# que `PLAN_ALMACENAMIENTO` no tenia ni una casilla. **Las tiene, y las cinco
+# estan hechas**: las escribe como `### [x] Paso 0 -- UNA SOLA PUERTA`.
+#
+# ** Casi cuesta caro: se iba a reescribir un plan que ya estaba bien. El
+# guardian no cazo una deuda, INVENTO una.
+#
+#     > Un contador que no reconoce una forma legitima no cuenta de menos:
+#     > acusa. Y lo que acusa es a quien lo hizo bien de otra manera.
+#
+# [!] Y por eso el `(?:#{1,6}\s*)?` va DELANTE del guion y no en su lugar: las
+# dos formas valen, y una casilla dentro de un encabezado es la que se usa
+# cuando el escalon trae parrafos debajo.
+HECHA = re.compile(r"^\s*(?:#{1,6}\s*)?(?:[-*]\s*)?\[[xX]\]\s*(.*)$")
+FALTA = re.compile(r"^\s*(?:#{1,6}\s*)?(?:[-*]\s*)?\[ \]\s*(.*)$")
 TITULO = re.compile(r"^#\s+(.*)$")
 
 # El indice se genera, asi que no se edita a mano. Se dice arriba del todo.

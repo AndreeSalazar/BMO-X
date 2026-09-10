@@ -711,13 +711,12 @@ sujetos al contrato, y un `.bex` de INTI que falla **no llega a llamarse
 
 ### 8.4 Los pasos, y donde estamos
 
-```text
-   S1  la mesa de katanas    HECHO   Katanas 0x16: por regla, codigo y offset
-   S2  la comprobacion       HECHO   la mesa contra los bytes, y el gate corta
-   S3  `.ibex`               HECHO   la extension, y SOLO si pasa el contrato
-   S4  DIRECTOR y el shell   HECHO   la reconocen; `build.ps1` la despliega
-   S5  el barrido lineal     HECHO   cada operacion, con su regla al lado
-```
+- [x] **S1 -- la mesa de katanas.** `Katanas 0x16`: por regla, codigo y offset
+- [x] **S2 -- la comprobacion.** La mesa contra los bytes, y el gate corta --
+      `exige_katanas`
+- [x] **S3 -- `.ibex`.** La extension, y SOLO si pasa el contrato
+- [x] **S4 -- DIRECTOR y el shell la reconocen**, y `build.ps1` la despliega
+- [x] **S5 -- el barrido lineal.** Cada operacion, con su regla al lado
 
 ★★★ **EL CICLO ESTA CERRADO.** Un `.ibex` que llega al disco ha pasado, en
 este orden y sin poder saltarse ninguno:
@@ -729,9 +728,16 @@ este orden y sin poder saltarse ninguno:
    y ninguna operacion se quedo sin regla  el barrido
 ```
 
-Y lo que queda abierto esta escrito, no escondido: el techo de `crudo` (roca 3),
-las katanas del silicio (P4/P5 de la seccion 5), y que el barrido **calla** en vez
-de negar cuando no puede leer algo.
+Y lo que queda abierto esta escrito, no escondido. Desde el 2026-09-10 ademas
+esta CONTADO -- estas tres estaban en prosa y por eso el indice decia que este
+plan no tenia nada pendiente:
+
+- [ ] **S6 -- el techo de `crudo`** (roca 3): hoy no lo acota nadie
+- [ ] **S7 -- las katanas del silicio**, P4 y P5 de la seccion 5 de este mismo
+      documento
+- [ ] **S8 -- que el barrido NIEGUE en vez de callar** cuando no puede leer una
+      operacion. Un barrido que calla ante lo que no entiende da por buena la
+      mitad que si leyo, y es la clase de silencio que esta casa persigue
 
 ### 8.5 ⚠ LA REGLA QUE SALIO DE LA ROCA 3
 
