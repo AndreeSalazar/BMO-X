@@ -606,13 +606,43 @@ pub fn write(lba: u64, count: u16, data: &[u8]) -> u16 {
         let src_off = done as usize * SECTOR;
         let n = batch as usize * SECTOR;
         unsafe { core::ptr::copy_nonoverlapping(data.as_ptr().add(src_off), dst, n); }
+        // == *** LA OTRA DIRECCION, Y LLEVABA CIEGA DESDE QUE NACIO EL BIT ==
+        //
+        // Aqui el HBA **LEE** de esta pagina. El bit EN VUELO se cableo el
+        // 09-09 solo en las lecturas --donde el aparato ESCRIBE-- porque su
+        // primer cliente era R-DMA-3: *no reasignes un marco con un DMA
+        // dentro*. Y para eso la direccion en la que el aparato lee no importa.
+        //
+        // *** PERO EL BIT TIENE DOS CLIENTES Y QUIEREN COSAS DISTINTAS:
+        //
+        //    R-DMA-3  no reasignes    solo le importa donde el aparato ESCRIBE
+        //    N5, el perro guardian    le importa si el aparato SIGUE VIVO, y
+        //                             una escritura colgada lo deja igual de
+        //                             muerto que una lectura colgada
+        //
+        // ** Sin esto, `VUELOS_DE[AHCI]` vale 0 durante toda una escritura y el
+        // plazo de N5 **no puede caducar un disco que se cuelga escribiendo**.
+        // La cuenta de `mudo=` media solo la mitad del trabajo del disco.
+        //
+        // [!] Y no se pone por seguridad de la memoria: esta pagina es
+        // `Titular::Neutro` y N3 prohibe devolverla, asi que nadie se la puede
+        // llevar. Se pone porque **el reloj del guardian solo corre para lo
+        // que esta marcado**, y un aparato medio vigilado no esta vigilado.
+        let t0 = crate::ring0::task::scheduler::rdtsc();
+        phys::en_vuelo(dma, phys::APARATO_AHCI, t0);
         let put = match unsafe { bmo_ahci::write_sectors_phys(unsafe { PORT }, lba + done as u64, batch, dma) } {
             Ok(n) => n,
             Err(e) => {
+                // ** Aterriza TAMBIEN cuando falla. Un vuelo que solo se cierra
+                // por el camino bueno deja `vivos` sin poder llegar a cero el
+                // dia que algo falla -- y ese es justo el dia que se mira.
+                phys::aterrizo(dma, phys::APARATO_AHCI,
+                               crate::ring0::task::scheduler::rdtsc());
                 crate::ring0::cabina::fault("disk", e.name(), lba + done as u64);
                 return done;
             }
         };
+        phys::aterrizo(dma, phys::APARATO_AHCI, crate::ring0::task::scheduler::rdtsc());
         if put == 0 { return done; }
         done += put;
         if put < batch { break; } // escritura corta: el disco dijo basta

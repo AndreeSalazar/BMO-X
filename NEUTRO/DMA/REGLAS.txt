@@ -79,9 +79,34 @@ LAS OCHO
                     no se ha medido y vale cero
 
 
+  R-DMA-9   Un marco EXPUESTO no vuelve al asignador
+  CANDIDATA juez    ** NO TIENE UNO PROPIO. Hoy la tapa N3 por la puerta de
+                    atras: los cuatro sitios que exponen un marco lo piden
+                    como `Titular::Neutro`, y un neutro no se devuelve
+            numero  --
+
   *** LAS OCHO TIENEN JUEZ desde el 2026-09-10. La octava fue la ultima, y
   estuvo escrita SIN juez varios dias a proposito: una regla sin juez, DICHA,
   es una deuda con nombre. Sin escribir habria sido un agujero sin nombre.
+
+  ** LA NOVENA es de la misma familia y se escribe por lo mismo. Salio de mirar
+  el DMA desde el lado de la RAM (`DESDE_LA_RAM.txt`), y lo que enseno es que
+  **EXPUESTO no es lo mismo que EN VUELO**:
+
+    en vuelo    empieza al tocar la campana y acaba al recoger el fin
+    expuesto    empieza al ESCRIBIR LA DIRECCION en un descriptor, y acaba
+                cuando alguien la BORRA -- o sea que dura mucho mas
+
+  Un anillo de la NIC tiene sus marcos expuestos aunque no haya ni un paquete
+  en el aire: la direccion sigue ahi. BMO-X hoy solo cuenta EN VUELO.
+
+  [!] Y HOY NO HAY AGUJERO, pero por un ACCIDENTE AFORTUNADO: todo lo
+  permanentemente expuesto resulta ser `Neutro`, y N3 --que se escribio para
+  que la cuenta del neutro no bajara-- lo deja inmovil de paso. El dia que
+  llegue un aparato con descriptores que se rellenan una vez y se usan mil (una
+  cola de NVMe, los anillos de una GPU) la coincidencia se rompe.
+
+    > Un accidente afortunado con nombre deja de ser un accidente.
 
 
 *** R-DMA-8: EL PLAZO, Y LAS DOS COSAS QUE CASI SALEN MAL

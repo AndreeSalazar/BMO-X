@@ -1,0 +1,217 @@
+EL DMA DESDE EL LADO DE LA RAM -- y si la premisa es cierta
+=============================================================
+
+  Pregunta del dueno, 2026-09-10: "si DMA es solo en RAM, podemos definir reglas
+  de DMA? investiga TODO en DMA en general [...] la RAM es tratada como
+  quirofano EXTREMO, NO HAY PIEDAD".
+
+  La pregunta trae una premisa dentro, y lo primero es comprobarla.
+
+
+1. "EL DMA ES SOLO EN RAM" -- ES FALSO EN GENERAL Y CIERTO EN ESTA MAQUINA
+---------------------------------------------------------------------------
+
+  Y las dos mitades importan.
+
+  LO QUE HAY DE DMA QUE NO TOCA LA RAM:
+
+    entre dos aparatos (P2P PCIe)    un aparato escribe en el BAR de otro. La
+                                     transaccion la encamina el switch o el
+                                     complejo raiz y **no llega al controlador
+                                     de memoria**. Es lo que usan GPUDirect y
+                                     NVMe-oF. En muchos complejos raiz de AMD
+                                     esta roto o apagado; por un switch va
+
+    dentro del propio aparato        los motores de copia de una GPU mueven
+                                     VRAM a VRAM. El bus ni se entera
+
+    a memoria que no es RAM          a una ROM mapeada, a la apertura de una
+                                     grafica integrada, a un BAR propio
+
+  LO QUE LO HACE CIERTO HOY, AQUI:
+
+    los TRES aparatos censados --AHCI, NIC, xHCI-- solo hacen aparato <-> RAM.
+    No hay P2P porque no hay nadie con quien hablar: el cuarto llega con la
+    grafica.
+
+  *** Y ESTO YA ESTABA PREVISTO POR ESCRITO. `NEUTRO/ORDEN.md`, seccion 5,
+  sacrificio 3:
+
+    "el dia que aparezca algo que ni pida ni este dentro --un aparato que hable
+     con otro sin tocar la RAM, peer-to-peer PCIe-- HAY QUE VOLVER AQUI, no
+     inventarle un hueco en DMA/"
+
+  ** O sea que la premisa del dueno **es la regla de la casa dicha al reves**, y
+  el sitio donde deja de valer ya tiene fecha: cuando entre la GPU.
+
+    > Una premisa que solo es cierta por el censo de hoy no es una ley: es una
+    > foto. Y una foto con la fecha escrita es util; sin la fecha, es una
+    > trampa.
+
+
+2. Y LA RAM NO SOLO SE ESCRIBE. EL APARATO TAMBIEN LEE
+-------------------------------------------------------
+
+  Esto no estaba escrito en ningun sitio de esta carpeta, y es la mitad que
+  faltaba de "TODO en DMA".
+
+    el aparato ESCRIBE en RAM    una lectura de disco, un paquete que llega
+    el aparato LEE de RAM        su lista de comandos, sus descriptores, y
+                                 **los datos de una escritura a disco**
+
+  Los dos son DMA. Los dos son el aparato yendo a la memoria por su cuenta. Y
+  **fallan de formas distintas**:
+
+    reasignar un marco que el aparato ESCRIBE  -> corrupcion en el nuevo dueno
+    reasignar un marco que el aparato LEE      -> el aparato actua con datos
+                                                  viejos, y lo que haga con
+                                                  ellos puede ser otra escritura
+
+  [!] El segundo es peor de razonar porque AMPLIFICA: un descriptor viejo no
+  corrompe un byte, manda una orden.
+
+
+3. *** LO QUE LA INVESTIGACION ENCONTRO EN EL CODIGO
+------------------------------------------------------
+
+  EL BIT EN VUELO ERA MEDIO CIEGO.
+
+  Se cableo el 09-09 en `dev/disk/transfer.rs`, en las LECTURAS. En las
+  ESCRITURAS --`dev/disk/mod.rs`, donde el HBA lee de la pagina de rebote-- no
+  se ponia nada.
+
+  ** No era un descuido de seguridad de memoria: esa pagina es `Titular::Neutro`
+  y N3 prohibe devolverla, asi que nadie se la puede llevar. El bit no hacia
+  falta para eso.
+
+  *** PERO EL BIT TIENE DOS CLIENTES, Y QUIEREN COSAS DISTINTAS:
+
+    R-DMA-3, no reasignes      solo le importa donde el aparato ESCRIBE
+    N5, el perro guardian      le importa si el aparato SIGUE VIVO -- y un
+                               disco colgado escribiendo esta igual de muerto
+                               que uno colgado leyendo
+
+  El bit se dimensiono para el primero. El segundo llego el 10-09 y **heredo su
+  ceguera sin que nadie lo notara**: `VUELOS_DE[AHCI]` valia 0 durante toda una
+  escritura, asi que el plazo no podia caducar un disco colgado escribiendo, y
+  `mudo=` media la mitad del trabajo del disco.
+
+    > Dos reglas montadas en el mismo dato heredan los limites del que llego
+    > primero. Y el segundo no se entera, porque el dato existe y contesta.
+
+  ARREGLADO el 2026-09-10: el camino de escritura marca y aterriza, incluido
+  **cuando falla** -- un vuelo que solo se cierra por el camino bueno deja
+  `vivos` sin poder llegar a cero justo el dia que algo falla, que es el dia que
+  se mira.
+
+
+4. LAS REGLAS DESDE EL LADO DE LA RAM
+---------------------------------------
+
+  Las ocho de `REGLAS.txt` estan escritas desde el lado del APARATO: *"toda
+  direccion que llega a un aparato ha pasado por el juez"*. Mirarlas desde el
+  lado de la RAM --que es lo que pide la pregunta-- da otra forma, y la forma
+  ensena algo.
+
+  UN MARCO, VISTO DESDE EL MARCO:
+
+    LIBRE        de nadie
+    ENTREGADO    alguien lo pidio. El CPU escribe en el
+    EXPUESTO     **su direccion fisica esta dentro de un descriptor de un
+                 aparato**. El aparato PUEDE llegar solo, aunque ahora no lo
+                 este haciendo
+    EN VUELO     el aparato esta operando sobre el AHORA MISMO
+
+  *** Y AHI ESTA LO QUE EL LADO DEL APARATO NO DEJA VER:
+
+    EXPUESTO NO ES LO MISMO QUE EN VUELO, Y DURA MAS.
+
+  Un marco cuya direccion se escribio en un anillo de la NIC sigue expuesto
+  cuando no hay ningun paquete en el aire: **el anillo sigue guardando la
+  direccion**. La exposicion no acaba cuando acaba la transferencia; acaba
+  cuando alguien reescribe el descriptor.
+
+    en vuelo    empieza al tocar la campana y acaba al recoger el fin
+    expuesto    empieza al ESCRIBIR LA DIRECCION y acaba al BORRARLA
+
+  ** BMO-X hoy solo lleva la cuenta de EN VUELO.
+
+
+5. Y SIN EMBARGO NO HAY AGUJERO. POR QUE
+------------------------------------------
+
+  Se miraron los cuatro sitios que exponen un marco:
+
+    la lista de comandos del AHCI   `Titular::Neutro`  (disk/mod.rs:133)
+    los anillos del xHC             `Titular::Neutro`  (usb/mod.rs:163)
+    los anillos de la NIC           `Titular::Neutro`  (net/mod.rs:325)
+    la pagina de rebote             `Titular::Neutro`  (disk/mod.rs)
+
+  Los cuatro son `Neutro`, y **N3 prohibe devolver un marco neutro**. Asi que
+  hoy todo lo permanentemente expuesto es tambien permanentemente inmovil.
+
+  *** Y ESE ES EL RESULTADO DE VERDAD DE MIRARLO DESDE LA RAM: la exposicion
+  esta cubierta, pero **por una regla que no se escribio para eso**. N3 se
+  escribio para que la cuenta del neutro no bajara. Que ademas tape la
+  exposicion es un accidente afortunado.
+
+  Un accidente afortunado con nombre deja de ser un accidente:
+
+    R-DMA-9 (candidata)   un marco EXPUESTO no vuelve al asignador
+    juez                  hoy, N3 por la puerta de atras
+    lo que falta          que alguien pueda estar expuesto SIN ser neutro
+
+  ** El unico que hoy esta expuesto sin ser neutro es **el bufer prestado del
+  camino directo**, y su exposicion dura exactamente lo que dura el vuelo: el
+  PRDT se reescribe en cada orden. O sea que ahi expuesto == en vuelo, y el bit
+  ya lo cubre.
+
+  [!] Cuando llegue un aparato con descriptores que se rellenan una vez y se
+  usan mil --una cola de NVMe, los anillos de una GPU-- esa igualdad se rompe y
+  R-DMA-9 pasa de candidata a necesaria. Queda escrita para que se note.
+
+
+6. EL QUIROFANO, QUE ES DE DONDE SALE TODO ESTO
+------------------------------------------------
+
+  `docs/identidad/LA_RAM.md` trata la RAM como un quirofano y la frase del dueno es "EXTREMO,
+  NO HAY PIEDAD". La disciplina del DMA es el mismo principio aplicado a un
+  cirujano que no obedece:
+
+    en un quirofano no se pregunta si el instrumental es de fiar.
+    SE CUENTA ANTES Y SE CUENTA DESPUES.
+
+  ** Por eso esta casa no tiene una API de DMA con comprobaciones: tiene
+  CUENTAS que tienen que dar cero. `pisados`, `choques`, `soltados`, `rotas`,
+  `caducados`. Ninguna impide nada todavia; todas delatan.
+
+    > Contar antes y despues no evita que el cirujano se deje unas pinzas
+    > dentro. Evita que nadie se entere.
+
+  Y la otra mitad del quirofano --"reflejar en vez de copiar"-- es literalmente
+  la forma 2 de `INTELIGENTE.txt`: el camino directo escribe en el bufer de
+  verdad. El rebote es la copia que el quirofano queria eliminar, y por eso
+  `motivos_dma` cuenta de que se queja cada uno.
+
+
+LO QUE ESTA INVESTIGACION DEJA ABIERTO
+----------------------------------------
+
+  [ ] la GPU rompe la premisa de la seccion 1 (P2P) -> volver a ORDEN.md
+  [ ] la IOMMU, al encenderse, se convierte ELLA en un maestro del bus: lee sus
+      tablas de dispositivo y de paginas de la RAM. N7 no solo vigila neutros,
+      **anade uno**
+  [ ] R-DMA-9 espera al primer aparato expuesto y no neutro
+  [ ] el motor de copia del propio CPU (el CCP/PTDMA de AMD) es un maestro que
+      no esta en el censo porque nadie lo enciende. Si algun dia se enciende,
+      es una fila
+
+
+DONDE VIVE CADA COSA
+---------------------
+
+  que pide un aparato de verdad          ->  QUE_PIDE.txt
+  las tres formas                        ->  INTELIGENTE.txt
+  las ocho reglas y sus jueces           ->  REGLAS.txt
+  quien le da una direccion a un aparato ->  EMBUDO.txt
+  por que se ordena por mecanismo        ->  ../ORDEN.md
