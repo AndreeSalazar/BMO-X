@@ -350,9 +350,7 @@ Un plan que no diga donde acaba es propaganda.
   lecturas. Se verifica: `run c/ciclos.bex` no basta -- hace falta que CABINA
   ensene `vuelos()`. Esa fila es N4b.
 
-- [ ] **N4b -- QUE LAS TRES CUENTAS SE VEAN.** `vuelos()` existe y no lo mira
-  nadie, que es exactamente el fallo que esta casa lleva cazando toda la semana.
-  Va donde ya esta `neutros()`. Se verifica: al apagar, `vivos` en cero.
+- [x] **N4b -- HECHO. Las tres cuentas se ven en CABINA**, pegadas a `neutro=` porque son la misma pregunta en dos tiempos: `vuelo=V:P:C`. Y `pisados`/`choques` mandan sobre el color por delante de la RAM baja, por la misma razon que `soltados`. Lo que falta ahora es UN ARRANQUE que diga si `vivos` llega a cero al apagar.
 
 - [x] **N4-original -- el enunciado, conservado.**
 

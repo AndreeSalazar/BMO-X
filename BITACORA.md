@@ -4009,3 +4009,70 @@ bufer del que llamo** -- que no es del aparato, y que es exactamente el caso por
 el que `bmo-dma-juicio` necesitaba este dato para no rechazar una lectura buena.
 
 El kernel crecio **4.392 B**. Ese es el precio, y esta dicho.
+
+---
+
+## Ep. 76 -- N4b, y el fichero que faltaba en `NEUTRO/DMA`
+
+**2026-09-09.** El dueno: *"continua, que mas faltan con DMA. Pero me hice
+pregunta: DMA inteligente? ... es gracioso que no haya archivo XD"*.
+
+### La carpeta SI tenia dos ficheros -- pero le faltaba el que preguntaba
+
+246 lineas en `README.md` y `EMBUDO.txt`. Lo que no habia era el que contesta
+**la pregunta que ya ha hecho tres veces con palabras distintas**: que es un DMA
+inteligente.
+
+*** Y al ir a escribirlo salio que la respuesta **no es una tecnica: son TRES, y
+las tres YA ESTAN en este arbol**.
+
+```text
+   1. SU PROPIO CORRAL       la NIC. Una arena, y la direccion NO PUEDE estar mal
+   2. PRESTADO PARA ESTA VEZ el camino DIRECTO del AHCI. Cero copias
+   3. REBOTE                 el otro camino del AHCI, y todas sus escrituras
+```
+
+** Ninguna es mejor. Cada una cambia una cosa por otra:
+
+```text
+   corral     no se devuelve la memoria    -> flujo constante y tamano conocido
+   prestado   hay que llevar la cuenta     -> el destino ya sirve tal cual
+   rebote     dos `memcpy` por operacion   -> el destino NO sirve
+```
+
+*** **Y eso es todo lo que significa "inteligente": elegir por CAMINO.** El AHCI
+ya hace 2 y 3 segun le sirva el destino --y eso ya era inteligente sin que nadie
+lo llamara asi--; la NIC hace 1. **No falta inventar una cuarta forma: falta que
+la eleccion se pueda MEDIR.**
+
+```text
+   [ ] cuantas veces se rebota      `CON_REBOTE` ya lo cuenta y NADIE LO MIRA
+   [ ] cuanto cuesta un rebote      `c/blit.bex` lo sabe medir
+   [ ] cuanto cuesta revocar        M1b
+   [ ] el umbral del desmapeo       N `invlpg` contra un `mov cr3`
+```
+
+> Con esos cuatro numeros, "inteligente" deja de ser una palabra y pasa a ser
+> una desigualdad. Sin ellos es una costumbre que funciona.
+
+`NEUTRO/DMA/INTELIGENTE.txt`.
+
+### ★ N4b: `vuelos()` llevaba SEIS HORAS sin que lo mirara nadie
+
+Y esa es, otra vez, la forma exacta del fallo que esta casa lleva toda la semana
+cazando: el metro de la puerta, los cuatro sellos del stub, `bv0=`, `CON_REBOTE`.
+
+Ahora sale en CABINA, **pegado a `neutro=`**, porque son la misma pregunta en
+dos tiempos: uno dice de quien es un marco, el otro si AHORA hay un aparato
+escribiendo en el.
+
+```text
+   vuelo=V:P:C
+         | | +-- CHOQUES: dos aparatos pidieron el mismo bufer
+         | +---- PISADOS: un marco cambio de titular con DMA dentro
+         +------ VIVOS: en vuelo ahora. Al apagar, CERO
+```
+
+** Y los dos ultimos mandan sobre el color **por delante de la RAM baja**, por
+la misma razon que `soltados`: quedarse sin memoria es incomodo; un bufer
+reasignado con un aparato dentro es corrupcion esperando su turno.
