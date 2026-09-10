@@ -3555,3 +3555,81 @@ numeros que esta placa puede medir. Lo mide M1b.
 > Mapear es prestar la llave. Desmapear es cambiar la cerradura. Se presta la
 > llave de lo que se abre mil veces al dia, no de lo que hay que poder cerrar
 > de golpe.
+
+---
+
+## Ep. 70 -- M0b MEDIDO: el cerrojo era la mitad del trabajo de una puerta
+
+**2026-09-09.** Segundo arranque de `c/ciclos.bex`, con M0b puesto. El dueno
+pidio ademas *"dejarlo verde para no tener mas problemas"* antes de ir al DMA, y
+eso es lo que cierra este episodio.
+
+### La comparacion, mismos minimos y sin restar el bucle en ninguno
+
+```text
+                      antes   ahora   delta
+   RECHAZO (op)         633     600     -33     el fijo
+   RECHAZO (campo)      745     719     -26     consistente con el de arriba
+   PID (la barata)      780     675    -105     la puerta entera, -13,5 %
+   trabajo de PID       147      75     -72     ** SE PARTIO POR LA MITAD
+   INFO                 874     862     -12
+   bucle / llamada     11/32   11/31     ~0     el suelo no se movio
+```
+
+*** **El cerrojo era lo que se sospechaba.** Leer un `u32` costaba 147 ticks
+porque llevaba `pushfq` + `cli` + `lock xchg` + `popfq` alrededor; sin el, 75.
+
+### [!] Y LO QUE LA MEDIDA NO CONFIRMO, que es la mitad util del arranque
+
+El fijo bajo **33**, no ~70. O sea que **el cerrojo de `registrar_publicacion`
+mas la lectura volatil muerta, juntos, costaban la mitad que el cerrojo de PID
+solo.** No cuadra con la teoria limpia, y se apunta asi en vez de redondearlo.
+
+```text
+   el fijo medido tras M0b          589
+   el cruce del silicio (estimado)  150
+   el prologo + el epilogo           60   (los sellos, 16-08)
+   ---------------------------------------
+   SIN EXPLICAR                     379
+```
+
+Siguen faltando **379 ticks** entre el `call {dispatch}` y la primera linea
+util, y lo que queda ahi son dos escrituras volatiles, un `match` de tres
+comparaciones y un contador. Que eso sume 379 **no cuadra**, y decirlo es el
+trabajo de la fila.
+
+### ★ EL RUIDO, medido de paso: +-20 ticks
+
+`INFO` solo bajo 12 cuando por el fijo debia bajar ~30. Esa diferencia ES la
+dispersion entre arranques, y hasta hoy no se sabia. Cualquier lectura de esta
+tabla lleva ahora ese margen puesto -- y es la razon de que se compare el
+MINIMO y no la media.
+
+### Lo que se deja VERDE antes de ir al DMA
+
+```text
+   [x] la cuarentena de la fila `puerta` en `presupuesto.rs`, LEVANTADA
+   [x] el techo baja de 960 a 720 -- 675 medido, +11 del bucle que `coste_C.c`
+       no resta, +5% de margen. Se aprieta con lo que YA se consiguio
+   [x] la deuda viva escrita EN la fila: 379 ticks sin explicar
+   [x] `PLAN_LA_PUERTA_SE_PARTE` con la segunda tanda y la tabla nueva
+```
+
+[!] Y el techo **es de UN solo arranque**, no de tres como el 915 de antes. Si
+el proximo lo pasa, el trinquete gritara y habra ensenado la dispersion -- que
+es lo que un trinquete demasiado apretado hace bien. Lo que no se hace es
+ponerlo flojo por si acaso: eso es no tener trinquete.
+
+### Y la tabla del lote, con los numeros de hoy
+
+```text
+     N    ticks/op       (FIJO 589 / N + TRABAJO 75)
+     1        664
+     4        222     <== bajo la meta de 300
+     8        148
+    64         84
+```
+
+** **CUATRO operaciones por puerta cumplen la meta**, no ocho como decia la
+tanda anterior. Y el suelo del lote son **75 ticks**: por debajo hay que
+abaratar el trabajo, o no cruzar.

@@ -128,13 +128,64 @@ Y la tabla, con los numeros de verdad:
 antes se hizo con el 784/86 viejo y salio optimista: el trabajo es mas gordo de
 lo que se creia y el fijo mas pequeno.
 
+## ★★ Y LA SEGUNDA TANDA, TRAS M0b -- el mismo dia
+
+```text
+   0. bucle vacio         min   11   media   123
+   1. llamada normal      min   31   media    32
+   2. rdtsc suelto        min  114   media   120
+   3. RECHAZO (op)        min  600   media   890
+   4. RECHAZO (campo)     min  719   media  1131
+   5. PID (la barata)     min  675   media   971
+   6. INFO ticks          min  862   media  1211
+```
+
+```text
+                      antes   ahora   delta
+   RECHAZO (op)         633     600     -33     el fijo
+   RECHAZO (campo)      745     719     -26     consistente
+   PID                  780     675    -105     la puerta entera, -13,5 %
+   trabajo de PID       147      75     -72     SE PARTIO POR LA MITAD
+   INFO                 874     862     -12
+   bucle / llamada     11/32   11/31     ~0     el suelo no se movio
+```
+
+*** **El cerrojo era lo que se sospechaba.** El trabajo de PID --leer un `u32`--
+cayo a la mitad al quitarle `SCHED_LOCK`, y los dos rechazos bajaron ~30 los dos
+por el cerrojo de `registrar_publicacion` y la lectura volatil muerta.
+
+[!] **Y el ruido esta medido de paso: +-20 ticks entre arranques.** Se ve en que
+`INFO` solo bajo 12 cuando por el fijo debia bajar ~30. Cualquier lectura de
+esta tabla tiene que llevar ese margen puesto -- y por eso el minimo, y no la
+media, es lo que se compara.
+
+## La tabla, con los numeros de HOY
+
+```text
+     N    ticks/op       (FIJO 589 / N + TRABAJO 75)
+     1        664
+     2        369
+     4        222     <== bajo la meta de 300
+     8        148
+    32         93
+    64         84
+```
+
+** **Cuatro operaciones por puerta cumplen la meta**, no ocho. Y el suelo del
+lote son **75 ticks**, no cero: por debajo de ahi hay que abaratar el trabajo o
+no cruzar.
+
+---
+
 ## ★★★ Y AQUI ESTA LA NOTICIA QUE NADIE BUSCABA
 
 ```text
-   el FIJO medido                   633 ticks
+   el FIJO medido (1a tanda)        633 ticks
+   el FIJO medido (tras M0b)        589 ticks
    el cruce del silicio (estimado)  150 ticks
-   ------------------------------------------
-   lo que NO es el silicio          483 ticks   <- el 76 % del fijo
+   el prologo + el epilogo           60 ticks   (los sellos, 16-08)
+   -------------------------------------------
+   SIN EXPLICAR, hoy                379 ticks
 ```
 
 *** **Tres cuartas partes del coste fijo son codigo NUESTRO, no fisica.** Y el
@@ -497,10 +548,15 @@ que esta maquina puede medir.
      informe de fallos, que informaba de basura
   ```
 
-  ** El kernel encogio 200 B y el trinquete de avisos sigue en 39. **Lo que
-  falta es la medida**: `run c/ciclos.bex` en el Ryzen. Si el fijo baja de 633
-  a ~450, la mitad del peaje era el cerrojo; si baja mas, era la linea fria.
-  Se verifica: las filas 3 y 5 de `ciclos.bex`, y la 5 menos la 3.
+  ★ **MEDIDO en el Ryzen el mismo dia**: el fijo bajo de **633 a 589** y el
+  trabajo de PID de **147 a 75**. Una puerta pelada cuesta **675 ticks**, un
+  13,5% menos. El techo de `presupuesto.rs` baja de 960 a **720** y **la
+  cuarentena de esa fila queda levantada**.
+
+  [!] Y lo que la medida NO confirmo: el fijo bajo 33, no ~70. O sea que el
+  cerrojo de `registrar_publicacion` y la lectura volatil juntos costaban la
+  mitad de lo que costaba el cerrojo de PID solo. **Siguen faltando 379 ticks
+  sin explicar** entre el `call {dispatch}` y la primera linea util.
 
 - [ ] **M0b-2 -- lo que queda del papeleo, SI la medida lo pide.** Quedan dos
   escrituras volatiles a dos arrays de cuatro, y son baratas y ciertas. Solo se

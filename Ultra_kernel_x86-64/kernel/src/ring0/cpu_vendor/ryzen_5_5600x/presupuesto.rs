@@ -88,35 +88,69 @@ pub static PRESUPUESTO: Presupuestos = Presupuestos {
     // desde Ring 3. Es el suelo del sistema: no resuelve ningun handle, asi que
     // nada puede costar menos que esto.
     //
-    // == [!][!] ESTA FILA ESTA EN CUARENTENA DESDE EL 2026-09-09 ==================
+    // == *** CUARENTENA LEVANTADA EL 2026-09-09, y con numero nuevo ==========
     //
-    // *** Las cifras de abajo NO SON DE ESTA OPERACION, y hay que decirlo antes
-    // de que alguien vuelva a razonar con ellas.
-    //
-    // `Ultra_userspace/medida/coste` --uno de los dos programas que miden esta
-    // fila-- declaraba `const OP_PID: u64 = 0x0F` cuando `TASK_OP_GET_PID` es
-    // `0x01`. **`0x0F` es `TASK_OP_CONSOLE_READ`.** O sea que la mitad Rust de
-    // la medida llevaba semanas cronometrando una lectura de consola.
+    // La fila estuvo en cuarentena unas horas: `medida/coste` media
+    // `TASK_OP_CONSOLE_READ` y lo llamaba `OP_PID`. Arreglado eso (R19 del
+    // contrato) y quitado el peaje del papeleo (M0b), `c/ciclos.bex` midio la
+    // puerta de verdad en el Ryzen:
     //
     // ```text
-    //    el gemelo en C   `coste_C.c` mide `BMO_OP_PID` = 0x01     BIEN
-    //    el de Rust       media 0x0F                                MAL
+    //    la puerta pelada (INVOKE de OP_PID sobre CURRENT_TASK)
+    //       min 675 ticks       media 971
+    //
+    //    y por dentro:
+    //       fijo (una puerta RECHAZADA)   589
+    //       trabajo de PID                 75
     // ```
     //
-    // ** Y de aqui salen las DOS cifras de esta fila: el techo de 960 ("915 fue
-    // la peor de las tres tandas") y la meta de 300 ("150 de cruce + 60 de
-    // prologo + 90 de dispatch"). La cuenta de la meta sigue siendo valida --es
-    // aritmetica del stub, no de la operacion-- pero **el 895 contra el que se
-    // compara no lo es**, y sin el no se sabe si faltan 595 ciclos o menos.
+    // ** El techo baja de 960 a 720, y la cuenta esta dicha: 675 medido, +11
+    // del bucle que `coste_C.c` no resta, +5% de margen de ruido. **Se aprieta
+    // con lo que YA se consiguio**, que es la regla de esta fila desde que
+    // existe.
     //
-    // [!] NO SE TOCAN LOS NUMEROS. Un techo se aprieta con lo que el metal
-    // confirmo, y lo que el metal confirmo fue otra cosa: hay que volver a
-    // medir. Hasta ese arranque, esta fila **no deriva ninguna decision**.
+    // [!] Y ES DE UN SOLO ARRANQUE, no de tres como el 915 de antes. Si el
+    // proximo lo pasa, el trinquete gritara y habra aprendido la dispersion --
+    // que es lo que un trinquete demasiado apretado ENSENA. Lo que no se hace
+    // es ponerlo flojo por si acaso: eso es no tener trinquete.
     //
-    // ** Lo que ya esta hecho para que no vuelva a pasar: R19 del contrato --
-    // *ninguna app de Ring 3 declara su propia copia de una operacion*-- y las
-    // siete constantes de `coste` borradas en favor de las de `bmo_userland`,
-    // que es donde R4 las juzga. Ver `toolchain/tools/contrato/contrato.py`.
+    // ** Lo que M0b compro, medido contra la tanda de una hora antes:
+    //
+    // ```text
+    //                        antes   ahora   delta
+    //    RECHAZO (op)          633     600     -33   el fijo
+    //    PID                   780     675    -105   la puerta entera
+    //    trabajo de PID        147      75     -72   SE PARTIO POR LA MITAD
+    // ```
+    //
+    // El ruido entre arranques es de **+-20 ticks** --se ve en que `INFO` solo
+    // bajo 12 cuando debia bajar ~30-- y con eso puesto, todo encaja.
+    //
+    // == [!] LO QUE SIGUE SIN EXPLICARSE, y es la deuda viva =================
+    //
+    // ```text
+    //    el fijo medido                   589
+    //    el cruce del silicio (estimado)  150
+    //    el prologo + el epilogo           60  (medidos por los sellos, 16-08)
+    //    ---------------------------------------
+    //    SIN EXPLICAR                     379
+    // ```
+    //
+    // *** Siguen faltando **379 ticks** entre el `call {dispatch}` y la primera
+    // linea util. M0b se llevo un cerrojo y una lectura volatil muerta; lo que
+    // queda ahi son dos escrituras volatiles, el `match` de la clase y
+    // `meter::count_class`. Que eso sume 379 no cuadra, y **decirlo es el
+    // trabajo de esta fila**: el proximo que mire empieza por aqui y no por el
+    // ensamblador.
+    //
+    // [!] La meta de 300 se queda. Su cuenta --150 de cruce + 60 de
+    // prologo/epilogo + 90 de dispatch-- sigue siendo aritmetica del stub y no
+    // de la operacion, asi que no la toco el fallo del `OP_PID`. Con el fijo en
+    // 589, para llegar a 300 con UNA operacion hay que bajarlo a ~225.
+    //
+    // ** Y si no se baja, se REPARTE: `docs/plan/PLAN_LA_PUERTA_SE_PARTE.md`.
+    // Con estos numeros, **CUATRO operaciones por puerta ya cumplen la meta**
+    // (222 ticks/op) y ocho dan 148.
     //
     // Un trinquete se aprieta con lo que YA se consiguio, nunca con lo que se
     // cree que se va a conseguir. Historia de este techo:
@@ -132,8 +166,11 @@ pub static PRESUPUESTO: Presupuestos = Presupuestos {
     // en 895. Si hubiera puesto 1050 y la pieza saliera en 1100, el trinquete
     // habria gritado por una mejora.
     puerta: Fila {
-        // 915 fue la peor de las tres tandas, +5% de margen de ruido.
-        techo: 960,
+        // ** 720 DESDE EL 2026-09-09: 675 medido por `c/ciclos.bex`, +11 del
+        // bucle que `coste_C.c` no resta, +5% de margen. Antes era 960, con
+        // "915 fue la peor de las tres tandas" -- pero aquellas tres median
+        // `CONSOLE_READ`. Ver la nota de arriba.
+        techo: 720,
         // ** LA META BAJA DE 400 A 300, y no por optimismo: por medida. Se puso 400
         // contando 190 para `dispatch`, y `dispatch` resulto ser ~90. La cuenta
         // buena es 150 de cruce + 60 de prologo/epilogo + 90 de Rust.
