@@ -16,7 +16,7 @@
 //! *** Y hay una razon mas, que es la que decide el orden: **es la unica pieza
 //! de criptografia que se puede comprobar del todo sin hardware, sin red y sin
 //! nadie al otro lado.** NIST publico los vectores en FIPS 180-4 hace veinte
-//! anos; o los das o no los das. No hay opinion posible.
+//! anios; o los das o no los das. No hay opinion posible.
 //!
 //! Eso importa mas aqui que en otro sitio: **una criptografia mal escrita no
 //! falla, funciona y no protege**. Empezar por la pieza que tiene respuesta
@@ -271,7 +271,7 @@ mod pruebas {
 
     /// *** LOS VECTORES DE NIST. Esta es la prueba que no se puede discutir.
     ///
-    /// ** FIPS 180-4 los publico y llevan veinte anos siendo los mismos. Una
+    /// ** FIPS 180-4 los publico y llevan veinte anios siendo los mismos. Una
     /// implementacion de SHA-256 o los da o no los da -- **no hay opinion
     /// posible**, y por eso esta pieza va primera en el plan de criptografia:
     /// es la unica donde el error no se puede esconder.

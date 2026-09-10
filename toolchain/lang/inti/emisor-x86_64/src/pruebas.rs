@@ -871,7 +871,7 @@ fn una_constante_negativa_se_congela() {
 ///
 /// ** `carga()` acaba en `Valor::Nombre(_) => zero_r32`, y es lo unico que puede
 /// hacer. Lo que no puede es callarselo: cualquier cosa que se cuele por ahi
-/// --hoy, o dentro de un ano con una construccion nueva-- sale por `sin_emitir`
+/// --hoy, o dentro de un anio con una construccion nueva-- sale por `sin_emitir`
 /// con su nombre delante.
 #[test]
 fn un_nombre_que_el_emisor_no_resuelve_no_se_baja_a_cero_en_silencio() {

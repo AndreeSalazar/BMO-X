@@ -59,7 +59,7 @@
 //! son de la misma familia microcodificada pero hacen mas-- y coinciden con lo
 //! que Liedtke consiguio con L4 en los 90 (~250 ciclos en un 486). El coste de
 //! cruzar un anillo de privilegio es lo unico de esta cuenta que no ha bajado
-//! en treinta anos.
+//! en treinta anios.
 //!
 //! # Como se lee, y por que NO se comprueba en el arranque
 //!

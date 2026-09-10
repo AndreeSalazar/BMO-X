@@ -33,11 +33,11 @@ int main() {
     scanf("%s", nombre);
     printf("hola, %s\n", nombre);
 
-    printf("cuantos anos tienes? ");
+    printf("cuantos anios tienes? ");
     scanf("%d", &edad);
     /* Aritmetica sobre lo leido: si el parseo devolviera basura, esto lo
      * ensena. Un eco solo no distingue "lo lei" de "lo copie". */
-    printf("en 10 anos tendras %d\n", edad + 10);
+    printf("en 10 anios tendras %d\n", edad + 10);
 
     /* Y byte a byte, que es el otro camino. Se cuentan las letras en vez de
      * repetirlas: contar prueba que llegaron TODAS, y ahi es donde se veria si

@@ -94,7 +94,7 @@ con el numero delante, no ahora.
    `.bex` malo lo trae quien ya tiene la maquina; una trama la manda cualquiera
    que comparta el cable. Ver [`../../BITACORA.md`] y la sonda: hasta hoy, el
    atacante y el defensor eran la misma persona.
-3. **Los protocolos cambian y el silicio no.** QUIC no existia hace diez anos.
+3. **Los protocolos cambian y el silicio no.** QUIC no existia hace diez anios.
    Un kernel que sabe de TCP tiene que recompilarse para hablar algo nuevo.
 
 ---

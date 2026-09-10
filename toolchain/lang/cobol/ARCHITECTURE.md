@@ -106,7 +106,7 @@ GnuCOBOL.
 >
 > El resumen de alli: de las cuatro piezas, **la mas dificil ya esta hecha** --
 > ESTRATOS es transaccional en el fondo, que es lo que a CICS le costo cincuenta
-> anos atornillar. Y **el hueco real es el indice por clave**: hoy hay File I/O
+> anios atornillar. Y **el hueco real es el indice por clave**: hoy hay File I/O
 > secuencial, y sin indice no hay banca, hay listados.
 >
 > ★ **Y las TAREAS de todo, ordenadas y con sus dependencias, en

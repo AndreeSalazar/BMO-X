@@ -56,7 +56,7 @@
 //!
 //! ** Las dos son decisiones que NO SE PUEDEN METER DESPUES, y hay una factura
 //! ajena que lo demuestra: CPython aprendio la segunda tarde. Los objetos
-//! inmortales (PEP 683) llegaron en la 3.12, anos despues de fijar la cabecera,
+//! inmortales (PEP 683) llegaron en la 3.12, anios despues de fijar la cabecera,
 //! y costaron un ciclo de version entero -- porque hasta entonces cada hijo de
 //! un `fork()` ensuciaba todas las paginas compartidas **solo por LEER**.
 //!

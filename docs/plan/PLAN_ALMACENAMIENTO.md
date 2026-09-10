@@ -101,7 +101,7 @@ Tres cosas que Linux, por estructura, no puede hacer:
 
 3. **Asincrono por construccion.** Sin legado, el contrato puede nacer async
    --la leccion del IRP de NT-- en vez de sincrono con async pegado despues,
-   que es lo que Linux arrastra desde hace veinte anos.
+   que es lo que Linux arrastra desde hace veinte anios.
 
 ---
 

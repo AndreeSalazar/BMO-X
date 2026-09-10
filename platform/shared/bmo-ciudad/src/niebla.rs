@@ -7,7 +7,7 @@
 //! 1. **La BRUMA** ([`velo`]) no se ve: se nota. Es el aire que hay entre el ojo
 //!    y una torre, y lo que hace es **acercar su color al del cielo cuanto mas
 //!    lejos esta**. Es la pista mas fuerte de profundidad que existe, y la usa
-//!    cualquier pintor de paisajes desde hace quinientos anos. La escalera de
+//!    cualquier pintor de paisajes desde hace quinientos anios. La escalera de
 //!    valores de `paleta.rs` separa las capas; esto separa **dentro** de cada
 //!    capa, porque la base de una torre esta mas lejos que su punta.
 //!

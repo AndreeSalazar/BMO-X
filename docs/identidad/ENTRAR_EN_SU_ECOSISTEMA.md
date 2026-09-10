@@ -144,7 +144,7 @@ Las tres filas apuntan al mismo sitio:
 
 Devorar un PE te deja un programa que, en cuanto arranca, pide `kernel32.dll`.
 Y esa DLL no es una tabla de quince filas: es **la API de Windows**, y
-reimplementarla ES Wine -- veinticinco anos y millones de lineas, y por eso Wine
+reimplementarla ES Wine -- veinticinco anios y millones de lineas, y por eso Wine
 trabaja ahi arriba y no en las syscalls.
 
 **Conclusion, sin adornos**: la estrategia de devorar vale para Linux y **no**
@@ -191,4 +191,4 @@ decision, no un olvido.
 Los niveles 0, 1 y 2 son una tabla de traduccion en Ring 3 y no comprometen
 nada. Del nivel 3 en adelante hay que implementar hilos, senales y procesos --
 y para entonces ya no estas adaptando BMO-X: estas escribiendo un Linux, con
-veinte anos de retraso y una persona.
+veinte anios de retraso y una persona.

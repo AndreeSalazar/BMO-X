@@ -85,7 +85,7 @@ fn desplazar_un_entero_negativo_arrastra_el_signo() {
 ///
 /// ** Sin esto, un registro colocado por encima del bit 63 se indexaria al
 /// reves. Hoy no pasa porque el monton vive bajo, y "hoy no pasa" es
-/// exactamente como se escriben los fallos que aparecen dentro de dos anos.
+/// exactamente como se escriben los fallos que aparecen dentro de dos anios.
 #[test]
 fn la_aritmetica_de_direcciones_no_lleva_signo() {
     // Se mira en la IR y no en los bytes a proposito: un `add` es el mismo byte

@@ -72,7 +72,7 @@ pub static PRESUPUESTO: Presupuestos = Presupuestos {
     // ~150 ticks de `syscall` + `sysretq`. No sale de una medida: sale del
     // analisis de la fila `puerta` --y coincide con lo que Liedtke consiguio en
     // L4 en los 90, ~250 ciclos en un 486, que es el unico numero de esta cuenta
-    // que no ha bajado en treinta anos--.
+    // que no ha bajado en treinta anios--.
     //
     // Medirlo de verdad pide una puerta que el stub conteste SIN bajar a Rust, y
     // eso no puede vivir aqui: rompe las dos puertas congeladas y la ignorancia

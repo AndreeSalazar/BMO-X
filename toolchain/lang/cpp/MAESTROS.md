@@ -8,7 +8,7 @@
 
 **El mecanismo, no el codigo.** Igual que `extern/gnucobol-rs` es oraculo de
 validacion y no fuente a copiar, aqui se lee como resuelven un problema los que
-llevan cuarenta anos resolviendolo, y se decide que se toma.
+llevan cuarenta anios resolviendolo, y se decide que se toma.
 
 Hay ademas un motivo legal que conviene decir en voz alta: **`gcc/cp/` es
 GPL**. Se lee, se aprende, no se copia. El *Itanium C++ ABI* es otra cosa --es
@@ -193,7 +193,7 @@ MSVC tiene **su propio ABI**: otra disposicion de vtable (una por base), el
 
 Podria ser una anecdota. No lo es, porque **Microsoft nunca publico la
 especificacion**. Clang tuvo que **ingenieria-inversarla** para poder interoperar,
-y de ahi sale `MicrosoftMangle.cpp`. Anos de un ecosistema partido en dos por un
+y de ahi sale `MicrosoftMangle.cpp`. Anios de un ecosistema partido en dos por un
 documento que no se escribio.
 
 > **Leccion, y es una regla, no una observacion: el ABI de C++ de BMO se
@@ -216,7 +216,7 @@ se cuentan con los dedos de una mano y llevan decadas cada uno.
 Esto no desanima el plan: **lo justifica.** BMO no esta escribiendo un frontend
 conforme, y esa es precisamente la razon por la que son meses. Un frontend
 conforme tiene que soportar SFINAE, especializacion parcial, ADL completo,
-`constexpr` evaluando el lenguaje entero y treinta anos de compatibilidad. BMO
+`constexpr` evaluando el lenguaje entero y treinta anios de compatibilidad. BMO
 descarta **34 de cada 100 elementos**, con motivo escrito uno por uno.
 
 La comparacion honesta no es "BMO C++ contra Clang". Es "BMO C++ contra Cfront
@@ -273,7 +273,7 @@ Lo que hay que escribir de nuevo, y donde esta el peso real:
 | descenso a bytes | **CERO** | se hereda de BMO C. Ver `HERENCIA.md` |
 
 Dos montanas, ambas identificadas, ambas acotadas por el censo. Y el backend
---donde se van los anos en un compilador de verdad-- cuesta cero porque ya
+--donde se van los anios en un compilador de verdad-- cuesta cero porque ya
 existe, tiene 216 tests y esta verificado en el Ryzen.
 
 ### ★ Y una advertencia sobre el parser, que es el paso 1

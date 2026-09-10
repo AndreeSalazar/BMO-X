@@ -37,7 +37,7 @@
 //!
 //! Portar de verdad seguira siendo trabajo. Lo que esta sonda decide es si ese
 //! trabajo sera *escribir un emisor* o *desenterrar ochos repartidos por el
-//! compilador* -- que es la diferencia entre un mes y un ano.
+//! compilador* -- que es la diferencia entre un mes y un anio.
 
 use bmo_inti_front::disposicion::{self, Medidas, Plano};
 use bmo_inti_front::ir::{self, Instr};

@@ -424,7 +424,7 @@ pub(crate) static mut ESTRATO_FECHA: u64 = 0;
 
 /// Cuando se hizo la version en curso. `0` = no se sabe.
 ///
-/// ** El cero no es "el ano cero": es **no hay fecha**, y hay que distinguirlo.
+/// ** El cero no es "el anio cero": es **no hay fecha**, y hay que distinguirlo.
 /// Un volumen escrito por una maquina sin reloj creible tiene versiones sin
 /// fechar, y pintarlas como 1970 mentiria con mas conviccion que dejarlas en
 /// blanco. Es la misma regla que ya sigue `clock::ahora`.

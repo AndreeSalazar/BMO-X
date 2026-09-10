@@ -34,7 +34,7 @@ Es la misma ley que el resto del proyecto: *lo que no se dice, no ocurrio.*
 
 # ★★ 2. LO QUE SE COPIA: EL MODELO DE ERLANG
 
-Erlang/OTP es de lo poco que funciono de verdad en esto, y lleva treinta anos
+Erlang/OTP es de lo poco que funciono de verdad en esto, y lleva treinta anios
 corriendo centrales telefonicas con nueve nueves. Su idea es **let it crash**:
 
 1. Un proceso que encuentra algo que no esperaba **no intenta arreglarlo**: muere.

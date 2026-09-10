@@ -658,7 +658,7 @@ recoger lo que produce.
 `rdtsc` mide 69 y `syscall`/`sysret` son de la misma familia microcodificada
 pero hacen mas, y coinciden con lo que Liedtke consiguio con L4 en un 486 en los
 noventa. **El coste de cruzar un anillo de privilegio es lo unico de esta cuenta
-que no ha bajado en treinta anos.**
+que no ha bajado en treinta anios.**
 
 Y exige tres cosas mas que no son de rendimiento sino de verdad:
 

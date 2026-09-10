@@ -21,7 +21,7 @@ Eso descarta los tres modelos que no se eligieron:
 
 | modelo | quien | por que no |
 |---|---|---|
-| parchear | *Friendly C* (2014) | deja fuera lo peor, y once anos despues solo hay banderas sueltas |
+| parchear | *Friendly C* (2014) | deja fuera lo peor, y once anios despues solo hay banderas sueltas |
 | detectar | Zig | vuelve a ser indefinido en `ReleaseFast`: **el binario que entregas es el que no comprueba** |
 | **definir** | **WASM**, Java, Rust seguro | ✅ es este |
 

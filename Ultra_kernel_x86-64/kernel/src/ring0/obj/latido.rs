@@ -78,7 +78,7 @@ pub const LLAVE: u64 = 0x1A71D0;
 /// ** Solo sube, y no se reinicia nunca. Un contador que da la vuelta o que se
 /// pone a cero convierte *"espera al siguiente"* en *"espera para siempre"*: el
 /// que esperaba `visto + 1` no lo ve pasar. A 64 bits y a 250 latidos por
-/// segundo, la vuelta llega en dos mil millones de anos.
+/// segundo, la vuelta llega en dos mil millones de anios.
 static CUENTA: AtomicU64 = AtomicU64::new(0);
 
 /// **Un latido.** Lo llama `scheduler::on_timer`, con el cerrojo ya en la mano.

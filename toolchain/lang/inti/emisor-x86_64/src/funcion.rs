@@ -17,7 +17,7 @@
 //!
 //! [!] El `match` sigue CERRADO, que es lo que obliga a atender una instruccion
 //! nueva en vez de dejarla caer en un comodin. Mudarlo de fichero no le quita
-//! esa propiedad -- y este ano ya la ha cobrado cuatro veces.
+//! esa propiedad -- y este anio ya la ha cobrado cuatro veces.
 
 use super::*;
 

@@ -1,7 +1,7 @@
 /* vivaldi_C.bex -- "La primavera", el ritornello de apertura.
  *
  * Antonio Vivaldi, *Le quattro stagioni*, concierto n.1 en mi mayor, Op. 8
- * (1725). **Dominio publico**: la obra tiene trescientos anos y la
+ * (1725). **Dominio publico**: la obra tiene trescientos anios y la
  * transcripcion de estas dieciseis alturas es propia.
  *
  * == Por que una pieza de verdad y no cuatro pitidos ==

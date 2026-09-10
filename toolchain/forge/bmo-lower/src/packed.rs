@@ -32,7 +32,7 @@
 //! # Por que esto importa de verdad
 //!
 //! Porque es el formato en el que estan los datos que ya existen. Un banco no
-//! guarda importes en `i64`: los guarda empaquetados, y lleva cuarenta anos
+//! guarda importes en `i64`: los guarda empaquetados, y lleva cuarenta anios
 //! haciendolo. Sin esto se puede escribir COBOL nuevo, pero no LEER lo que hay.
 //!
 //! # Sin bucles

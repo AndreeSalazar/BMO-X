@@ -76,7 +76,7 @@ Escrito el **2026-08-02**.
 | **DESCARTAR** | 17 | existe en C++ y **no entra**, con su motivo |
 
 **34 de cada 100 elementos de C++ se quedan fuera** -- contra 27 de
-cada 100 en C. La diferencia no es capricho: C++ acumulo treinta anos de
+cada 100 en C. La diferencia no es capricho: C++ acumulo treinta anios de
 caracteristicas encima de un lenguaje que ya estaba completo.
 
 ### objetos

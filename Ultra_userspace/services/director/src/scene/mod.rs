@@ -667,7 +667,7 @@ pub(crate) fn scene_color(c: &RunBox, visible: bool, x: u32, y: u32, height: u32
 /// 3. **Linea de acento** bajo la barra: separa sin dibujar un borde entero.
 /// 4. **Esquinas biseladas** -- se repinta el color de fondo en el pixel de cada
 ///    esquina. Cuatro rectangulos de 1x1 y deja de parecer un cuadro de dialogo
-///    de hace treinta anos.
+///    de hace treinta anios.
 /// 5. El campo de entrada con **marco propio** y un `>` de aviso, para que se
 ///    vea que ahi se escribe.
 #[inline(never)]
@@ -732,7 +732,7 @@ pub(crate) fn paint_run_box(p: &bmo::Pantalla, c: &RunBox) {
     // 5. El campo. **El acento va SOLO en la linea de abajo**, no rodeandolo.
     //
     // Un marco entero del color del sistema alrededor de la caja de texto es lo
-    // que hacia que pareciera un cuadro de dialogo de hace treinta anos: el
+    // que hacia que pareciera un cuadro de dialogo de hace treinta anios: el
     // acento pasa a ser un marco y deja de senalar. Una raya bajo el campo dice
     // "aqui se escribe" con un cuarto de la tinta -- es lo que hacen Windows 11
     // y todos los escritorios de Linux modernos, y por este motivo.

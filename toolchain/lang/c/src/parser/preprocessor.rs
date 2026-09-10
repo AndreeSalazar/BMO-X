@@ -625,7 +625,7 @@ impl Preprocessor {
                 // ** UN BYTE NO ES UN CARACTER, y esto costaba medio megabyte.
                 //
                 // `b[i] as char` interpreta el byte como Latin-1: el `n` de
-                // `"ano"` son DOS bytes en UTF-8 (C3 B1) y salian como dos
+                // `"anio"` son DOS bytes en UTF-8 (C3 B1) y salian como dos
                 // caracteres U+00C3 U+00B1, que al volver a codificarse son
                 // **cuatro** bytes. Cada byte no-ASCII se duplicaba por pasada.
                 //

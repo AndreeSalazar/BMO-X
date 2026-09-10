@@ -2,7 +2,7 @@
       *
       * Lee un fichero de movimientos, los totaliza en decimal EXACTO y
       * escribe el total en otro fichero. Eso es un proceso por lotes, y es
-      * literalmente lo que un banco lleva sesenta anos haciendo de noche.
+      * literalmente lo que un banco lleva sesenta anios haciendo de noche.
       *
       * Hasta ahora BMO COBOL sabia calcular y sabia presentar, y no tenia de
       * donde sacar los datos: OPEN/READ/WRITE/CLOSE se RECHAZABAN con un

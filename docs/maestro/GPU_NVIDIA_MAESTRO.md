@@ -33,7 +33,7 @@
 El dueno trajo el dato bien: **tres a cero**. Los casos son reales y esa es la
 cuenta.
 
-| caso | ano | quien gano |
+| caso | anio | quien gano |
 |---|---|---|
 | Sega v. Accolade | 1992 | **Accolade** -- copiar para entender es uso legitimo |
 | Sony v. Connectix | 2000 | **Connectix** -- emular la BIOS de PSX, legal |
@@ -165,7 +165,7 @@ te falta de una GPU, HOY, son tres piezas mucho mas pequenas:
 ★ Eso es **exactamente la Meta A** de `PLAN_VULKAN.md`, que aquel documento ya
 califica de *"alcanzable y bien planificada"* y del tamano *"del driver de
 AHCI"*. **La Meta A no exige AMD.** Exige un motor de copia, y eso lo tiene
-cualquier GPU de los ultimos veinte anos.
+cualquier GPU de los ultimos veinte anios.
 
 ---
 

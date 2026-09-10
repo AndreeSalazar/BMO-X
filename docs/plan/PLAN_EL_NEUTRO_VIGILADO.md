@@ -172,7 +172,7 @@ direccion es legitima" son dos comparaciones contra los limites de la ventana,
 y un aparato que se vuelva loco corrompe **la ventana** y no el kernel ni otro
 proceso.
 
-Es lo que hacen los sistemas sin IOMMU, y tiene nombre desde hace veinte anos
+Es lo que hacen los sistemas sin IOMMU, y tiene nombre desde hace veinte anios
 (*bounce buffer*).
 
 ```text

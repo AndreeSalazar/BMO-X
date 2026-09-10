@@ -46,6 +46,7 @@ from drifting back.
 """
 
 import argparse
+import re
 import os
 import sys
 from collections import Counter
@@ -619,6 +620,70 @@ def iter_sources():
                 yield os.path.join(root, f), LANGS[ext]
 
 
+# == *** LA ENE CON TILDE QUE, AL CAERSE, DICE OTRA COSA ====================
+#
+# Esta casa escribe en ASCII y la regla es **quitar la tilde de la ene**:
+# `tamano`, `pequeno`, `senal`, `ninguno`. Funciona porque lo que queda no es
+# ninguna palabra, asi que se lee como lo que era.
+#
+# ** Con DOS no funciona, y el dueno lo dijo el 2026-09-09 riendose: una de
+# ellas ES otra palabra, y no es la que se queria decir.
+#
+# *** Y NO todas las que acaban parecido son sospechosas. Se comprobaron una a
+# una antes de escribir esto:
+#
+#     campana   la CAMPANA del AHCI (`doorbell`). Correcta, se queda
+#     sana      "una placa sana". Correcta, se queda
+#
+# Por eso esto es un diccionario CERRADO y no un patron: un patron habria
+# marcado esas dos, y un guardian que se equivoca se apaga en una semana.
+#
+# [!] Lo que SACRIFICA (L3): hay que anadir a mano la siguiente que aparezca.
+# Es el mismo precio que `COSTES` y `RIESGOS` del contrato, y por el mismo
+# motivo: un vocabulario cerrado se puede comprobar; uno abierto, no.
+# ** Y LA EXCEPCION, que la trajo un test roto el mismo dia.
+#
+# `dynobj/texto.rs` existe para demostrar que la cabecera cuenta BYTES y no
+# caracteres, y su ejemplo es el par: la palabra en ASCII (4 bytes) contra la
+# misma con la ene con tilde (4 caracteres, CINCO bytes). El barrido convirtio
+# la primera en `anios` --y la puso en 5 bytes-- asi que **el test que explica
+# la ene con tilde murio por quitarle la ene con tilde**.
+#
+# *** Ahi la forma ASCII es CORRECTA: es la mitad de una pareja a proposito. Se
+# exime la LINEA y no el fichero, y con una marca que obliga a decirlo.
+#
+# [!] Eximir el fichero entero habria dejado pasar las que SI son un fallo en
+# el mismo sitio. Es la misma forma que R14 con sus sondas: se anota, no se
+# apaga.
+MARCA_ADREDE = "ene-caida-adrede"
+
+LA_ENE_QUE_CAMBIA_LA_PALABRA = {
+    "ano": "anio",
+    "anos": "anios",
+    "sueno": "reposo",
+    "suenos": "reposos",
+}
+
+RE_PALABRA_LLANA = re.compile("[A-Za-z]+")
+
+
+def la_ene_caida(texto):
+    """Las palabras que sin su ene con tilde dicen otra cosa.
+
+    Linea a linea, para que `MARCA_ADREDE` pueda eximir UNA sin apagar el
+    fichero entero.
+    """
+    fuera = {}
+    for linea in texto.splitlines():
+        if MARCA_ADREDE in linea:
+            continue
+        for bruto in RE_PALABRA_LLANA.findall(linea):
+            w = bruto.lower()
+            if w in LA_ENE_QUE_CAMBIA_LA_PALABRA:
+                fuera[w] = fuera.get(w, 0) + 1
+    return fuera
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     g = ap.add_mutually_exclusive_group(required=True)
@@ -634,6 +699,7 @@ def main():
     strings_left = []
     metal_strings = []
 
+    enes_caidas = []
     for path, lang in iter_sources():
         rel = os.path.relpath(path, REPO)
         try:
@@ -648,6 +714,12 @@ def main():
             continue
 
         if args.check:
+            # ** Se mira el fichero ENTERO --comentarios y cadenas-- porque
+            # una de estas en una cadena se IMPRIME, y eso es peor que
+            # tenerla en un comentario.
+            caidas = la_ene_caida(before)
+            if caidas:
+                enes_caidas.append((rel, caidas))
             # Split by bucket, because they mean different things. Non-ASCII
             # left in a comment is drift and must fail the build. Non-ASCII in
             # a string literal is what BMO-X PRINTS -- a product decision this
@@ -719,7 +791,20 @@ def main():
             for n, rel in sorted(left_in_code, reverse=True)[:20]:
                 print(f"  {n:>6}  {rel}")
             return 1
-        print("clean: no comment in any scanned source has a non-ASCII byte")
+        if enes_caidas:
+            total = sum(sum(c.values()) for _, c in enes_caidas)
+            print("FAIL: %d palabra(s) que sin su ene con tilde dicen OTRA"
+                  " COSA, en %d fichero(s)" % (total, len(enes_caidas)))
+            for rel, caidas in sorted(enes_caidas)[:12]:
+                detalle = ", ".join(
+                    "%s -> %s (x%d)" % (w, LA_ENE_QUE_CAMBIA_LA_PALABRA[w], n)
+                    for w, n in sorted(caidas.items()))
+                print("  %s: %s" % (rel, detalle))
+            print("      La regla de la casa es QUITAR la tilde, y funciona")
+            print("      mientras lo que queda no sea otra palabra. Estas si.")
+            return 1
+        print("clean: no comment in any scanned source has a non-ASCII"
+              " byte, y ninguna ene caida dice otra cosa")
         return 0
 
     verb = "rewritten" if args.apply else "would be rewritten"

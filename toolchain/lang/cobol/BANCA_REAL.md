@@ -56,7 +56,7 @@ preprocesador traduce antes de compilar.
 
 ### ★ Aqui BMO-X sale ganando, y por una razon estructural
 
-**CICS paso cincuenta anos atornillando transacciones sobre un sistema de
+**CICS paso cincuenta anios atornillando transacciones sobre un sistema de
 ficheros que no las tenia.** ESTRATOS las tiene en el fondo:
 
 | CICS necesita | ESTRATOS |
@@ -106,7 +106,7 @@ sigue_si = 0
 ```
 
 Y encaja con la regla de la casa: **Python/tablas para lo tabular, Rust para la
-semantica**. Clonar la sintaxis de JCL seria importar sesenta anos de accidentes
+semantica**. Clonar la sintaxis de JCL seria importar sesenta anios de accidentes
 para no ganar nada.
 
 **Trabajo estimado**: una tarde, y queda mejor que el original.
@@ -261,7 +261,7 @@ escrita y sin tomar en `toolchain/forge/README.md` en vez de resuelta de paso.
 ## El limite, dicho aqui tambien
 
 Nada de esta lista convierte a BMO COBOL en un **destino de migracion desde
-z/OS**. Ese codigo lleva cuarenta anos escrito contra CICS, JCL, VSAM y las
+z/OS**. Ese codigo lleva cuarenta anios escrito contra CICS, JCL, VSAM y las
 extensiones de IBM *tal cual son*, no contra equivalentes mejores.
 
 Esto es para **sistemas que se escriben ahora**, y pequenos. Ver el README raiz,

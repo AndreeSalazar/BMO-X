@@ -517,7 +517,7 @@ pub const INFO_ES_MONTADO: u64 = 0x11;
 /// Generacion del superbloque: cuantas transacciones lleva el volumen.
 /// **Cuando se hizo la version en curso**, en el formato de [`INFO_FECHA`].
 ///
-/// ** `0` es **sin fechar**, no el ano cero. El campo `tiempo` del estrato
+/// ** `0` es **sin fechar**, no el anio cero. El campo `tiempo` del estrato
 /// existia desde el primer dia y el kernel escribia un cero en el: la historia
 /// del volumen no tenia fechas. Desde el 2026-08-19 lleva la de la placa, y
 /// sigue siendo cero cuando la placa no da una hora creible -- una version
@@ -704,7 +704,7 @@ pub const INFO_USB_AVERIAS: u64 = 0x3C;
 /// SSD tempranos devolvian `0000h`, y por eso Windows 7 no se fio de esta
 /// palabra sola: cruzaba su valor con una prueba real de lectura aleatoria. Es
 /// R-FW2 --*lo que el firmware declara se comprueba contra lo que el aparato
-/// hace*-- once anos antes de que esta casa la escribiera.
+/// hace*-- once anios antes de que esta casa la escribiera.
 ///
 /// La palabra cruda viaja al lado del veredicto porque un rango reservado hay
 /// que poder verlo, no deducirlo.

@@ -193,7 +193,7 @@ hecho, una sola fuente de verdad. Ring 0 lee la compilada.
 
 Y no rompe nada: **un tipo de seccion desconocido se salta, no se rechaza** --
 esa regla ya esta escrita en `bex::is_loadable` y es lo que ha mantenido vivo a
-ELF treinta anos.
+ELF treinta anios.
 
 ## D -- La admision devuelve el REQUISITO que fallo
 

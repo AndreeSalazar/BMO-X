@@ -205,8 +205,8 @@ Asume los 6 pasos del frontend hechos (ver `toolchain/lang/cpp/BRECHA.md`).
 
 ## Nivel 3 -- subsistemas enteros (y no por C++)
 
-> ⚠ Este apartado decia **"anos"** a secas. Se corrigio el 2026-08-04: un
-> "anos" sin desglosar no es una estimacion, es una forma educada de no
+> ⚠ Este apartado decia **"anios"** a secas. Se corrigio el 2026-08-04: un
+> "anios" sin desglosar no es una estimacion, es una forma educada de no
 > pensar. El desglose real esta en [LAS PIEZAS, CONTADAS](#-las-piezas-contadas)
 > -- y de las tres filas de abajo, **dos estaban mal contadas**.
 
@@ -366,7 +366,7 @@ proyecto que la usaria.
 
 ---
 
-## Como se lee esta tabla dentro de un ano
+## Como se lee esta tabla dentro de un anio
 
 La misma regla que el censo de C++: **un "no" con motivo escrito se puede
 discutir; uno sin motivo es un agujero.** Cuando una fila de "que falta" se
@@ -379,7 +379,7 @@ deseos, es un **mapa de dependencias**.
 
 > Anadido el **2026-08-04**, a peticion del dueno y **con dos correcciones
 > suyas incorporadas**. La version anterior de este documento despachaba la GPU
-> con *"anos"* y el JIT con *"no encaja"*. Las dos eran pereza: un "anos" sin
+> con *"anios"* y el JIT con *"no encaja"*. Las dos eran pereza: un "anios" sin
 > desglosar no es una estimacion, es una forma educada de no pensar.
 >
 > Aqui cada hueco se parte en **piezas contables**. Una pieza es algo que se
@@ -390,7 +390,7 @@ deseos, es un **mapa de dependencias**.
 Un mes es una sensacion; una pieza se termina o no se termina. Y contar obliga
 a lo que de verdad importa: **descubrir que dentro de un hueco enorme hay tres
 piezas faciles y una imposible** -- que es exactamente el caso de la GPU, y no
-se veia diciendo "anos".
+se veia diciendo "anios".
 
 La columna que decide el orden no es el numero de piezas: es **cuantas de ellas
 ya estan escritas**.
@@ -493,10 +493,10 @@ de area local, que ya es mucho para un banco con terminales.
 
 ## 6 - GPU + VULKAN -- 6 piezas, y **la correccion del dueno era justa**
 
-> *"No subestimes, no es anos; no es meter Vulkan entero, es meter Vulkan 1.0
+> *"No subestimes, no es anios; no es meter Vulkan entero, es meter Vulkan 1.0
 > hasta 1.3 con proceso -- por algo se llama estrategia."*
 
-Tiene razon y el "anos" de este documento estaba mal escrito. Desglosado:
+Tiene razon y el "anios" de este documento estaba mal escrito. Desglosado:
 
 | # | Pieza | Realidad |
 |---|---|---|
@@ -508,7 +508,7 @@ Tiene razon y el "anos" de este documento estaba mal escrito. Desglosado:
 | 6 | La API Vulkan 1.0 encima: instance, device, queue, command buffer, pipeline, swapchain | meses, pero es fontaneria sobre 1-5 |
 | + | 1.1 - 1.2 - 1.3 | **incrementos**, no reescrituras -- y ahi la estrategia del dueno es la correcta |
 
-**La estimacion honesta corregida**: no son "anos de imposible". Son **seis
+**La estimacion honesta corregida**: no son "anios de imposible". Son **seis
 piezas de las que dos son proyectos propios** (la 4 y la 5) y **una es un muro
 de documentacion** (la 2). Las otras tres son trabajo normal.
 

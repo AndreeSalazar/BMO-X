@@ -98,7 +98,7 @@ Grace Hopper y su equipo para la banca:
 2. **Centrado en datos / records** -- niveles (01, 05...), clausulas `PIC`.
 3. **★ Aritmetica DECIMAL exacta** -- `PIC 9(5)V99`, packed decimal (COMP-3),
    `ROUNDED`, `ON SIZE ERROR`. **Centavos sin error de redondeo.** Esta es la
-   razon por la que los bancos usan COBOL 60 anos despues: el float binario
+   razon por la que los bancos usan COBOL 60 anios despues: el float binario
    pierde centavos; el decimal de COBOL no. **Es el corazon, no un detalle.**
 
 ### Como la arquitectura la protege

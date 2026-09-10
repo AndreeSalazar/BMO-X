@@ -281,7 +281,7 @@ suposiciones.
 
    ```
    como te llamas? ... hola, <lo que escribiste>
-   cuantos anos tienes? ... en 10 anos tendras <n+10>
+   cuantos anios tienes? ... en 10 anios tendras <n+10>
    escribe algo y cuento sus letras: ... <n> letras
    listo.
    ```

@@ -40,7 +40,7 @@ secciones con tipo. Solo faltaba la regla.
 
 > **Una seccion de tipo desconocido se SALTA. No se rechaza, no se mapea.**
 
-Es lo que ha mantenido vivo a ELF treinta anos: la seccion que no te incumbe
+Es lo que ha mantenido vivo a ELF treinta anios: la seccion que no te incumbe
 no es un error, es data que no vas a abrir.
 
 Concretamente, el kernel mapea **cuatro** tipos y nada mas:

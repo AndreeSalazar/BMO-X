@@ -291,7 +291,61 @@ pub enum Origen {
 /// Quita las tildes del castellano. No es normalizacion Unicode completa y no
 /// pretende serlo: cubre exactamente las letras que un teclado espanol pone en
 /// una palabra clave.
+/// **LAS QUE, SIN LA ENE, DICEN OTRA COSA.**
+///
+/// *** Esta tabla nacio el 2026-09-09 de un test que se rompio por accidente.
+/// [`sin_tildes`] mapeaba la ene con virgulilla a una `n` a secas, asi que
+/// **INTI le sugeria al programador que escribiera una palabra que significa
+/// otra cosa** -- y lo hacia con la mejor intencion, dentro de un aviso.
+///
+/// ** Es la misma tabla que vigila `toolchain/tools/ascii-sweep`, y por el
+/// mismo motivo: la regla de la casa --quitar la virgulilla-- funciona
+/// mientras lo que queda no sea otra palabra.
+///
+/// [!] Aqui la forma segura NO es la del barrido. El barrido escribe prosa y
+/// puede cambiar una palabra por otra; **un identificador no se puede
+/// traducir**, asi que se alarga con una `i` y conserva su significado.
+///
+/// [!] Y las cuatro claves de abajo llevan la marca del barrido: aqui esas
+/// palabras no son un USO, son la DEFINICION. Un guardian no puede
+/// distinguir las dos cosas, asi que se declara -- igual que en
+/// `dynobj/texto.rs`, que las necesita para demostrar lo suyo.
+const LA_ENE_QUE_CAMBIA: [(&str, &str); 4] = [
+    ("ano", "anio"), // ene-caida-adrede
+    ("anos", "anios"), // ene-caida-adrede
+    ("sueno", "suenio"), // ene-caida-adrede
+    ("suenos", "suenios"), // ene-caida-adrede
+];
+
+/// **La forma ASCII de una palabra; y si esa forma dice otra cosa, la larga.**
+///
+/// ** Se compara la palabra ENTERA y no un trozo: `hermanos` acaba igual y
+/// no tiene nada que ver. Comparar por sufijo habria convertido a los hermanos
+/// en `hermanios`.
 pub fn sin_tildes(s: &str) -> String {
+    let llana = sin_tildes_crudo(s);
+    let clave = llana.to_lowercase();
+    for (mala, buena) in LA_ENE_QUE_CAMBIA {
+        if clave == mala {
+            // Se conserva la mayuscula inicial de lo que escribio el usuario:
+            // sugerirle `anio` a quien escribio `Anio` seria corregirle dos
+            // cosas cuando solo pregunto por una.
+            if llana.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                let mut it = buena.chars();
+                let mut r = String::new();
+                if let Some(c0) = it.next() {
+                    r.extend(c0.to_uppercase());
+                }
+                r.push_str(it.as_str());
+                return r;
+            }
+            return buena.to_string();
+        }
+    }
+    llana
+}
+
+fn sin_tildes_crudo(s: &str) -> String {
     s.chars()
         .map(|c| match c {
             '\u{e1}' => 'a', // a con tilde

@@ -696,7 +696,7 @@ sobrevive a las sumas porque `+8` y `+16` no tocan los bits 0-1-- y, sobre todo,
 Antes era una coincidencia que funcionaba, que es la unica clase de error que
 nadie revisa; hoy **no compila** si alguien mueve la GDT.
 
-★ **Y el patron, que ya va dos veces el mismo dia**: el MSR llevaba anos armado
+★ **Y el patron, que ya va dos veces el mismo dia**: el MSR llevaba anios armado
 y **ninguna CPU lo habia ejecutado nunca** -- exactamente igual que el XSAVEOPT.
 Codigo configurado y sin ejecutar no es codigo que funciona: es codigo sin
 probar. Cuando en este arbol aparezca algo "ya preparado por si acaso", eso es

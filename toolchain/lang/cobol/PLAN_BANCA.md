@@ -647,7 +647,7 @@ cuatro millones de registros. **Sin indice no hay banca, hay listados.**
 
 # FASE 7 -- El despachador (CICS sustituido)
 
-★ CICS paso cincuenta anos atornillando transacciones sobre un sistema de
+★ CICS paso cincuenta anios atornillando transacciones sobre un sistema de
 ficheros que no las tenia. ESTRATOS las tiene en el fondo. **Lo que falta no es
 la transaccionalidad -- es el despachador.**
 
@@ -765,7 +765,7 @@ sin ellas el techo es el batch.
 ## El limite, dicho aqui tambien
 
 Nada de esta lista convierte a BMO COBOL en un **destino de migracion desde
-z/OS**. Ese codigo lleva cuarenta anos escrito contra CICS, JCL, VSAM y las
+z/OS**. Ese codigo lleva cuarenta anios escrito contra CICS, JCL, VSAM y las
 extensiones de IBM *tal cual son*, no contra equivalentes mejores.
 
 Esto es para **sistemas que se escriben ahora**, y pequenos. Lo que esta lista si

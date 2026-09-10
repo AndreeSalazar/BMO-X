@@ -6,7 +6,7 @@
 //! ## Que problema resuelve
 //!
 //! Un comite decide que entra en un lenguaje y cuando. Eso da estabilidad y
-//! cuesta anos por cada cambio. La alternativa que ya practica este repo --
+//! cuesta anios por cada cambio. La alternativa que ya practica este repo --
 //! *"anadir una instruccion = 1 entrada TOML, CERO Rust"*-- no necesita comite:
 //! el que quiere una extension la declara y la usa.
 //!

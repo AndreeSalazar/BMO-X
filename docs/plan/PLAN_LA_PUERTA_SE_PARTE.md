@@ -29,7 +29,7 @@ BMO-X ni una decision de diseno que se pueda revisar: **es una instruccion**. El
 perfil de esta placa la estima en **~150 ticks** y lo declara como estimacion
 (`suelo: Suelo { ticks: 150, medido: false }`).
 
-> Ese numero es el unico de toda la cuenta que **no ha bajado en treinta anos**:
+> Ese numero es el unico de toda la cuenta que **no ha bajado en treinta anios**:
 > Liedtke consiguio ~250 ciclos en L4 sobre un 486 en los 90.
 
 ** Asi que la pregunta *"como divido los 150"* no tiene respuesta. La que si la

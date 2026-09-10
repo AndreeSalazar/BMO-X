@@ -156,7 +156,7 @@ pub enum Volcador {
 ///
 /// No es telemetria de adorno: la pregunta "hace falta una GPU?" solo se puede
 /// contestar con estos dos numeros. Si los bytes por fotograma son pocos, una
-/// tarjeta no compra nada y cuesta un ano de trabajo.
+/// tarjeta no compra nada y cuesta un anio de trabajo.
 #[derive(Clone, Copy)]
 pub struct Volcado {
     /// Fotogramas con algo que volcar. Los que no cambian nada no cuentan:

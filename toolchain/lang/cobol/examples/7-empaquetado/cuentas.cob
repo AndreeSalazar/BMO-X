@@ -5,7 +5,7 @@
       * Eso vale para el COBOL que se escribe HOY. No vale para el que ya
       * existe, porque un banco no guarda importes asi: los guarda
       * EMPAQUETADOS, dos digitos por byte y el signo en el ultimo nibble, y
-      * lleva cuarenta anos haciendolo.
+      * lleva cuarenta anios haciendolo.
       *
       *   SALDO = -1234,56 en PIC S9(5)V99 COMP-3  ->  4 bytes
       *

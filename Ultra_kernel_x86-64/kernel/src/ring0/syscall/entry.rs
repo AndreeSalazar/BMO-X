@@ -214,7 +214,7 @@ unsafe extern "C" fn syscall_entry() -> ! {
         // selectores que calcula `sysret` dejan de ser los que empuja el
         // prologo de aqui arriba. Ver el porque entero en `ops.rs`.
         //
-        // La leccion, que es mas util que el numero: **el MSR llevaba anos
+        // La leccion, que es mas util que el numero: **el MSR llevaba anios
         // armado y ninguna CPU lo habia ejecutado nunca.** Codigo configurado y
         // sin ejecutar no es codigo que funciona, es codigo sin probar -- igual
         // que el XSAVEOPT. Van dos el mismo dia.

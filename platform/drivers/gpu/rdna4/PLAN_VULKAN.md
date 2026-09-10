@@ -21,7 +21,7 @@
 | Sirve a la banca? | ◐ un poco: el escritorio va mas suelto | ✗ nada |
 
 **La meta A es alcanzable y esta bien planificada. La meta B es este documento
-y es un proyecto de anos -- pero con piezas contables, que es distinto de
+y es un proyecto de anios -- pero con piezas contables, que es distinto de
 imposible.**
 
 ---
@@ -46,7 +46,7 @@ Pero el ahorro cae en **una sola** de las tres partes:
    Consulta `VkPhysicalDeviceFeatures` y **si le falta una, no arranca**. Los
    juegos actuales piden `descriptorIndexing`, `timelineSemaphore`,
    `dynamicRendering` -- cosas de 1.2 y 1.3. Con un 1.0 honesto arrancan los de
-   hace unos anos, no los de ahora.
+   hace unos anios, no los de ahora.
 
 2. **Vulkan es ~30 % de lo que toca un juego.** Lo demas: **hilos** (Vulkan
    esta disenado para construir command buffers en varios hilos), sistema de
@@ -172,7 +172,7 @@ PSP**. No la hace imposible; le pone el precio real delante:
 
 De `src/lib.rs`: *si el firmware o los registros de la SKU concreta no
 estuvieran publicados, las alternativas son RDNA 3 (Navi 33, RX 7600) o RDNA 2
-(Navi 23, RX 6600), con mas anos de rodaje.* Para B2 eso importa **mas** que
+(Navi 23, RX 6600), con mas anios de rodaje.* Para B2 eso importa **mas** que
 para la meta A, porque aqui si se toca el 3D.
 
 ---
@@ -239,7 +239,7 @@ No es filantropia, y conviene entenderlo porque explica **que seguira abierto**:
    para ello. AMD se beneficio sin invertir.
 
 ★ **Consecuencia practica**: lo que esta abierto lo esta por motivos
-estructurales, no por una campana que pueda revertirse el ano que viene. **Es
+estructurales, no por una campana que pueda revertirse el anio que viene. **Es
 apostable.**
 
 ## Y entonces, que limita de verdad?
@@ -271,7 +271,7 @@ resumen, no el contrato.
 
 Dicho eso, cada nivel corresponde grosso modo a una epoca:
 
-| Nivel | Ano | Que trajo | Que epoca abre |
+| Nivel | Anio | Que trajo | Que epoca abre |
 |---|---|---|---|
 | **1.0** | 2016 | lo basico: pipelines, render passes, descriptor sets | los primeros titulos con Vulkan nativo -- la generacion de **DOOM 2016**, *The Talos Principle*, *Dota 2* |
 | **1.1** | 2018 | subgroups, memoria protegida, multiview | motores de 2018-2020 |
@@ -308,7 +308,7 @@ La cadena completa es:
 ```
 juego .exe  ->  Wine (TODO el sistema)  ->  DXVK (solo graficos)  ->  Vulkan
                 ^
-                aqui estan los 25 anos y los millones de lineas
+                aqui estan los 25 anios y los millones de lineas
 ```
 
 **DXVK sin Wine no arranca ni un juego.** Y Wine es exactamente la frontera que
@@ -505,7 +505,7 @@ nadie preguntara:
 
 ★ Asi que "Vulkan 1.0 y algunos juegos" no es conformarse. **Es elegir la fila
 que este plan ya senalaba como la unica alcanzable**, y renunciar a la que el
-propio plan llama *"un proyecto de anos"*.
+propio plan llama *"un proyecto de anios"*.
 
 ```text
    lo que NO se persigue    1.2 y 1.3, o sea los motores actuales
@@ -516,7 +516,7 @@ propio plan llama *"un proyecto de anos"*.
 
 Es la LEY 24 aplicada a la GPU, y **desmonta la comparacion que asusta**. Cuando
 alguien dice *"un driver de GPU son cientos de miles de lineas"*, esta contando
-`amdgpu`. Y `amdgpu` no es un driver de una GPU: es un driver de **quince anos de
+`amdgpu`. Y `amdgpu` no es un driver de una GPU: es un driver de **quince anios de
 GPU distintas a la vez**.
 
 ** Lo que sale de `amdgpu` en cuanto la respuesta es UNA tarjeta, UN firmware,
@@ -539,7 +539,7 @@ BMO-X se haga.** Un driver que no tiene portatiles no tiene estados de portatil.
 Esto no es optimismo, es la misma frase que el documento del asistente ya tenia
 escrita en una fila de su tabla:
 
-> *"`amdgpu` lo hace para 15 anos de aperturas. **UNA apertura, UN formato**: se
+> *"`amdgpu` lo hace para 15 anios de aperturas. **UNA apertura, UN formato**: se
 > conoce, se escribe."*
 
 ## 3. Lo que QUEDA, que es la lista honesta
