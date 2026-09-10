@@ -475,7 +475,7 @@ Un plan que no diga donde acaba es propaganda.
   Se verifica: `caducados = 0` en `mudo=` de CABINA. Hoy no puede subir porque
   el plazo vale cero -- que es N5b.
 
-- [ ] **N2b -- EL JUEZ EN EL xHCI.** `bmo-dma-juicio` esta cableado en el disco
+- [x] **N2b -- EL JUEZ EN EL xHCI. HECHO el 2026-09-10.** `bmo-dma-juicio` esta cableado en el disco
   desde el 09-09 y **solo ahi**. El controlador USB tiene NUEVE sitios que
   escriben una direccion fisica en un descriptor
   (`drivers/usb/xhci/{lib,enumerar,transferencia}.rs`) y ninguno construye una
@@ -489,7 +489,18 @@ Un plan que no diga donde acaba es propaganda.
   se usan mil, asi que aqui `expuesto` y `en vuelo` dejan de coincidir -- que
   es justo el caso que `DESDE_LA_RAM.txt` reserva para R-DMA-9.
 
-  Se verifica: `EMBUDO.txt` baja de 14 a 5, y el censo lo dice.
+  *** Y AL MIRAR LOS NUEVE, OCHO NO PODIAN ESTAR MAL: los anillos, el DCBAA,
+  los contextos, el ERST y los bufers del teclado y el raton salen todos de
+  `alloc_dma_pages`, o sea `Titular::Neutro`. Son CORRAL, como la NIC.
+
+  El unico que recibe una direccion de fuera es el bufer que una app de Ring 3
+  presta para el audio -- y **ahi habia un agujero**: `hay = escrito - leido`
+  comprobaba que hubiera bytes suficientes, y nadie comprobaba que el tramo
+  CUPIERA en el bufer. Con `leido` cerca del final el xHC leia mas alla, y eso
+  no da fault: manda memoria de otro por el altavoz.
+
+  Se verifica: `vetos_dma()` en `dev/usb/audio.rs`, y **tiene que ser CERO**.
+  Cada uno es una trama que se salia y que el xHC habria leido.
 
 - [ ] **N5b -- EL NUMERO, y no se elige (LEY 24).** `peor_silencio()` guarda lo
   peor visto por aparato y CABINA lo ensena como `mudo=aparato:microsegundos`.

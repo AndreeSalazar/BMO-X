@@ -36,12 +36,35 @@ EL CENSO, AL 2026-09-09
 
   aparato  sitios  fichero                              de donde        comprueba
   -------  ------  -----------------------------------  --------------  ---------
-  AHCI          4  drivers/storage/ahci/comando.rs      llega de fuera  paridad
-  xHCI          9  drivers/usb/xhci/{lib,enumerar,      anillos propios nada
-                   transferencia}.rs                    + de fuera
+  AHCI          4  drivers/storage/ahci/comando.rs      llega de fuera  EL JUEZ (N2)
+  xHCI          8  drivers/usb/xhci/{lib,enumerar,      SU CORRAL       por construccion
+                   transferencia}.rs
+  xHCI          1  dev/usb/audio.rs, el bufer prestado  llega de fuera  EL JUEZ (N2b)
   NIC           1  drivers/net/anillo.rs                DE UNA ARENA    por construccion
   -------  ------
   TOTAL        14
+
+
+  *** LA CUENTA NO BAJO. LA COLUMNA `de donde` CAMBIO, Y ESO ERA LO QUE
+  IMPORTABA (2026-09-10)
+  -----------------------------------------------------------------------
+
+  Este fichero decia que el numero tenia que llegar a UNO, y al mirar los
+  catorce sitios uno a uno aparecio que **la pregunta estaba mal hecha**.
+
+  Un sitio que escribe una direccion sacada de SU PROPIO CORRAL no es una
+  puerta que haya que cerrar: es una direccion que **no puede estar mal**. Diez
+  de los catorce son de esa clase.
+
+    lo que hay que contar no es cuantos sitios escriben una fisica
+    es cuantos escriben una que LLEGA DE FUERA, y hoy son DOS
+
+  ** Y los dos pasan por el juez desde el 10-09: el disco (N2) y el bufer
+  prestado del audio (N2b). El numero que tiene que ser CERO ya no es este
+  censo: son `DMA_VETOS` y `vetos_dma()`.
+
+    > Un censo que cuenta lo que no hace falta arreglar convierte el trabajo
+    > hecho en trabajo pendiente.
 
 
   ** LAS TRES FILAS NO SON EL MISMO PROBLEMA, y por eso el censo tiene la
