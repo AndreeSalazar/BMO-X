@@ -1,3 +1,7 @@
+//! **Las reglas de extension estan CONGELADAS y viven al lado**:
+//! `BEF_EXTENSIONES.md`, en esta misma carpeta. *"La puerta no pregunta el
+//! idioma. Pregunta que uses la puerta."*
+//!
 //! `bmo_abi::bef` -- Formato BEF (BMO Executable Format).
 //!
 //! v1.8.8: este modulo es un **re-export** de los tipos canonicos

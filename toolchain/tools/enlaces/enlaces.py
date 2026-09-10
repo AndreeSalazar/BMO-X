@@ -208,6 +208,10 @@ def main():
     roto = []
     total = 0
     externas = 0
+    # ** Cuantas veces NOMBRA el arbol a cada .md. Se acumula durante el mismo
+    # barrido de arriba, asi que no cuesta una segunda pasada. Ver la nota de
+    # los huerfanos al final de esta funcion.
+    nombrado = dict.fromkeys(basenames, 0)
 
     for rel in tracked_files(root):
         full = os.path.join(root, rel)
@@ -216,6 +220,11 @@ def main():
                 lineas = fh.readlines()
         except OSError:
             continue
+
+        crudo = "".join(lineas)
+        for base in nombrado:
+            if base in crudo:
+                nombrado[base] += crudo.count(base)
 
         for n, linea in enumerate(lineas, 1):
             for m in LINK_MD.finditer(linea):
@@ -245,7 +254,34 @@ def main():
         print("%d citas rotas de %d%s" % (len(roto), total, fuera))
         return 1 if args.check else 0
 
+    # == *** Y LA PREGUNTA DEL REVES: A QUIEN NO LLEGA NADIE (2026-09-10) ==
+    #
+    # Todo lo de arriba caza una cita que apunta a la nada. Esto caza lo
+    # contrario: **un documento al que no apunta nadie**.
+    #
+    # ** Y es el mas silencioso de los dos. Una cita rota manda al lector a un
+    # sitio que no existe y se nota al pinchar; un documento sin una sola cita
+    # NO SE NOTA NUNCA, porque para notarlo habria que saber que existe -- que
+    # es justo lo que no se sabe.
+    #
+    # El dia que se escribio habia CUATRO de 140, y ninguno era basura: eran
+    # documentos buenos que nadie podia encontrar. Se engancharon los cuatro.
+    #
+    # > Un documento que nadie cita no esta de mas. Esta perdido, que es peor:
+    # > cuesta lo mismo mantenerlo y no lo lee nadie.
+    #
+    # [!] AVISA Y NO PARA EL BUILD, a proposito. Un documento recien escrito
+    # esta huerfano un rato por definicion --primero se escribe, luego se
+    # enlaza-- y un guardian que rompiera el build por eso obligaria a
+    # enlazarlo antes de saber si merece la pena.
+    huerfanos = sorted(b for b, veces in nombrado.items()
+                       if veces <= 1
+                       and b.upper() not in ("README.MD", "LICENSE", "NOTICE"))
+
     print("clean: las %d citas a documentos resuelven%s" % (total, fuera))
+    if huerfanos:
+        print("    [i] %d documento(s) que NO NOMBRA NADIE -- existen y no se"
+              " pueden encontrar: %s" % (len(huerfanos), ", ".join(huerfanos)))
     return 0
 
 

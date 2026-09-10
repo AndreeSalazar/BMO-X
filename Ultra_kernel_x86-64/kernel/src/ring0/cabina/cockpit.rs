@@ -284,7 +284,15 @@ pub fn render_hud() {
     let mudo_us = if hz != 0 { mudo_ticks / (hz / 1_000_000).max(1) } else { 0 };
     r.txt(" mudo="); r.dec(mudo_quien as u64);
     r.txt(":"); r.dec(mudo_us);
-    let health = if n_soltados != 0 || v_pisados != 0 || v_choques != 0 || caducados != 0 {
+    // ** `borde=mirados:ROTOS` -- EL CENTINELA, la prueba que viaja con el
+    // trabajo de verdad. `mirados` sube con cada rebote; el segundo es CERO o
+    // el disco escribio mas alla de lo que declaro. Ver `dev/disk/centinela.rs`.
+    let (c_mir, c_rotas, c_demas) = crate::ring0::dev::disk::cuentas_centinela();
+    r.txt(" borde="); r.dec(c_mir);
+    r.txt(":"); r.dec(c_rotas + c_demas);
+    let health = if n_soltados != 0 || v_pisados != 0 || v_choques != 0
+        || caducados != 0 || c_rotas != 0 || c_demas != 0
+    {
         // Gana sobre la RAM baja: quedarse sin memoria es incomodo, un marco de
         // aparato suelto es corrupcion esperando su turno.
         C_FAULT
