@@ -1,8 +1,8 @@
 # REX -- las cabeceras con las que se escribe una app de BMO-X
 
-> **La ley esta en [`META-SDK_HARD.md`](../../../../../META-SDK_HARD.md)** y el
+> **La ley esta en [`META-SDK_HARD.md`](../../../../../FUERO/META-SDK_HARD.md)** y el
 > reparto entero --lo que el sistema concede y lo que exige-- en
-> [`EL_FUERO.md`](../../../../../EL_FUERO.md). Esto es el indice de REX: que
+> [`EL_FUERO.md`](../../../../../FUERO/EL_FUERO.md). Esto es el indice de REX: que
 > hay, para que sirve cada pieza y por donde se empieza.
 
 REX es lo que hay entre las **dos puertas congeladas** (`INVOKE` y `WAIT`) y un
@@ -123,6 +123,6 @@ No para desanimar: para que nadie lo descubra a mitad de un proyecto.
 - **Mas de un fichero por proyecto.** Una sola unidad de traduccion. Es el techo
   que mas se nota viniendo de fuera.
 
-Ver [`META-SDK_HARD.md`](../../../../../META-SDK_HARD.md) (la ley de REX) y
-[`META-APP_HARD.md`](../../../../../META-APP_HARD.md) (que exige BMO-X de algo
+Ver [`META-SDK_HARD.md`](../../../../../FUERO/META-SDK_HARD.md) (la ley de REX) y
+[`META-APP_HARD.md`](../../../../../FUERO/META-APP_HARD.md) (que exige BMO-X de algo
 que quiera ser una app).

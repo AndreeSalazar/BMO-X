@@ -167,7 +167,7 @@ eleccion.
 Ver [`EL_AISLAMIENTO.md`](EL_AISLAMIENTO.md) (los ocho muros, y **lo que ninguno
 para**), [`EL_CONTRATO_DE_CARGA.md`](EL_CONTRATO_DE_CARGA.md) (*el programa
 DECLARA, el sistema CONCEDE, el kernel solo COMPRUEBA*),
-[`META-KERNEL_HARD.md`](../../META-KERNEL_HARD.md) (la ley, y el linaje),
-[`EL_FUERO.md`](../../EL_FUERO.md) (lo que se concede y lo que se exige) y
+[`META-KERNEL_HARD.md`](../../FUERO/META-KERNEL_HARD.md) (la ley, y el linaje),
+[`EL_FUERO.md`](../../FUERO/EL_FUERO.md) (lo que se concede y lo que se exige) y
 [`VALKYRIE-ABI/README.md`](../../VALKYRIE-ABI/README.md) (la superficie que se
 promete, y por que no tiene anillo).

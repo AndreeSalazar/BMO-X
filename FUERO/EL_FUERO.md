@@ -30,7 +30,7 @@ que la version siguiente rompa la anterior.
 
 Aqui no hay una API a la que llamar: hay **una maquina que se concede con
 condiciones escritas**. La frase fundacional del sistema es de
-[`EL_CONTRATO_DE_CARGA.md`](docs/identidad/EL_CONTRATO_DE_CARGA.md) y no ha
+[`EL_CONTRATO_DE_CARGA.md`](../docs/identidad/EL_CONTRATO_DE_CARGA.md) y no ha
 cambiado:
 
 > **El programa DECLARA, el sistema CONCEDE, el kernel solo COMPRUEBA.**
@@ -126,7 +126,7 @@ La maquetacion se compila **en el anfitrion** y emite coordenadas: una app no
 lleva dentro un motor de composicion. Cinco crates, uno por generacion
 (`lex`, `node`, `cascade`, `layout`, `verdict`), y desde el 18-08 esa cadena
 esta **probada** y no solo afirmada -- ver
-[`herencia.py`](toolchain/tools/censo-modular/herencia.py).
+[`herencia.py`](../toolchain/tools/censo-modular/herencia.py).
 
 ### 2.5 El paquete -- un fichero
 
@@ -226,9 +226,9 @@ discutir; uno sin motivo es un agujero.**
 |---|---|---|
 | **mas de un fichero por proyecto** | ★ una sola unidad de traduccion. Es el techo que mas se nota viniendo de fuera | compilacion separada |
 | **entrada dentro de una ventana** | una app puede ENSENAR; no la puedes TOCAR | la casilla 4 de META-APP |
-| **sonido de verdad** | hay contrato (`KIND_AUDIO`) y el altavoz del PC; no hay driver HDA ni isocrono por USB | [`AUDIO_MAESTRO.md`](docs/maestro/AUDIO_MAESTRO.md) |
+| **sonido de verdad** | hay contrato (`KIND_AUDIO`) y el altavoz del PC; no hay driver HDA ni isocrono por USB | [`AUDIO_MAESTRO.md`](../docs/maestro/AUDIO_MAESTRO.md) |
 | **hilos** | no hay hilos de Ring 3, y `BRECHA.md` lo dice cuatro veces | SMP cableado, y no antes |
-| **red** | no hay pila | [`RED_MAESTRO.md`](docs/maestro/RED_MAESTRO.md) |
+| **red** | no hay pila | [`RED_MAESTRO.md`](../docs/maestro/RED_MAESTRO.md) |
 | **COBOL y Ada contra REX** | REX es C y Rust; los otros dos no tienen enlace | `R-REX4`: la tabla y lo generado |
 
 ★ Y lo que **no va a caber**, para que nadie se lo prometa: un navegador, una
@@ -302,6 +302,6 @@ no encuentra `tables/`.
 Ver [`META-KERNEL_HARD.md`](META-KERNEL_HARD.md),
 [`META-APP_HARD.md`](META-APP_HARD.md),
 [`META-SDK_HARD.md`](META-SDK_HARD.md),
-[`EL_CONTRATO_DE_CARGA.md`](docs/identidad/EL_CONTRATO_DE_CARGA.md) (declarar y
-conceder) y [`QUE_DESBLOQUEA.md`](docs/identidad/QUE_DESBLOQUEA.md) (que
+[`EL_CONTRATO_DE_CARGA.md`](../docs/identidad/EL_CONTRATO_DE_CARGA.md) (declarar y
+conceder) y [`QUE_DESBLOQUEA.md`](../docs/identidad/QUE_DESBLOQUEA.md) (que
 desbloquea que).
