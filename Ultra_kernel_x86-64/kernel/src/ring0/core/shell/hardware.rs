@@ -684,9 +684,18 @@ pub(crate) fn shell_smp_tabla() {
     row("coste", |l| {
         l.dec(girando as u64);
         if duerme {
-            l.txt(" obreros en espera, y DUERMEN (MWAITX con plazo): ");
+            l.txt(" obreros en espera, y DUERMEN: ");
             l.dec(dormidas);
-            l.txt(" siestas");
+            l.txt(" siestas, ");
+            // ** El TIEMPO, que es la mitad util del par: mil siestas de un
+            // microsegundo se ven igual de bien en la cuenta y no apagan nada.
+            let hz = crate::ring0::task::scheduler::tsc_freq();
+            let por_ms = if hz >= 1000 { hz / 1000 } else { 1 };
+            l.dec(smp::dormir::ticks_dormidos() / por_ms);
+            l.txt(" ms apagados, C");
+            // `EAX` bits 7:4 = el C-state menos uno. Se ensena el numero de
+            // verdad, no el codigo: C1 duerme poco y C6 apaga el nucleo.
+            l.dec(((smp::dormir::profundidad() >> 4) + 1) as u64);
         } else {
             l.txt(" nucleos GIRANDO en vacio (al 100%). Sin MONITORX no se");
             l.txt(" duerme: ver plat/smp/dormir.rs");

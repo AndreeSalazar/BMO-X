@@ -83,27 +83,136 @@
 
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
-/// El plazo del `MWAITX`, en ticks del TSC.
+/// El plazo del `MWAITX`, en ticks del TSC. A 3,7 GHz son ~27 ms.
 ///
-/// ** Es DESPERTARSE, no trabajar: el obrero da una vuelta al bucle, ve que no
-/// hay ronda nueva, y se vuelve a dormir. A 3,7 GHz esto son ~0,27 ms, o sea
-/// unos 3.700 despertares por segundo y nucleo.
+/// == *** POR QUE SUBIO x100 EL 2026-09-10 ============================
 ///
-/// *** Y ese numero comparado con lo que sustituye no es un coste: es la
-/// diferencia entre **girar al 100 %** y despertarse tres mil veces para mirar
-/// un `u32`. El plazo corto se elige a proposito -- vale mas despertar de mas
-/// que arriesgarse a que `PARAR` tarde en verse.
-const PLAZO_TICKS: u32 = 1_000_000;
+/// La primera version puso 1.000.000 (~0,27 ms), o sea **3.700 despertares
+/// por segundo y nucleo**, con este argumento: *"vale mas despertar de mas
+/// que arriesgarse a que `PARAR` tarde en verse"*.
+///
+/// ** Ese argumento era una tirita sobre otro fallo. `parar()` ahora TOCA
+/// `RONDA`, asi que el obrero se entera **por escritura y al instante** -- que
+/// es justo el mecanismo que este modulo existe para usar. Con eso, el plazo
+/// deja de ser el despertador y vuelve a ser lo que tenia que ser: **una red
+/// de seguridad por si el `MONITOR` se rompe**.
+///
+/// *** Y la diferencia importa de verdad, porque despertar de un C-state
+/// PROFUNDO no es gratis: se vuelve a encender lo que se apago. Despertar
+/// 3.700 veces por segundo para mirar un `u32` que no cambio es exactamente
+/// *"comer electricidad sin sentido"* -- con mas pasos.
+///
+///   > Un plazo que despierta mas de lo que hace falta no es prudencia: es
+///   > el bucle de espera de antes, disfrazado de siesta.
+const PLAZO_TICKS: u32 = 100_000_000;
 
 /// Veces que un obrero se ha dormido de verdad. `0` = no hay `MONITORX`, o
 /// nadie ha esperado todavia.
 static DORMIDAS: AtomicU64 = AtomicU64::new(0);
+/// Ticks del TSC pasados DENTRO del `mwaitx`, sumando todos los obreros.
+///
+/// ** Es la mitad util del par: `DORMIDAS` dice cuantas veces, esto dice
+/// cuanto. Mil siestas de un microsegundo no ahorran nada y con solo la
+/// primera cuenta se verian igual de bien.
+static TICKS_DORMIDOS: AtomicU64 = AtomicU64::new(0);
+/// El `EAX` que se le pasa a `MWAITX`: **que tan profundo se duerme**.
+/// `u32::MAX` = todavia no se ha mirado.
+static PROFUNDIDAD: AtomicU32 = AtomicU32::new(u32::MAX);
 
 /// Si el silicio trae `MONITORX`. Se resuelve UNA vez, en el arranque.
 static SE_PUEDE: AtomicU64 = AtomicU64::new(SIN_MIRAR);
 const SIN_MIRAR: u64 = 0;
 const NO: u64 = 1;
 const SI: u64 = 2;
+
+/// `CPUID` de una hoja, con `rbx` salvado a mano.
+///
+/// [!] `cpuid` ESCRIBE en `ebx`, y `ebx` es de los que LLVM no presta. Mismo
+/// baile que en `esperar`, y por el mismo motivo.
+fn cpuid(hoja: u32) -> (u32, u32, u32, u32) {
+    let (a, b, c, d): (u32, u32, u32, u32);
+    unsafe {
+        core::arch::asm!(
+            "mov {salvo:r}, rbx",
+            "cpuid",
+            "mov {sale:e}, ebx",
+            "mov rbx, {salvo:r}",
+            salvo = out(reg) _,
+            sale = out(reg) b,
+            inout("eax") hoja => a,
+            inout("ecx") 0u32 => c,
+            out("edx") d,
+            options(nostack, preserves_flags),
+        );
+    }
+    (a, b, c, d)
+}
+
+/// **QUE TAN PROFUNDO PUEDE DORMIR ESTE SILICIO**, preguntado y no supuesto.
+///
+/// # *** El fallo que corrige, y era mio
+///
+/// La primera version paso `EAX = 0` con esta nota: *"pide el estado mas
+/// ligero, que es el que despierta antes -- aqui interesa reaccionar"*.
+///
+/// ** `EAX = 0` es **C1**, y C1 apenas apaga nada: el nucleo sigue con sus
+/// relojes vivos. O sea que la version anterior dormia **de mentira**, y el
+/// dueno lo olio: *"que duerma de verdad, que no este comiendo electricidad
+/// sin sentido"*.
+///
+/// # Como se pregunta
+///
+/// `CPUID` hoja 5 enumera los sub-estados de `MWAIT`, cuatro bits por
+/// C-state:
+///
+/// ```text
+///    EDX bits  3:0   C0     ECX bit 0 = se pueden pedir extensiones
+///        bits  7:4   C1               si es 0, EAX TIENE que ser 0
+///        bits 11:8   C2
+///        bits 15:12  C3
+///        bits 19:16  C4
+/// ```
+///
+/// Un grupo distinto de cero significa que ese C-state EXISTE aqui. Se elige
+/// **el mas profundo que el silicio enumere**, y el `EAX` se arma como
+/// `(cstate - 1) << 4` -- la convencion es que 0 pide C1, 1 pide C2, y asi.
+///
+/// [!] Y no se inventa ninguno. Pedir un C6 en un CPU que solo enumera hasta
+/// C2 es pedirle al silicio algo que no dijo tener, que es LEY 24 al reves:
+/// el hardware se PERFILA, y perfilarlo es preguntarle.
+fn elegir_profundidad() -> u32 {
+    let (max_basic, _, _, _) = cpuid(0);
+    if max_basic < 5 {
+        return 0;
+    }
+    let (_, _, ecx, edx) = cpuid(5);
+    // ECX bit 0: si el silicio no admite extensiones, `EAX` tiene que ser 0.
+    // Pedir profundidad sin ese bit es comportamiento no definido.
+    if ecx & 1 == 0 {
+        return 0;
+    }
+    // Del mas profundo al mas ligero: el primero que enumere sub-estados gana.
+    let mut mejor = 0u32;
+    for cstate in (1..=4u32).rev() {
+        let grupo = (edx >> (cstate * 4)) & 0xF;
+        if grupo != 0 {
+            mejor = (cstate - 1) << 4;
+            break;
+        }
+    }
+    mejor
+}
+
+/// El `EAX` elegido, resuelto una vez.
+pub fn profundidad() -> u32 {
+    let v = PROFUNDIDAD.load(Ordering::Relaxed);
+    if v != u32::MAX {
+        return v;
+    }
+    let e = elegir_profundidad();
+    PROFUNDIDAD.store(e, Ordering::Relaxed);
+    e
+}
 
 /// **Se puede dormir en esta maquina?** Lo contesta el silicio, no una opcion.
 ///
@@ -143,6 +252,9 @@ pub fn esperar(celda: &AtomicU32, visto: u32) {
         core::hint::spin_loop();
         return;
     }
+    // Se resuelve ANTES de armar la vigilancia: entre el `monitor` y el
+    // `mwaitx` no puede haber nada que toque memoria, o la vigilancia se cae.
+    let hondo = profundidad();
     let dir = celda as *const _ as usize;
     unsafe {
         // 1. Armar la vigilancia sobre la linea de esa direccion.
@@ -159,13 +271,15 @@ pub fn esperar(celda: &AtomicU32, visto: u32) {
         if celda.load(Ordering::SeqCst) != visto {
             return;
         }
-        // 3. Dormir con plazo. `ECX` bit 1 = usar el `EBX` como timeout;
-        //    `EAX` = 0 pide el estado mas ligero, que es el que despierta
-        //    antes -- aqui interesa reaccionar, no ahorrar el ultimo vatio.
-        // [!] `rbx` NO SE PUEDE PEDIR: LLVM lo usa por dentro y el
-        // compilador lo rechaza de plano. Asi que se salva a mano alrededor
-        // de la instruccion -- es el patron de siempre para `cpuid` y
-        // compania, y aqui hace falta porque `mwaitx` lee el plazo de `ebx`.
+        // 3. Dormir. `ECX` bit 1 = usar `EBX` como plazo; `EAX` dice CUANTO
+        //    se apaga, y sale de preguntarle al silicio -- ver
+        //    `elegir_profundidad`.
+        //
+        // [!] `rbx` NO SE PUEDE PEDIR: LLVM lo usa por dentro y el compilador
+        // lo rechaza de plano. Se salva a mano alrededor -- es el patron de
+        // siempre para `cpuid` y companyia, y aqui hace falta porque `mwaitx`
+        // lee el plazo de `ebx`.
+        let t0 = super::ficha::ciclos();
         core::arch::asm!(
             "mov {salvo}, rbx",
             "mov ebx, {plazo:e}",
@@ -173,10 +287,12 @@ pub fn esperar(celda: &AtomicU32, visto: u32) {
             "mov rbx, {salvo}",
             salvo = out(reg) _,
             plazo = in(reg) PLAZO_TICKS,
-            in("eax") 0,
+            in("eax") hondo,
             in("ecx") 2,
             options(nostack, preserves_flags),
         );
+        TICKS_DORMIDOS.fetch_add(
+            super::ficha::ciclos().wrapping_sub(t0), Ordering::Relaxed);
     }
     DORMIDAS.fetch_add(1, Ordering::Relaxed);
 }
@@ -188,4 +304,12 @@ pub fn esperar(celda: &AtomicU32, visto: u32) {
 /// -- y las dos cosas se arreglan en sitios distintos.
 pub fn dormidas() -> u64 {
     DORMIDAS.load(Ordering::Relaxed)
+}
+
+/// **Ticks del TSC pasados durmiendo**, sumando todos los obreros.
+///
+/// *** Este es el numero del ahorro, y el otro solo lo acompanya: mil siestas
+/// de un microsegundo se ven igual de bien en `dormidas` y no apagan nada.
+pub fn ticks_dormidos() -> u64 {
+    TICKS_DORMIDOS.load(Ordering::Relaxed)
 }
