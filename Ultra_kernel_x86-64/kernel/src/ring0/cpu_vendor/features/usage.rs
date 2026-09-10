@@ -188,7 +188,11 @@ pub fn of(f: Feat) -> Use {
         // ** El bloqueante que YA estaba nombrado: AXION apaga nucleos y no
         // sabe encenderlos, y lo que le falta es esto.
         Feat::Monitor => Use::No("AXION: apagar funciona, ENCENDER pide MWAIT"),
-        Feat::Monitorx => Use::No("la variante AMD, y ademas funciona en Ring 3"),
+        // ** DESDE EL 2026-09-10 SI SE USA, y es la que se exige: la
+        // variante de AMD trae PLAZO en `EBX`, y sin plazo un obrero
+        // dormido puede no volver -- lo que cuelga el reparto entero.
+        // Ver `plat/smp/dormir.rs`.
+        Feat::Monitorx => Use::Yes("los obreros de AXION duermen con MWAITX, y con plazo"),
 
         // ================= proteccion que el CPU regala =================
         // ** Las tres son GRATIS -- bits de CR4 y de EFER-- y ninguna esta

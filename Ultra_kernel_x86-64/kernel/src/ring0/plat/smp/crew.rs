@@ -150,7 +150,21 @@ pub fn obrero(indice: u32, apic: u32) -> ! {
                 HECHOS.fetch_add(1, Ordering::SeqCst);
             }
         }
-        core::hint::spin_loop();
+        // == *** AQUI SE DEJA DE QUEMAR UN NUCLEO (2026-09-10) ============
+        //
+        // Esta linea era `spin_loop()`, o sea `pause`, o sea **el nucleo al
+        // 100% sin hacer nada**. La cabecera de este fichero lo dejo escrito
+        // como precio antes de que existiera la salida.
+        //
+        // ** Y la salida no es `hlt`: lo que se espera aqui no es una
+        // interrupcion, es UNA ESCRITURA en `RONDA`. `MWAITX` despierta por
+        // escritura y no pide ni GS por-CPU ni TSS -- que era justo el trabajo
+        // que este modulo evita. Ver `dormir.rs`.
+        //
+        // [!] Se le pasa `vista`, que es la ronda que este obrero YA atendio.
+        // Si `RONDA` ya no vale eso, hay trabajo y no se duerme. Ese segundo
+        // vistazo va DENTRO de `esperar`, despues de armar el `monitor`.
+        super::dormir::esperar(&RONDA, vista);
     }
 }
 

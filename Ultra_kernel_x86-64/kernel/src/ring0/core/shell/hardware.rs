@@ -668,10 +668,29 @@ pub(crate) fn shell_smp_tabla() {
         l.txt(". Si ESPERA memoria: los ");
         l.dec((cores + threads) as u64);
     });
+    // == *** Y DESDE EL 2026-09-10 MWAIT EXISTE ========================
+    //
+    // Esta fila se escribio ANTES que la mejora, a proposito: *"una mejora
+    // que no se puede comparar con el numero de antes no se puede
+    // demostrar"*. Hoy tiene con que compararse.
+    //
+    // ** Se ensena `dormidas` al lado: si `MONITORX` esta y los obreros
+    // duermen, ese numero sube y `girando` deja de significar lo que decia.
+    // Si sale CERO con los doce en pie, o el silicio no lo trae o nadie llego
+    // a esperar -- y las dos cosas se arreglan en sitios distintos.
     let girando = smp::girando();
+    let duerme = smp::dormir::se_puede();
+    let dormidas = smp::dormir::dormidas();
     row("coste", |l| {
         l.dec(girando as u64);
-        l.txt(" nucleos GIRANDO en vacio (al 100%). Con MWAIT esto seria 0");
+        if duerme {
+            l.txt(" obreros en espera, y DUERMEN (MWAITX con plazo): ");
+            l.dec(dormidas);
+            l.txt(" siestas");
+        } else {
+            l.txt(" nucleos GIRANDO en vacio (al 100%). Sin MONITORX no se");
+            l.txt(" duerme: ver plat/smp/dormir.rs");
+        }
     });
 }
 
