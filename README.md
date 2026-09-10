@@ -440,10 +440,12 @@ verify everything, which is more work than before the machine helped.
 
 *** BMO-X is the second one, and the difference is the whole point. The rules
 do not point at the person using the system: **they point inward**. An
-unimplemented feature is refused with a reason instead of stubbed. A `.bex`
-still ships with `sig_algo = 0` and the trust anchor empty -- and that is
-written down as a debt with a name rather than hidden behind a green check. The
-sixteen guardians exist to say NO to *this codebase*, not to its users.
+unimplemented feature is refused with a reason instead of stubbed. For sixteen
+days a `.bex` shipped with `sig_algo = 0` and the trust anchor empty -- written
+down as a debt with a name rather than hidden behind a green check, and paid on
+2026-09-10 when the debt turned out to be a missing command rather than missing
+cryptography. The sixteen guardians exist to say NO to *this codebase*, not to
+its users.
 
 > A system that lets itself be corrupted does not stop working for its owner.
 > It starts working for whoever corrupted it -- and the owner is the last to
@@ -646,12 +648,25 @@ And it is the same debt twice: the elliptic curve HTTPS needs is the one a signe
 > 2026-08-24**, when that function was deleted, and real Ed25519 landed the day
 > after. `bmo-firma` verifies against a trust anchor and refuses without one.
 >
-> The accurate statement is narrower and still uncomfortable: **the machinery
-> works and nothing signed ships through it.** Every `.bex` this repository
-> produces goes out with `sig_algo = 0` -- integrity, not authorship -- and the
-> trust anchor is empty. The gap is no longer the algorithm; it is the key
-> ceremony and the anchor, and until those exist a bank cannot use this to prove
-> who built a binary.
+> The accurate statement was narrower and still uncomfortable: **the machinery
+> worked and nothing signed shipped through it.** Every `.bex` went out with
+> `sig_algo = 0` -- integrity, not authorship -- and the trust anchor was empty.
+> The gap was never the algorithm; it was that **nothing in the tree could
+> sign**, which is why the writer emitted a zero and the anchor had nothing to
+> hold.
+>
+> **Closed on 2026-09-10.** `toolchain/tools/bmo-firmar` signs an already-built
+> `.bex` in place -- the signature is the one block no hash covers, so stamping
+> it moves nothing else, and what gets signed is the binary that was tested
+> rather than a rebuilt sibling. It links `bmo-firma`, the same crate the kernel
+> runs, so "verified on the host" and "verified on the metal" are one claim and
+> not two that resemble each other. The private key never enters the repository:
+> the tool walks the ancestors for a `.git` and refuses. The anchor now holds one
+> key, by name.
+>
+> What is still open is honest and small: **no signed `.bex` has booted on the
+> Ryzen yet**, and `exige_firma()` is still `false`. Both are checkboxes with a
+> verification written next to them, in `docs/plan/PLAN_SEGURIDAD.md`.
 
 The full reasoning, with what each piece costs and why:
 **[PLAN_EL_PERFIL_TOTAL.md](docs/plan/PLAN_EL_PERFIL_TOTAL.md)** (what this

@@ -53,6 +53,7 @@ documento recien escrito esta huerfano un rato por definicion.
 | [`bex-link`](bex-link/) | el `.bex` a partir del binario de Rust |
 | [`bmo-linker`](bmo-linker/) | el enlazado propio |
 | [`bmo-pack`](bmo-pack/) | mete los recursos DENTRO del `.bex` |
+| [`bmo-firmar`](bmo-firmar/) | **la firma Ed25519 de un `.bex` YA construido**, y la unica del arbol que puede firmar. Ver abajo |
 | [`bef-bootstrap`](bef-bootstrap/) | el arranque del formato BEF |
 | [`c-gen`](c-gen/) | los ejemplos de C |
 | [`cobol-gen`](cobol-gen/) | los de COBOL |
@@ -82,3 +83,37 @@ eso paso de verdad -- el primer intento no cazo ninguna de las ocho casillas
 malas, y la leccion no fue la que se fue a buscar.
 
 > Un guardian se estrena rompiendo algo a proposito. Si no rompe, no vigila.
+
+---
+
+# *** `bmo-firmar` -- LA UNICA QUE PUEDE FIRMAR, Y VIVE AQUI POR ESO
+
+El resto de esta carpeta fabrica cosas o dice que no. Esta tiene una
+**capacidad**, y es la unica: enciende la bandera `firmar` de `bmo-cripto`, que
+el kernel deja apagada a proposito.
+
+```text
+   bmo-firmar generar <ruta>          el par. La privada NO se imprime
+   bmo-firmar firmar  <bex> <ruta>    comprueba, firma y estampa
+   bmo-firmar ver     <bex> [hex...]  el veredicto, con el crate del kernel
+   bmo-firmar ancla                   las claves del kernel, en hex
+```
+
+** Una maquina que puede firmar tiene dentro con que falsificar lo que ejecuta.
+Por eso la capacidad esta en el anfitrion y no baja, y por eso firmar es una
+orden que alguien escribe y no un efecto secundario de compilar.
+
+*** Y **no reescribe el verificador: enlaza `bmo-firma`**, el mismo crate que
+ejecuta el kernel. Asi *"verifica en el anfitrion"* y *"verifica en el metal"*
+no son dos afirmaciones que se parecen: son la misma.
+
+Para comprobar un `.bex` contra el ancla que lleva compilada la maquina, sin
+teclear ningun byte:
+
+```bash
+cargo run -q -p bmo-firmar -- ver app.bex $(cargo run -q -p bmo-firmar -- ancla)
+```
+
+[!] El build **reescribe los `.bex`**, asi que firmar es un paso posterior y la
+firma se pierde en cada reconstruccion. Es la conducta correcta: lo contrario
+seria firmar sin querer.

@@ -356,7 +356,30 @@ impl BefBuilder {
             // cada seccion QUE NO ES ESTA. Saberlo antes de calcular nada es lo
             // que rompe la pescadilla -- su offset se puede reservar en la misma
             // pasada que los demas.
-            let bytes = core::mem::size_of::<SignatureHeader>() + cuantas * SectionHash::SIZE;
+            //
+            // == *** Y DESDE EL 2026-09-10, TAMBIEN LOS 96 BYTES DE LA FIRMA ====
+            //
+            // Este escritor no firma **y no va a firmar**: la clave privada no
+            // vive en el anfitrion del build (`bmo-cripto/Cargo.toml`, la
+            // bandera `firmar`). Lo que hace es DEJAR EL SITIO HECHO.
+            //
+            // ** Y eso no es comodidad, es lo que permite que se firme **lo
+            // mismo que se probo**. La firma es el unico bloque del fichero que
+            // no esta bajo ningun hash --la seccion `Signature` se excluye de
+            // los suyos-- asi que estampar 96 bytes aqui **no cambia ni un
+            // digest ni un offset**. Sin el hueco habria que reconstruir el
+            // `.bex` para firmarlo, y entonces el binario firmado seria un
+            // binario NUEVO, hermano del que se probo pero no el mismo.
+            //
+            //   > Si firmar obliga a recompilar, la firma acredita al
+            //   > compilador, no al binario.
+            //
+            // [L3] Lo que cuesta: 96 bytes en cada `.bex` que no se firme nunca,
+            // y hoy son todos. Es el precio de que firmar sea un parche en sitio
+            // y no una reconstruccion.
+            let bytes = core::mem::size_of::<SignatureHeader>()
+                + cuantas * SectionHash::SIZE
+                + SignatureHeader::SIGNATURE_SIZE as usize;
             let mut sec = BefSection::new(SectionKind::Signature, vec![0u8; bytes]);
             sec.alignment = 8;
             self.sections.push(sec);
@@ -572,6 +595,11 @@ impl BefBuilder {
         };
         let mut sig_data = Vec::from(bytes_from_struct(&sig_header));
         sig_data.extend_from_slice(bytes_from_slice(&section_hashes));
+        // *** EL HUECO DE LA FIRMA, EN CEROS. Ver arriba: aqui no se firma, se
+        // deja el sitio. Ceros y `sig_algo = 0` se leen juntos y dicen lo mismo
+        // --que esto no lo firmo nadie-- y `bmo-firmar` los sustituye sin mover
+        // un solo byte de lo demas.
+        sig_data.resize(sig_data.len() + SignatureHeader::SIGNATURE_SIZE as usize, 0);
 
         // Se escribe DONDE LA TABLA DICE, igual que todo lo demas. El hueco se
         // reservo arriba con este tamano exacto.
@@ -780,6 +808,94 @@ mod tests {
             u16::from_le_bytes(firma[e..e + 2].try_into().unwrap()) as usize == idx_req
         });
         assert!(cubierta, "los requisitos viajan sin hash");
+    }
+
+    /// *** EL HUECO DE LA FIRMA EXISTE, Y MIDE 96.
+    ///
+    /// Sin esta fila, quitar el `+ SIGNATURE_SIZE` de arriba no rompe ninguna
+    /// prueba: el `.bex` sigue escribiendose, sigue verificando y sigue
+    /// arrancando. Lo unico que deja de poder hacerse es **firmarlo**, y eso
+    /// no se descubre hasta que alguien ejecuta `bmo-firmar` -- que puede ser
+    /// dentro de tres meses.
+    #[test]
+    fn la_seccion_de_firma_reserva_sus_96_bytes() {
+        let mut b = BefBuilder::new();
+        b.add_section(BefSection::code(vec![0xC3; 64]));
+        let bytes = b.build().unwrap();
+
+        let firma = seccion_de(&bytes, SectionKind::Signature).unwrap();
+        let cuantos = u32::from_le_bytes(firma[0..4].try_into().unwrap()) as usize;
+        let hasta = 8 + cuantos * SectionHash::SIZE;
+        assert_eq!(
+            firma.len(),
+            hasta + SignatureHeader::SIGNATURE_SIZE as usize,
+            "la seccion no deja sitio para la firma"
+        );
+        assert!(
+            firma[hasta..].iter().all(|x| *x == 0),
+            "el hueco de la firma no sale en ceros"
+        );
+        assert_eq!(
+            u32::from_le_bytes(firma[4..8].try_into().unwrap()),
+            0,
+            "sig_algo tiene que salir en 0: aqui no se firma"
+        );
+    }
+
+    /// ** ESTAMPAR LA FIRMA NO CAMBIA NI UN DIGEST.
+    ///
+    /// Es la afirmacion entera sobre la que se apoya `bmo-firmar`: se puede
+    /// firmar **lo mismo que se probo**, sin reconstruir. Se comprueba a lo
+    /// bruto --escribiendo basura en el hueco y en `sig_algo`-- y volviendo a
+    /// verificar todas las secciones.
+    ///
+    ///   > Si firmar obliga a recompilar, la firma acredita al compilador.
+    #[test]
+    fn estampar_la_firma_no_toca_ningun_hash() {
+        let mut b = BefBuilder::new();
+        b.add_section(BefSection::code(vec![0xC3; 512]));
+        b.add_section(BefSection::rodata(b"hola ".to_vec()));
+        let mut bytes = b.build().unwrap();
+
+        let count = u32::from_le_bytes(bytes[40..44].try_into().unwrap()) as usize;
+        let tabla = u64::from_le_bytes(bytes[32..40].try_into().unwrap()) as usize;
+        let (mut sig_off, mut sig_len, mut sig_idx) = (0usize, 0usize, usize::MAX);
+        for i in 0..count {
+            let e = tabla + i * SectionEntry::SIZE;
+            if bytes[e] == SectionKind::Signature as u8 {
+                sig_off = u64::from_le_bytes(bytes[e + 8..e + 16].try_into().unwrap()) as usize;
+                sig_len = u64::from_le_bytes(bytes[e + 16..e + 24].try_into().unwrap()) as usize;
+                sig_idx = i;
+            }
+        }
+
+        // La firma: 96 bytes de algo que no son ceros, y `sig_algo = 1`.
+        let hueco = sig_off + sig_len - SignatureHeader::SIGNATURE_SIZE as usize;
+        for k in 0..SignatureHeader::SIGNATURE_SIZE as usize {
+            bytes[hueco + k] = (k as u8) ^ 0xA5;
+        }
+        bytes[sig_off + 4..sig_off + 8].copy_from_slice(&1u32.to_le_bytes());
+
+        // Y AHORA todas las secciones tienen que seguir cuadrando.
+        let cuantos = u32::from_le_bytes(
+            bytes[sig_off..sig_off + 4].try_into().unwrap(),
+        ) as usize;
+        for k in 0..cuantos {
+            let h = sig_off + 8 + k * SectionHash::SIZE;
+            let idx = u16::from_le_bytes(bytes[h..h + 2].try_into().unwrap()) as usize;
+            if idx == sig_idx {
+                continue;
+            }
+            let e = tabla + idx * SectionEntry::SIZE;
+            let off = u64::from_le_bytes(bytes[e + 8..e + 16].try_into().unwrap()) as usize;
+            let len = u64::from_le_bytes(bytes[e + 16..e + 24].try_into().unwrap()) as usize;
+            let datos = if len == 0 { &bytes[0..0] } else { &bytes[off..off + len] };
+            assert_eq!(
+                blake3_256(datos)[..],
+                bytes[h + 8..h + 40],
+                "estampar la firma movio el hash de la seccion {idx}"
+            );
+        }
     }
 
     #[test]
