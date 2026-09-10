@@ -360,6 +360,81 @@ absence of failure -- surviving it and being able to say what happened.
   <img src="docs/arte/inti.png" alt="INTI -- habla con la CPU" width="360">
 </p>
 
+## The Hopper test
+
+Grace Hopper's argument was never *"computers should be friendly"*. It was
+sharper than that: **the machine should carry the work the human was carrying
+by hand.** She wrote the first compiler in 1952 after being told computers only
+did arithmetic, and she pushed FLOW-MATIC and then COBOL so a program could be
+*read* by the person who owned the problem.
+
+BMO-X is built by one author, for that author's machine. So the test is a fair
+one to run, and here it is run with evidence rather than with flattery.
+
+### 1. COBOL is native here, and that is not nostalgia
+
+COBOL compiles straight to machine code in this tree -- **226 test rows**, exact
+decimal, and real file I/O. It is the only one of the four front ends that
+exists because *the problem domain asked for it* and not because the language
+is popular.
+
+And the decimal is the part that matters: Hopper's `PICTURE` clause is why
+money can be counted without a float. Ada's Annex F later copied the same idea,
+which is why **Ada's decimal was already paid for** when it arrived here.
+
+### 2. Sixteen guardians do the remembering
+
+The A-0 automated *translation*. This tree automates *vigilance*. Every build
+runs sixteen guardians whose only job is to say NO with a name: broken document
+citations, plan boxes that cannot be checked, a module that grew past a
+thousand lines, a device that reaches RAM without a census row, a commit scope
+that does not exist.
+
+None of that is the author's memory any more. **The machine holds the rules so
+the person can hold the problem** -- which is the same trade the compiler made,
+one floor up.
+
+### 3. The nanosecond, still
+
+Hopper handed out 30 cm wires so people could *see* a nanosecond. This codebase
+has the same reflex written as law: **hardware is PROFILED, never estimated**
+(LEY 24). A door costs 656 measured ticks and the build can show the split
+between fixed cost and work. A `rdtsc` costs 112 ticks. A blit
+is timed against the scan-out, not guessed.
+
+The proof that this is a habit and not a slogan is that **it keeps correcting
+the author**. In September a counter reported 2.467.697 microseconds of device
+silence -- a plausible number, printed by working code. It was wrong: the disk
+was not silent, it was *idle*, and the measurement had never checked whether
+there was outstanding work. No test caught that. The machine did, by printing
+the number where it could be looked at.
+
+### 4. And her most quoted line earned its keep this week
+
+> *The most damaging phrase in the language is: "we've always done it this
+> way."*
+
+Idle cores in BMO-X spun at 100 % because waking them needed an inter-processor
+interrupt, which needed per-CPU state, which was exactly the work the module
+was built to avoid. That reasoning was correct and it was answering the wrong
+question: **those cores were not waiting for an interrupt, they were waiting
+for a memory write.** `MWAITX` sleeps on a write. `hlt` was never the tool --
+it was the habit. Measured on the Ryzen: **57,2 W with twelve cores up,
+against 58,9 W with one** -- twelve now cost less than one did.
+
+### [!] Where the comparison stops, said plainly
+
+Hopper wanted programming open to *anyone*; English keywords in COBOL were an
+accessibility argument. **BMO-X is not that.** It is deliberately strict, it
+refuses more than it accepts, and [`FUERO/`](FUERO/) exists to write down what
+the system does *not* grant.
+
+The overlap is in the **method** -- let the machine carry what the human was
+carrying -- not in the audience. Claiming otherwise would be the kind of
+comfortable half-truth this whole README is built to avoid.
+
+---
+
 ## Why INTI exists
 
 **INTI is the system language of BMO-X.** Python's syntax, assembly's control,
