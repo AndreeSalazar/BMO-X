@@ -342,8 +342,16 @@ pub(crate) fn report_consumo(s: &mut Output) {
              b"1 = solo para el nucleo, 6 = lo apaga. Lo dice CPUID hoja 5");
         fila(s, b"apagados", bmo::info(bmo::INFO_SMP_MS_APAGADOS) / por_ms, b"ms",
              b"sumando todos los obreros -- ESTE es el ahorro");
-        fila(s, b"siestas", bmo::info(bmo::INFO_SMP_SIESTAS), b"",
+        // ** LAS DOS JUNTAS, y la de abajo es la que ensena. Una siesta que
+        // algo corta antes del plazo no ahorra: se paga la salida del
+        // C-state y se vuelve a entrar. Alta con la maquina en reposo
+        // significa que alguien escribe en la linea de `RONDA`, o que llega
+        // una interrupcion -- y las dos se arreglan en sitios distintos.
+        let siestas = bmo::info(bmo::INFO_SMP_SIESTAS);
+        let cortas = bmo::info(bmo::INFO_SMP_SIESTAS_CORTAS);
+        fila(s, b"siestas", siestas, b"",
              b"cuantas veces; el ahorro lo dice la fila de arriba");
+        fila_barra(s, b"cortadas", cortas, siestas.max(1), b"");
     } else {
         fila(s, b"duermen en", 0, b"",
              b"[!] sin MONITORX no se duerme: los obreros GIRAN al 100%");

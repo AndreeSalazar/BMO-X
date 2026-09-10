@@ -176,6 +176,11 @@ pub const INFO_SMP_MS_APAGADOS: u64 = 0x5E;
 /// Del carril de AXION. Ver `plat/smp/dormir.rs`.
 pub const INFO_SMP_CSTATE: u64 = 0x5F;
 
+/// **Siestas que algo corto antes del plazo. Alta en reposo = alguien despierta.**
+///
+/// Del carril de AXION. Ver `plat/smp/dormir.rs`.
+pub const INFO_SMP_SIESTAS_CORTAS: u64 = 0x60;
+
 /// **La frecuencia efectiva del nucleo AHORA, en Hz.** `0` = no se puede medir.
 ///
 /// No es [`INFO_TSC_HZ`]: ese es el reloj de referencia, que no cambia nunca.

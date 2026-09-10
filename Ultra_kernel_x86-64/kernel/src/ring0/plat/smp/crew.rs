@@ -60,9 +60,36 @@ static TAREA: AtomicU64 = AtomicU64::new(0);
 static PARTES: AtomicU32 = AtomicU32::new(0);
 /// Cuantos obreros han terminado su parte.
 static HECHOS: AtomicU32 = AtomicU32::new(0);
+/// Una celda SOLA en su linea de cache de 64 bytes.
+///
+/// == *** POR QUE HACE FALTA, y lo dijo el metal (2026-09-10) ============
+///
+/// `MONITOR` no vigila una direccion: vigila **LA LINEA DE CACHE ENTERA** en
+/// la que esa direccion cae. Y `TAREA`, `PARTES`, `HECHOS`, `RONDA` y `PARAR`
+/// estaban declarados uno detras de otro, o sea **dentro de los mismos 64
+/// bytes**.
+///
+/// ** Consecuencia: cada vez que un obrero incrementaba `HECHOS` al terminar
+/// su parte, **despertaba a los otros diez**. Once nucleos saliendo de un
+/// C-state para descubrir que la ronda no habia cambiado -- que es el bucle de
+/// espera de antes, pero pagando la salida del C-state cada vez.
+///
+/// [!] Y no da fallo ni sale en ninguna cuenta: la unica huella es que las
+/// siestas duran menos de lo que deberian. El arranque las saco a **11,7 ms
+/// de media contra un plazo de 27** -- ese hueco era esto.
+///
+///   > Compartir una linea de cache no es compartir un dato. Es compartir
+///   > una interrupcion que nadie escribio.
+#[repr(align(64))]
+struct Sola(AtomicU32);
+
 /// Sube con cada encargo. Es lo que distingue *"hay trabajo nuevo"* de *"sigue
 /// el de antes"* sin tener que borrar nada entre medias.
-static RONDA: AtomicU32 = AtomicU32::new(0);
+///
+/// ** Va SOLA en su linea a proposito -- ver `Sola`. Es la unica celda que
+/// vigila el `monitor` de los obreros, asi que es la unica que tiene que
+/// estar limpia de vecinos.
+static RONDA: Sola = Sola(AtomicU32::new(0));
 /// Cuando se pone, los obreros vuelven a `hlt` y no salen mas.
 static PARAR: AtomicBool = AtomicBool::new(false);
 
@@ -126,7 +153,7 @@ pub fn obrero(indice: u32, apic: u32) -> ! {
                 unsafe { core::arch::asm!("cli; hlt", options(nomem, nostack)) };
             }
         }
-        let r = RONDA.load(Ordering::SeqCst);
+        let r = RONDA.0.load(Ordering::SeqCst);
         if r != vista {
             vista = r;
             let f = TAREA.load(Ordering::SeqCst);
@@ -164,7 +191,7 @@ pub fn obrero(indice: u32, apic: u32) -> ! {
         // [!] Se le pasa `vista`, que es la ronda que este obrero YA atendio.
         // Si `RONDA` ya no vale eso, hay trabajo y no se duerme. Ese segundo
         // vistazo va DENTRO de `esperar`, despues de armar el `monitor`.
-        super::dormir::esperar(&RONDA, vista);
+        super::dormir::esperar(&RONDA.0, vista);
     }
 }
 
@@ -189,7 +216,7 @@ pub fn repartir(faena: Faena, obreros: u32) -> bool {
     // La ronda va LA ULTIMA: es la senal, y publicarla antes que los datos
     // dejaria a un obrero leyendo la faena de la ronda anterior con las partes
     // de la nueva.
-    RONDA.fetch_add(1, Ordering::SeqCst);
+    RONDA.0.fetch_add(1, Ordering::SeqCst);
 
     // El BSP hace la suya mientras los demas hacen las suyas.
     faena(0, partes);
@@ -240,7 +267,7 @@ pub fn parar() {
     // [!] Y no rompe nada: el obrero mira `PARAR` ANTES que la ronda, asi que
     // ve la parada y no llega a buscar faena. Que la ronda suba sin trabajo
     // publicado es exactamente lo que ya pasaba con `RONDA` sin `TAREA`.
-    RONDA.fetch_add(1, Ordering::SeqCst);
+    RONDA.0.fetch_add(1, Ordering::SeqCst);
 }
 
 /// Estan parados?

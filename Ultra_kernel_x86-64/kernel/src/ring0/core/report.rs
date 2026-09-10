@@ -101,6 +101,7 @@ const INFO_DMA_HBA_DE_MAS: u64 = 0x5C;
 const INFO_SMP_SIESTAS: u64 = 0x5D;
 const INFO_SMP_MS_APAGADOS: u64 = 0x5E;
 const INFO_SMP_CSTATE: u64 = 0x5F;
+const INFO_SMP_SIESTAS_CORTAS: u64 = 0x60;
 /// ** LA FRECUENCIA EFECTIVA, en Hz. `0` = no se puede medir.
 ///
 /// No es `INFO_TSC_HZ`: ese dice a que va el RELOJ de referencia, que no cambia
@@ -659,6 +660,7 @@ pub fn campo(n: u64) -> u64 {
         INFO_SMP_MS_APAGADOS => crate::ring0::plat::smp::dormir::ticks_dormidos(),
         INFO_SMP_CSTATE => { let p = crate::ring0::plat::smp::dormir::profundidad();
               if crate::ring0::plat::smp::dormir::se_puede() { ((p >> 4) + 1) as u64 } else { 0 } },
+        INFO_SMP_SIESTAS_CORTAS => crate::ring0::plat::smp::dormir::siestas_cortas(),
         _ => 0,
     }
 }

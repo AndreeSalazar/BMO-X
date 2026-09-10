@@ -310,6 +310,11 @@ pub fn render_hud() {
         let por_ms = if hz_z >= 1000 { hz_z / 1000 } else { 1 };
         r.txt(":");
         r.dec(crate::ring0::plat::smp::dormir::ticks_dormidos() / por_ms);
+        // ** Y las CORTADAS: las que algo desperto antes del plazo. Alta con
+        // la maquina en reposo = alguien escribe en la linea de `RONDA`, o
+        // llega una interrupcion. Ver `plat/smp/dormir.rs`.
+        r.txt(":");
+        r.dec(crate::ring0::plat::smp::dormir::siestas_cortas());
     }
     let health = if n_soltados != 0 || v_pisados != 0 || v_choques != 0
         || caducados != 0 || c_rotas != 0 || c_demas != 0
