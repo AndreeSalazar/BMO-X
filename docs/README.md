@@ -193,6 +193,7 @@ con **que la bloquea** y **como se sabe que quedo hecha**"*.
 | [`PLAN_EL_ASISTENTE.md`](plan/PLAN_EL_ASISTENTE.md) | **fusiona cuatro documentos**: que falta para que una IA local corra dentro de BMO-X, y donde estan de verdad los meses |
 | [`PLAN_SUELO_RING3.md`](plan/PLAN_SUELO_RING3.md) | las tres cosas que hay que construir ANTES de bajar nada de Ring 0 |
 | [`PLAN_MEDIOS.md`](plan/PLAN_MEDIOS.md) | VLC medido: es Nivel 3, y lo que se pide detras del nombre son cuatro escalones |
+| [`PLAN_LA_RAM_SALE_DEL_KERNEL.md`](plan/PLAN_LA_RAM_SALE_DEL_KERNEL.md) | **medido**: 1.716 de las 2.928 lineas de `mm/` no tienen ni un `asm!`, y el unico rastro de x86-64 en `titular/` es una palabra en un comentario |
 
 ★ **El par MAESTRO + PLAN es la simetria de esta carpeta**, y hoy la tienen
 entera AUTOCURACION, SEGURIDAD y **AUDIO** -- este ultimo desde el 25-08, el dia
