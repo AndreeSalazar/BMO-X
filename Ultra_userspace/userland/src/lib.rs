@@ -255,6 +255,13 @@ pub const INFO_DMA_CENTINELA_MIRADAS: u64 = 0x5A;
 pub const INFO_DMA_CENTINELA_ROTAS: u64 = 0x5B;
 /// Veces que el HBA dijo haber movido MAS sectores de los pedidos.
 pub const INFO_DMA_HBA_DE_MAS: u64 = 0x5C;
+
+/// Veces que un obrero se durmio de verdad con MWAITX. 0 = no hay MONITORX.
+pub const INFO_SMP_SIESTAS: u64 = 0x5D;
+/// TICKS del TSC pasados durmiendo, sumando todos los obreros.
+pub const INFO_SMP_MS_APAGADOS: u64 = 0x5E;
+/// Que tan hondo se duerme: el C-state, ya en numero (1 = C1). 0 = no duerme.
+pub const INFO_SMP_CSTATE: u64 = 0x5F;
 /// La frecuencia efectiva del nucleo AHORA, en Hz. `0` = no se puede medir.
 /// Es una MEDIDA: dos lecturas seguidas dan la velocidad de ese intervalo.
 pub const INFO_CPU_HZ_REAL: u64 = 0x20;

@@ -135,6 +135,80 @@ fn fila_mili(s: &mut Output, que: &[u8], milis: u64, unidad: &[u8], nota: &[u8])
     s.byte(b'\n');
 }
 
+/// **Una fila con BARRA**: el numero a la derecha y la proporcion dibujada.
+///
+/// == *** POR QUE UNA BARRA Y NO SOLO EL NUMERO (2026-09-10) =============
+///
+/// `15096 MiB libres de 15118` y `1096 MiB libres de 15118` se leen igual de
+/// rapido --o sea, mal-- porque el ojo compara **longitudes**, no digitos. Una
+/// barra convierte una resta mental en una ojeada.
+///
+/// ** Y va con caracteres, no con pixeles, porque la salida ES una rejilla de
+/// caracteres: `Output::bar` ya existia y no lo usaba nadie. Lo que faltaba no
+/// era la herramienta, era llamarla.
+///
+/// [!] Solo para lo que TIENE denominador. Una barra sobre un contador sin
+/// techo --ticks, siestas-- seria dibujar una proporcion inventada.
+fn fila_barra(s: &mut Output, que: &[u8], parte: u64, total: u64, unidad: &[u8]) {
+    s.text(b"    ");
+    s.text(que);
+    for _ in que.len()..16 {
+        s.byte(b' ');
+    }
+    s.dec_right(parte, 9);
+    s.byte(b' ');
+    s.text(unidad);
+    for _ in unidad.len()..8 {
+        s.byte(b' ');
+    }
+    // ** El color sale de la PROPORCION, no de una opinion: lleno es malo
+    // para lo que se gasta, y por eso quien llama pasa `parte` como *lo
+    // usado*. Un umbral fijo en 90 se elige porque por debajo no hay nada que
+    // hacer y por encima ya no da tiempo a hacerlo.
+    let lleno = if total == 0 { 0 } else { parte.saturating_mul(100) / total };
+    s.with_ink(if lleno >= 90 {
+        INK_ERR
+    } else if lleno >= 70 {
+        INK_ECHO
+    } else {
+        INK_GOOD
+    });
+    s.bar(parte, total, 20);
+    s.byte(b' ');
+    s.pct(parte, total);
+    s.with_ink(INK_PLAIN);
+    s.byte(b'\n');
+}
+
+/// **Una fila que TIENE QUE SER CERO**, y lo dice con el color.
+///
+/// *** Es el ayudante que mas trabaja de los tres, y por un motivo que no es
+/// estetico: en el informe del DMA hay CUATRO filas cuyo unico valor bueno es
+/// el cero --pisados, choques, caducados, rotos-- y **mezcladas con las demas
+/// se leen como numeros cualesquiera**. En verde o en rojo se leen como lo que
+/// son: una regla que se cumplio, o una que no.
+///
+///   > Un panel donde todo se ve igual obliga a leerlo entero. El color no es
+///   > adorno: es lo que permite NO leer las filas que estan bien.
+fn fila_cero(s: &mut Output, que: &[u8], valor: u64, nota: &[u8]) {
+    s.text(b"    ");
+    s.text(que);
+    for _ in que.len()..16 {
+        s.byte(b' ');
+    }
+    s.with_ink(if valor == 0 { INK_GOOD } else { INK_ERR });
+    s.dec_right(valor, 9);
+    s.with_ink(INK_PLAIN);
+    s.text(b"          ");
+    s.with_ink(if valor == 0 { INK_GOOD } else { INK_ERR });
+    s.text(if valor == 0 { b"OK" } else { b"[!]" });
+    s.with_ink(INK_ECHO);
+    s.byte(b' ');
+    s.text(nota);
+    s.with_ink(INK_PLAIN);
+    s.byte(b'\n');
+}
+
 /// Un renglon de separacion DENTRO de una seccion. Ver `report_consumo`.
 fn subregla(s: &mut Output, titulo: &[u8]) {
     s.with_ink(INK_ECHO);
@@ -246,12 +320,34 @@ pub(crate) fn report_consumo(s: &mut Output) {
     fila(s, b"nucleos", bmo::info(bmo::INFO_CPU_NUCLEOS), b"fisicos", super::topologia::duda_nota());
     fila(s, b"hilos", hilos, b"logicos", b"");
     // `SMP_VIVOS` cuenta los APs, o sea SIN el BSP; el que mira quiere el total.
-    fila_de(s, b"en pie", vivos + 1, hilos, b"`smp all` levanta los demas");
+    // ** Con barra desde que los obreros DUERMEN: hasta el 10-09 levantarlos
+    // costaba once nucleos al 100%, asi que "1 de 12" era lo prudente y no una
+    // carencia. Ahora la barra vacia SI es una carencia -- y por eso se dibuja.
+    fila_barra(s, b"en pie", vivos + 1, hilos, b"hilos");
     let hz = bmo::info(bmo::INFO_CPU_HZ_REAL);
     if hz > 0 {
         fila(s, b"reloj ahora", hz / 1_000_000, b"MHz", b"medido por MPERF/APERF");
     }
     fila(s, b"reloj base", bmo::info(bmo::INFO_TSC_HZ) / 1_000_000, b"MHz", b"el TSC");
+    // == *** LO QUE CUESTA TENER LOS DOCE EN PIE ======================
+    //
+    // Hasta el 10-09 levantarlos costaba once nucleos girando al 100%, asi que
+    // "1 de 12" era prudencia y no carencia. Con `MWAITX` duermen, y entonces
+    // lo que hay que ver no es cuantos hay: es **cuanto estan apagados**.
+    let cstate = bmo::info(bmo::INFO_SMP_CSTATE);
+    if cstate != 0 {
+        let hz2 = bmo::info(bmo::INFO_TSC_HZ);
+        let por_ms = if hz2 >= 1000 { hz2 / 1000 } else { 1 };
+        fila(s, b"duermen en", cstate, b"C-state",
+             b"1 = solo para el nucleo, 6 = lo apaga. Lo dice CPUID hoja 5");
+        fila(s, b"apagados", bmo::info(bmo::INFO_SMP_MS_APAGADOS) / por_ms, b"ms",
+             b"sumando todos los obreros -- ESTE es el ahorro");
+        fila(s, b"siestas", bmo::info(bmo::INFO_SMP_SIESTAS), b"",
+             b"cuantas veces; el ahorro lo dice la fila de arriba");
+    } else {
+        fila(s, b"duermen en", 0, b"",
+             b"[!] sin MONITORX no se duerme: los obreros GIRAN al 100%");
+    }
     let mw = bmo::info(bmo::INFO_CPU_MW_PAQUETE);
     if mw > 0 {
         fila_mili(s, b"gasta paquete", mw, b"W", b"los nucleos + fabric + memoria + L3");
@@ -265,7 +361,11 @@ pub(crate) fn report_consumo(s: &mut Output) {
     let total = bmo::info(bmo::INFO_RAM_TOTAL);
     let libre = bmo::info(bmo::INFO_RAM_LIBRE);
     fila(s, b"total", total / (1024 * 1024), b"MiB", b"");
-    fila(s, b"usada", total.saturating_sub(libre) / (1024 * 1024), b"MiB", b"");
+    // ** USADA con barra y no LIBRE: el ojo lee "lleno" como malo, y aqui lo
+    // que crece mal es lo usado. Pintar la barra de lo libre la dejaria roja
+    // cuando todo va bien.
+    fila_barra(s, b"usada", total.saturating_sub(libre) / (1024 * 1024),
+               total / (1024 * 1024), b"MiB");
     fila(s, b"libre", libre / (1024 * 1024), b"MiB", b"la fila que tiene que VOLVER");
     fila_de(
         s,
@@ -307,12 +407,12 @@ pub(crate) fn report_consumo(s: &mut Output) {
     subregla(s, b"DMA -- quien escribe en la RAM sin pedir permiso");
     fila(s, b"en vuelo", bmo::info(bmo::INFO_DMA_VUELO_VIVOS), b"marcos",
          b"al apagar tiene que ser 0");
-    fila(s, b"pisados", bmo::info(bmo::INFO_DMA_VUELO_PISADOS), b"",
-         b"CERO: un marco reasignado con DMA dentro (R-DMA-3)");
-    fila(s, b"choques", bmo::info(bmo::INFO_DMA_VUELO_CHOQUES), b"",
-         b"CERO: dos aparatos, un bufer (R-DMA-4)");
-    fila(s, b"caducados", bmo::info(bmo::INFO_DMA_CADUCADOS), b"",
-         b"CERO: un vuelo que paso de plazo (R-DMA-8)");
+    fila_cero(s, b"pisados", bmo::info(bmo::INFO_DMA_VUELO_PISADOS),
+              b"un marco reasignado con DMA dentro (R-DMA-3)");
+    fila_cero(s, b"choques", bmo::info(bmo::INFO_DMA_VUELO_CHOQUES),
+              b"dos aparatos, un bufer (R-DMA-4)");
+    fila_cero(s, b"caducados", bmo::info(bmo::INFO_DMA_CADUCADOS),
+              b"un vuelo que paso de plazo (R-DMA-8)");
 
     // ** EL PLAZO NO SE ELIGE, SE MIDE (LEY 24). Este es el numero del que
     // saldra, y se ensena en MICROsegundos porque lo que hay que comparar
@@ -337,10 +437,10 @@ pub(crate) fn report_consumo(s: &mut Output) {
 
     fila(s, b"centinela", bmo::info(bmo::INFO_DMA_CENTINELA_MIRADAS), b"",
          b"bordes mirados tras un rebote");
-    fila(s, b"rotos", bmo::info(bmo::INFO_DMA_CENTINELA_ROTAS), b"",
-         b"CERO: el disco escribio mas alla de lo que declaro");
-    fila(s, b"dijo de mas", bmo::info(bmo::INFO_DMA_HBA_DE_MAS), b"",
-         b"CERO: el HBA conto mas sectores de los pedidos");
+    fila_cero(s, b"rotos", bmo::info(bmo::INFO_DMA_CENTINELA_ROTAS),
+              b"el disco escribio mas alla de lo que declaro");
+    fila_cero(s, b"dijo de mas", bmo::info(bmo::INFO_DMA_HBA_DE_MAS),
+              b"el HBA conto mas sectores de los pedidos");
 }
 
 #[inline(never)]
