@@ -119,6 +119,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-dma-forma"
+version = "0.1.0"
+
+[[package]]
 name = "bmo-dma-juicio"
 version = "0.1.0"
 
@@ -229,6 +233,7 @@ dependencies = [
  "bmo-ciudad",
  "bmo-dibujo",
  "bmo-disco-juicio",
+ "bmo-dma-forma",
  "bmo-dma-juicio",
  "bmo-estratos",
  "bmo-fat32",

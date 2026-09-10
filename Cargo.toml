@@ -43,6 +43,7 @@ members = [
     # CATORCE sitios le dan una direccion fisica a un aparato y solo UNO
     # comprueba algo --la paridad--. Y su tipo `Prenda` es el paso N0 del plan:
     # el embudo lo cuenta el compilador, no un grep.
+    "platform/shared/bmo-dma-forma",
     "platform/shared/bmo-dma-juicio",
     "platform/shared/bmo-channel",
     # La ciudad de neon del arranque: la dibuja la CPU, no se guarda.

@@ -30,6 +30,7 @@ bmo-identify = { path = "../../platform/drivers/storage/identify" }
 bmo-disco-juicio = { path = "../../platform/shared/bmo-disco-juicio" }
 # EL JUEZ DEL DMA: se le puede dar esta direccion fisica a este aparato? Paso
 # N2 de docs/plan/PLAN_EL_NEUTRO_VIGILADO.md.
+bmo-dma-forma = { path = "../../platform/shared/bmo-dma-forma" }
 bmo-dma-juicio = { path = "../../platform/shared/bmo-dma-juicio" }
 # El FORMATO de TRIM: un rango de LBA convertido en descriptores de
 # `DATA SET MANAGEMENT`. Fuera del kernel por lo mismo que los dos de arriba --

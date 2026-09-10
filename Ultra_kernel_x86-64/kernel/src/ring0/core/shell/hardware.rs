@@ -1029,6 +1029,40 @@ pub(crate) fn shell_mem() {
         l.size(rebotados);
         l.txt(" por la pagina de rebote");
     });
+    // == *** Y DE QUE SE QUEJA CADA REBOTE (2026-09-10) ==================
+    //
+    // La linea de arriba lleva meses diciendo CUANTO se rebota, y con ese
+    // numero solo no se puede hacer nada: los tres motivos de rebote se
+    // arreglan en tres sitios que no se parecen.
+    //
+    // ```text
+    //    fuera del espejo   se arregla MOVIENDO el bufer, no tocando el disco
+    //    desalineado        se arregla en quien pide, con un `+ 1 & !1`
+    //    no cabe el tramo   se arregla pidiendo mas de golpe
+    // ```
+    //
+    // ** Solo se dicen los que NO son cero. Una lista de seis renglones con
+    // cuatro ceros esconde los dos que importan.
+    let motivos = crate::ring0::dev::disk::motivos_dma();
+    let cuales = [
+        bmo_dma_forma::PorQue::EsSuyo,
+        bmo_dma_forma::PorQue::ElDestinoYaSirve,
+        bmo_dma_forma::PorQue::FueraDelEspejo,
+        bmo_dma_forma::PorQue::Desalineado,
+        bmo_dma_forma::PorQue::NoCabeElTramo,
+        bmo_dma_forma::PorQue::NoLoDireccionaElAparato,
+    ];
+    for q in cuales {
+        let n = motivos[q.indice()];
+        if n == 0 {
+            continue;
+        }
+        row("  por que", |l| {
+            l.dec(n);
+            l.txt(" x ");
+            l.txt(q.nombre());
+        });
+    }
     row("archivo", |l| {
         l.size(reflejados);
         l.txt(" reflejados, ");
