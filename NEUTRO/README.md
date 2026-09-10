@@ -76,6 +76,7 @@ correr -- que es la definicion de agnostico y la razon de que no viva dentro de
 | [`ARQUITECTURAS.md`](ARQUITECTURAS.md) | lo agnostico: la misma categoria en x86-64, ARM64 y RISC-V |
 | [`REQUISITOS.md`](REQUISITOS.md) | ★ **que falta para completarlo**, con lo hecho marcado |
 | [`FRONTERA.txt`](FRONTERA.txt) | que ES neutro y que NO, para no estirar la palabra |
+| [`ORDEN.md`](ORDEN.md) | ** **donde va lo que llegue**, decidido antes: se ordena por MECANISMO y no por aparato, y la GPU ya tiene sitio |
 | [`DMA/`](DMA/README.md) | ** desde el **09-09**: el MECANISMO. La tercera condicion de esta frontera, por completo |
 
 ### Y lo que NO esta aqui, a proposito

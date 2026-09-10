@@ -90,6 +90,13 @@ a que alguien la llene es una promesa, y esta casa no guarda promesas en el
 arbol: `EMBUDO.txt` esta porque **hoy tiene datos**. Lo demas entra cuando
 tenga contenido, no antes.
 
+*** Y **esta no es la unica carpeta que va a colgar de `NEUTRO/`**: la regla que
+decide cual es cual esta en [`ORDEN.md`](../ORDEN.md), y se ordena **por
+MECANISMO, no por aparato**. Esta es el mecanismo 1 --*pide memoria y escribe
+por el bus*--, y por eso la GPU que llegue entra AQUI y no en una carpeta suya.
+Su PSP, en cambio, es el mecanismo 2 y no vive aqui: **la tarjeta se parte en
+dos**, y esa es la prueba de que la regla es la buena.
+
 ---
 
 # 3. ★★★ EL HALLAZGO DEL CENSO: LA NIC YA LO HACE BIEN
