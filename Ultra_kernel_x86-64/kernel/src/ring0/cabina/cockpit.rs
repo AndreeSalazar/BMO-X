@@ -239,7 +239,32 @@ pub fn render_hud() {
     let (n_vivos, n_soltados) = crate::ring0::mm::titular::neutros();
     r.txt(" neutro="); r.dec(n_vivos);
     r.txt(":"); r.dec(n_soltados);
-    let health = if n_soltados != 0 {
+    // == *** EL VUELO, AL LADO DEL NEUTRO -- N4b, 2026-09-09 =============
+    //
+    // ** `vuelos()` existia desde esta misma manana y NO LO MIRABA NADIE, que
+    // es exactamente el fallo que esta casa lleva toda la semana cazando: el
+    // metro de la puerta, los cuatro sellos del stub, `bv0=`. Un instrumento
+    // al que hay que ir no se mira; el que esta delante, si.
+    //
+    // Va pegado a `neutro=` a proposito: **son la misma pregunta en dos
+    // tiempos**. `neutro` dice de quien es un marco; `vuelo` dice si AHORA
+    // hay un aparato escribiendo en el.
+    //
+    // ```text
+    //    vuelo=V:P:C
+    //          | | +-- CHOQUES: dos aparatos pidieron el mismo bufer
+    //          | +---- PISADOS: un marco cambio de titular con DMA dentro
+    //          +------ VIVOS: en vuelo ahora. Al apagar, CERO
+    // ```
+    //
+    // [!] Y los dos ultimos mandan sobre el color por delante de la RAM baja,
+    // por la misma razon que `soltados`: quedarse sin memoria es incomodo, un
+    // bufer reasignado con un aparato dentro es corrupcion esperando su turno.
+    let (v_vivos, v_pisados, v_choques) = crate::ring0::mm::titular::vuelos();
+    r.txt(" vuelo="); r.dec(v_vivos);
+    r.txt(":"); r.dec(v_pisados);
+    r.txt(":"); r.dec(v_choques);
+    let health = if n_soltados != 0 || v_pisados != 0 || v_choques != 0 {
         // Gana sobre la RAM baja: quedarse sin memoria es incomodo, un marco de
         // aparato suelto es corrupcion esperando su turno.
         C_FAULT

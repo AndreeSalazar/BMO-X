@@ -78,6 +78,8 @@ ejes, dos cuerpos de trabajo previo, dos maestros.
        README.md                    esta puerta
        EMBUDO.txt                   el censo de N0: quien le da una direccion
                                     fisica a un aparato, y cuantas veces
+       INTELIGENTE.txt              las TRES formas de darle memoria a un
+                                    aparato, y cuando vale cada una
 
    docs/maestro/DMA_MAESTRO.md      que copiar del mundo sobre disciplina DMA
    docs/maestro/IOMMU_MAESTRO.md    que copiar sobre AMD-Vi / VT-d / SMMU

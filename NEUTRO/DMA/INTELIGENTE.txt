@@ -1,0 +1,138 @@
+DMA INTELIGENTE -- las TRES formas de darle memoria a un aparato
+=================================================================
+
+  Pregunta del dueno, y la ha hecho tres veces con palabras distintas:
+  "el mapeo y el hot unmapping, ambos tienen que aplicarse inteligente que
+  trate de no costar por algo" ... "DMA inteligente?".
+
+  *** La respuesta no es una tecnica. Son TRES, las tres ya existen en este
+  arbol, y lo INTELIGENTE es elegir cual por camino en vez de tener una regla
+  para todos.
+
+
+LAS TRES, Y LAS TRES ESTAN EN EL CODIGO HOY
+--------------------------------------------
+
+  1. SU PROPIO CORRAL          el aparato pide una arena y todo sale de ahi
+  2. PRESTADO PARA ESTA VEZ    el kernel le cede un marco de otro, un rato
+  3. REBOTE                    se copia a una pagina que si vale, y de vuelta
+
+  Ninguna es mejor que las otras. Cada una cambia una cosa por otra, y saber
+  CUAL es lo que hace que la eleccion sea inteligente en vez de una costumbre.
+
+
+  1. SU PROPIO CORRAL -- lo que hace la NIC
+  ------------------------------------------
+
+    drivers/net/anillo.rs:102     una arena contigua
+    dev/net/mod.rs:325            pedida entera como `Titular::Neutro`
+
+    La tarjeta de red no valida sus direcciones fisicas PORQUE NO PUEDEN ESTAR
+    MAL: se calculan como `base + i * tamano` dentro de un corral que es suyo.
+
+    *** Y ESA ES LA FORMA MAS INTELIGENTE DE LAS TRES, por un motivo que no es
+    de velocidad:
+
+        comprobar es lo que se hace cuando algo PUEDE estar mal.
+        una arena hace que NO PUEDA.
+
+    lo que cuesta   la memoria se reserva y no se devuelve. Para tres aparatos
+                    que piden al arrancar es gratis; para treinta, no
+    cuando vale     un aparato con un flujo constante y un tamano conocido:
+                    la red, los anillos del xHC, el DCBAA
+
+
+  2. PRESTADO PARA ESTA VEZ -- lo que hace el AHCI en su camino directo
+  ---------------------------------------------------------------------
+
+    dev/disk/transfer.rs:64       `tramo_dma(va, restante)`
+
+    El disco escribe DIRECTAMENTE en el bufer del que llamo. Sin copiar, sin
+    corral: la direccion fisica del destino de verdad.
+
+    ** Es la mas rapida de las tres --cero copias-- y la unica que necesita
+    saber CUANDO. Un marco prestado deja de serlo, y si alguien lo reasigna
+    mientras el aparato escribe, el dato aterriza encima de otra cosa.
+
+    *** Por eso existe el BIT EN VUELO (paso N4, `mm/titular.rs`): es lo que
+    convierte "prestado" en un hecho comprobable en vez de una intencion.
+
+    lo que cuesta   hay que llevar la cuenta del prestamo, y hay que
+                    devolverlo. Un prestamo que nadie recoge es una fuga
+    cuando vale     transferencias grandes donde la copia dolerla mas que la
+                    contabilidad
+
+
+  3. REBOTE -- lo que hace el AHCI cuando el destino no sirve
+  ------------------------------------------------------------
+
+    dev/disk/transfer.rs:150      `leer_rebotando`
+    dev/disk/mod.rs:~588          las escrituras SIEMPRE rebotan
+
+    Se copia a una pagina que el aparato si puede usar, se manda, y se copia de
+    vuelta. Tiene nombre desde hace veinte anios: bounce buffer.
+
+    [!] ES UNA RED DE SEGURIDAD, NO UNA ARQUITECTURA. Cada rebote son dos
+    `memcpy` que no existirian si el destino sirviera.
+
+    lo que cuesta   ancho de banda, y el que mas: `c/blit.bex` mide lo que
+                    cuesta un `memcpy` en esta placa
+    cuando vale     cuando el destino NO sirve y punto: no esta contiguo, no
+                    esta alineado, o cae por encima de lo que el aparato
+                    direcciona
+
+
+LA REGLA, EN UNA TABLA
+-----------------------
+
+  el flujo es constante y del tamano conocido   ->  1. CORRAL
+  el destino ya sirve tal cual                  ->  2. PRESTADO
+  el destino no sirve                           ->  3. REBOTE
+
+  *** Y "inteligente" es exactamente esto: **elegir por camino**. Hoy el AHCI ya
+  hace 2 y 3 segun le sirva el destino --y eso ya es inteligente sin que nadie
+  lo llamara asi--; la NIC hace 1. Lo que falta no es inventar una cuarta forma:
+  es que la eleccion se pueda MEDIR.
+
+
+LO QUE FALTA PARA QUE SEA INTELIGENTE DE VERDAD
+------------------------------------------------
+
+  Hoy la eleccion se toma con reglas escritas a mano y ningun numero detras.
+
+    [ ] cuantas veces se rebota, y cuantos bytes    -> `CON_REBOTE` ya lo
+                                                       cuenta y no lo mira nadie
+    [ ] cuanto cuesta un rebote en ESTA placa       -> `c/blit.bex` lo sabe medir
+    [ ] cuanto cuesta revocar una pagina            -> M1b de
+                                                       PLAN_LA_PUERTA_SE_PARTE
+    [ ] y el umbral del desmapeo: N `invlpg` contra un `mov cr3`
+
+  ** Con esos cuatro numeros, "inteligente" deja de ser una palabra y pasa a ser
+  una desigualdad. Sin ellos es una costumbre que funciona.
+
+
+Y EL MAPEO / DESMAPEO, QUE ES LA OTRA MITAD DE LA PREGUNTA
+-----------------------------------------------------------
+
+    Mapear es prestar la llave. Desmapear es cambiar la cerradura.
+
+  Se presta la llave de lo que se abre mil veces al dia, no de lo que hay que
+  poder cerrar de golpe. Y la asimetria que lo decide:
+
+    por la PUERTA   780 ticks por lectura   revocar es GRATIS (una generacion)
+    por la PAGINA     4 ticks por lectura   revocar cuesta DESMAPEAR
+
+  *** El que no cruza la puerta no puede ser detenido en la puerta.
+
+  Ver `docs/plan/PLAN_LA_PUERTA_SE_PARTE.md`, secciones 6b y 6c, y
+  `docs/maestro/DMA_MAESTRO.md` para lo que el mundo hace con esto.
+
+
+[!] LO QUE ESTE FICHERO NO ES
+------------------------------
+
+  No es un plan: no tiene casillas. Las casillas viven en
+  `docs/plan/PLAN_EL_NEUTRO_VIGILADO.md`.
+
+  Es la respuesta a una pregunta que se repitio tres veces, escrita en el sitio
+  donde se va a volver a hacer.
