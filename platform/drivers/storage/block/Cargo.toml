@@ -2,7 +2,7 @@
 name = "bmo-block"
 version = "0.1.0"
 edition = "2021"
-description = "BMO — el contrato de bloques: leer, escribir, capacidad, identidad"
+description = "BMO -- el contrato de bloques: leer, escribir, capacidad, identidad"
 
 [lib]
 

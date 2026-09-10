@@ -1,0 +1,4 @@
+# El trinquete de los no-ASCII en literales del ANFITRION.
+# Baja cuando alguien los quita. NO PUEDE SUBIR sin pasar
+# por aqui, y por eso es un fichero y no una constante.
+107

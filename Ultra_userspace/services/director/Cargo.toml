@@ -2,7 +2,7 @@
 name = "bmo-service-director"
 version = "0.1.0"
 edition = "2021"
-description = "El compositor de BMO — el proceso Ring 3 que es dueno de la pantalla"
+description = "El compositor de BMO -- el proceso Ring 3 que es dueno de la pantalla"
 
 [[bin]]
 name = "director"

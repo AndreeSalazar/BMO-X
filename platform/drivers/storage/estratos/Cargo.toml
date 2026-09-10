@@ -2,7 +2,7 @@
 name = "bmo-estratos"
 version = "0.1.0"
 edition = "2021"
-description = "ESTRATOS — el formato en disco del sistema de ficheros de BMO-X"
+description = "ESTRATOS -- el formato en disco del sistema de ficheros de BMO-X"
 
 [lib]
 

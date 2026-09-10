@@ -83,13 +83,71 @@ LANGS = {
 METAL_PREFIXES = ("Ultra_kernel", "Ultra_userspace", "platform")
 
 
+TECHO_ANFITRION = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "TECHO_ANFITRION.txt")
+
+
+def leer_techo_anfitrion():
+    """El trinquete: cuantos no-ASCII se toleran en literales del anfitrion.
+
+    ** Un fichero y no una constante porque el numero BAJA, y bajarlo tiene
+    que ser un commit que se vea. Igual que la linea base de `tamano`.
+    """
+    try:
+        with open(TECHO_ANFITRION, encoding="utf-8") as fh:
+            for linea in fh:
+                linea = linea.strip()
+                if linea and not linea.startswith("#"):
+                    return int(linea)
+    except (OSError, ValueError):
+        pass
+    # Sin fichero no hay trinquete, y eso se dice en vez de fingir un cero.
+    return 10 ** 9
+
+
+def fijar_techo_anfitrion(n):
+    with open(TECHO_ANFITRION, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("# El trinquete de los no-ASCII en literales del ANFITRION.\n")
+        fh.write("# Baja cuando alguien los quita. NO PUEDE SUBIR sin pasar\n")
+        fh.write("# por aqui, y por eso es un fichero y no una constante.\n")
+        fh.write("%d\n" % n)
+
 def prints_on_metal(rel, lang):
     """Does a string in this file end up on the Latin-1 framebuffer?
 
-    Only Rust source: a `Cargo.toml` description is package metadata that no
-    machine ever renders.
+    == *** POR QUE ESTO FALLA, y esta comprobado (2026-09-10) ==============
+
+    La fuente de BMO-X tiene 25 glifos Latin-1 --n con tilde, las cinco
+    vocales acentuadas, la dieresis, la cedilla-- y los indexa por BYTE:
+    `0xF1` es la n con tilde. Pero un `.rs` es UTF-8, donde esa letra son DOS
+    bytes (`0xC3 0xB1`), y **nadie traduce entre los dos**.
+
+    ** El arbol ya lo tenia escrito antes que este guardian, en
+    `core/splash/tablero.rs`: *"un literal Rust con acentos viajaria en UTF-8,
+    o sea dos glifos raros"*. La pantalla sabe pintar la letra; lo que no hay
+    es quien le entregue el byte correcto.
+
+    > La fuente no es el problema. El problema es que el fichero y la pantalla
+    > hablan dos codificaciones y nadie hace de interprete.
+
+    == Y EL `Cargo.toml` DEJO DE ESTAR EXENTO ============================
+
+    Decia: *"metadatos de paquete que ninguna maquina pinta"*, y es CIERTO.
+    Se quita igual, por lo que pidio el dueno el 10-09:
+
+        "hablamos de x86-64, ESE MISMO, el estandar, SOLO ESA arquitectura,
+         y el PERFIL se paga una sola vez"
+
+    *** El argumento es de MANTENIMIENTO, no de pintado: dos regimenes --uno
+    estricto y otro laxo-- se sostienen mientras nadie mueva un fichero de
+    lado. El dia que alguien copie una descripcion de un `Cargo.toml` a un
+    `//!`, el acento viaja y la regla no lo ve salir.
+
+    ** Y costo CERO encenderlo: los catorce que habia eran el MISMO caracter
+    --un guion largo en `description`-- y la casa ya escribe `--`.
     """
-    return lang == "rust" and rel.replace(os.sep, "/").startswith(METAL_PREFIXES)
+    en_metal = rel.replace(os.sep, "/").startswith(METAL_PREFIXES)
+    return en_metal and lang in ("rust", "toml", "c")
 
 # ---------------------------------------------------------------------------
 # The replacement table.
@@ -689,6 +747,8 @@ def main():
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--dry-run", action="store_true", help="report, change nothing")
     g.add_argument("--apply", action="store_true", help="rewrite in place")
+    g.add_argument("--fijar", action="store_true",
+                    help="acepta el numero de hoy como el techo del anfitrion")
     g.add_argument("--check", action="store_true", help="exit 1 if non-ASCII remains")
     args = ap.parse_args()
 
@@ -713,7 +773,7 @@ def main():
             print(f"  NOT UTF-8, skipped: {rel}")
             continue
 
-        if args.check:
+        if args.check or args.fijar:   # `--fijar` cuenta igual que `--check`
             # ** Se mira el fichero ENTERO --comentarios y cadenas-- porque
             # una de estas en una cadena se IMPRIME, y eso es peor que
             # tenerla en un comentario.
@@ -764,17 +824,46 @@ def main():
             with open(path, "w", encoding="utf-8", newline="") as fh:
                 fh.write(after)
 
+    if args.fijar:
+        n = sum(x for x, _ in strings_left)
+        fijar_techo_anfitrion(n)
+        print("ascii-sweep: techo del anfitrion fijado en %d" % n)
+        return 0
+
     if args.check:
+        # == *** EL LADO DEL ANFITRION: TRINQUETE, NO MURO (2026-09-10) ====
+        #
+        # Estos literales viven en el TOOLCHAIN, que imprime en la consola del
+        # anfitrion -- donde UTF-8 se ve bien. Prohibirlos hoy seria una regla
+        # sin porque, y romper 88 sitios de golpe en el compilador es cambiar
+        # el vehiculo para arreglar la pintura.
+        #
+        # ** Pero el dueno pidio no tener sorpresas luego, y esa es justo la
+        # forma de esta casa: **el numero no baja solo, pero NO PUEDE SUBIR**.
+        # Es L6a aplicada a la codificacion.
+        #
+        # [!] Y lo que protege de verdad no es el numero: es que el dia que
+        # alguien MUEVA uno de estos ficheros al metal, la otra mitad del
+        # guardian lo caza al entrar. El trinquete impide que crezca el
+        # deposito; `prints_on_metal` impide que se vuelque.
+        techo = leer_techo_anfitrion()
+        vivos = sum(n for n, _ in strings_left)
         if strings_left:
-            total = sum(n for n, _ in strings_left)
-            print(f"[note] {total} non-ASCII chars inside STRING LITERALS, "
-                  f"in {len(strings_left)} files.")
-            print("       These are output, not source style. Deciding them is "
-                  "a separate job:")
-            print("       what BMO-X prints is the product, not the codebase.")
+            print(f"[note] {vivos} non-ASCII en literales del ANFITRION, en "
+                  f"{len(strings_left)} ficheros (techo {techo}).")
+            print("       La consola de Windows es UTF-8 y los pinta bien."
+                  " Lo que NO puede es subir:")
+            print("       si crece, algo nuevo trajo un acento -- y el dia"
+                  " que ese fichero se mueva al metal, se pinta roto.")
             for n, rel in sorted(strings_left, reverse=True)[:12]:
                 print(f"         {n:>5}  {rel}")
             print()
+        if vivos > techo:
+            print(f"FAIL: los no-ASCII del anfitrion SUBIERON: {vivos} contra "
+                  f"un techo de {techo}.")
+            print("      Se baja quitandolos, o se acepta el numero nuevo con:")
+            print("          py toolchain/tools/ascii-sweep/ascii_sweep.py --fijar")
+            return 1
         if metal_strings:
             total = sum(n for n, _ in metal_strings)
             print(f"FAIL: {total} non-ASCII chars in strings that the Latin-1 "
