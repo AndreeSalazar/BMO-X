@@ -178,6 +178,25 @@ Los ocho declaran seguir el metodo de `SMP_MAESTRO.md`.
 El formato, dicho por `PLAN_ALMACENAMIENTO.md`: *"casillas ordenadas, cada una
 con **que la bloquea** y **como se sabe que quedo hecha**"*.
 
+### ★★ [`ABIERTO.md`](plan/ABIERTO.md) -- **empieza por aqui**
+
+Son **26 planes y 10.803 lineas**. Para saber que queda pendiente habia que
+abrirlos uno a uno y contar a mano, asi que no lo hacia nadie y la respuesta a
+*"que falta"* salia de la memoria en vez de salir del arbol.
+
+`ABIERTO.md` es el mapa de las **126 casillas abiertas**, ordenado por el que
+mas debe. Lo genera `toolchain/tools/planes` y **el build comprueba que dice lo
+mismo que los planes**, asi que no puede envejecer sin ponerse rojo.
+
+```bash
+python toolchain/tools/planes/planes.py --apply    # tras marcar una casilla
+```
+
+[!] Y nombra los **6 que estan en `plan/` sin ni una casilla**. Un fichero que
+no dice que falta no contesta la pregunta de esta carpeta -- es un maestro o una
+identidad con la palabra PLAN delante. No se mueven solos: cada uno se decide a
+mano, y mientras tanto la deuda tiene nombre.
+
 | documento | de que |
 |---|---|
 | [`PLAN_DOOM.md`](plan/PLAN_DOOM.md) | de "BMO C compila 69 de 81" a "DOOM se juega" |
@@ -244,19 +263,19 @@ se deshace va al final.**
 
 | hoja | tanda | que es |
 |---|---|---|
-| [`VERIFICACION_METAL.md`](metal/VERIFICACION_METAL.md) | **2026-08-08** | la que fija la regla |
-| [`VERIFICACION_METAL_0809.md`](metal/VERIFICACION_METAL_0809.md) | **2026-08-09** | |
-| [`PRUEBA_EN_METAL_0810.md`](metal/PRUEBA_EN_METAL_0810.md) | **2026-08-10** | |
-| [`PRUEBA_EN_METAL.md`](metal/PRUEBA_EN_METAL.md) | ⚠ **2026-08-12** | el nombre no lo dice |
-| [`PRUEBA_EN_METAL_0813.md`](metal/PRUEBA_EN_METAL_0813.md) | **2026-08-13** | |
-| [`PRUEBA_EN_METAL_0823.md`](metal/PRUEBA_EN_METAL_0823.md) | **2026-08-23** | lo que se MANDA teclear |
-| [`PRUEBA_RED_PASO_1.md`](metal/PRUEBA_RED_PASO_1.md) | **2026-08-24** | la unica que PREDICE por escrito antes de arrancar |
-| [`PRUEBA_EN_METAL_0824.md`](metal/PRUEBA_EN_METAL_0824.md) | **2026-08-24** | lo que el Ryzen CONTESTO |
-| [`PRUEBA_EN_METAL_0825.md`](metal/PRUEBA_EN_METAL_0825.md) | **2026-08-25** | ★ **la vigente**: lo que hay que teclear, y las DOS que pueden impedir el arranque |
+| [`METAL_2026-08-08.md`](metal/METAL_2026-08-08.md) | **2026-08-08** | la que fija la regla |
+| [`METAL_2026-08-09.md`](metal/METAL_2026-08-09.md) | **2026-08-09** | |
+| [`METAL_2026-08-10.md`](metal/METAL_2026-08-10.md) | **2026-08-10** | |
+| [`METAL_2026-08-12.md`](metal/METAL_2026-08-12.md) | **2026-08-12** | el unico cuyo nombre no decia su fecha, y por eso habia que abrirlo. Renombrado el 10-09 |
+| [`METAL_2026-08-13.md`](metal/METAL_2026-08-13.md) | **2026-08-13** | |
+| [`METAL_2026-08-23.md`](metal/METAL_2026-08-23.md) | **2026-08-23** | lo que se MANDA teclear |
+| [`METAL_RED_PASO_1.md`](metal/METAL_RED_PASO_1.md) | **2026-08-24** | la unica que PREDICE por escrito antes de arrancar |
+| [`METAL_2026-08-24.md`](metal/METAL_2026-08-24.md) | **2026-08-24** | lo que el Ryzen CONTESTO |
+| [`METAL_2026-08-25.md`](metal/METAL_2026-08-25.md) | **2026-08-25** | ★ **la vigente**: lo que hay que teclear, y las DOS que pueden impedir el arranque |
 
 ### ⚠ Las dos cosas que esta tabla existe para decir
 
-**1. `PRUEBA_EN_METAL.md` no lleva fecha en el nombre y es del 08-12.** Las otras
+**1. `METAL_2026-08-12.md` no lleva fecha en el nombre y es del 08-12.** Las otras
 cuatro si la llevan. El que abra la carpeta coge la que parece *"la actual"* y
 esta cinco dias vieja -- un nombre que promete lo que no es, que es justo la
 clase de fallo que la ley persigue. **Renombrarla a su fecha esta pendiente y
@@ -276,8 +295,8 @@ contesta `clean` -- *ningun fichero nuevo por encima de 1000 y ninguno crecio*.
 
 **4. Y las hojas se separaron en dos clases, que es lo que la tabla ensena
 ahora.** Hasta el 24-08 una hoja era *"lo que hay que teclear"*; desde
-`PRUEBA_RED_PASO_1.md` hay tambien hojas que **predicen la respuesta por escrito
-antes de arrancar**, y `PRUEBA_EN_METAL_0824.md` es la primera que anota lo que
+`METAL_RED_PASO_1.md` hay tambien hojas que **predicen la respuesta por escrito
+antes de arrancar**, y `METAL_2026-08-24.md` es la primera que anota lo que
 el Ryzen contesto **incluido lo que salio mal**.
 
 > *"Una hoja que solo apunta lo que funciono no es una medida: es un anuncio."*

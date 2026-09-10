@@ -255,7 +255,7 @@ Esto es lo que mas desbloquea por lo que menos cuesta, y ya no es una foto:
 configura no transmite: un error no puede molestar a nadie mas de la red.
 
 *** Y las tres respuestas estan **predichas por escrito** antes de arrancar, en
-`docs/metal/PRUEBA_RED_PASO_1.md`. Un resultado que no se predijo no distingue
+`docs/metal/METAL_RED_PASO_1.md`. Un resultado que no se predijo no distingue
 "funciono" de "salio algo".
 
 ## 5.1 -- La escalera, con lo que cayo hoy

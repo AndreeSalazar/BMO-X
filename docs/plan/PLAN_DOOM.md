@@ -690,4 +690,4 @@ campo del offset 0 es `size`.
 
 [!] El peldano 3 no puede llegar al disco mientras L6a pare el build. **No es
 una dependencia de DOOM: es la puerta de al lado**, y esta escrita en la seccion
-0 de `../metal/PRUEBA_EN_METAL_0823.md`.
+0 de `../metal/METAL_2026-08-23.md`.

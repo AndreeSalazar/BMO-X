@@ -50,7 +50,7 @@ LO QUE HACE Y LO QUE NO
 
   estado: [!] la foto del paso 1 salio en CERO el 28-08, y NO fue la tarjeta.
       Tres causas encontradas, arregladas y SIN EJECUTAR. Es la seccion 3.4 de
-      docs/metal/PRUEBA_EN_METAL_0907.md
+      docs/metal/METAL_2026-09-07.md
 
 
 A QUIEN EXPONE

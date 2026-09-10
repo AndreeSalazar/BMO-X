@@ -704,7 +704,7 @@ habria mirado el final del rango.** Se ensancho el contador, no la ventana.
 - **Lo que sigue sin probarse, y ahora es lo unico que importa**: que no se
   llevo nada por delante. Eso no lo dice el mensaje verde -- lo dice el arranque
   siguiente, con el volumen montando en la misma generacion y un fichero que se
-  lee entero. Ver la seccion 9 de `docs/metal/PRUEBA_EN_METAL.md`.
+  lee entero. Ver la seccion 9 de `docs/metal/METAL_2026-08-12.md`.
 
 ---
 

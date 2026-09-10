@@ -194,7 +194,7 @@ la primera mitad**, y la segunda esconde donde esta el coste.
 | 3 | transmitir + ARP en Ring 3 | [no] |
 | 4 | IP + UDP, y un `ping` que conteste | [no] |
 
-El paso 0 no es papel: `docs/metal/PRUEBA_EN_METAL.md` tiene la lectura del
+El paso 0 no es papel: `docs/metal/METAL_2026-08-12.md` tiene la lectura del
 hardware real --
 
 ```text

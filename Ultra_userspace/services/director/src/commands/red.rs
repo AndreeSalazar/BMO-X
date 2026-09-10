@@ -234,7 +234,7 @@ pub(crate) fn report_net(s: &mut Output, what: &[u8]) {
         // mirado. Son dos sistemas distintos y mandan a sitios distintos.
         //
         // [!] Es el mismo defecto que la pantalla azul del 26-08: un cero
-        // presentado como un hecho. Ver `docs/metal/PRUEBA_RED_PASO_1.md`.
+        // presentado como un hecho. Ver `docs/metal/METAL_RED_PASO_1.md`.
         s.text(b"   (sin sondear: `red rx` es quien mira el anillo)");
     }
     s.byte(b'\n');

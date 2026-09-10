@@ -228,6 +228,21 @@ Guardian 'Validating L6a: no new module over the line' `
 Guardian 'Validating plan checkboxes are verifiable' `
     'toolchain\tools\casillas\casillas.py' 'las casillas' `
     'casillas: una casilla no se puede comprobar (ver arriba)'
+
+# ** Y EL INDICE DE LO QUE FALTA, que es el hermano del de arriba (2026-09-10).
+#
+# `casillas` comprueba que una casilla DIGA DONDE MIRAR. Este comprueba que el
+# mapa de todas ellas --docs/plan/ABIERTO.md-- siga diciendo lo mismo que los
+# veintiseis planes. Sin el, saber que queda pendiente obliga a abrir
+# veintiseis ficheros y contar a mano, asi que no lo hace nadie y la respuesta
+# sale de la memoria en vez de salir del arbol.
+#
+# [!] Ademas NOMBRA los planes que estan en `plan/` sin ni una casilla: un
+# fichero que no dice que falta no contesta la pregunta de su carpeta. El
+# porque entero en la cabecera de planes.py.
+Guardian 'Validating the open-work index matches the plans' `
+    'toolchain\tools\planes\planes.py' 'el indice de lo que falta' `
+    'planes: el indice y los planes no dicen lo mismo (se arregla con --apply)'
 Guardian 'Validating compiler warnings do not grow' `
     'toolchain\tools\avisos\avisos.py' 'los avisos del compilador' `
     'avisos: los avisos del compilador SUBIERON (ver arriba)'

@@ -38,7 +38,7 @@ azul**. `plat/faults/amarilla.rs` ya preguntaba `titular_de(fisica)` y pintaba
    ahora   "ese marco se pidio como: NEUTRO (un aparato)"
 ```
 
-★ **Y eso es media respuesta a la pista 1.5** de `docs/metal/PRUEBA_EN_METAL_0907.md`:
+★ **Y eso es media respuesta a la pista 1.5** de `docs/metal/METAL_2026-09-07.md`:
 la proxima azul dira si el marco en disputa era de un aparato o no, que es
 exactamente la pregunta que la pista hacia.
 

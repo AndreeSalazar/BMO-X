@@ -516,7 +516,7 @@ viejo.
 ⚠ **Nada de esto lo ha visto un CPU.** Compila --`ray.bex` pasa de 19.437 a
 27.415 bytes-- y el DIRECTOR enlaza, pero un buzon entre dos procesos sobre
 memoria compartida es exactamente la clase de cosa que un emulador no prueba.
-Ver `../metal/PRUEBA_EN_METAL_0823.md`.
+Ver `../metal/METAL_2026-08-23.md`.
 
 ## EL RATON, el mismo dia y por el mismo camino
 
@@ -973,7 +973,7 @@ mirar miente sobre el bus.
 ```text
    aprobado:  doble clic en el icono de DOOM y arranca; doble clic en la
               rejilla de ESTRATOS y entra; y F7 dice cuantas vueltas da esto
-              de verdad.  Ver `../metal/PRUEBA_EN_METAL_0823.md`.
+              de verdad.  Ver `../metal/METAL_2026-08-23.md`.
 ```
 
 ⚠ **Nada de esto lo ha visto un CPU.** Compila, enlaza a `d.bex` (544.088 B) y
