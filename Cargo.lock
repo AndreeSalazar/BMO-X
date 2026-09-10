@@ -157,6 +157,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-firmar"
+version = "0.1.0"
+dependencies = [
+ "bmo-cripto",
+ "bmo-firma",
+ "bmo-hash",
+]
+
+[[package]]
 name = "bmo-firmware"
 version = "0.1.0"
 

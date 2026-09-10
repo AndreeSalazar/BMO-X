@@ -97,22 +97,38 @@ Ver [`NEUTRO/DMA/EMBUDO.txt`](../../NEUTRO/DMA/EMBUDO.txt), que sigue contando
 **Desbloquea**: que las ocho reglas del DMA valgan para los tres aparatos y no
 para uno. **Lo bloquea**: nada.
 
-## [ ] C2 -- la firma: `sig_algo = 0` y el ancla de confianza vacia
+## [x] C2 -- HECHO el 2026-09-10, y **no faltaba criptografia: faltaba QUIEN FIRMA**
 
-Todo `.bex` sale sin firmar, y el validador lo dice por escrito: *"eso es
-integridad, no autoria"*. El README promete que un binario corrupto se rechaza
-**antes** de ejecutar, y eso hoy es media verdad.
+Todo `.bex` salia sin firmar y el validador lo decia por escrito: *"eso es
+integridad, no autoria"*. Esta casilla decia que faltaba *"cablear Ed25519 y
+decidir el ancla"*. **Al ir a cablearlo, ya estaba cableado:**
 
-** Y ya no es un problema de criptografia: `bmo-cripto` tiene Ed25519 completo
---637 lineas-- con SHA-512 debajo. **Falta cablearlo y decidir el ancla**, no
-inventarlo.
+```text
+   verificar una firma      HECHO      bmo-firma + bmo-cripto, 25-08
+   el gate del cargador     CABLEADO   task/admitir.rs, el mismo dia
+   el ancla de confianza    EXISTE     task/confianza.rs, vacia a proposito
+   *** FIRMAR               NADIE      <-- esto era todo
+```
 
-*** Esto es exactamente lo que el README llama *"estricto consigo mismo"*. Un
-sistema que promete verificar y no verifica no se estorba a si mismo: se deja
-una puerta abierta y no lo dice.
+** El `sig_algo = 0` no era un olvido del escritor: **no habia quien firmara**.
+Y estaba dicho desde el 25-08 en `bmo-cripto/Cargo.toml`, nombrando la
+herramienta que no existia -- *"la herramienta de firmar del anfitrion, que
+todavia no existe"*.
 
-**Desbloquea**: `bmo-verify`, los mods de codigo, y que la Base inmutable sea un
-argumento y no una intencion.
+*** Dieciseis dias con una deuda escrita como *"meses de criptografia"* que era
+**una orden de consola**. Se hizo en una tarde: el hueco de 96 bytes en el
+escritor, `toolchain/tools/bmo-firmar` --tres piezas, cuatro ordenes, y sabe
+decir que NO cuatro veces-- y una clave en el ancla cuya privada no ha pasado
+por ningun commit.
+
+  > Una deuda mal nombrada se aplaza sola.
+
+Falta el metal --un `.bex` firmado que arranque y que CABINA diga por su
+nombre-- y despues `exige_firma() = true`. Las dos casillas viven en
+[`PLAN_SEGURIDAD.md`](PLAN_SEGURIDAD.md), S-FIRMA-4 y S-FIRMA-5.
+
+**Desbloqueaba**: `bmo-verify`, los mods de codigo, y que la Base inmutable sea
+un argumento y no una intencion.
 
 ## [ ] C3 -- las bandas verticales de DOOM
 

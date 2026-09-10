@@ -193,6 +193,11 @@ members = [
     # frontend; los datos llegan despues y de quien monta la app, asi que
     # empaquetar es un paso posterior y no una opcion del codegen.
     "toolchain/tools/bmo-pack",
+    # *** LA HERRAMIENTA DE FIRMAR, y la unica del arbol que enciende la
+    # bandera `firmar` de `bmo-cripto`. Vive en el ANFITRION y no baja: una
+    # maquina que puede firmar tiene dentro con que falsificar lo que ejecuta.
+    # C2 de `docs/plan/EL_ORDEN.md`.
+    "toolchain/tools/bmo-firmar",
     # El par cliente/servidor que prueba Endpoint RPC en Ring 3.
     "toolchain/tools/rpc-demo",
     # Previsualiza la intro de arranque SIN reiniciar la maquina. Dibuja con el

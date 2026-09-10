@@ -232,7 +232,24 @@ fn la_sonda_del_ryzen_emite_los_mismos_bytes_que_antes_de_p1() {
     //
     // [!] Y la consecuencia de siempre: `cpu.ibex` vuelve a no ser el fichero
     // que corrio en el Ryzen. La proxima medida se compara contra ESTE.
-    assert_eq!(sin.len(), 10432, "la emision de la sonda cambio de tamano");
+    //
+    //     10.528  con el hueco de la firma reservado (2026-09-10)
+    //
+    // ** ESTOS +96 NO SON CODIGO. Son el bloque `sig[64] || pubkey[32]` que la
+    // seccion `Signature` reserva desde hoy en TODO `.bex`, firmado o no, para
+    // que `bmo-firmar` pueda estamparlo sin reconstruir el fichero -- o sea,
+    // para poder firmar **lo mismo que se probo**. Ver `bef/writer.rs`.
+    //
+    // *** Y ESTA FILA HIZO SU TRABAJO: este cambio se hizo en `bmo-abi` y el
+    // unico sitio del arbol que se entero fue esta linea, tres capas mas
+    // arriba. Un numero congelado no protege el numero: protege el saber que
+    // se movio, que es lo que un `.bex` 96 bytes mas gordo no cuenta solo.
+    //
+    // [!] El codigo de la sonda NO cambio --lo prueba la fila de al lado, que
+    // compara las secciones `Code`-- asi que las medidas del Ryzen del 22-08 y
+    // el 23-08 **siguen comparando contra lo mismo**. Lo unico que engorda es
+    // el fichero.
+    assert_eq!(sin.len(), 10528, "la emision de la sonda cambio de tamano");
 }
 
 /// **EL CODIGO NO CAMBIA POR LLEVAR MANIFIESTO.**

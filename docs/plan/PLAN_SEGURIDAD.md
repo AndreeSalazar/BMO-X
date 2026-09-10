@@ -11,21 +11,92 @@ por decision del dueno.
 *** O sea que la deuda mas seria de seguridad del arbol estaba enterrada dentro
 del plan aparcado. Se saca aqui, que es su sitio.
 
-- [ ] **S-FIRMA -- `sig_algo = 0` y el ancla de confianza vacia.** Todo `.bex`
-      sale sin firmar, y `bef/validator.rs:296` lo dice por escrito: *"eso es
-      integridad, no autoria"*. El README promete que un binario corrupto se
-      rechaza ANTES de ejecutar, y hoy eso es media verdad.
+## S-FIRMA -- y lo que faltaba no era criptografia: era QUIEN FIRMA
 
-  ** Y ya no es un problema de criptografia: `bmo-cripto` tiene Ed25519
-  completo --637 lineas-- con SHA-512 debajo. **Falta cablearlo y decidir el
-  ancla**, no inventarlo.
+El 10-09 se fue a cablear Ed25519 y **ya estaba todo cableado**:
 
-  *** Es el ejemplo exacto de lo que el README llama *estricto consigo mismo*:
-  un sistema que promete verificar y no verifica no se estorba a si mismo -- se
-  deja una puerta abierta y no lo dice.
+```text
+   verificar una firma       HECHO       bmo-firma + bmo-cripto, 25-08
+   el gate del cargador      CABLEADO    task/admitir.rs, el mismo dia
+   el ancla de confianza     EXISTE      task/confianza.rs, vacia a proposito
+   *** FIRMAR                NADIE       <-- esto era todo lo que faltaba
+```
 
-  Se verifica: un `.bex` con la firma cambiada un bit **no arranca**, y lo dice
-  con motivo.
+** Todo `.bex` salia con `sig_algo = 0` **no porque el escritor se olvidara,
+sino porque no habia quien firmara**. Y estaba dicho desde el 25-08, en
+`bmo-cripto/Cargo.toml`, nombrando la herramienta que no existia:
+
+> *"la herramienta de firmar del anfitrion --que todavia no existe-- la usa sin
+> duplicar el codigo, y el kernel sigue sin poder aunque alguien se despiste."*
+
+*** Dieciseis dias con una deuda escrita como *"falta criptografia"* que era
+**falta una orden de consola**. Y el ancla vacia no era un descuido: sin nadie
+que firmara, no habia nada que anclar.
+
+  > Una deuda mal nombrada se aplaza sola. "Meses de criptografia" se aparca;
+  > "falta una herramienta" se hace en una tarde.
+
+- [x] **S-FIRMA-1 -- EL HUECO.** HECHO el 10-09. La seccion `Signature` reserva
+      los 96 bytes de `sig[64] || pubkey[32]` en **todo** `.bex`, firmado o no.
+
+  ** Sin el hueco, firmar obligaba a reconstruir el fichero -- y entonces el
+  binario firmado seria un binario NUEVO, hermano del que se probo pero no el
+  mismo. La firma es el unico bloque que no esta bajo ningun hash, asi que
+  estamparlo **no mueve ni un digest ni un offset**.
+
+  [L3] Cuesta 96 bytes en cada `.bex` que no se firme nunca, y hoy son todos.
+  El guardian de tamanos lo conto exacto: +96 en los 31 ejecutables, +0,2%.
+
+  Se verifica: dos filas en `bef/writer.rs` -- que el hueco existe y sale en
+  ceros, y que **estampar 96 bytes de basura no rompe ningun hash**.
+
+- [x] **S-FIRMA-2 -- EL FIRMADOR.** HECHO el 10-09.
+      `toolchain/tools/bmo-firmar`, tres piezas y tres ordenes.
+
+  *** Es una herramienta APARTE y no una bandera del escritor **a proposito**:
+  una maquina que puede firmar tiene dentro con que falsificar lo que ejecuta,
+  y el anfitrion del build es una maquina mas. Si `BefBuilder` supiera firmar,
+  la privada tendria que estar donde corre el build. Asi, firmar es un acto con
+  nombre.
+
+  ** Y no reescribe el verificador: **enlaza `bmo-firma`**, el crate que ejecuta
+  el kernel. "Verifica en el anfitrion" y "verifica en el metal" no son dos
+  afirmaciones parecidas: son la misma, y un desacuerdo entre ellas es imposible
+  por construccion en vez de por cuidado.
+
+  Y sabe decir que NO cuatro veces: a guardar la privada dentro de un repo git
+  (subiendo por los ancestros), a pisar una clave que ya existe, a **firmar un
+  `.bex` cuyos digests no cuadran** --firmar un binario roto no lo arregla, lo
+  acredita-- y a dejar el fichero tocado si el verificador no lo confirma.
+
+- [x] **S-FIRMA-3 -- EL ANCLA.** HECHO el 10-09. Una clave, con nombre.
+
+  La privada vive fuera del arbol y **no ha pasado por ningun commit**. La
+  publica esta en `task/confianza.rs`, y `bmo-firmar ancla` la escupe en hex
+  para que nadie la teclee: al llenarla la primera vez se copiaron dos bytes
+  mal a mano, y el unico sintoma habria sido un `.bex` legitimo saliendo como
+  *"AUTOR DESCONOCIDO"* -- un mensaje que manda a mirar la firma cuando lo que
+  esta mal es el ancla.
+
+- [ ] **S-FIRMA-4 -- EL METAL.** Un `.bex` firmado que arranque en el Ryzen y
+      que CABINA diga por su nombre: `[firma] Eddi -- el anfitrion`.
+
+  [!] **Y hay una trampa de orden.** Un `.bex` firmado con una clave que no
+  esta en el ancla **no arranca aunque `exige_firma()` sea `false`**: la bandera
+  decide si se admite lo NO firmado, no degrada una firma desconocida a "sin
+  firma". O sea que **el kernel que se flashea tiene que llevar ya la clave**, y
+  la lleva desde S-FIRMA-3.
+
+  ** Ademas el build REESCRIBE los `.bex`, asi que la firma se borra en cada
+  reconstruccion. Firmar es un paso posterior, y esa es la conducta correcta:
+  lo contrario seria firmar sin querer.
+
+- [ ] **S-FIRMA-5 -- `exige_firma() = true`.** Lo ultimo, y **no antes de que
+      S-FIRMA-4 este verde**. Al reves, la maquina deja de arrancar y el motivo
+      parece del cargador.
+
+  Se verifica: un `.bex` con la firma cambiada un bit no arranca, y lo dice con
+  motivo. Hoy eso ya se puede comprobar **sin reiniciar**, con `bmo-firmar ver`.
 
 
 > Escrito el **2026-08-18** y **RELEIDO CONTRA EL CODIGO el 2026-08-25**: de las
@@ -291,6 +362,11 @@ silencio a un control mas flojo.
 Se midieron los 24 `.bex` del arbol: **19 traen seccion `Signature` y los 19
 tienen `sig_algo = 0`**. Todos dan `SoloIntegridad`, y con `exige_firma() =
 false` todos siguen arrancando igual.
+
+** ACTUALIZADO EL 2026-09-10: sigue siendo cierto, y ahora **por eleccion y no
+por imposibilidad**. Ya hay quien firme --`bmo-firmar`-- y hay una clave en el
+ancla; lo que no hay es un `.bex` firmado de serie, porque el build los
+reescribe y firmar es un paso posterior con nombre propio. Ver S-FIRMA arriba.
 
 ★ **Encender la firma es una decision con nombre y tiene orden**, escrito en
 `confianza.rs`: primero una clave en el ancla, despues un `.bex` firmado con ella

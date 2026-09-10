@@ -7,8 +7,8 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   161 casillas ABIERTAS en 22 planes
-   115 hechas
+   162 casillas ABIERTAS en 22 planes
+   118 hechas
      4 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -192,17 +192,18 @@
 - [ ] 5b <bmo/latido.h> LATIDO + WAIT el tiempo, y la 2a puerta
 - [ ] 5c <bmo/corriente.h> ARCHIVO_ASINC + LISTO leer a ritmo de quien lee
 
+## [`PLAN_SEGURIDAD.md`](PLAN_SEGURIDAD.md) -- 2 abiertas, 20 hechas
+
+*PLAN SEGURIDAD -- las casillas que faltan, medidas contra el codigo*
+
+- [ ] S-FIRMA-4 -- EL METAL. Un .bex firmado que arranque en el Ryzen y
+- [ ] S-FIRMA-5 -- exige_firma() = true. Lo ultimo, y **no antes de que
+
 ## [`PLAN_MAQUETA.md`](PLAN_MAQUETA.md) -- 1 abiertas, 8 hechas
 
 *PLAN MAQUETA*
 
 - [ ] 7 ficheros dorados como oraculo -> toolchain/tools/maqueta/pruebas/calc.dorado
-
-## [`PLAN_SEGURIDAD.md`](PLAN_SEGURIDAD.md) -- 1 abiertas, 17 hechas
-
-*PLAN SEGURIDAD -- las casillas que faltan, medidas contra el codigo*
-
-- [ ] S-FIRMA -- sig_algo = 0 y el ancla de confianza vacia. Todo .bex
 
 ---
 

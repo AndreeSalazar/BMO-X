@@ -1,0 +1,32 @@
+[package]
+name = "bmo-firmar"
+version = "0.1.0"
+edition = "2021"
+description = "La herramienta de firmar del ANFITRION: estampa Ed25519 en un .bex ya construido"
+
+[[bin]]
+name = "bmo-firmar"
+path = "src/main.rs"
+
+[dependencies]
+# ** LA UNICA QUE ENCIENDE `firmar` EN TODO EL ARBOL, y ese es su motivo de
+# existir. `bmo-cripto/Cargo.toml` lo dejo escrito el 25-08:
+#
+#     "la herramienta de firmar del anfitrion --que todavia no existe-- la usa
+#      sin duplicar el codigo, y el kernel sigue sin poder aunque alguien se
+#      despiste."
+#
+# Esto es esa herramienta. Una maquina que puede firmar tiene dentro con que
+# falsificar lo que ejecuta, asi que la capacidad vive AQUI y no baja.
+bmo-cripto = { path = "../../../platform/shared/bmo-cripto", features = ["firmar"] }
+
+# *** Y EL VERIFICADOR NO SE REESCRIBE: ES EL DEL KERNEL.
+#
+# Si esta herramienta trajera su propia comprobacion, "verifica en el anfitrion"
+# y "verifica en el metal" serian dos afirmaciones distintas que se parecen. Al
+# enlazar el mismo crate, un desacuerdo entre las dos es imposible por
+# construccion en vez de por cuidado.
+bmo-firma = { path = "../../../platform/abi/bmo-firma" }
+
+# El unico BLAKE3 del sistema, por la misma razon.
+bmo-hash = { path = "../../../platform/shared/bmo-hash" }
