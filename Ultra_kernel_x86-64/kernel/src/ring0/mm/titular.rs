@@ -158,7 +158,10 @@ impl Titular {
     }
 
     fn de_byte(b: u8) -> Titular {
-        match b {
+        // ** SOLO EL NIBBLE BAJO. El alto lo usa EL BIT EN VUELO desde el
+        // 2026-09-09 (paso N4): el titular vive en 0..8 y le sobraban
+        // cuatro bits en el mismo byte. Ver `en_vuelo`.
+        match b & 0x0F {
             2 => Titular::Tabla,
             3 => Titular::Hoja,
             4 => Titular::Pila,
@@ -224,13 +227,79 @@ static mut NEUTROS_VIVOS: u64 = 0;
 /// lo es, N3 se rompio y aqui esta la prueba. Ver la nota de arriba.
 static mut NEUTROS_SOLTADOS: u64 = 0;
 
+// == *** EL BIT EN VUELO -- EL PASO N4 =====================================
+//
+// # Por que existe, y lo dijo el juez del DMA antes que nadie
+//
+// `bmo-dma-juicio` pregunta *"se le puede dar esta direccion a este aparato?"*
+// y tiene DOS formas de contestar que si:
+//
+// ```text
+//    1. el marco es SUYO          `Titular::Neutro` y su corral
+//    2. se lo PRESTARON para esto  <- este campo no lo podia rellenar nadie
+// ```
+//
+// *** El caso 2 aparecio al ir a cablear el juez en el AHCI: el camino DIRECTO
+// de una lectura le da al disco la direccion del **bufer del que llamo**, que
+// no es del aparato y no tiene por que serlo. Un juez con una sola regla habria
+// rechazado una lectura legitima **y dejado el disco sin arrancar**.
+//
+// # ** LA PREGUNTA QUE NINGUNA IOMMU CONTESTA
+//
+// ```text
+//    DONDE puede escribir un aparato   -> una IOMMU
+//    CUANDO puede escribir             -> ESTO
+// ```
+//
+// Un aparato con DMA en vuelo sobre un bufer **ya liberado** escribe en una
+// direccion que la IOMMU considera legitima: el mapeo es valido, el permiso
+// existe, y el dato aterriza encima de otra cosa. La IOMMU contesta *"puede
+// tocar esta pagina"*, y la respuesta correcta era *"ya no"*.
+//
+// # Donde vive, y por que no hace falta una tabla nueva
+//
+// ```text
+//    bits 0..3   el titular      0..8, y sobran cuatro
+//    bits 4..7   EL APARATO      0 = nada en vuelo, 1..15 = quien
+// ```
+//
+// ** Cero bytes de memoria nueva. `Titular` nunca paso de 8, asi que el nibble
+// alto llevaba libre desde el primer dia -- y el byte ya se leia y escribia en
+// un solo sitio (`marcar`), que es lo que hace esto seguro.
+//
+// [!] Quince aparatos como maximo. Hoy hay TRES censados y la GPU sera el
+// cuarto (`NEUTRO/CENSO.txt`). Si algun dia hicieran falta mas, esto es una
+// tabla aparte y no un rediseno -- pero inventarla hoy seria pagar por una
+// maquina que no existe (LEY 24).
+
+/// Marcos con un DMA EN VUELO ahora mismo.
+///
+/// ** Sube al programar un descriptor y baja al consumir el fin. **Al apagar
+/// tiene que ser CERO**: cualquier otra cosa es un aparato al que se le pidio
+/// algo y nadie recogio la respuesta.
+static mut EN_VUELO_VIVOS: u64 = 0;
+/// Veces que un marco cambio de titular **con un DMA en vuelo**.
+///
+/// *** TIENE QUE SER CERO. Cada uno es un bufer reasignado mientras un aparato
+/// todavia escribia en el, y no da fault: da un dato ajeno apareciendo en la
+/// memoria de otro, mas tarde. Lo cuenta [`marcar`], desde el lado del marcado
+/// y sin entrar en el camino rojo de devolucion.
+static mut EN_VUELO_PISADOS: u64 = 0;
+/// Veces que se pidio poner en vuelo un marco que YA lo estaba, para OTRO
+/// aparato. Es el caso mas peligroso de todos: dos aparatos sobre el mismo
+/// bufer. Se rechaza Y se cuenta.
+static mut EN_VUELO_CHOQUES: u64 = 0;
+
 /// Apuntar para que se pidio un marco. Lo llama `alloc_frame_de`.
 pub fn marcar(phys: u64, q: Titular) {
     if let Some(i) = indice(phys) {
         let antes = tabla()[i];
-        tabla()[i] = q as u8;
+        // *** SE CONSERVA EL NIBBLE ALTO. Marcar un marco no cambia si tiene
+        // un DMA en vuelo: son dos preguntas distintas sobre el mismo byte, y
+        // pisar una al contestar la otra es como se pierde un aterrizaje.
+        tabla()[i] = (antes & 0xF0) | (q as u8);
         // La cuenta del neutro, en O(1). Ver la nota de arriba.
-        let era = antes == Titular::Neutro as u8;
+        let era = (antes & 0x0F) == Titular::Neutro as u8;
         let es = q == Titular::Neutro;
         unsafe {
             if es && !era {
@@ -238,6 +307,32 @@ pub fn marcar(phys: u64, q: Titular) {
             } else if era && !es {
                 NEUTROS_VIVOS = NEUTROS_VIVOS.saturating_sub(1);
                 NEUTROS_SOLTADOS = NEUTROS_SOLTADOS.wrapping_add(1);
+            }
+            // == *** UN MARCO QUE CAMBIA DE TITULAR CON UN DMA EN VUELO ====
+            //
+            // ** Se detecta AQUI, desde el lado del marcado, y NO en el camino
+            // de devolucion. Es la misma decision que la cuenta del neutro de
+            // arriba y por el mismo motivo: ese camino es ROJO, es donde vive
+            // la azul del 07-09, y `NEUTRO/REQUISITOS.md` (R4) dice que no se
+            // toca hasta haberla reproducido.
+            //
+            // *** Un marco que cambia de titular con el nibble alto puesto es
+            // **un bufer reasignado mientras un aparato todavia escribia en
+            // el**. No da fault y no tiene sintoma: da un dato ajeno
+            // apareciendo en la memoria de otro, mas tarde.
+            //
+            // > Es el fallo que `EL_NEUTRO` lleva describiendo sin poder
+            // > nombrar: la azul de la purga, el xHC muerto y el asignador
+            // > colgado A LA VEZ.
+            //
+            // [!] Y NO SE IMPIDE. Se CUENTA y se dice. Negarse a marcar desde
+            // aqui seria decidir en el camino rojo con un dato que todavia no
+            // se ha ganado la confianza -- y un asignador que rechaza un marco
+            // por una sospecha deja la maquina sin memoria, que es peor que el
+            // fallo que evita. Primero el numero; la barrera, cuando el numero
+            // lleve arranques diciendo cero.
+            if (antes & 0xF0) != 0 && (antes & 0x0F) != (q as u8) {
+                EN_VUELO_PISADOS = EN_VUELO_PISADOS.wrapping_add(1);
             }
         }
     }
@@ -297,6 +392,25 @@ pub fn cubiertos() -> u64 {
     n
 }
 
+// == LOS APARATOS, NUMERADOS -- y el orden NO es de gusto ==================
+//
+// ** Son las filas de `NEUTRO/CENSO.txt` en su orden, y esa es toda la regla.
+// Un numero que no sale de la lista de quien alcanza la RAM por su cuenta
+// seria un aparato que nadie censo escribiendo en la memoria de alguien.
+//
+// [!] El CERO esta reservado a proposito: significa **nada en vuelo**. Por eso
+// se empieza en 1, y por eso `en_vuelo` rechaza el 0 en vez de aceptarlo como
+// un aparato mas.
+
+/// El HBA del disco. Fila 1 del censo.
+pub const APARATO_AHCI: u8 = 1;
+/// La tarjeta de red. Fila 2.
+pub const APARATO_NIC: u8 = 2;
+/// El controlador USB. Fila 3.
+pub const APARATO_XHCI: u8 = 3;
+/// La grafica, cuando llegue. Fila 4, hoy sin tarjeta.
+pub const APARATO_GPU: u8 = 4;
+
 /// **`(marcos de aparato, veces que uno se solto)`.** La cifra de `NEUTRO/`.
 ///
 /// Va aparte de [`cubiertos`] a proposito. `cubiertos` contesta *"cuanto sabe
@@ -311,6 +425,92 @@ pub fn cubiertos() -> u64 {
 /// Las dos son de leer un `static`: la cuenta la lleva [`marcar`], que es el
 /// unico sitio por el que un marco cambia de dueno. Preguntar esto **no
 /// recorre nada**, asi que se puede poner en un panel que se repinta.
+/// **PONER UN MARCO EN VUELO PARA UN APARATO.** Se llama al programar el
+/// descriptor, ANTES de tocar la campana.
+///
+/// Devuelve `false` y no toca nada si:
+///
+/// ```text
+///    el marco cae fuera del espejo      no hay donde apuntarlo
+///    `aparato` es 0 o pasa de 15        no cabe en el nibble
+///    ya esta en vuelo para OTRO         *** dos aparatos, un bufer
+/// ```
+///
+/// ** El tercero se RECHAZA en vez de sobreescribir, y esa es la decision de
+/// esta funcion. Sobreescribir dejaria al primer aparato escribiendo en un
+/// bufer que el sistema cree del segundo, y el aterrizaje del segundo borraria
+/// la marca del primero: **dos fallos silenciosos por el precio de uno**.
+///
+/// [!] Y volver a ponerlo en vuelo para EL MISMO aparato SI vale, y no suma:
+/// un driver que reprograma el mismo bufer antes de que el anterior termine
+/// esta haciendo algo suyo, y contarlo dos veces dejaria la cuenta sin poder
+/// llegar a cero nunca.
+pub fn en_vuelo(phys: u64, aparato: u8) -> bool {
+    if aparato == 0 || aparato > 15 {
+        return false;
+    }
+    let i = match indice(phys) {
+        Some(i) => i,
+        None => return false,
+    };
+    let antes = tabla()[i];
+    let quien = (antes & 0xF0) >> 4;
+    if quien != 0 && quien != aparato {
+        unsafe { EN_VUELO_CHOQUES = EN_VUELO_CHOQUES.wrapping_add(1) };
+        return false;
+    }
+    tabla()[i] = (antes & 0x0F) | (aparato << 4);
+    if quien == 0 {
+        unsafe { EN_VUELO_VIVOS += 1 };
+    }
+    true
+}
+
+/// **ATERRIZO: el aparato dijo que termino.** Se llama al consumir el fin.
+///
+/// ** Devuelve `false` si el marco no estaba en vuelo, y eso NO es inocente:
+/// significa que se consumio un fin que nadie pidio, o que alguien ya lo
+/// consumio antes. Quien llama decide si eso le importa; aqui se contesta.
+pub fn aterrizo(phys: u64) -> bool {
+    let i = match indice(phys) {
+        Some(i) => i,
+        None => return false,
+    };
+    let antes = tabla()[i];
+    if antes & 0xF0 == 0 {
+        return false;
+    }
+    tabla()[i] = antes & 0x0F;
+    unsafe { EN_VUELO_VIVOS = EN_VUELO_VIVOS.saturating_sub(1) };
+    true
+}
+
+/// **QUIEN tiene un DMA en vuelo hacia este marco**, si es que alguno.
+///
+/// Es lo que `bmo-dma-juicio` pide como `en_vuelo_para`: el campo que hasta hoy
+/// nadie podia rellenar con la verdad.
+pub fn en_vuelo_de(phys: u64) -> Option<u8> {
+    let i = indice(phys)?;
+    match (tabla()[i] & 0xF0) >> 4 {
+        0 => None,
+        a => Some(a),
+    }
+}
+
+/// **Las tres cuentas del vuelo**: `(vivos, pisados, choques)`.
+///
+/// ```text
+///    vivos     lo que hay ahora. Al apagar, CERO
+///    pisados   ** CERO. Un marco reasignado con DMA dentro
+///    choques   ** CERO. Dos aparatos pidiendo el mismo bufer
+/// ```
+///
+/// Las tres son de leer un `static`: preguntar esto no recorre nada, asi que
+/// cabe en un panel que se repinta -- igual que [`neutros`].
+pub fn vuelos() -> (u64, u64, u64) {
+    unsafe { (EN_VUELO_VIVOS, EN_VUELO_PISADOS, EN_VUELO_CHOQUES) }
+}
+
 pub fn neutros() -> (u64, u64) {
     unsafe { (NEUTROS_VIVOS, NEUTROS_SOLTADOS) }
 }
