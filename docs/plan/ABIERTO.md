@@ -7,10 +7,10 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   143 casillas ABIERTAS en 19 planes
-    77 hechas
-     2 planes CUMPLIDOS (ni una casilla pendiente)
-     5 en plan/ SIN NI UNA CASILLA -- ver el final
+   147 casillas ABIERTAS en 20 planes
+   112 hechas
+     5 planes CUMPLIDOS (ni una casilla pendiente)
+     1 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
 
 ---
@@ -125,7 +125,7 @@
 - [ ] no promete 0 ms, y llamarlo asi seria vender humo: un pixel viaja por
 - ... y 3 mas
 
-## [`PLAN_DOOM.md`](PLAN_DOOM.md) -- 5 abiertas, 1 hechas
+## [`PLAN_DOOM.md`](PLAN_DOOM.md) -- 5 abiertas, 3 hechas
 
 *El plan largo: de "BMO C compila 69 de 81" a "DOOM se juega en el Ryzen"*
 
@@ -161,18 +161,27 @@
 - [ ] sus filas de banco -- las ocho reglas del DMA, en el anfitrion
 - ... y 1 mas
 
+## [`PLAN_EL_SILICIO.md`](PLAN_EL_SILICIO.md) -- 3 abiertas, 5 hechas
+
+*PLAN EL SILICIO*
+
+- [ ] S6 -- el techo de crudo (roca 3): hoy no lo acota nadie
+- [ ] S7 -- las katanas del silicio, P4 y P5 de la seccion 5 de este mismo
+- [ ] S8 -- que el barrido NIEGUE en vez de callar cuando no puede leer una
+
+## [`PLAN_AUDIO.md`](PLAN_AUDIO.md) -- 2 abiertas, 10 hechas
+
+*PLAN AUDIO -- las casillas de su MAESTRO, medidas contra el codigo*
+
+- [ ] A1 -- SET_INTERFACE -- ⛔ EL RYZEN LO NEGO. Corregido el 26-08, sin ejecutar
+- [ ] A1 SET_INTERFACE EL METAL LO NEGO; corregido 26-08
+
 ## [`PLAN_REX.md`](PLAN_REX.md) -- 2 abiertas, 15 hechas
 
 *REX -- la puerta de los terceros, ORDENADA*
 
 - [ ] 5b <bmo/latido.h> LATIDO + WAIT el tiempo, y la 2a puerta
 - [ ] 5c <bmo/corriente.h> ARCHIVO_ASINC + LISTO leer a ritmo de quien lee
-
-## [`PLAN_AUDIO.md`](PLAN_AUDIO.md) -- 1 abiertas, 5 hechas
-
-*PLAN AUDIO -- las casillas de su MAESTRO, medidas contra el codigo*
-
-- [ ] A1 SET_INTERFACE EL METAL LO NEGO; corregido 26-08
 
 ## [`PLAN_MAQUETA.md`](PLAN_MAQUETA.md) -- 1 abiertas, 8 hechas
 
@@ -187,8 +196,11 @@
 ** No se archivan ni se mueven: siguen siendo la razon por la
 que algo se hizo asi, y eso se consulta mas que la casilla.
 
-- [`PLAN_EL_PERFIL_TOTAL.md`](PLAN_EL_PERFIL_TOTAL.md) -- 7 hechas, 611 lineas
-- [`PLAN_SEGURIDAD.md`](PLAN_SEGURIDAD.md) -- 11 hechas, 785 lineas
+- [`PLAN_ALMACENAMIENTO.md`](PLAN_ALMACENAMIENTO.md) -- 5 hechas, 205 lineas
+- [`PLAN_DIRECTOR.md`](PLAN_DIRECTOR.md) -- 7 hechas, 1005 lineas
+- [`PLAN_EL_PERFIL_TOTAL.md`](PLAN_EL_PERFIL_TOTAL.md) -- 8 hechas, 611 lineas
+- [`PLAN_SEGURIDAD.md`](PLAN_SEGURIDAD.md) -- 17 hechas, 785 lineas
+- [`PLAN_SUELO_RING3.md`](PLAN_SUELO_RING3.md) -- 4 hechas, 316 lineas
 
 ---
 
@@ -204,9 +216,5 @@ ponen sus casillas, o se muda a la carpeta cuya pregunta si
 contesta. Este guardian los nombra en cada build para que la
 deuda tenga nombre en vez de ser un fichero mas.
 
-- [`PLAN_ALMACENAMIENTO.md`](PLAN_ALMACENAMIENTO.md) -- 205 lineas
-- [`PLAN_DIRECTOR.md`](PLAN_DIRECTOR.md) -- 981 lineas
 - [`PLAN_EL_ASISTENTE.md`](PLAN_EL_ASISTENTE.md) -- 676 lineas
-- [`PLAN_EL_SILICIO.md`](PLAN_EL_SILICIO.md) -- 815 lineas
-- [`PLAN_SUELO_RING3.md`](PLAN_SUELO_RING3.md) -- 316 lineas
 
