@@ -314,7 +314,29 @@ Un plan que no diga donde acaba es propaganda.
   verifica: un censo dice cuantos sitios escriben una direccion fisica en un
   descriptor, y ese numero tiene que ser **1**.
 
-- [ ] **N2 -- EL EMBUDO LLAMA AL JUEZ, y es donde esto empieza a costar.**
+- [ ] **N4 -- ★★★ EL BIT EN VUELO, Y AHORA VA ANTES QUE N2.**
+
+  *** El orden de este plan estaba MAL, y lo demostro intentar cablear el juez.
+  `dev/disk/transfer.rs:64` --el camino DIRECTO de una lectura-- le da al disco
+  la direccion fisica del **bufer del que llamo**, que no es del aparato y no
+  tiene por que serlo. **El juez con una sola regla habria rechazado una lectura
+  legitima y dejado el disco sin funcionar.**
+
+  Asi que `Marco` gano un segundo caso --`en_vuelo_para: Option<u16>`-- y ese
+  campo **no lo puede rellenar nadie hoy**: saber que un marco esta prestado a
+  un aparato Y AHORA es exactamente el bit en vuelo.
+
+  ```text
+     N-B (el DONDE) necesita un dato de N-D (el CUANDO)
+     -> los dos ejes NO eran independientes, y esto lo demuestra
+  ```
+
+  Lo que hace falta: un estado mas en `Duenno`, puesto al programar el
+  descriptor y quitado al consumir la interrupcion de fin. Se verifica: la
+  cuenta de marcos en vuelo al apagar es **CERO**, igual que `soltados` en N3
+  del censo del neutro.
+
+- [ ] **N2 -- EL EMBUDO LLAMA AL JUEZ. Despues de N4, no antes.**
   Hoy el juez existe y **no lo llama nadie**. Ponerlo en el camino pide cambiar
   la firma de los que escriben descriptores para que pidan `Prenda` en vez de
   `u64`, y eso toca `platform/drivers/{ahci,xhci}` y quien los llama en Ring 0
@@ -325,9 +347,8 @@ Un plan que no diga donde acaba es propaganda.
   vigila nada todavia**, y decirlo importa mas que tenerlo. Se verifica: una
   direccion fuera de un marco `Neutro` no llega al aparato, y CABINA lo dice.
 
-- [ ] **N2 -- el embudo llama al juez.** Es una linea, y es la que convierte
-  N1 de biblioteca en guardian. Se verifica: una direccion fuera de un marco
-  `Neutro` no llega al aparato, y CABINA lo dice con nombre.
+- [x] **N2-original -- MOVIDO ARRIBA, delante de N3.** Decia *"es una linea"*,
+  y lo es -- pero solo despues de N4. Ver su casilla.
 
 - [ ] **N3 -- EL CENSO CONTRA LA MAQUINA** (N-A, y es R5b de
   `NEUTRO/REQUISITOS.md`). R5a --censo contra codigo-- ya corre en el build
@@ -336,9 +357,8 @@ Un plan que no diga donde acaba es propaganda.
   verifica: la diferencia entre lo listado y lo encontrado es cero, o se dice
   cual falta y por que lado.
 
-- [ ] **N4 -- ★ EL BIT EN VUELO** (N-D). Un estado mas en `Duenno`, puesto al
-  programar y quitado al consumir el fin. Se verifica: la cuenta de marcos en
-  vuelo al apagar es **CERO**, igual que `soltados` en N3 del censo del neutro.
+- [x] **N4 -- MOVIDO ARRIBA el 2026-09-09.** Estaba aqui, detras de N2 y N3,
+  y el intento de cablear el juez demostro que va DELANTE. Ver su casilla.
 
 - [ ] **N5 -- EL PLAZO DEL APARATO MUERTO.** Cuanto se espera antes de dar por
   perdido un DMA en vuelo. **No se elige: se mide** -- el peor tiempo de
