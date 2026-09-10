@@ -302,7 +302,7 @@ eso.** UDP es cabecera de ocho bytes y una suma de comprobacion.
    [ ] 1. `red rx`   ** LO PRIMERO, y sigue sin ejecutarse
           la foto del paso 1 salio en CERO el 28-08 y no fue la tarjeta. Tres
           causas encontradas, arregladas y nunca probadas -- seccion 3.4 de
-          docs/metal/PRUEBA_EN_METAL_0907.md
+          docs/metal/METAL_2026-09-07.md
    [ ] 2. UDP: enviar y recibir un datagrama
    [ ] 3. ChaCha20-Poly1305 y BLAKE2s, con sus vectores de prueba
    [ ] 4. el handshake de tres mensajes

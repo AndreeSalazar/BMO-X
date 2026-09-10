@@ -320,7 +320,7 @@ pub fn context_rsp_of(tid: u32) -> u64 {
 /// no da un numero raro en un panel -- deja Ring 3 a medio recoger.
 ///
 /// No arregla la doble entrega que reporta la azul del 07-09; es un defecto
-/// distinto que salio buscandola. Ver `docs/metal/PRUEBA_EN_METAL_0907.md` 2.1.
+/// distinto que salio buscandola. Ver `docs/metal/METAL_2026-09-07.md` 2.1.
 pub fn queda_alguna_de_ring3() -> bool {
     let _g = SCHED_LOCK.lock();
     let s = sched();

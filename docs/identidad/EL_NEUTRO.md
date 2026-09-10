@@ -106,7 +106,7 @@ Tres cosas que parecian tres se explican con esta sola palabra.
 
 La purga devuelve marcos al asignador. Un aparato neutro que todavia tenga un
 marco programado como destino de DMA **sigue escribiendo en el**, y ese marco ya
-es de otro. Es la pista 1.5 de `docs/metal/PRUEBA_EN_METAL_0907.md`, y ahora
+es de otro. Es la pista 1.5 de `docs/metal/METAL_2026-09-07.md`, y ahora
 tiene categoria: **no es un fallo de la purga, es el limite del celo**.
 
 ### 4.2 El xHC que se murio, y su frase exacta

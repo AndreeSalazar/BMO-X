@@ -1,6 +1,6 @@
 //! **Las cinco comprobaciones, una prueba cada una que las tumba.**
 //!
-//! La regla de esta carpeta la fija `docs/metal/VERIFICACION_METAL.md` y vale igual
+//! La regla de esta carpeta la fija `docs/metal/METAL_2026-08-08.md` y vale igual
 //! aqui: *"una prueba que solo puede salir bien no prueba nada"*. Asi que cada
 //! comprobacion tiene un caso que **la rompe a proposito** y comprueba que sale
 //! el motivo CONCRETO -- no que salga un error cualquiera.

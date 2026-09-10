@@ -90,7 +90,7 @@ tres primeros **ya han ejecutado en el Ryzen**.
 >    lo pone en el plural. No era un fallo, era un NOMBRE que faltaba.
 >
 > ⏳ **Todo esto es toolchain: el Kingston sigue con los `.bex` viejos.** Guia
-> en `docs/metal/PRUEBA_EN_METAL_0813.md`.
+> en `docs/metal/METAL_2026-08-13.md`.
 >
 > ### Y el reparto de los monolitos (mismo dia)
 >
@@ -207,7 +207,7 @@ tres primeros **ya han ejecutado en el Ryzen**.
 > dan error de compilacion: dan un panel que ensena el dato de otro.
 >
 > **Lo que sigue sin ver un CPU**: las seis preguntas de la segunda vuelta de
-> `docs/metal/PRUEBA_EN_METAL.md` --entre ellas la secuencia de vatios que decide si
+> `docs/metal/METAL_2026-08-12.md` --entre ellas la secuencia de vatios que decide si
 > MWAIT vale la pena-- y el corte del ABI, que cambia el binario del kernel otra
 > vez.
 >

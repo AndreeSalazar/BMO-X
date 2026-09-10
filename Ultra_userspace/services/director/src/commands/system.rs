@@ -542,7 +542,7 @@ pub(crate) fn banda(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
 /// usan `scene/consola.rs` y `scene/data/visor.rs`, y por el mismo motivo.
 ///
 /// [!] Cazado LEYENDO, antes del primer arranque. `smp orquesta` no se ha
-/// ejecutado nunca en el Ryzen -- ver `docs/metal/PRUEBA_EN_METAL_0907.md` 3.2.
+/// ejecutado nunca en el Ryzen -- ver `docs/metal/METAL_2026-09-07.md` 3.2.
 static mut ENSAYO: Option<bmo::Memoria> = None;
 
 fn ensayo() -> Option<&'static bmo::Memoria> {

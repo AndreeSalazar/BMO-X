@@ -222,7 +222,7 @@ Lo que se anadio encima ese mismo dia, todo sobre el mismo camino:
                    [x] NUNCA dos escritores (se monta desde un solo sitio)
 ```
 
-La casilla que faltaba era la del section 7 de `docs/metal/VERIFICACION_METAL.md`, y no
+La casilla que faltaba era la del section 7 de `docs/metal/METAL_2026-08-08.md`, y no
 se podia pasar en el anfitrion: hay que apagar el Ryzen. Se apago, y al volver
 la cadena de versiones seguia entera --dos de ese mismo dia y el estrato
 original del formateador, con su nombre y sin fecha--.
@@ -368,7 +368,7 @@ dice.
 
 ### TRAMO 0 -- el 1.0. Una prueba, y no es de codigo
 
-Apagar el Ryzen y encenderlo. `docs/metal/VERIFICACION_METAL.md` section 7.
+Apagar el Ryzen y encenderlo. `docs/metal/METAL_2026-08-08.md` section 7.
 Nada de lo de abajo vale nada si esta falla: seria construir encima de una
 barrera que se cree.
 
