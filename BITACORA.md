@@ -3718,3 +3718,82 @@ quien los llama desde Ring 0 --que es el unico que sabe `duenno_de`--.
 
 > Un juez sin cablear es un contrato escrito y probado. No es una barrera. Y
 > decirlo importa mas que tenerlo.
+
+---
+
+## Ep. 72 -- El juez habria roto el disco, y lo encontro CABLEARLO
+
+**2026-09-09.** El dueno pregunto *"entonces DMA no se puede, no? Pero... que
+tan complicado es?"*. La respuesta corta: **si se puede, y la fontaneria es
+diminuta.** La larga es mejor.
+
+### La cadena entera del AHCI es mas corta de lo que parecia
+
+```text
+   Ring 0    dev/disk/mod.rs:591        write_sectors_phys(...)
+             dev/disk/transfer.rs:137   read_sectors_phys(...)
+   driver    controller.rs:303 y :315   las dos firmas publicas
+             comando.rs                 4 firmas + 2 usos
+```
+
+** Y mejor todavia: **el embudo de las lecturas YA EXISTE.**
+`transfer.rs:136` lo dice de si mismo -- *"Hoy la llaman los dos caminos de
+`read` --el directo y el de rebote-- que es lo unico que hay"*. Las escrituras
+siempre rebotan por la pagina de DMA, asi que usan UNA sola direccion.
+
+*** O sea que cablear el juez en el AHCI **es esencialmente un sitio**, no
+catorce.
+
+### ★★★ Y AL IR A HACERLO, EL JUEZ SE ROMPIO SOLO
+
+`dev/disk/transfer.rs:64`, el camino DIRECTO de una lectura:
+
+```rust
+let directo = tramo_dma(va, restante).and_then(|(phys, bytes)| ...
+```
+
+Esa `phys` sale del **bufer del que llamo**. No es `Duenno::Neutro`, no es del
+aparato, y **tiene todo el derecho a no serlo**: el disco escribe ahi porque el
+kernel se lo presto para esa lectura.
+
+> Mi juez, con su unica regla, habria rechazado una lectura legitima y dejado
+> el disco sin funcionar. En el arranque. Que es como no arrancar.
+
+** Y no lo encontro leer el codigo --lo lei tres veces escribiendo el plan--:
+lo encontro el INTENTO de cablearlo.
+
+### Lo que eso demuestra del plan, y es lo caro
+
+`Marco` gano un segundo caso: `en_vuelo_para: Option<u16>`. Y ese campo **hoy
+no lo puede rellenar nadie**, porque saber que un marco esta prestado a un
+aparato Y AHORA es exactamente **el bit EN VUELO del paso N4**.
+
+```text
+   N-B (el DONDE) necesita un dato de N-D (el CUANDO)
+```
+
+*** **Los dos ejes del plan no eran independientes.** El documento los separaba
+--*"donde puede escribir"* contra *"cuando puede escribir"*-- y esa separacion
+sigue siendo cierta como IDEA. Lo que era falso es que se pudieran construir en
+ese orden.
+
+** El plan se reordena: **N4 va delante de N2.** Cablear el juez sin el bit en
+vuelo no es "incompleto": es romper el disco.
+
+### Las cuatro filas que nacieron del fallo
+
+```text
+   prestado a ESTE aparato, aunque el corral no sea suyo   PASA
+   prestado a OTRO                                         DeOtroAparato
+   suyo por corral PERO prestado a otro                    manda el PRESTAMO
+   ni prestado ni suyo                                     NoEsDeUnAparato
+```
+
+★ La tercera es la que importa: un juez que mirara `es_neutro` primero dejaria
+pasar al dueno del corral sobre un bufer que **ya no es suyo**. El prestamo es
+el caso ESTRECHO --un aparato, ahora-- y por eso se mira antes.
+
+20 filas en el banco, y ninguna de las cuatro existiria si no hubiera intentado
+cablearlo.
+
+> Un plan se prueba escribiendolo. Un orden se prueba EJECUTANDOLO.

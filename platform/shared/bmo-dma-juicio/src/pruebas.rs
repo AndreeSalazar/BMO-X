@@ -13,7 +13,13 @@ use super::*;
 /// peticion de 512 bytes alineada a 2 en mitad del marco. Es la forma de una
 /// lectura de sector del AHCI.
 fn marco_bueno() -> Marco {
-    Marco { es_neutro: true, base: 0x0010_0000, bytes: 4096, aparato: 1 }
+    Marco {
+        es_neutro: true,
+        en_vuelo_para: None,
+        base: 0x0010_0000,
+        bytes: 4096,
+        aparato: 1,
+    }
 }
 
 fn peticion_buena() -> Peticion {
@@ -183,6 +189,55 @@ fn un_marco_ajeno_se_rechaza_antes_de_mirar_la_aritmetica() {
         bits_de_cuenta: 8,
     };
     assert_eq!(juzgar(p, m), Err(Veto::NoEsDeUnAparato));
+}
+
+// -- CASO 2: el marco PRESTADO, y por que existe ------------------------
+//
+// *** Estas cuatro filas nacieron de un fallo. La primera version del juez solo
+// tenia `es_neutro`, y al ir a cablearlo en el AHCI aparecio el camino DIRECTO
+// de una lectura (`dev/disk/transfer.rs:64`): el disco escribe en el bufer del
+// que llamo, que **no es del aparato y tiene todo el derecho a no serlo**.
+//
+// Un juez con una sola regla habria rechazado una lectura legitima y dejado el
+// disco sin funcionar. Y no lo encontro una lectura del codigo: lo encontro el
+// INTENTO de cablearlo.
+
+#[test]
+fn un_marco_prestado_a_este_aparato_pasa_aunque_no_sea_suyo() {
+    let m = Marco { es_neutro: false, en_vuelo_para: Some(1), ..marco_bueno() };
+    assert!(juzgar(peticion_buena(), m).is_ok());
+}
+
+#[test]
+fn un_marco_prestado_a_otro_se_rechaza_con_nombre() {
+    // ** El fallo mas peligroso de los seis: dos aparatos sobre el mismo bufer.
+    // Se informa como `DeOtroAparato` y no como `NoEsDeUnAparato` porque el
+    // segundo mandaria a mirar el sitio equivocado.
+    let m = Marco { es_neutro: false, en_vuelo_para: Some(7), ..marco_bueno() };
+    assert_eq!(
+        juzgar(peticion_buena(), m),
+        Err(Veto::DeOtroAparato { suyo: 7, pide: 1 })
+    );
+}
+
+#[test]
+fn el_prestamo_manda_sobre_el_duenno_del_corral() {
+    // ** Un marco que es del aparato 1 por corral pero esta prestado al 2: el
+    // que vale AHORA es el prestamo. Sin esta fila, un juez que mirara primero
+    // `es_neutro` dejaria pasar al 1 sobre un bufer que ya no es suyo.
+    let m = Marco { es_neutro: true, en_vuelo_para: Some(2), aparato: 1, ..marco_bueno() };
+    assert_eq!(
+        juzgar(peticion_buena(), m),
+        Err(Veto::DeOtroAparato { suyo: 2, pide: 1 })
+    );
+}
+
+#[test]
+fn sin_prestamo_y_sin_corral_no_hay_forma_de_pasar() {
+    // La de al lado de las tres anteriores: `None` + `es_neutro: false` es
+    // memoria de otro, y punto.
+    let m = Marco { es_neutro: false, en_vuelo_para: None, ..marco_bueno() };
+    assert_eq!(juzgar(peticion_buena(), m), Err(Veto::NoEsDeUnAparato));
 }
 
 // -- Y EL EMBUDO, que es el paso N0 -------------------------------------

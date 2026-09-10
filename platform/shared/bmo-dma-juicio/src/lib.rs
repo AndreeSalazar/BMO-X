@@ -69,8 +69,8 @@
 //! # Las seis preguntas, y por que son seis y no cinco
 //!
 //! ```text
-//!    1. el marco es de un aparato?          si no, es memoria de OTRO
-//!    2. es de ESTE aparato?                 si no, uno pisa a otro
+//!    1. el marco es de un aparato, o se lo PRESTARON?   si no, es de otro
+//!    2. es de ESTE aparato?                              si no, uno pisa a otro
 //!    3. pide algo?                          `bytes == 0` es un fallo, no un no-op
 //!    4. cabe dentro del marco?              el desbordamiento clasico
 //!    5. esta alineada?                      lo que el aparato exija
@@ -122,7 +122,39 @@ impl Prenda {
 #[derive(Clone, Copy, Debug)]
 pub struct Marco {
     /// `phys::duenno_de(base) == Duenno::Neutro`, ya resuelto por quien sabe.
+    ///
+    /// ** Es el caso 1: **el aparato escribe en SU propio corral** -- la pagina
+    /// de rebote, los anillos, el DCBAA.
     pub es_neutro: bool,
+    /// **EL CASO 2: el kernel le PRESTO este marco para esta operacion.**
+    ///
+    /// *** Este campo nacio de un fallo mio, el 2026-09-09. La primera version
+    /// del juez solo tenia `es_neutro`, y al ir a cablearlo en el AHCI aparecio
+    /// esto (`dev/disk/transfer.rs:64`):
+    ///
+    /// ```text
+    ///    let directo = tramo_dma(va, restante).and_then(|(phys, bytes)| ...
+    /// ```
+    ///
+    /// El camino DIRECTO de una lectura le da al disco la direccion fisica del
+    /// **bufer del que llamo**, que no es del aparato ni tiene por que serlo.
+    /// Un juez con una sola regla **habria rechazado una lectura legitima y
+    /// dejado el disco sin funcionar**.
+    ///
+    /// ** Y no lo encontre leyendo: lo encontro el intento de cablearlo. Por
+    /// eso el paso N2 del plan existe aparte de N1.
+    ///
+    /// [!] HOY NADIE PUEDE RELLENAR ESTE CAMPO CON LA VERDAD, y eso es lo que
+    /// bloquea N2. Saber que un marco esta prestado A UN APARATO Y AHORA es
+    /// exactamente el **bit EN VUELO** del paso N4. Hasta que exista, quien
+    /// llame a `juzgar` solo puede poner `None` -- y el camino directo del
+    /// disco no puede pasar por aqui.
+    ///
+    /// *** O sea que **N-B no se puede cablear sin N-D**. Los dos ejes del
+    /// plan --el DONDE y el CUANDO-- no eran independientes, y esto lo
+    /// demuestra: la regla del DONDE necesita un dato del CUANDO para no
+    /// rechazar lo correcto.
+    pub en_vuelo_para: Option<u16>,
     /// Donde empieza el marco (o la arena) que se le dio a este aparato.
     pub base: u64,
     /// Cuanto mide. Un marco suelto son 4096; una arena, lo que se pidio.
@@ -153,7 +185,7 @@ pub struct Peticion {
 /// Por que NO. Cada uno nombra una pregunta de la cabecera.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Veto {
-    /// El marco no es de ningun aparato: es memoria de otro.
+    /// El marco no es del aparato NI se lo prestaron: es memoria de otro.
     NoEsDeUnAparato,
     /// El marco es de un aparato, pero **de otro**.
     DeOtroAparato { suyo: u16, pide: u16 },
@@ -177,13 +209,27 @@ pub enum Veto {
 /// la mas cara**, y de la que mas dano hace a la que menos. Un marco que no es
 /// de un aparato se rechaza antes de mirar ninguna aritmetica.
 pub fn juzgar(p: Peticion, m: Marco) -> Result<Prenda, Veto> {
-    // 1. De quien es esto.
-    if !m.es_neutro {
-        return Err(Veto::NoEsDeUnAparato);
-    }
-    // 2. Y es del que va a escribir.
-    if m.aparato != p.aparato {
-        return Err(Veto::DeOtroAparato { suyo: m.aparato, pide: p.aparato });
+    // 1 y 2. De quien es esto, y hay DOS formas legitimas de que sea suyo.
+    //
+    // ** El orden importa: se mira primero el prestamo porque es el caso
+    // ESTRECHO --un aparato concreto, ahora-- y `es_neutro` es el ancho. Si un
+    // marco esta prestado a otro, eso se dice con nombre en vez de dejarlo caer
+    // en `NoEsDeUnAparato`, que mandaria a mirar el sitio equivocado.
+    match m.en_vuelo_para {
+        // Caso 2: prestado, y al que pide.
+        Some(a) if a == p.aparato => {}
+        // Prestado a OTRO. Es el fallo mas peligroso de los seis --dos
+        // aparatos sobre el mismo bufer-- y por eso tiene su propio veto.
+        Some(a) => return Err(Veto::DeOtroAparato { suyo: a, pide: p.aparato }),
+        None => {
+            // Caso 1: su propio corral.
+            if !m.es_neutro {
+                return Err(Veto::NoEsDeUnAparato);
+            }
+            if m.aparato != p.aparato {
+                return Err(Veto::DeOtroAparato { suyo: m.aparato, pide: p.aparato });
+            }
+        }
     }
     // 3. Pide algo. Va antes que la aritmetica porque con `bytes == 0` la
     //    comprobacion de "cabe" da que SI, y colar un descriptor vacio es un
