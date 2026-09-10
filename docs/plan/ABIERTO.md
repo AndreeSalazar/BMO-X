@@ -7,10 +7,10 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   147 casillas ABIERTAS en 20 planes
-   112 hechas
+   160 casillas ABIERTAS en 21 planes
+   114 hechas
      5 planes CUMPLIDOS (ni una casilla pendiente)
-     1 en plan/ SIN NI UNA CASILLA -- ver el final
+     0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
 
 ---
@@ -43,6 +43,15 @@
 - [ ] P2.3 -- el kernel publica el TIEMPO DE CPU de una tarea. Hoy
 - [ ] P2.4 -- envejecimiento en choose_next, y SOLO si P2.1+P2.2 no bastan.
 - ... y 11 mas
+
+## [`PLAN_EL_ASISTENTE.md`](PLAN_EL_ASISTENTE.md) -- 13 abiertas, 2 hechas
+
+*PLAN EL ASISTENTE -- un ayudante que corre DENTRO de BMO-X*
+
+- [ ] 1a -- exp en INTI (dias). Lo unico que falta de matematicas --
+- [ ] 1b -- el reparto de nucleos en el ABI (semanas). plat/smp/crew.rs
+- [ ] 1c -- el motor de inferencia en INTI (semanas). El cargador de GGUF,
+- ... y 10 mas
 
 ## [`PLAN_EL_COMPAS.md`](PLAN_EL_COMPAS.md) -- 12 abiertas, 0 hechas
 
@@ -201,20 +210,4 @@ que algo se hizo asi, y eso se consulta mas que la casilla.
 - [`PLAN_EL_PERFIL_TOTAL.md`](PLAN_EL_PERFIL_TOTAL.md) -- 8 hechas, 611 lineas
 - [`PLAN_SEGURIDAD.md`](PLAN_SEGURIDAD.md) -- 17 hechas, 785 lineas
 - [`PLAN_SUELO_RING3.md`](PLAN_SUELO_RING3.md) -- 4 hechas, 316 lineas
-
----
-
-# [!] ESTOS ESTAN EN `plan/` Y NO TRAEN NI UNA CASILLA
-
-`docs/README.md` dice que `plan/` contesta *"que casillas
-faltan, que las bloquea, como se sabe que quedo hecha"*. Un
-fichero sin casillas **no contesta esa pregunta**: es un
-maestro o una identidad con la palabra PLAN delante.
-
-*** No se mueven solos. Cada uno se decide a mano: o se le
-ponen sus casillas, o se muda a la carpeta cuya pregunta si
-contesta. Este guardian los nombra en cada build para que la
-deuda tenga nombre en vez de ser un fichero mas.
-
-- [`PLAN_EL_ASISTENTE.md`](PLAN_EL_ASISTENTE.md) -- 676 lineas
 
