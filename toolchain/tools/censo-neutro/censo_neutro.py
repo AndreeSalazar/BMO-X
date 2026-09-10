@@ -52,10 +52,20 @@ CENSO = os.path.join(RAIZ, "NEUTRO", "CENSO.txt")
 # un formato que solo conoce el guardian es un formato que nadie puede cumplir.
 BASE = os.path.join(RAIZ, "Ultra_kernel_x86-64", "kernel", "src", "ring0")
 
-# La clase que etiqueta. Su definicion vive en `mm/titular.rs`, que por eso se
-# excluye: ahi la palabra aparece porque se DECLARA, no porque se use.
+# La clase que etiqueta. Su definicion vive en `mm/titular/`, que por eso se
+# excluye ENTERA: ahi la palabra aparece porque se DECLARA, no porque se use.
+#
+# ** Era un FICHERO --`mm/titular.rs`-- hasta que el 09-09 se partio en carriles
+# y paso a ser una CARPETA. El guardian dijo que no en el mismo build, que es lo
+# que tiene que hacer un guardian cuando algo se mueve; lo que se corrige aqui
+# es la ruta, no la regla.
+#
+# [!] Y se excluye la carpeta entera A PROPOSITO en vez de solo `mod.rs`: el
+# carril amarillo COMPARA con la clase para llevar la cuenta del neutro, y
+# `verde.rs` la lee. Ninguno de los tres etiqueta un marco -- el sitio que
+# etiqueta es quien LLAMA a `marcar`, y esos son justo los que el censo vigila.
 MARCA = "Titular::Neutro"
-DEFINICION = os.path.join(BASE, "mm", "titular.rs")
+DEFINICION = os.path.join(BASE, "mm", "titular")
 
 # Una fila del censo que nombra un fichero: `dev/disk/mod.rs  x2`.
 FILA = re.compile(r"^\s{2,}(\S+)\s+.*?([\w/]+\.rs)\s*(?:x(\d+))?\s", re.M)
@@ -70,7 +80,10 @@ def marcas_en_codigo():
                 continue
             ruta = os.path.join(dirpath, f)
             # La definicion no cuenta: ahi la palabra aparece porque se DECLARA.
-            if os.path.normcase(ruta) == os.path.normcase(DEFINICION):
+            # Vale el fichero de antes y la carpeta de carriles de ahora.
+            nc = os.path.normcase(ruta)
+            nd = os.path.normcase(DEFINICION)
+            if nc == nd + ".rs" or nc.startswith(nd + os.sep):
                 continue
             with open(ruta, "r", encoding="utf-8", errors="replace") as fh:
                 texto = fh.read()
