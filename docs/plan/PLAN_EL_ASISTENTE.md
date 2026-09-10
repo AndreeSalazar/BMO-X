@@ -379,11 +379,12 @@ Lo que sigue no es una lista de deseos ordenada por ganas: cada escalon
 
 ## Escalon 1 -- El asistente LOCAL, sin red (semanas)
 
-```text
-   1a  `exp` en INTI                      dias      -- lo unico que falta de mates
-   1b  el reparto de nucleos en el ABI    semanas   -- `crew` existe, falta la puerta
-   1c  el motor de inferencia en INTI     semanas   -- y se puede EMPEZAR HOY
-```
+- [ ] **1a -- `exp` en INTI** (dias). Lo unico que falta de matematicas --
+      `toolchain/lang/inti/`, y `MONTON.md` dice donde
+- [ ] **1b -- el reparto de nucleos en el ABI** (semanas). `plat/smp/crew.rs`
+      YA existe y da 11,27x medido; lo que falta es la puerta desde Ring 3
+- [ ] **1c -- el motor de inferencia en INTI** (semanas). El cargador de GGUF,
+      y **se puede empezar hoy**: no espera a 1a ni a 1b
 
 **1c no espera a 1a ni a 1b.** Cargar el modelo, tokenizar y hacer la primera
 multiplicacion no necesitan ninguno de los dos; los necesita para ir rapido y
@@ -395,12 +396,14 @@ internet, en tu maquina.** Que es lo que se pidio.
 
 ## Escalon 2 -- La red que NO necesita criptografia (semanas)
 
-```text
-   2a  la foto del anillo RX en el Ryzen   una tarde -- el codigo ya esta
-   2b  KIND_RED                            el contrato, escrito con una trama en la mano
-   2c  transmitir + ARP en Ring 3
-   2d  IP + UDP, y un `ping` que conteste
-```
+- [ ] **2a -- la foto del anillo RX en el Ryzen** (una tarde). El codigo ya
+      esta; ver `docs/metal/METAL_RED_PASO_1.md`, que salio en CERO
+- [ ] **2b -- `KIND_RED`**: el contrato, escrito con una trama en la mano --
+      un `kind` nuevo en `platform/abi/bmo-abi/`
+- [ ] **2c -- transmitir + ARP en Ring 3**, sobre `platform/drivers/net/`
+- [ ] **2d -- IP + UDP, y un `ping` que conteste.** Trae la unica prueba
+      honesta de que el diseno vale: la latencia de ida y vuelta contra la
+      que da Windows en el mismo cable
 
 El paso 2d es el que `RED_MAESTRO.md` llama *"lo que el dueno queria"*, y trae
 la unica prueba honesta de que el diseno vale: **la latencia de ida y vuelta,
@@ -410,12 +413,13 @@ en microsegundos, contra la que da Windows en el mismo cable.**
 
 ## Escalon 3 -- La criptografia, que es la frontera de verdad (meses)
 
-```text
-   3a  SHA-256                       y de paso cierra la deuda de `verify_ed25519`
-   3b  X25519 + AES-GCM
-   3c  TLS 1.3
-   3d  X.509 y la cadena de confianza
-```
+- [x] **3a -- SHA-256.** HECHO, con los vectores del NIST -- `bmo-cripto`
+- [x] **3b -- X25519 + AES-GCM.** HECHO: `x25519.rs`, `aes.rs` y `gcm.rs`
+- [ ] **3c -- TLS 1.3**: el apreton de manos y la maquina de estados. **Las
+      primitivas YA NO son el muro** -- `bmo-cripto` tiene AES, GCM, SHA-256,
+      SHA-512, HMAC, X25519, Ed25519 y azar, ~3.600 lineas. Falta el PROTOCOLO
+- [ ] **3d -- X.509 y la cadena de confianza**, y con ella el `sig_algo = 0`
+      que todo `.bex` sigue llevando
 
 > *** **Y AQUI ESTA LA CONEXION QUE JUSTIFICA EL ORDEN, y que ninguno de los
 > cuatro documentos fusionados podia ver solo:**
@@ -432,11 +436,32 @@ en microsegundos, contra la que da Windows en el mismo cable.**
 
 ## Escalon 4 -- La GPU (meses, y con un numero delante)
 
-```text
-   4a  medir con `perf` si la GPU compra algo    <- ANTES de gastar
-   4b  meta A: SDMA para el compositor           <- y DOOM deja de ir a tirones
-   4c  meta B2: compute                          <- el muro del PSP
-```
+- [ ] **4a -- medir con `perf` si la GPU compra algo**, ANTES de gastar
+- [ ] **4b -- meta A: SDMA para el compositor**, y DOOM deja de ir a tirones
+- [ ] **4c -- meta B2: compute** -- el muro del PSP, que `4.3` explica
+
+---
+
+# [!] POR QUE ESTE PLAN NO TENIA CASILLAS HASTA EL 2026-09-10
+
+Los cuatro escalones llevaban aqui desde el 23-08 **dentro de bloques de
+texto**, con su letra y su plazo. Lo que les faltaba era la SINTAXIS:
+`docs/plan/ABIERTO.md` cuenta `- [ ]`, y una linea dentro de un ```` ```text ````
+no lo es. O sea que este plan --676 lineas-- salia con **cero casillas** y su
+trabajo no se veia por ninguna parte.
+
+** Y al convertirlas aparecieron DOS cosas que la prosa tapaba:
+
+1. **3a y 3b ya estaban HECHAS.** `bmo-cripto` tiene SHA-256 con los vectores
+   del NIST, X25519, AES y GCM. El escalon 3 se leia como *"meses de
+   criptografia"* y la mitad estaba pagada.
+
+2. **El ancho de memoria no era una nota: era la casilla que manda.** Estaba
+   escrito como un parrafo con `[!]` al final de la seccion 8, y bloquea a los
+   cuatro escalones. Ahora es `A0` y sale en el indice.
+
+  > Un plan que no se puede contar no esta pendiente. Esta olvidado. Y uno que
+  > esconde lo que ya esta hecho asusta mas de lo que cuesta.
 
 ---
 
@@ -604,9 +629,12 @@ por el lado de la memoria. **El CPU sobra tres veces.**
 
 ### [!] Y por eso hay un numero que hay que medir antes que nada
 
-**El ancho de memoria de este Ryzen.** Es una faena de una tarde --leer un
-bloque grande y cronometrarlo-- y **decide el resto**: si sale 45 GB/s, un 7B en
-Q4 va a la banda util; si sale 20, hay que bajar a un 3B.
+- [ ] **A0 -- MEDIR EL ANCHO DE MEMORIA DE ESTE RYZEN.** Una faena de una
+      tarde: leer un bloque grande y cronometrarlo. `c/blit.bex` ya sabe medir
+      `memcpy` y es de donde sale. **Bloquea a todo lo demas de este plan.**
+
+**Es el numero que decide el resto**: si sale 45 GB/s, un 7B en Q4 va a la
+banda util; si sale 20, hay que bajar a un 3B.
 
 Sin ese numero, todo lo de arriba es aritmetica sobre un supuesto. Y este
 proyecto tiene una ley para eso: *se pregunta, no se supone.*
