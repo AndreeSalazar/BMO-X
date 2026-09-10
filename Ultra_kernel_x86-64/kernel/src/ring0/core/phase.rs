@@ -402,8 +402,20 @@ pub fn main(ctx: &mut BootContext) {
     // lineas mas arriba.
     //
     // [!] Y no escribe un bit: ni MEM, ni Bus Master, ni un BAR. Es una
-    // pregunta, como la NIC y como la placa. Ver `dev/portero.rs`.
+    // pregunta, como la NIC y como la placa. Ver `dev/portero/verde.rs`.
     crate::ring0::dev::portero::censar();
+    // *** EL PORTERO DURO -- quien alcanza la RAM y nadie lo adopto.
+    //
+    // ** Va DESPUES del censo y despues de los tres `find_*`, y esta vez el
+    // orden no es cosmetico: son los `find_*` los que apuntan a los aparatos
+    // adoptados. Correr esto antes dejaria el registro vacio y **todos los
+    // maestros serian ajenos**, el disco del arranque incluido.
+    //
+    // [!] Este SI sabe escribir en el bus, y por eso vive en un carril rojo. De
+    // fabrica el cerrojo esta en `Mirar`: dice a quien cerraria y no cierra a
+    // nadie. Ver la cabecera de `dev/portero/roja.rs` para lo que cuesta
+    // cambiar esa palabra, y las tres cosas que no cierra jamas.
+    crate::ring0::dev::portero::duro();
     splash::intro_paso(58);
     // * El reloj de la placa, DESPUES de que el TSC este medido: la hora se
     // ancla a el, y anclarla a una frecuencia que todavia vale cero daria un

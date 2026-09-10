@@ -1,14 +1,16 @@
-//! **EL PORTERO DEL BUS: que hay enchufado a esta placa, y para que hay codigo.**
+//! **EL CENSO DEL BUS: que hay en la placa, y para que hay codigo.**
 //!
 //! [carril]  VERDE     lee configuracion de PCI y cuenta. No escribe ni un bit
 //!
 //! [cuesta]  NADA -- un recorrido de configuracion en el arranque, una vez. No
 //!           habilita nada, no reclama ningun aparato y no cambia que se
-//!           adopta: `find_ahci`, `find_nic` y `find_xhci` siguen decidiendo.
+//!           adopta: `find_ahci`, `find_nic` y `find_xhci` siguen decidiendo
+//!           (L6e)
 //!
 //! [riesgo]  SILENCIO -- si esto se calla, se vuelve al estado de antes: la
 //!           maquina tiene una tarjeta grafica dentro y no lo menciona jamas.
-//!           No rompe nada; deja sin respuesta *"que tengo, y que se ignora"*.
+//!           No rompe nada; deja sin respuesta *"que tengo, y que se ignora"*
+//!           (L6f)
 //!
 //! # *** LA SEGUNDA PUERTA DEL PORTERO
 //!
@@ -60,6 +62,10 @@
 //! politica de adopcion viviendo al lado de las tres, y el dia que discreparan
 //! ganaria la que corriera antes.
 //!
+//! ** Y desde el 09-09 esa frase tiene una carpeta detras: cerrar es el carril
+//! ROJO de al lado, y este fichero **no sabe escribir en el bus**. Antes era
+//! una promesa de la cabecera; ahora lo comprueba el compilador.
+//!
 //! # Y por que no se dicen los sesenta
 //!
 //! Una placa moderna tiene entre treinta y sesenta funciones de PCI, casi todas
@@ -70,7 +76,7 @@
 //! ** Asi que se CUENTAN todas y se DICEN las que este sistema podria querer.
 //! Un puente PCI no es una noticia; una tarjeta grafica sin driver si.
 
-use super::pci::cfg_read32;
+use super::super::pci::cfg_read32;
 
 /// Las clases que se anuncian. El resto se cuenta y se calla.
 ///
