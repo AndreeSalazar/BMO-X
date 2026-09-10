@@ -3,7 +3,7 @@ name = "bmo-abi"
 version = "2.0.0"
 edition = "2021"
 authors = ["BMO Project"]
-description = "BMO ABI — types, syscall definitions, interfaces (foundation layer)"
+description = "BMO ABI -- types, syscall definitions, interfaces (foundation layer)"
 
 [features]
 # BMO v2 is deliberately tuned for its native Zen 3 x86-64 target. A

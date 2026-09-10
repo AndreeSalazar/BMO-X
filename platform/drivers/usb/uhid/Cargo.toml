@@ -2,7 +2,7 @@
 name = "bmo-uhid"
 version = "0.1.0"
 edition = "2021"
-description = "BMO USB HID Driver — boot protocol keyboard/mouse via xHCI"
+description = "BMO USB HID Driver -- boot protocol keyboard/mouse via xHCI"
 
 [lib]
 

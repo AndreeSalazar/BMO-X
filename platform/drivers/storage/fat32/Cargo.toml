@@ -2,7 +2,7 @@
 name = "bmo-fat32"
 version = "0.1.0"
 edition = "2021"
-description = "BMO FAT32/exFAT reader — cadenas de clusteres, nombres 8.3, sobre un contrato de bloques"
+description = "BMO FAT32/exFAT reader -- cadenas de clusteres, nombres 8.3, sobre un contrato de bloques"
 
 [lib]
 
