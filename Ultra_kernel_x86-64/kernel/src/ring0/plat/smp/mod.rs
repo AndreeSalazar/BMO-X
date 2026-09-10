@@ -47,6 +47,11 @@ pub mod banda;
 /// sabe que dos hilos comparten un nucleo.
 pub mod ficha;
 pub mod crew;
+
+// ** LO QUE LE FALTABA A AXION PARA PODER ENCENDER. `crew` dejo escrito el
+// precio --once nucleos girando al 100%-- antes de que existiera la salida;
+// esto es la salida, y solo se usa si el silicio la trae con PLAZO.
+pub mod dormir;
 /// **EL ATRIL**: donde Ring 3 deja el encargo antes de decir *tocad*. `crew`
 /// sabia repartir desde el 08-08 y nadie le habia dado nunca una faena de
 /// verdad; esto es lo que faltaba, y no era el reparto: era **como se le dicen
