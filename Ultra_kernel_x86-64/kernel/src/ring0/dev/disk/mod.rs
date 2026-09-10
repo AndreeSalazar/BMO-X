@@ -61,7 +61,7 @@ pub use owner::{cuentas_dueno, Testigo};
 use owner::tomar_disco;
 /// MOVING THE BYTES: read, DMA, and the bounce buffer -- both paths counted.
 mod transfer;
-pub use transfer::{cuentas_dma, read};
+pub use transfer::{cuentas_dma, motivos_dma, read};
 
 pub const SECTOR: usize = 512;
 

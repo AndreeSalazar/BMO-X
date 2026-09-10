@@ -1,0 +1,18 @@
+[package]
+name = "bmo-dma-forma"
+version = "0.1.0"
+edition = "2021"
+description = "Cual de las TRES formas de DMA le toca a esta peticion, y POR QUE"
+license = "Apache-2.0"
+
+[lib]
+
+# ** CERO DEPENDENCIAS, igual que sus hermanos de `platform/shared`.
+#
+# Y por el mismo motivo que `bmo-dma-juicio`: lo consumen los drivers --que
+# corren en el metal, sin asignador-- y `cargo test` en el anfitrion.
+#
+# *** Tampoco depende del kernel. No recibe `Titular`, ni un `Marco`, ni una
+# tabla de paginas: recibe NUMEROS, y de ahi que no tenga `[riesgo] ESPEJO`.
+# La ventana del espejo entra como dos `u64` que este crate solo compara.
+[dependencies]

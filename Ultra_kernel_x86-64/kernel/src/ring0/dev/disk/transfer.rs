@@ -107,6 +107,21 @@ static mut SIN_REBOTE: u64 = 0;
 /// Bytes que SI tuvieron que rebotar.
 static mut CON_REBOTE: u64 = 0;
 
+/// **POR QUE se eligio cada forma**, una casilla por motivo de
+/// `bmo_dma_forma::PorQue`.
+///
+/// *** Es la mitad que le faltaba a `cuentas_dma`. Aquel dice CUANTO rebota;
+/// esto dice DE QUE se queja, y sin eso el numero no se puede usar: los tres
+/// motivos de rebote se arreglan en tres sitios distintos y ninguno es el
+/// disco.
+static mut MOTIVOS: [u64; bmo_dma_forma::PorQue::CUANTOS] =
+    [0; bmo_dma_forma::PorQue::CUANTOS];
+
+/// La tabla de motivos, para quien la quiera ensenar.
+pub fn motivos_dma() -> [u64; bmo_dma_forma::PorQue::CUANTOS] {
+    unsafe { MOTIVOS }
+}
+
 /// `(directos, rebotados)` en bytes desde el arranque.
 pub fn cuentas_dma() -> (u64, u64) { unsafe { (SIN_REBOTE, CON_REBOTE) } }
 
@@ -347,9 +362,15 @@ fn leer_rebotando(lba: u64, batch: u16, dma: u64, buf: &mut [u8], done: u16) -> 
 /// cargador existe igual en ese espacio porque la mitad alta se comparte, pero
 /// preguntarselo al espacio equivocado seria confiar en esa coincidencia.
 fn tramo_dma(va: u64, max: u64) -> Option<(u64, u64)> {
-    if max < SECTOR as u64 {
-        return None;
-    }
+    // [!] AQUI HABIA UN `if max < SECTOR { return None }` Y SE FUE ABAJO.
+    //
+    // No cambiaba la decision --`elegir` contesta lo mismo-- pero se saltaba la
+    // cuenta de motivos, y una salida que no pasa por el contador es justo el
+    // agujero que este cambio existe para tapar: **el rebote mas comun podria
+    // ser el unico que no se cuenta**, y la tabla diria que casi no se rebota.
+    //
+    // > Un contador con una puerta de atras no cuenta menos: cuenta MAL, y
+    // > ademas parece que cuenta.
     // ** SOLO EL PHYSMAP, Y LA TRADUCCION ES UNA RESTA (2026-08-10).
     //
     // === Lo que habia aqui, y por que se fue ===
@@ -383,37 +404,41 @@ fn tramo_dma(va: u64, max: u64) -> Option<(u64, u64)> {
     //
     // > No es que ahora se compruebe mejor. Es que **ya no hay nada que
     // > comprobar**: la respuesta se sabe sin preguntar.
-    let fin_physmap = mm::HIGH_MEM_BASE.wrapping_add(mm::PHYSMAP_SIZE);
-    if va < mm::HIGH_MEM_BASE || va >= fin_physmap {
-        return None;
-    }
-    // ** LA ALINEACION VUELVE A COMPROBARSE, Y AHORA HACE FALTA DE VERDAD.
+    // == *** Y DESDE EL 2026-09-10 LA ELECCION LA HACE UN CRATE ===========
     //
-    // AHCI pide que la base del PRD este alineada a 2 bytes. Mientras por aqui
-    // solo pasaban marcos recien pedidos al asignador esto no podia fallar --una
-    // pagina esta alineada a 4096-- y por eso la comprobacion se habia quedado
-    // sin escribir en la version del physmap.
+    // Los mismos cuatro `if` de siempre, y **ni una decision distinta**: lo
+    // que cambia es que ahora cada `None` sale con NOMBRE.
     //
-    // Desde el 2026-08-11 pasa tambien **el espejo de un bloque de Ring 3**: un
-    // `fread` a mitad de un lump puede caer en una direccion impar. Y sin este
-    // `if` eso no seria un rebote, seria una LECTURA CORTA: `bmo_ahci` rechaza
-    // la peticion con `BadRequest`, `read` devuelve lo que llevaba, y el fichero
-    // llega a medias con un fault en el log que habla del disco.
+    // ```text
+    //    antes   Some(..) / None          y los cuatro None se veian igual
+    //    ahora   Forma + PorQue           cada rebote dice de que se queja
+    // ```
     //
-    // > Una condicion que "en la practica siempre se cumple" deja de cumplirse
-    // > el dia que un camino nuevo entra por la misma puerta. Cuesta un `and`.
-    if va & 1 != 0 {
-        return None;
+    // ** `cuentas_dma` decia *"rebotaron 40 MiB"* y con eso no se puede hacer
+    // nada: no se sabe si sobra alineacion, si hay bufers fuera del espejo o si
+    // es un tamano, y los tres se arreglan de formas que no se parecen.
+    //
+    // [!] `bits_de_cuenta: 64` NO es una relajacion: el PRDT de AHCI lleva la
+    // direccion en 32+32 --`DBA` mas `DBAU`-- asi que direcciona los 64, y este
+    // camino nunca comprobo un techo. Poner 32 aqui seria estrenar un rechazo
+    // que nadie ha medido, en el camino del ARRANQUE. El campo existe para el
+    // aparato que si lo necesite.
+    let e = bmo_dma_forma::elegir(&bmo_dma_forma::Peticion {
+        virt: va,
+        bytes: max,
+        espejo_base: mm::HIGH_MEM_BASE,
+        espejo_bytes: mm::PHYSMAP_SIZE,
+        // AHCI pide la base del PRD alineada a 2 bytes.
+        alineacion: 2,
+        minimo: SECTOR as u64,
+        bits_de_cuenta: 64,
+        es_su_corral: false,
+    });
+    unsafe { MOTIVOS[e.por_que.indice()] += 1 };
+    match e.forma {
+        bmo_dma_forma::Forma::Rebote => None,
+        _ => Some((e.fisica, e.bytes)),
     }
-    let phys = va - mm::HIGH_MEM_BASE;
-    // Lo que quede de ventana, por si un buffer enorme llegara al tope. No puede
-    // pasar --el asignador nunca entrega marcos por encima de `PHYSMAP_SIZE`, y
-    // esta escrito en su cabecera-- pero acotarlo cuesta una resta.
-    let bytes = max.min(fin_physmap - va);
-    if bytes < SECTOR as u64 {
-        return None;
-    }
-    Some((phys, bytes))
 }
 
 // -- ** PEDIR SIN ESPERAR ----------------------------------------------------

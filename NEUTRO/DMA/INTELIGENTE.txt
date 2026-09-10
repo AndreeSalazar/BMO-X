@@ -100,15 +100,60 @@ LO QUE FALTA PARA QUE SEA INTELIGENTE DE VERDAD
 
   Hoy la eleccion se toma con reglas escritas a mano y ningun numero detras.
 
-    [ ] cuantas veces se rebota, y cuantos bytes    -> `CON_REBOTE` ya lo
-                                                       cuenta y no lo mira nadie
+    [x] la eleccion DICE POR QUE                    -> `bmo-dma-forma`, y
+                                                       20 filas. Ver abajo
+    [ ] cuantas veces se rebota, Y DE QUE SE QUEJA  -> la tabla ya existe;
+                                                       falta UN ARRANQUE
     [ ] cuanto cuesta un rebote en ESTA placa       -> `c/blit.bex` lo sabe medir
     [ ] cuanto cuesta revocar una pagina            -> M1b de
                                                        PLAN_LA_PUERTA_SE_PARTE
     [ ] y el umbral del desmapeo: N `invlpg` contra un `mov cr3`
 
-  ** Con esos cuatro numeros, "inteligente" deja de ser una palabra y pasa a ser
-  una desigualdad. Sin ellos es una costumbre que funciona.
+  ** Con esos numeros, "inteligente" deja de ser una palabra y pasa a ser una
+  desigualdad. Sin ellos es una costumbre que funciona.
+
+
+*** EL PRIMER PASO, HECHO EL 2026-09-10: LA ELECCION DICE POR QUE
+------------------------------------------------------------------
+
+  Peticion del dueno: *"DMA inteligente dinamico que TODOS tengan motivos
+  porque, y siempre aislando todo en modulos para evitar sorpresas"*.
+
+  El AHCI ya elegia entre PRESTADO y REBOTE. Lo hacia dentro de `tramo_dma`,
+  con cuatro `return None` seguidos, y los cuatro se veian igual desde fuera:
+
+    antes    Some(..) / None           y los cuatro None eran el mismo None
+    ahora    Forma + PorQue            cada rebote dice de que se queja
+
+  ** `cuentas_dma` decia "rebotaron 40 MiB" y con ese numero NO SE PUEDE HACER
+  NADA, porque los tres motivos de rebote se arreglan en tres sitios distintos
+  y ninguno es el disco:
+
+    fuera del espejo    se arregla MOVIENDO el bufer
+    desalineado         se arregla en quien pide, con un `+ 1 & !1`
+    no cabe el tramo    se arregla pidiendo mas de golpe
+
+    > Una decision que no dice por que no se puede mejorar: solo se puede
+    > deshacer entera y ver que pasa.
+
+  EL VOCABULARIO ES CERRADO --seis motivos-- y eso es lo que le da valor. Si un
+  caso nuevo no cabe en las seis palabras, no se ha entendido el caso. Anadir
+  `Otros` seria volver al estado de antes con el trabajo hecho.
+
+  Y ESTA AISLADO DE VERDAD: crate propio en `platform/shared/bmo-dma-forma`,
+  cero dependencias, no conoce ni al kernel ni a sus tipos --recibe numeros--,
+  y sus 20 filas corren en el anfitrion. La logica del camino del ARRANQUE se
+  puede romper y arreglar sin arrancar la maquina.
+
+  [!] Y NO CAMBIO NI UNA DECISION. Las mismas entradas dan las mismas salidas;
+  lo unico que se estreno es el nombre de cada salida. Un cambio que ademas
+  hubiera afinado la eleccion habria mezclado dos cosas en el camino por el que
+  la maquina lee su propio sistema.
+
+  * De propina, las pruebas cazaron DOS FILAS MIAS que mezclaban dos
+  condiciones --el borde del espejo de 16 GiB con el techo de 32 bits del
+  aparato-- y por eso probaban la que no era. Una fila que mezcla dos
+  condiciones no prueba ninguna de las dos.
 
 
 Y EL MAPEO / DESMAPEO, QUE ES LA OTRA MITAD DE LA PREGUNTA
