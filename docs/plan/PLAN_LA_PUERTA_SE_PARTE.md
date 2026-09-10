@@ -380,14 +380,133 @@ ganancia mas grande con un coste que hay que medir antes**. De ahi el M1b.
 
 ---
 
+# 6c. EL DMA SI TIENE OPORTUNIDAD, Y SE LLAMA IOMMU
+
+> Pregunta del dueno, **2026-09-09**: *"el DMA se puede tener oportunidad?
+> [...] el mapping y el hot unmapping, ambos tienen que aplicarse inteligente
+> que trate de no costar por algo."*
+
+## 1. La oportunidad existe y la puerta esta medio abierta
+
+BMO-X **ya lee el IVRS** --la tabla ACPI donde el firmware declara los IOMMU--
+en `plat/placa.rs:261`. Y ese fichero ya tiene escrito el argumento entero:
+
+> *"Una capability dice que puede hacer un PROCESO, y **no dice nada de lo que
+> puede hacer un APARATO**: uno con bus-master escribe donde le den la
+> direccion, sin pasar por el kernel ni por las tablas de pagina. Es la mina
+> del PRDT de AHCI, y **la IOMMU es lo unico que la desactiva**."*
+
+*** O sea que la respuesta a *"se puede"* es **si, y no hace falta inventar
+nada**: hace falta ENCENDERLA. Con AMD-Vi un aparato tiene sus propias tablas
+de pagina (DTE + IO page tables), y entonces desmapear **si le llega al
+aparato** -- que es exactamente lo que hoy no ocurre.
+
+```text
+   hoy        desmapear le quita la vista a la CPU        el aparato sigue
+   con IOMMU  desmapear se aplica a los DOS               el celo deja de ser ciego
+```
+
+[!] Y se lee bajo la ley de la casa sin discutir: el IVRS es una **tabla
+estatica**, no AML. *"Tablas ACPI estaticas SI, AML NUNCA."*
+
+** Lo que cuesta, dicho: encender un IOMMU es construir y mantener un segundo
+juego de tablas de pagina, mas su cache, mas su invalidacion. Es un proyecto del
+tamano del VMM, no un `if`. Aqui solo queda escrito que el camino existe y donde
+empieza -- y ese *donde* ya esta en el arbol.
+
+## 2. ★★ "QUE NO CUESTE POR ALGO": la regla del desmapeo inteligente
+
+Y aqui hay una medida concreta que se puede tomar ya, sin IOMMU y sin kernel
+nuevo. `fb::release` hace esto:
+
+```rust
+while off < bytes {
+    vmm::unmap_page(aspace, vmm::FRAMEBUFFER_VA_BASE + off);   // un `invlpg` cada una
+    off += mm::PAGE;
+}
+```
+
+A 1920x1080x4 son **2.025 `invlpg`**. Pero un `mov cr3` vacia el TLB **entero
+con una sola instruccion**:
+
+```text
+   N `invlpg`      coste proporcional a N, y el resto del TLB SOBREVIVE
+   1 `mov cr3`     coste FIJO, y el TLB entero hay que rellenarlo otra vez
+```
+
+*** Hay un punto de cruce, y por encima de el **vaciar todo es mas barato que
+vaciar una a una**. Es la misma heuristica que usa Linux (`tlb_flush_all` por
+encima de un umbral), y no es una opinion: es una desigualdad con dos numeros
+que esta maquina puede medir.
+
+```text
+   la pregunta    a partir de cuantas paginas sale mas barato el `cr3`?
+   quien contesta M1b: `soltar()` + `abrir()` cronometrados, con el
+                  framebuffer entero (2.025) y con una region pequena
+```
+
+** Y la regla que sale de ahi es la respuesta a *"que se aplique inteligente"*:
+
+```text
+   pocas paginas   ->  `invlpg` una a una: el resto del TLB no se toca
+   muchas          ->  un `cr3`: una instruccion en vez de N
+   el umbral       ->  MEDIDO en esta placa, no copiado de otro sistema (LEY 24)
+```
+
+## 3. Y la regla de cuando mapear, que es la de verdad
+
+```text
+   MAPEA lo que necesita velocidad BRUTA y se revoca poco
+      el framebuffer (un blit entero por fotograma)
+      el buzon de teclas y raton de una app en ventana
+
+   NO MAPEES lo que se revoca a menudo o cambia de forma
+      cualquier cosa cuya revocacion tenga que ser inmediata: la puerta
+      la revoca con una generacion, gratis; un mapeo pide un shootdown
+```
+
+> Mapear es prestar la llave. Desmapear es cambiar la cerradura. Se presta la
+> llave de lo que se abre mil veces al dia, no de lo que hay que poder cerrar
+> de golpe.
+
+---
+
 # 7. LOS PASOS
 
 - [x] **M0 -- MEDIR, y no hacer nada mas.** HECHO el 2026-09-09 en el Ryzen:
   `FIJO 633 / TRABAJO 147`, o sea que el fijo es el 81% y **el lote es el
   proyecto correcto**. Ver la seccion 3b. Se verifica: `run c/ciclos.bex`.
 
-- [ ] **M0b -- ★★★ EL PEAJE DEL PAPELEO, y va ANTES del lote porque es mas
-  barato y mas grande.** El fijo son 633 y el cruce del silicio ~150: **483
+- [x] **M0b -- EL PEAJE DEL PAPELEO. HECHO el 2026-09-09**, y las tres piezas
+  con su demostracion escrita:
+
+  ```text
+  1. `current_tid_en_trap` / `current_pid_en_trap`, SIN cerrojo. La
+     demostracion vive en su doc y son tres hechos comprobables: `s.current`
+     tiene UN escritor (`schedule_locked`), ningun AP planifica (lo declara
+     `plat/smp/crew.rs` de si mismo), y en un trap `IF` ya esta en cero por el
+     `SFMASK` -- o sea que el `cli` del cerrojo apagaba algo ya apagado
+  2. usadas en los TRES sitios que el metro senala y en ninguno mas:
+     `registrar_publicacion` (el coste FIJO de toda puerta), `TASK_OP_GET_PID`
+     y `TASK_OP_GET_TID`. Los otros ~45 se quedan: cambiar sesenta cosas para
+     arreglar tres no es un arreglo
+  3. RETIRADO el `read_volatile` de `base + XSAVE_BV`. Su propio comentario
+     decia que partia la ventana entre el `xsave64` del PROLOGO y el epilogo --
+     y ese `xsave64` se bajo a la via lenta, asi que leia pila SIN INICIALIZAR
+     en toda puerta, y era una linea fria. Con el se fue su linea `bv0=` del
+     informe de fallos, que informaba de basura
+  ```
+
+  ** El kernel encogio 200 B y el trinquete de avisos sigue en 39. **Lo que
+  falta es la medida**: `run c/ciclos.bex` en el Ryzen. Si el fijo baja de 633
+  a ~450, la mitad del peaje era el cerrojo; si baja mas, era la linea fria.
+  Se verifica: las filas 3 y 5 de `ciclos.bex`, y la 5 menos la 3.
+
+- [ ] **M0b-2 -- lo que queda del papeleo, SI la medida lo pide.** Quedan dos
+  escrituras volatiles a dos arrays de cuatro, y son baratas y ciertas. Solo se
+  tocan si `ciclos.bex` dice que siguen pesando.
+
+- [x] **M0b-original -- el enunciado, conservado.** El fijo son 633 y el cruce del silicio ~150: **483
   ticks son codigo nuestro**. `registrar_publicacion` corre en toda puerta,
   llama a `current_tid()` --que **cierra el planificador**-- y hace una lectura
   volatil de una linea de pila que la via rapida ya no escribe. Lo lee UN sitio:

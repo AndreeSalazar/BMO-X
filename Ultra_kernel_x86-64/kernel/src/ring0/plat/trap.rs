@@ -254,7 +254,6 @@ static mut PUB_N: usize = 0;
 ///
 /// Una comparacion en el informe que descarta la mitad del codigo, sea cual sea
 /// el resultado. Es mas barato que seguir razonando sobre el volcado.
-static mut CAB_AL_ENTRAR: u64 = 0;
 
 /// La cabecera y la base leidas **por el propio stub, en la instruccion
 /// siguiente al `xsave64`**.
@@ -290,10 +289,6 @@ pub fn tras_xsave() -> (u64, u64) {
     }
 }
 
-pub fn cabecera_al_entrar() -> u64 {
-    unsafe { core::ptr::addr_of!(CAB_AL_ENTRAR).read_volatile() }
-}
-
 /// Anota que este trap tallo su area en `base`, para la tarea `tid`, y toma la
 /// foto de la cabecera antes de que el despachador haga nada.
 pub fn registrar_publicacion(base: u64, tid: u32) {
@@ -305,10 +300,51 @@ pub fn registrar_publicacion(base: u64, tid: u32) {
         core::ptr::addr_of_mut!(PUB_BASE).cast::<u64>().add(i).write_volatile(base);
         core::ptr::addr_of_mut!(PUB_TID).cast::<u32>().add(i).write_volatile(tid);
         PUB_N = PUB_N.wrapping_add(1);
-        let bv = ((base + XSAVE_BV as u64) as *const u64).read_volatile();
-        core::ptr::addr_of_mut!(CAB_AL_ENTRAR).write_volatile(bv);
     }
 }
+
+// == *** AQUI SE LEIA `base + XSAVE_BV`, Y SE RETIRO EL 2026-09-09 ==========
+//
+// La linea era:
+//
+// ```text
+//    let bv = ((base + XSAVE_BV as u64) as *const u64).read_volatile();
+//    addr_of_mut!(CAB_AL_ENTRAR).write_volatile(bv);
+// ```
+//
+// Y `CAB_AL_ENTRAR` decia de si mismo, con estas palabras: *"Parte en dos la
+// ventana entre el `xsave64` del prologo y la guardia del epilogo, que es donde
+// ahora se sabe que ocurre la corrupcion"*.
+//
+// ** EL `xsave64` YA NO ESTA EN EL PROLOGO. Se bajo a la via lenta --la
+// etiqueta `5:` de `syscall/entry.rs`-- cuando se demostro que un kernel
+// softfloat no tiene estado extendido que guardar en la puerta normal. Y
+// `registrar_publicacion` corre DENTRO de `dispatch`, o sea **antes** de que
+// haya ningun `xsaveopt64` en ninguno de los dos caminos.
+//
+// *** O sea que esa lectura miraba el offset 512 de un area recien tallada en
+// la pila, y el prologo solo escribe los offsets 1024 (el puntero de vuelta) y
+// 1008 (el sello). **Leia pila sin inicializar, en toda puerta.**
+//
+// ```text
+//    lo que costaba   un `read_volatile` de una linea que la via rapida
+//                     NO escribe: candidata a fallo de cache en CADA puerta
+//    lo que valia     `bv0=` en el informe de fallos, con un numero que ya
+//                     no era la cabecera de nada
+// ```
+//
+// > Un instrumento que informa de basura es peor que ninguno: el que lo lee
+// > razona sobre el numero.
+//
+// Es la tercera pieza de este dia que se retira por la misma frase que la casa
+// se escribio al quitar los cuatro sellos `rdtsc` del stub -- **un instrumento
+// que ya dio su numero y sigue cobrando es un peaje, no una medida**. Si la
+// ventana vuelve a existir, esto esta en el git de este mismo dia.
+//
+// [!] Lo que SI se queda es el resto de `registrar_publicacion`: dos
+// escrituras a dos arrays de cuatro. Son baratas y dicen algo cierto --que
+// area tallo este trap y para quien-- y eso es lo que salvo tres dias de
+// depuracion en agosto.
 
 /// Las ultimas areas publicadas, de la mas reciente a la mas antigua.
 pub fn publicaciones() -> [(u64, u32); PUBLICACIONES] {

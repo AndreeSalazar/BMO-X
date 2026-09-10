@@ -3444,3 +3444,114 @@ en contra**: 2.025 paginas de framebuffer son 2.025 `invlpg`.
 Y dos limites: el desmapeo es **ciego con el DMA** (EL NEUTRO otra vez), y hoy
 es barato **por accidente** -- con un solo nucleo es un `invlpg` local; el dia
 que SMP funcione, cada uno de los siete sitios es un TLB shootdown con IPI.
+
+---
+
+## Ep. 69 -- M0b: el cerrojo que pagaba TODA puerta, y un instrumento que leia basura
+
+**2026-09-09.** El dueno dijo *"dale con M0b, quita el cerrojo si se puede
+demostrar"*. La condicion era la mitad del encargo, y la demostracion salio en
+tres hechos que ya estaban escritos en el arbol.
+
+### La demostracion, y la escribio la casa sin saberlo
+
+```text
+   1. `s.current` tiene UN SOLO ESCRITOR: `schedule_locked` (roja.rs:591),
+      con `SCHED_LOCK` en la mano y las interrupciones apagadas
+   2. NINGUN AP planifica. `plat/smp/crew.rs` lo dice de si mismo:
+      *"Esto no es un planificador. No hay colas, ni prioridades, ni cambio
+      de contexto, ni tareas de Ring 3 corriendo en otro nucleo"*
+   3. QUIEN PREGUNTA ESTA EN UN TRAP, y ahi `IF` ya esta en cero -- lo apago
+      el `MSR_SFMASK` en el `syscall`
+```
+
+*** Y el 3 es el que remata: `SpinLock::lock` hace `pushfq` + `cli` + `lock
+xchg`, y su Guard un `popfq`. **El `cli` del cerrojo apagaba algo que el
+hardware ya habia apagado**, y las cuatro son serializantes. Eso son los 147
+ticks que `ciclos.bex` llamaba *"trabajo de PID"*: no los cuesta leer un `u32`,
+los cuesta el cerrojo.
+
+### Lo que se cambio, y lo que NO
+
+```text
+   [x] `current_tid_en_trap` / `current_pid_en_trap`, sin cerrojo y `unsafe`
+       -- la promesa que hace el que llama es el punto 3, y no se puede
+       comprobar desde dentro
+   [x] usadas en TRES sitios: `registrar_publicacion` (el coste FIJO de toda
+       puerta), `TASK_OP_GET_PID` y `TASK_OP_GET_TID`
+   [ ] los otros ~45 `current_pid()` de `syscall/` se QUEDAN, aunque estan en
+       el mismo trap y serian igual de correctos
+```
+
+** El ultimo punto es la decision: **estos tres son los que el metro mide**, o
+sea los tres donde el cambio se puede COMPROBAR. Quitarle el cerrojo a una
+funcion con sesenta clientes sin auditar es cambiar sesenta cosas para arreglar
+tres.
+
+[!] Y el sacrificio esta escrito en la funcion: **el punto 2 CADUCA**. El dia
+que un AP entre en el planificador esto es una carrera, y `crew.rs` ya declara
+que lo que falta para eso son 236 `static mut` uno a uno. Por eso la
+demostracion se escribio en vez de suponerse.
+
+### *** Y EL TERCER INSTRUMENTO DEL DIA QUE SE RETIRA
+
+`registrar_publicacion` hacia esto en toda puerta:
+
+```rust
+let bv = ((base + XSAVE_BV as u64) as *const u64).read_volatile();
+```
+
+Y `CAB_AL_ENTRAR` decia de si mismo que *"parte en dos la ventana entre el
+`xsave64` del PROLOGO y la guardia del epilogo"*.
+
+**El `xsave64` ya no esta en el prologo.** Se bajo a la via lenta cuando se
+demostro que un kernel softfloat no tiene estado extendido que guardar en la
+puerta normal. Y el prologo solo escribe los offsets 1024 y 1008; `XSAVE_BV` es
+el 512.
+
+```text
+   lo que leia    el offset 512 de un area recien tallada: PILA SIN
+                  INICIALIZAR, y una linea probablemente FRIA
+   lo que valia   `bv0=` en el informe de fallos, con un numero que ya no
+                  era la cabecera de nada
+```
+
+> Un instrumento que informa de basura es peor que ninguno: el que lo lee
+> razona sobre el numero.
+
+Van TRES en un dia con la misma frase de la casa --los cuatro sellos `rdtsc`, el
+cerrojo del papeleo, y esto--: **un instrumento que ya dio su numero y sigue
+cobrando es un peaje, no una medida.**
+
+### El DMA, que el dueno pregunto: SI tiene oportunidad
+
+Y la puerta esta medio abierta. `plat/placa.rs:261` **ya lee el IVRS** --la
+tabla ACPI donde el firmware declara los IOMMU-- y su propio comentario lleva
+escrito el argumento entero:
+
+> *"Una capability dice que puede hacer un PROCESO, y no dice nada de lo que
+> puede hacer un APARATO [...] Es la mina del PRDT de AHCI, y la IOMMU es lo
+> unico que la desactiva."*
+
+Con AMD-Vi un aparato tiene sus propias tablas de pagina, y entonces desmapear
+**si le llega al aparato**. Lo que cuesta, dicho: es un proyecto del tamano del
+VMM, no un `if`. Y se lee bajo la ley sin discutir -- el IVRS es tabla
+ESTATICA, no AML.
+
+### ★★ Y "que no cueste por algo": el umbral del desmapeo
+
+`fb::release` hace **2.025 `invlpg`** para soltar el framebuffer. Un `mov cr3`
+vacia el TLB entero con UNA instruccion.
+
+```text
+   N `invlpg`    coste proporcional a N, y el resto del TLB SOBREVIVE
+   1 `mov cr3`   coste FIJO, y el TLB entero hay que rellenarlo
+```
+
+Hay un punto de cruce y por encima de el vaciar todo sale mas barato. Es la
+misma heuristica que usa Linux, y no es una opinion: es una desigualdad con dos
+numeros que esta placa puede medir. Lo mide M1b.
+
+> Mapear es prestar la llave. Desmapear es cambiar la cerradura. Se presta la
+> llave de lo que se abre mil veces al dia, no de lo que hay que poder cerrar
+> de golpe.
