@@ -230,6 +230,31 @@ pub const INFO_CPU_PROPIO: u64 = 0x4F;
 /// El ritmo del bus USB: `periodo_ms | peor_us << 16 | cual << 48`.
 /// Es el primer sumando de la latencia de la mano al pixel.
 pub const INFO_USB_RITMO: u64 = 0x50;
+
+/// Marcos con un DMA EN VUELO ahora mismo. Al apagar, CERO.
+pub const INFO_DMA_VUELO_VIVOS: u64 = 0x51;
+/// Marcos que cambiaron de titular CON un DMA dentro. **CERO** (R-DMA-3).
+pub const INFO_DMA_VUELO_PISADOS: u64 = 0x52;
+/// Veces que dos aparatos pidieron el mismo marco. **CERO** (R-DMA-4).
+pub const INFO_DMA_VUELO_CHOQUES: u64 = 0x53;
+/// Que aparato es el que mas ha callado teniendo trabajo abierto (1..15).
+pub const INFO_DMA_MUDO_APARATO: u64 = 0x54;
+/// Y cuanto callo, en TICKS del TSC. De aqui sale el plazo de R-DMA-8 (N5b).
+pub const INFO_DMA_MUDO_TICKS: u64 = 0x55;
+/// Vuelos que pasaron de plazo. **CERO** (R-DMA-8).
+pub const INFO_DMA_CADUCADOS: u64 = 0x56;
+/// Maestros del bus que alcanzan la RAM y este kernel NO encendio.
+pub const INFO_DMA_AJENOS_VISTOS: u64 = 0x57;
+/// De esos, a cuantos se les retiro el BME. Con el cerrojo en `Mirar`, 0.
+pub const INFO_DMA_AJENOS_CERRADOS: u64 = 0x58;
+/// Puentes con BME: intocables a proposito -- cerrarlos calla la rama.
+pub const INFO_DMA_PUENTES: u64 = 0x59;
+/// Veces que se miro el borde de la pagina de rebote.
+pub const INFO_DMA_CENTINELA_MIRADAS: u64 = 0x5A;
+/// Veces que estaba ROTO: el aparato escribio mas alla de lo que declaro.
+pub const INFO_DMA_CENTINELA_ROTAS: u64 = 0x5B;
+/// Veces que el HBA dijo haber movido MAS sectores de los pedidos.
+pub const INFO_DMA_HBA_DE_MAS: u64 = 0x5C;
 /// La frecuencia efectiva del nucleo AHORA, en Hz. `0` = no se puede medir.
 /// Es una MEDIDA: dos lecturas seguidas dan la velocidad de ese intervalo.
 pub const INFO_CPU_HZ_REAL: u64 = 0x20;

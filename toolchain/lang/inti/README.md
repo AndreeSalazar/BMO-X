@@ -164,6 +164,10 @@ tiene funciones anonimas. **Nada de eso se habria visto leyendo.**
 DEPENDENCIA y no de importancia, cada uno con un criterio de aprobado que se
 puede ejecutar.
 
+Y [`sondas/LEEME.md`](sondas/LEEME.md) -- **lo que solo el metal puede
+contestar**: los programas que hay que llevar al Ryzen porque el emulador no
+puede dar su respuesta.
+
 ⚠ El numero incomodo esta ahi y conviene leerlo antes que esta tabla:
 **ninguna linea de INTI ha corrido nunca en un procesador**, y el programa mas
 grande que ha compilado tiene **once lineas**.

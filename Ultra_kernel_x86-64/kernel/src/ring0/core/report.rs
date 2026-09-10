@@ -52,6 +52,39 @@ const INFO_TSC_HZ: u64 = 0x05;
 /// puede presupuestar lo que no se mide.
 const INFO_CPU_PROPIO: u64 = 0x4F;
 const INFO_USB_RITMO: u64 = 0x50;
+
+// == *** LOS DOCE DEL DMA -- que el `save` diga lo que CABINA ya decia =======
+//
+// Peticion del dueno, 2026-09-10: *"el save actualizar por completo, y cabina
+// tambien"*.
+//
+// El bit en vuelo, el perro guardian del plazo, el portero duro y el centinela
+// se cablearon entre el 09-09 y el 10-09, y los cuatro contaban **solo para una
+// pantalla de RING 0**. El dueno vive en el escritorio y al shell de Ring 0 no
+// se vuelve: o sea que los numeros existian y **no llegaban a quien los pidio**.
+//
+// ** Es exactamente lo que le paso a `INFO_USB_RITMO` el 09-09, y esta escrito
+// en su propia cabecera: *"hasta hoy los dos numeros solo los leia
+// cabina/cockpit.rs, que es una pantalla de RING 0 -- de donde no se vuelve"*.
+//
+// > Una cuenta que solo se ve donde no se puede volver es una cuenta que se
+// > mira una vez y se olvida.
+//
+// [!] Los tres que TIENEN QUE SER CERO --pisados, choques, caducados, rotas--
+// son los que dan sentido a los demas: sin ellos, `vivos` es un numero sin
+// contraste.
+const INFO_DMA_VUELO_VIVOS: u64 = 0x51;
+const INFO_DMA_VUELO_PISADOS: u64 = 0x52;
+const INFO_DMA_VUELO_CHOQUES: u64 = 0x53;
+const INFO_DMA_MUDO_APARATO: u64 = 0x54;
+const INFO_DMA_MUDO_TICKS: u64 = 0x55;
+const INFO_DMA_CADUCADOS: u64 = 0x56;
+const INFO_DMA_AJENOS_VISTOS: u64 = 0x57;
+const INFO_DMA_AJENOS_CERRADOS: u64 = 0x58;
+const INFO_DMA_PUENTES: u64 = 0x59;
+const INFO_DMA_CENTINELA_MIRADAS: u64 = 0x5A;
+const INFO_DMA_CENTINELA_ROTAS: u64 = 0x5B;
+const INFO_DMA_HBA_DE_MAS: u64 = 0x5C;
 /// ** LA FRECUENCIA EFECTIVA, en Hz. `0` = no se puede medir.
 ///
 /// No es `INFO_TSC_HZ`: ese dice a que va el RELOJ de referencia, que no cambia
@@ -589,6 +622,22 @@ pub fn campo(n: u64) -> u64 {
         // este componente el numero es lo unico que separa un ABRT de un
         // timeout, o sea dos conversaciones distintas.
         INFO_DISCO_TRIM_FALLO => crate::ring0::dev::disk::ultimo_fallo(),
+        // == *** LOS DOCE DEL DMA, y por que salen de tres sitios ========
+        //
+        // Cada uno lee un `static` y no recorre nada, asi que `info` sigue
+        // costando lo que costaba. Ver la nota de sus constantes, arriba.
+        INFO_DMA_VUELO_VIVOS => crate::ring0::mm::titular::vuelos().0,
+        INFO_DMA_VUELO_PISADOS => crate::ring0::mm::titular::vuelos().1,
+        INFO_DMA_VUELO_CHOQUES => crate::ring0::mm::titular::vuelos().2,
+        INFO_DMA_MUDO_APARATO => crate::ring0::mm::titular::peor_silencio().0 as u64,
+        INFO_DMA_MUDO_TICKS => crate::ring0::mm::titular::peor_silencio().1,
+        INFO_DMA_CADUCADOS => crate::ring0::mm::titular::peor_silencio().2,
+        INFO_DMA_AJENOS_VISTOS => crate::ring0::dev::portero::ajenos().0 as u64,
+        INFO_DMA_AJENOS_CERRADOS => crate::ring0::dev::portero::ajenos().1 as u64,
+        INFO_DMA_PUENTES => crate::ring0::dev::portero::ajenos().2 as u64,
+        INFO_DMA_CENTINELA_MIRADAS => crate::ring0::dev::disk::cuentas_centinela().0,
+        INFO_DMA_CENTINELA_ROTAS => crate::ring0::dev::disk::cuentas_centinela().1,
+        INFO_DMA_HBA_DE_MAS => crate::ring0::dev::disk::cuentas_centinela().2,
         _ => 0,
     }
 }

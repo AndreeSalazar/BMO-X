@@ -67,6 +67,87 @@ pub const INFO_CPU_PROPIO: u64 = 0x4F;
 /// pantalla de RING 0 -- de donde no se vuelve. Ver `docs/plan/PLAN_EL_PIXEL.md`.
 pub const INFO_USB_RITMO: u64 = 0x50;
 
+// == *** LOS DOCE DEL DMA -- que el `save` diga lo que CABINA ya decia =======
+//
+// Peticion del dueno, 2026-09-10: *"el save actualizar por completo, y cabina
+// tambien"*.
+//
+// El bit en vuelo, el perro guardian del plazo, el portero duro y el centinela
+// se cablearon entre el 09-09 y el 10-09, y los cuatro contaban **solo para una
+// pantalla de RING 0**. El dueno vive en el escritorio y al shell de Ring 0 no
+// se vuelve: o sea que los numeros existian y **no llegaban a quien los pidio**.
+//
+// ** Es exactamente lo que le paso a `INFO_USB_RITMO` el 09-09, y esta escrito
+// en su propia cabecera: *"hasta hoy los dos numeros solo los leia
+// cabina/cockpit.rs, que es una pantalla de RING 0 -- de donde no se vuelve"*.
+//
+// > Una cuenta que solo se ve donde no se puede volver es una cuenta que se
+// > mira una vez y se olvida.
+//
+// [!] Los tres que TIENEN QUE SER CERO --pisados, choques, caducados, rotas--
+// son los que dan sentido a los demas: sin ellos, `vivos` es un numero sin
+// contraste.
+
+/// **Marcos con un DMA EN VUELO ahora mismo. Al apagar, CERO.**
+///
+/// Del carril del DMA. Ver `NEUTRO/DMA/REGLAS.txt`.
+pub const INFO_DMA_VUELO_VIVOS: u64 = 0x51;
+
+/// **Marcos que cambiaron de titular CON un DMA dentro. **CERO** (R-DMA-3).**
+///
+/// Del carril del DMA. Ver `NEUTRO/DMA/REGLAS.txt`.
+pub const INFO_DMA_VUELO_PISADOS: u64 = 0x52;
+
+/// **Veces que dos aparatos pidieron el mismo marco. **CERO** (R-DMA-4).**
+///
+/// Del carril del DMA. Ver `NEUTRO/DMA/REGLAS.txt`.
+pub const INFO_DMA_VUELO_CHOQUES: u64 = 0x53;
+
+/// **Que aparato es el que mas ha callado teniendo trabajo abierto (1..15).**
+///
+/// Del carril del DMA. Ver `NEUTRO/DMA/REGLAS.txt`.
+pub const INFO_DMA_MUDO_APARATO: u64 = 0x54;
+
+/// **Y cuanto callo, en TICKS del TSC. De aqui sale el plazo de R-DMA-8 (N5b).**
+///
+/// Del carril del DMA. Ver `NEUTRO/DMA/REGLAS.txt`.
+pub const INFO_DMA_MUDO_TICKS: u64 = 0x55;
+
+/// **Vuelos que pasaron de plazo. **CERO** (R-DMA-8).**
+///
+/// Del carril del DMA. Ver `NEUTRO/DMA/REGLAS.txt`.
+pub const INFO_DMA_CADUCADOS: u64 = 0x56;
+
+/// **Maestros del bus que alcanzan la RAM y este kernel NO encendio.**
+///
+/// Del carril del DMA. Ver `NEUTRO/DMA/REGLAS.txt`.
+pub const INFO_DMA_AJENOS_VISTOS: u64 = 0x57;
+
+/// **De esos, a cuantos se les retiro el BME. Con el cerrojo en `Mirar`, 0.**
+///
+/// Del carril del DMA. Ver `NEUTRO/DMA/REGLAS.txt`.
+pub const INFO_DMA_AJENOS_CERRADOS: u64 = 0x58;
+
+/// **Puentes con BME: intocables a proposito -- cerrarlos calla la rama.**
+///
+/// Del carril del DMA. Ver `NEUTRO/DMA/REGLAS.txt`.
+pub const INFO_DMA_PUENTES: u64 = 0x59;
+
+/// **Veces que se miro el borde de la pagina de rebote.**
+///
+/// Del carril del DMA. Ver `NEUTRO/DMA/REGLAS.txt`.
+pub const INFO_DMA_CENTINELA_MIRADAS: u64 = 0x5A;
+
+/// **Veces que estaba ROTO: el aparato escribio mas alla de lo que declaro.**
+///
+/// Del carril del DMA. Ver `NEUTRO/DMA/REGLAS.txt`.
+pub const INFO_DMA_CENTINELA_ROTAS: u64 = 0x5B;
+
+/// **Veces que el HBA dijo haber movido MAS sectores de los pedidos.**
+///
+/// Del carril del DMA. Ver `NEUTRO/DMA/REGLAS.txt`.
+pub const INFO_DMA_HBA_DE_MAS: u64 = 0x5C;
+
 /// **La frecuencia efectiva del nucleo AHORA, en Hz.** `0` = no se puede medir.
 ///
 /// No es [`INFO_TSC_HZ`]: ese es el reloj de referencia, que no cambia nunca.

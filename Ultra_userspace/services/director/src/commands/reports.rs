@@ -290,6 +290,57 @@ pub(crate) fn report_consumo(s: &mut Output) {
     fila(s, b"listas", bmo::info(bmo::INFO_TAREAS_LISTAS), b"", b"");
     fila(s, b"lanzados", bmo::info(bmo::INFO_PROGRAMAS), b"", b"desde el arranque");
     fila(s, b"ticks", bmo::info(bmo::INFO_TICKS), b"", b"");
+
+    // == *** EL DMA, y hasta hoy no llegaba aqui =========================
+    //
+    // Peticion del dueno, 2026-09-10: *"el save actualizar por completo"*.
+    //
+    // El bit en vuelo, el perro guardian del plazo, el portero duro y el
+    // centinela se cablearon entre el 09-09 y el 10-09, y los cuatro contaban
+    // **solo para una pantalla de RING 0**. El dueno vive en el escritorio y
+    // al shell de Ring 0 no se vuelve: los numeros existian y no llegaban a
+    // quien los pidio.
+    //
+    // ** LAS FILAS QUE TIENEN QUE SER CERO VAN JUNTAS Y LO DICEN. Sin ese
+    // contraste, `en vuelo 0` es un numero mas; con el, es una regla que se
+    // cumplio. Es lo mismo que hace `libre` con su nota.
+    subregla(s, b"DMA -- quien escribe en la RAM sin pedir permiso");
+    fila(s, b"en vuelo", bmo::info(bmo::INFO_DMA_VUELO_VIVOS), b"marcos",
+         b"al apagar tiene que ser 0");
+    fila(s, b"pisados", bmo::info(bmo::INFO_DMA_VUELO_PISADOS), b"",
+         b"CERO: un marco reasignado con DMA dentro (R-DMA-3)");
+    fila(s, b"choques", bmo::info(bmo::INFO_DMA_VUELO_CHOQUES), b"",
+         b"CERO: dos aparatos, un bufer (R-DMA-4)");
+    fila(s, b"caducados", bmo::info(bmo::INFO_DMA_CADUCADOS), b"",
+         b"CERO: un vuelo que paso de plazo (R-DMA-8)");
+
+    // ** EL PLAZO NO SE ELIGE, SE MIDE (LEY 24). Este es el numero del que
+    // saldra, y se ensena en MICROsegundos porque lo que hay que comparar
+    // --una vuelta al disco-- se sabe en microsegundos.
+    //
+    // [!] Y se lee AL REVES que las demas medidas de esta casa: aqui interesa
+    // LO PEOR, no el minimo. Ver `NEUTRO/DMA/REGLAS.txt`, R-DMA-8.
+    let tsc_hz = bmo::info(bmo::INFO_TSC_HZ);
+    let mudo_ticks = bmo::info(bmo::INFO_DMA_MUDO_TICKS);
+    let por_us = if tsc_hz >= 1_000_000 { tsc_hz / 1_000_000 } else { 1 };
+    fila(s, b"mas mudo", bmo::info(bmo::INFO_DMA_MUDO_APARATO), b"aparato",
+         b"1 disco  2 red  3 USB  4 grafica");
+    fila(s, b"y callo", mudo_ticks / por_us, b"us",
+         b"lo PEOR visto con trabajo abierto -- de aqui sale el plazo");
+
+    fila(s, b"ajenos", bmo::info(bmo::INFO_DMA_AJENOS_VISTOS), b"",
+         b"maestros del bus que ESTE kernel no encendio");
+    fila(s, b"cerrados", bmo::info(bmo::INFO_DMA_AJENOS_CERRADOS), b"",
+         b"a cuantos se les quito el BME (cerrojo en MIRAR: 0)");
+    fila(s, b"puentes", bmo::info(bmo::INFO_DMA_PUENTES), b"",
+         b"intocables: cerrarlos calla la rama entera");
+
+    fila(s, b"centinela", bmo::info(bmo::INFO_DMA_CENTINELA_MIRADAS), b"",
+         b"bordes mirados tras un rebote");
+    fila(s, b"rotos", bmo::info(bmo::INFO_DMA_CENTINELA_ROTAS), b"",
+         b"CERO: el disco escribio mas alla de lo que declaro");
+    fila(s, b"dijo de mas", bmo::info(bmo::INFO_DMA_HBA_DE_MAS), b"",
+         b"CERO: el HBA conto mas sectores de los pedidos");
 }
 
 #[inline(never)]

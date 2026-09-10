@@ -232,6 +232,9 @@ cuando el xHC contesta `Missed Service Error` (CC 10) o `Isoch Buffer Overrun`
 
 ## [X] A3 -- WAV -- **HECHO el 25-08**, `platform/shared/bmo-sonido`
 
+** Y el fichero que esta maquina va a tocar el dia que emita una muestra ya
+esta en el arbol, con su formato escrito: [`activos/sonido/LEEME.md`](../../activos/sonido/LEEME.md).
+
 12 pruebas. Y **no es un formato de audio**: es PCM en un sobre, o sea
 exactamente lo que come el endpoint. Cero decodificador.
 

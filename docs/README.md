@@ -100,6 +100,7 @@ si por nombre y declaran que son la misma clase de documento.
 | [`EL_TECLADO_EXIGE.md`](componente/EL_TECLADO_EXIGE.md) | C7 USB | **nueve exigencias**, y el numero que dice cual fallo. Las tres ultimas: el controlador que miramos (E7), el turno que llega a su hora (E8) y **EL PORTERO** (E9) |
 | [`EL_DISCO_EXIGE.md`](componente/EL_DISCO_EXIGE.md) | C6 DISCO | una busqueda de HDD = **59 millones de ciclos**; y la ranura 0 de 32 |
 | [`LA_MAQUETA_EXIGE.md`](componente/LA_MAQUETA_EXIGE.md) | ⚠ **ninguno** -- ver abajo | las **seis** comprobaciones del veredicto |
+| [`BMO_C_POR_DENTRO.md`](componente/BMO_C_POR_DENTRO.md) | el COMPILADOR | los dos jueces que no se hablan. Lo escribio el rojo numero 2: analizar `toolchain/lang/c` entero **antes** de tocar nada |
 
 ### ⚠ El quinto no tiene componente, y estuvo SIN CITAR desde el 18-08
 
