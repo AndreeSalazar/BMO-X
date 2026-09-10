@@ -179,11 +179,11 @@ descubrirla otra vez con una pantalla azul delante.
 
 Aqui decia tambien *"no cambia ni una linea de codigo: es una CATEGORIA, no un
 mecanismo"*. **Duro unas horas.** Al escribir `NEUTRO/LEY.md` aparecio que la
-regla N2 --etiquetar los marcos-- era una linea en `mm/duenno.rs`, porque las
+regla N2 --etiquetar los marcos-- era una linea en `mm/titular.rs`, porque las
 otras ocho clases ya estaban.
 
 ```text
-   se anadio   `Duenno::Neutro`, y los cuatro sitios que piden DMA la usan
+   se anadio   `Titular::Neutro`, y los cuatro sitios que piden DMA la usan
    salio gratis la pantalla azul YA preguntaba el dueno del marco: solo le
                faltaba que existiera un nombre que decir
 ```

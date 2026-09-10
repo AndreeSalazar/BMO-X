@@ -43,7 +43,7 @@
 //!
 //! ** La tabla que contesta *de quien es este marco* --la pregunta que el
 //! titulo de `roja.rs` promete y su bitmap no puede dar-- vive en
-//! `mm::duenno`, un piso mas arriba. No es un tercer carril: no reparte RAM y
+//! `mm::titular`, un piso mas arriba. No es un tercer carril: no reparte RAM y
 //! no escribe la memoria de nadie. La ley R9 lo dijo antes que nadie cuando se
 //! intento meterla aqui.
 //!
@@ -53,7 +53,7 @@ mod amarilla;
 mod roja;
 
 pub use amarilla::zero_frame;
-pub use super::duenno::{duenno_de, Duenno};
+pub use super::titular::{titular_de, Titular};
 pub use roja::{
     alloc_frame, alloc_frame_de, alloc_frames_contig, alloc_frames_contig_de, esta_libre,
     se_devolvio_dos_veces,

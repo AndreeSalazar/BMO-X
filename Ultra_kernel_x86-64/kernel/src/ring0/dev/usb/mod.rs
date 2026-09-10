@@ -160,7 +160,7 @@ impl XhciHal for KernelXhciHal {
         // xHC por DMA. Ver `NEUTRO/LEY.md`, N2 -- y la 1.6 de la hoja del
         // 07-09, donde este mismo controlador se murio por un DMA a memoria
         // que no podia tocar.
-        phys::alloc_frames_contig_de(count as u64, phys::Duenno::Neutro)
+        phys::alloc_frames_contig_de(count as u64, phys::Titular::Neutro)
     }
     fn phys_to_virt(&self, phys: u64) -> *mut u8 {
         // El physmap (0..PHYSMAP_SIZE) espeja toda la RAM en HIGH_MEM_BASE.

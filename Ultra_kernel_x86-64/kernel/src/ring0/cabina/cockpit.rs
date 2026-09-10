@@ -236,7 +236,7 @@ pub fn render_hud() {
     // la forma exacta de la pista 1.5 de la hoja del 07-09.
     //
     // Ver `NEUTRO/LEY.md` y `NEUTRO/REQUISITOS.md`, R3.
-    let (n_vivos, n_soltados) = crate::ring0::mm::duenno::neutros();
+    let (n_vivos, n_soltados) = crate::ring0::mm::titular::neutros();
     r.txt(" neutro="); r.dec(n_vivos);
     r.txt(":"); r.dec(n_soltados);
     let health = if n_soltados != 0 {

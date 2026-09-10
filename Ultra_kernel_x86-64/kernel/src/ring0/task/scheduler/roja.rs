@@ -321,7 +321,7 @@ impl Scheduler {
  * ```
  *
  * *** Y `de NADIE VIVO` es honesto: `spawn_user` SI guarda la pila de kernel de
- * una tarea de Ring 3 en `stack_phys`, asi que `duenno_de_pila` la habria visto
+ * una tarea de Ring 3 en `stack_phys`, asi que `titular_de_pila` la habria visto
  * si su duena estuviera viva. No lo esta. Alguien libero esa pila y el kernel
  * siguio corriendo encima.
  *
@@ -755,7 +755,7 @@ pub fn spawn_kernel(entry: u64, arg: u64, priority: u8) -> Option<u32> {
     // OCUPADO` y **ninguna tabla la reclamaba**. Con la etiqueta, el renglon
     // pasa de *contabilidad rota* a decir en que se convirtio el marco -- que
     // es el nombre de quien se lo llevo.
-    let stack_base = phys::alloc_frames_contig_de(TASK_STACK_PAGES, phys::Duenno::Pila)?;
+    let stack_base = phys::alloc_frames_contig_de(TASK_STACK_PAGES, phys::Titular::Pila)?;
     // *** LA OTRA MITAD DEL TESTIGO. Ver `reap`.
     //
     // ** La cabecera de `reap` lleva escrito desde el 14-08 COMO se cobra una

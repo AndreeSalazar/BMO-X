@@ -110,7 +110,7 @@ Contar los sitios dio algo que no se buscaba:
    xHCI         9     anillos propios, pero el bufer de transferencia
                       tambien llega de fuera
    NIC          1     ** DE UNA ARENA: un corral contiguo, entero
-                      `Duenno::Neutro`, del que salen TODOS sus bufers
+                      `Titular::Neutro`, del que salen TODOS sus bufers
 ```
 
 *** **El escalon N-C del plan --la ventana-- ya existe, y lleva meses

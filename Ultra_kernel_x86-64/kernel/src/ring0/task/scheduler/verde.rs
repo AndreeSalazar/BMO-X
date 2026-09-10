@@ -14,7 +14,7 @@
 //! toco esto"*, y en un planificador esa linea es exacta: **lo que escribe la
 //! tabla puede dejar la maquina sin nadie corriendo; lo que la lee, no.**
 //!
-//! ** Ejemplo del 2026-08-30: `duenno_de_pila` se anadio para que la pantalla
+//! ** Ejemplo del 2026-08-30: `titular_de_pila` se anadio para que la pantalla
 //! azul dijera de que hilo era la pila. Doce lineas, un bucle y un `if`. Es
 //! **verde**, y saberlo es lo que permite escribirla sin miedo un dia que la
 //! maquina esta rota. Su vecina de arriba, `schedule_locked`, es roja.
@@ -225,7 +225,7 @@ pub fn quien_corre() -> (u32, bool) {
 ///
 /// [!] Sin cerrojo, por lo mismo que `quien_corre`: esto lo llama la pantalla
 /// de fallo, y colgarse ahi convierte un volcado legible en una maquina muda.
-pub fn duenno_de_pila(rsp: u64) -> Option<(u32, bool)> {
+pub fn titular_de_pila(rsp: u64) -> Option<(u32, bool)> {
     let s = unsafe { &*core::ptr::addr_of!(SCHEDULER) };
     for t in &s.tasks {
         if t.stack_phys == 0 || t.stack_pages == 0 {
@@ -242,7 +242,7 @@ pub fn duenno_de_pila(rsp: u64) -> Option<(u32, bool)> {
 
 /// **De quien FUE esta pila, si ya no es de nadie.** `(tid, tick)`.
 ///
-/// Se pregunta cuando `duenno_de_pila` contesta `None`, que es el caso caro: el
+/// Se pregunta cuando `titular_de_pila` contesta `None`, que es el caso caro: el
 /// kernel corriendo sobre una pila que alguien devolvio. Ver la morgue en
 /// `roja.rs`.
 ///

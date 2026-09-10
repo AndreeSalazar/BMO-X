@@ -56,7 +56,7 @@ pub fn init() {
     let kernel = table(kernel_pml4());
     for i in 256..512 {
         if kernel[i] & PTE_PRESENT == 0 {
-            match phys::alloc_frame_de(phys::Duenno::Tabla) {
+            match phys::alloc_frame_de(phys::Titular::Tabla) {
                 Some(f) => {
                     phys::zero_frame(f);
                     // Supervisor-only on purpose: no PTE_USER at any level of
@@ -114,12 +114,12 @@ pub(super) fn table(phys: u64) -> &'static mut [u64; 512] {
 pub fn new_address_space() -> Option<u64> {
     // ** LAS TABLAS SE PIDEN DICIENDO QUE SON TABLAS. Desde aqui, el
     // asignador puede contestar *"ese marco no es tuyo"* en vez de solo
-    // *"ya estaba libre"*. Ver `phys::duenno`.
-    let pml4 = phys::alloc_frame_de(phys::Duenno::Tabla)?;
-    let pdpt = match phys::alloc_frame_de(phys::Duenno::Tabla) {
+    // *"ya estaba libre"*. Ver `phys::titular`.
+    let pml4 = phys::alloc_frame_de(phys::Titular::Tabla)?;
+    let pdpt = match phys::alloc_frame_de(phys::Titular::Tabla) {
         Some(f) => f,
         None => {
-            phys::free_frame_de(pml4, phys::Duenno::Tabla);
+            phys::free_frame_de(pml4, phys::Titular::Tabla);
             return None;
         }
     };
@@ -154,7 +154,7 @@ pub(super) fn get_or_create(t: &mut [u64; 512], idx: usize, flags: u64) -> Resul
         }
         return Ok(e & ADDR_MASK);
     }
-    let f = phys::alloc_frame_de(phys::Duenno::Tabla).ok_or(())?;
+    let f = phys::alloc_frame_de(phys::Titular::Tabla).ok_or(())?;
     phys::zero_frame(f);
     t[idx] = (f & ADDR_MASK) | flags;
     Ok(f)
@@ -222,8 +222,8 @@ use super::amarilla::caminable;
 /// buenos -- una fuga a cambio de una sospecha. Solo se corta cuando la tabla
 /// dice ser OTRA COSA, que es el caso que no tiene explicacion inocente.
 fn es_tabla(fisica: u64, nivel: &'static str) -> bool {
-    let q = phys::duenno_de(fisica);
-    if q == phys::Duenno::Tabla || q == phys::Duenno::Anonimo {
+    let q = phys::titular_de(fisica);
+    if q == phys::Titular::Tabla || q == phys::Titular::Anonimo {
         return true;
     }
     crate::ring0::cabina::fault("vmm", nivel, fisica);
@@ -375,16 +375,16 @@ pub fn destroy_address_space(pml4: u64) -> (u64, u64) {
                     phys::free_frame(marco);
                     hojas += 1;
                 }
-                phys::free_frame_de(pt_phys, phys::Duenno::Tabla);
+                phys::free_frame_de(pt_phys, phys::Titular::Tabla);
                 tablas += 1;
             }
-            phys::free_frame_de(pd_phys, phys::Duenno::Tabla);
+            phys::free_frame_de(pd_phys, phys::Titular::Tabla);
             tablas += 1;
         }
-        phys::free_frame_de(pdpt_phys, phys::Duenno::Tabla);
+        phys::free_frame_de(pdpt_phys, phys::Titular::Tabla);
         tablas += 1;
     }
-    phys::free_frame_de(pml4, phys::Duenno::Tabla);
+    phys::free_frame_de(pml4, phys::Titular::Tabla);
     tablas += 1;
     // ** Y el total de hojas que ya estaban libres. CERO tambien es respuesta:
     // dice que el arbol era suyo entero y que el problema no es este recorrido.

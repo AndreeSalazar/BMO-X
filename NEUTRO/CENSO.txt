@@ -18,7 +18,7 @@ LAS COLUMNAS
   opaco         ese programa se puede leer, parar o auditar?
   DMA           alcanza la RAM por su cuenta?
   marcos        de donde saca la memoria en la que escribe
-  etiquetados   sus marcos llevan Duenno::Neutro? (N2)
+  etiquetados   sus marcos llevan Titular::Neutro? (N2)
 
 
 EL FORMATO ES UN CONTRATO, Y LO LEE UN GUARDIAN
@@ -82,7 +82,7 @@ COMO SE ANADE UNO
 
   1. se escribe su fila AQUI, con la maquina apagada  (N1)
   2. su peticion de memoria pasa a alloc_frames_contig_de(.., Neutro)  (N2)
-  3. se comprueba que duenno::neutros() sube al arrancar y luego se queda
+  3. se comprueba que titular::neutros() sube al arrancar y luego se queda
      quieto  (N4)
 
   [!] El orden importa: la fila va PRIMERO. Un aparato que ya funciona y todavia

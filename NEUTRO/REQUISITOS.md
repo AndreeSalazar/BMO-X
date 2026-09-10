@@ -12,10 +12,10 @@
 
 ## R1 -- [x] LA ETIQUETA: que un marco de aparato se pueda NOMBRAR
 
-**Bloqueaba:** nada. `mm/duenno.rs` ya tenia ocho clases y la novena era una
+**Bloqueaba:** nada. `mm/titular.rs` ya tenia ocho clases y la novena era una
 linea.
 
-**Hecho el 2026-09-07.** `Duenno::Neutro` existe, y los cuatro sitios que piden
+**Hecho el 2026-09-07.** `Titular::Neutro` existe, y los cuatro sitios que piden
 DMA la usan: dos del disco, uno de la red, uno del USB.
 
 ```text
@@ -23,14 +23,14 @@ DMA la usan: dos del disco, uno de la red, uno del USB.
    ahora   salen `NEUTRO (un aparato)`
 ```
 
-**Como se comprueba:** `duenno::neutros()` es mayor que cero tras arrancar.
+**Como se comprueba:** `titular::neutros()` es mayor que cero tras arrancar.
 
 ---
 
 ## R2 -- [x] LA AZUL LO DICE, Y SALIO GRATIS
 
 **Bloqueaba:** nada, y esto es lo bonito: **no hizo falta tocar la pantalla
-azul**. `plat/faults/amarilla.rs` ya preguntaba `duenno_de(fisica)` y pintaba
+azul**. `plat/faults/amarilla.rs` ya preguntaba `titular_de(fisica)` y pintaba
 `q.nombre()`; lo unico que le faltaba era que existiera un nombre que decir.
 
 ```text
@@ -85,11 +85,11 @@ marco de aparato suelto es corrupcion esperando turno.
 
 Hoy `free_frame_de` sabe rehusar --devuelve `NoEsTuyo(tiene, quien)`-- pero **el
 camino de la purga usa `free_frame` a secas**, sin declarar. Y esa era la
-tercera fila de la regla de `duenno`: *"alguno NO declara -> SIN OPINION.
+tercera fila de la regla de `titular`: *"alguno NO declara -> SIN OPINION.
 Adelante, y callado"*.
 
 ```text
-   quien declara hoy    el desmontaje de tablas de paginas (`Duenno::Tabla`)
+   quien declara hoy    el desmontaje de tablas de paginas (`Titular::Tabla`)
    quien NO declara     la purga, y las hojas de Ring 3
 ```
 
@@ -131,7 +131,7 @@ Asi que R5 se parte, y las dos mitades son de verdad distintas:
 enganchado en `build.ps1` como los otros cinco. Comprueba cuatro cosas:
 
 ```text
-   1. todo fichero que etiqueta `Duenno::Neutro` tiene fila en el censo   (N1)
+   1. todo fichero que etiqueta `Titular::Neutro` tiene fila en el censo   (N1)
    2. toda fila que nombra un fichero, ese fichero existe y etiqueta      (N2)
    3. la cuenta `xN` de la fila es el numero de sitios que etiquetan
    4. y DICE cuantas filas se salto, para que la cobertura parcial no se
@@ -263,7 +263,7 @@ GPU sube por su anillo**. Ver `platform/drivers/gpu/rdna4/PSP_MEDIDO.md`.
 
 ```text
    [ ] su fila en CENSO.txt, ANTES de que funcione   (N1)
-   [ ] sus marcos con `Duenno::Neutro`               (N2)
+   [ ] sus marcos con `Titular::Neutro`               (N2)
    [ ] y comprobar que `neutros()` sube UNA vez      (N4)
 ```
 

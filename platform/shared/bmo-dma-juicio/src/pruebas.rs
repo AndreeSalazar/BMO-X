@@ -221,7 +221,7 @@ fn un_marco_prestado_a_otro_se_rechaza_con_nombre() {
 }
 
 #[test]
-fn el_prestamo_manda_sobre_el_duenno_del_corral() {
+fn el_prestamo_manda_sobre_el_titular_del_corral() {
     // ** Un marco que es del aparato 1 por corral pero esta prestado al 2: el
     // que vale AHORA es el prestamo. Sin esta fila, un juez que mirara primero
     // `es_neutro` dejaria pasar al 1 sobre un bufer que ya no es suyo.

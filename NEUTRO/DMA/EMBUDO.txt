@@ -13,7 +13,7 @@ POR QUE ESTE FICHERO Y NO OTRO GREP
 
   Porque un grep contesta HOY y se olvida. El censo del neutro (CENSO.txt) ya
   demostro que la diferencia entre las dos cosas es un guardian: desde el
-  2026-09-07 nadie puede etiquetar un marco como `Duenno::Neutro` sin tener su
+  2026-09-07 nadie puede etiquetar un marco como `Titular::Neutro` sin tener su
   fila, porque el build lo comprueba.
 
   *** Esta lista quiere lo mismo, y todavia no lo tiene. Hasta que exista su
@@ -52,12 +52,12 @@ EL CENSO, AL 2026-09-09
            docs/identidad/EL_NEUTRO.md lleva nombrando desde que existe
 
     xHCI   se fabrica sus propios anillos (TRB, DCBAA, contextos) y esos SI
-           salen de marcos que el kernel le dio como `Duenno::Neutro`. Pero el
+           salen de marcos que el kernel le dio como `Titular::Neutro`. Pero el
            bufer de una transferencia --transferencia.rs:584-- viene de fuera,
            igual que en AHCI
 
     NIC    *** LA UNICA QUE YA ESTA BIEN. Pide UN corral contiguo entero
-           (dev/net/mod.rs:325, `Duenno::Neutro`) y todos sus bufers salen de
+           (dev/net/mod.rs:325, `Titular::Neutro`) y todos sus bufers salen de
            ahi. La direccion fisica no se valida porque NO PUEDE estar mal:
            se calcula como `base + i * tamano` dentro de la arena
 

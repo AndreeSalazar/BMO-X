@@ -13,7 +13,7 @@ Dos listas de lo mismo que pueden separarse sin que nadie avise. Es el
 viven tres veces y hay un guardian por eso mismo.
 
     el censo dice     quien alcanza la RAM
-    el codigo dice    quien etiqueta sus marcos como `Duenno::Neutro`
+    el codigo dice    quien etiqueta sus marcos como `Titular::Neutro`
 
 Si esas dos frases se separan, la que gana es la peor: **un aparato escribiendo
 en marcos sin etiquetar**, que es exactamente lo que costo la carpeta entera.
@@ -21,7 +21,7 @@ en marcos sin etiquetar**, que es exactamente lo que costo la carpeta entera.
 Lo que comprueba, y lo que NO
 ==============================
 
-    1. todo fichero que etiqueta `Duenno::Neutro` tiene fila en el censo
+    1. todo fichero que etiqueta `Titular::Neutro` tiene fila en el censo
     2. toda fila que nombra un fichero, ese fichero existe y etiqueta
     3. la cuenta `xN` de la fila es el numero de sitios que etiquetan
     4. y dice CUANTAS filas se saltaron, para que la cobertura parcial no se
@@ -52,10 +52,10 @@ CENSO = os.path.join(RAIZ, "NEUTRO", "CENSO.txt")
 # un formato que solo conoce el guardian es un formato que nadie puede cumplir.
 BASE = os.path.join(RAIZ, "Ultra_kernel_x86-64", "kernel", "src", "ring0")
 
-# La clase que etiqueta. Su definicion vive en `mm/duenno.rs`, que por eso se
+# La clase que etiqueta. Su definicion vive en `mm/titular.rs`, que por eso se
 # excluye: ahi la palabra aparece porque se DECLARA, no porque se use.
-MARCA = "Duenno::Neutro"
-DEFINICION = os.path.join(BASE, "mm", "duenno.rs")
+MARCA = "Titular::Neutro"
+DEFINICION = os.path.join(BASE, "mm", "titular.rs")
 
 # Una fila del censo que nombra un fichero: `dev/disk/mod.rs  x2`.
 FILA = re.compile(r"^\s{2,}(\S+)\s+.*?([\w/]+\.rs)\s*(?:x(\d+))?\s", re.M)

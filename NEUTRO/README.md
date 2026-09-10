@@ -84,7 +84,7 @@ correr -- que es la definicion de agnostico y la razon de que no viva dentro de
 ```text
    la CATEGORIA y su porque   ->  docs/identidad/EL_NEUTRO.md
    el juez de la cesion       ->  platform/.../bmo-mmio-juicio
-   la etiqueta de los marcos  ->  Ultra_kernel_x86-64/.../mm/duenno.rs
+   la etiqueta de los marcos  ->  Ultra_kernel_x86-64/.../mm/titular.rs
    que COPIAR del mundo       ->  docs/maestro/DMA_MAESTRO.md   (el CUANDO)
                               ->  docs/maestro/IOMMU_MAESTRO.md (el DONDE)
    las casillas               ->  docs/plan/PLAN_EL_NEUTRO_VIGILADO.md

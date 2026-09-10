@@ -23,7 +23,7 @@
 
 use boot_context::BootContext;
 
-use super::super::duenno;
+use super::super::titular;
 use super::super::PAGE;
 use crate::ring0::plat::spin::SpinLock;
 
@@ -217,10 +217,10 @@ pub fn init(ctx: &BootContext) {
 ///
 /// ** `Anonimo` y `Nadie` parecen lo mismo y son opuestos: uno es *"lo tiene
 /// alguien que no dijo quien"* y el otro *"no lo tiene nadie"*. La tercera fila
-/// de la regla de `duenno` --sin opinion-- solo funciona si esa diferencia se
+/// de la regla de `titular` --sin opinion-- solo funciona si esa diferencia se
 /// mantiene, y se mantiene AQUI.
 fn marcar_entregado(f: u64) -> u64 {
-    duenno::marcar(f, duenno::Duenno::Anonimo);
+    titular::marcar(f, titular::Titular::Anonimo);
     f
 }
 
@@ -441,7 +441,7 @@ pub fn free_frame(phys: u64) {
             // La etiqueta se borra CON el bit y no antes: mientras el marco
             // siga entregado tiene que poder decirse de quien es, y eso incluye
             // el instante en que la pantalla azul lo pregunta.
-            duenno::marcar(phys, duenno::Duenno::Nadie);
+            titular::marcar(phys, titular::Titular::Nadie);
         } else {
             // ** UN MARCO QUE SE DEVUELVE DOS VECES YA NO ES MUDO (2026-09-01).
             //
@@ -484,15 +484,15 @@ pub fn free_frame(phys: u64) {
 }
 
 
-/// **Pedir un marco DICIENDO PARA QUE.** Ver `mm::duenno`.
+/// **Pedir un marco DICIENDO PARA QUE.** Ver `mm::titular`.
 ///
 /// `alloc_frame` sigue existiendo y equivale a pedirlo como `Anonimo`, o sea
 /// SIN OPINION. Los 34 sitios que llaman al asignador no se convierten de
 /// golpe: se convierten los que tienen algo que declarar, y el juez nunca
 /// opina sobre lo que no sabe.
-pub fn alloc_frame_de(quien: duenno::Duenno) -> Option<u64> {
+pub fn alloc_frame_de(quien: titular::Titular) -> Option<u64> {
     let f = alloc_frame()?;
-    duenno::marcar(f, quien);
+    titular::marcar(f, quien);
     Some(f)
 }
 
@@ -516,18 +516,18 @@ pub fn alloc_frame_de(quien: duenno::Duenno) -> Option<u64> {
 /// Se etiqueta marco a marco --no solo el primero-- porque quien se encuentra
 /// una pila pisada tiene en la mano un `rsp` de EN MEDIO, no su base. Etiquetar
 /// solo la base dejaria mudo justo el caso que esto viene a resolver.
-pub fn alloc_frames_contig_de(count: u64, quien: duenno::Duenno) -> Option<u64> {
+pub fn alloc_frames_contig_de(count: u64, quien: titular::Titular) -> Option<u64> {
     // `alloc_frames_contig` ya dejo cada marco en `Anonimo`; esto lo concreta.
     let base = alloc_frames_contig(count)?;
     for i in 0..count {
-        duenno::marcar(base + i * PAGE, quien);
+        titular::marcar(base + i * PAGE, quien);
     }
     Some(base)
 }
 
-pub fn free_frame_de(phys: u64, quien: duenno::Duenno) -> bool {
-    match duenno::puede_soltar(phys, quien) {
-        duenno::Veredicto::NoEsTuyo(tiene, suelta) => {
+pub fn free_frame_de(phys: u64, quien: titular::Titular) -> bool {
+    match titular::puede_soltar(phys, quien) {
+        titular::Veredicto::NoEsTuyo(tiene, suelta) => {
             crate::ring0::cabina::fault("phys", "ESE MARCO NO ES TUYO", phys);
             crate::ring0::cabina::fault("phys", tiene.nombre(), 0);
             crate::ring0::cabina::fault("phys", suelta.nombre(), 1);
