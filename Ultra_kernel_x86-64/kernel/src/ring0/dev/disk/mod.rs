@@ -58,6 +58,9 @@ pub use gate::verify_identity;
 /// WHO HOLDS THE DISK: one owner at a time, with a count of waits and thefts.
 mod owner;
 pub use owner::{cuentas_dueno, Testigo};
+
+mod centinela;
+pub use centinela::cuentas as cuentas_centinela;
 use owner::tomar_disco;
 /// MOVING THE BYTES: read, DMA, and the bounce buffer -- both paths counted.
 mod transfer;
@@ -347,7 +350,21 @@ pub fn init() {
         return;
     }
     // Pagina de rebote para el DMA, contigua y de direccion fisica conocida.
-    let dma = match phys::alloc_frames_contig_de(1, phys::Titular::Neutro) {
+    //
+    // == *** DOS MARCOS Y NO UNO, DESDE EL 2026-09-10 ====================
+    //
+    // El segundo NO se usa para nada: es EL CENTINELA. Un lote de rebote son
+    // exactamente 4096 bytes --`PER_BATCH` son 8 sectores-- asi que la pagina
+    // se llena entera y **cualquier byte de mas cae en el marco de al lado**.
+    //
+    // ** Que sean CONTIGUOS es lo que lo hace funcionar: si el centinela
+    // estuviera en cualquier otro sitio, un desbordamiento no lo tocaria y
+    // vigilaria una frontera que no existe.
+    //
+    // [!] Y el de al lado es NUESTRO. Sin el, pasarse por uno se paga en la
+    // memoria de quien sea, sin fault y sin sintoma. Con el se paga en una
+    // pagina que no le importa a nadie, y se DICE. Cuesta 4 KiB una vez.
+    let dma = match phys::alloc_frames_contig_de(2, phys::Titular::Neutro) {
         Some(p) => p,
         None => {
             crate::ring0::cabina::fault("disk", "sin memoria para el buffer DMA", 0);
@@ -355,6 +372,7 @@ pub fn init() {
         }
     };
     unsafe { DMA_PHYS = dma; PORT = chosen; READY = true; }
+    centinela::sembrar(dma + crate::ring0::mm::PAGE);
     crate::ring0::cabina::info("disk", "puerto SATA listo para leer", chosen as u64);
 
     // -- ** QUE EL DISCO AVISE, si la placa deja --
