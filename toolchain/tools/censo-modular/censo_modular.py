@@ -511,7 +511,7 @@ def sellar(fichas, exentos, techos, subidas, motivo):
     Bajar no se pregunta: un reparto que quita lineas se explica solo. Subir,
     no. Y hasta el 2026-08-19 esto no lo comprobaba nadie -- se re-sello un
     techo (`syscall/mod.rs`, +14) y el unico sitio donde quedo el por que fue
-    un mensaje de commit, que es donde nadie lo va a buscar dentro de un ano.
+    un mensaje de commit, que es donde nadie lo va a buscar dentro de un anio.
 
     Es la regla del dueno aplicada a la propia herramienta: **todo tiene su por
     que; lo que no lo tiene, se quita.**

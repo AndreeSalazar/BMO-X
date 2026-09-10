@@ -115,7 +115,7 @@ fn el_desplazamiento_del_contenido_coincide_con_el_del_abi() {
 ///
 /// Si `na + nb` diera la vuelta: `total` sale pequeno, `pide` devuelve un bloque
 /// pequeno, y los dos bucles escriben **fuera** -- un desbordamiento de bufer,
-/// el fallo mas caro de los ultimos veinte anos.
+/// el fallo mas caro de los ultimos veinte anios.
 ///
 /// ** Y LO PARA EL PROPIO LENGUAJE. Aqui hubo una guardia escrita a mano con el
 /// motivo *"la que `crudo` apago"*, y era falso: **`crudo` no apaga las reglas**.

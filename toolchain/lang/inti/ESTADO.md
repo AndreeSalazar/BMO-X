@@ -257,7 +257,7 @@ el descenso emite lecturas de 8 bytes con una tabla y de 4 con la otra.
 
 ⚠ Y lo que **no** dice: que INTI compile para 32 bits. No compila. Lo que decide
 es si portar sera *escribir un emisor* o *desenterrar ochos repartidos por el
-compilador*, que es la diferencia entre un mes y un ano. Salio lo primero.
+compilador*, que es la diferencia entre un mes y un anio. Salio lo primero.
 
 ---
 

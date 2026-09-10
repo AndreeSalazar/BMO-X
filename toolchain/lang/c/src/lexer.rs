@@ -304,7 +304,7 @@ pub(crate) fn tokenize(source: &str) -> (Vec<Token>, Vec<usize>, Vec<crate::CErr
                     "static" => t.push(Token::Static),
                     // `auto` y `register` se ACEPTAN Y SE TIRAN. No es pereza:
                     // `register` es una sugerencia que todos los compiladores
-                    // del mundo ignoran desde hace treinta anos, y `auto` es
+                    // del mundo ignoran desde hace treinta anios, y `auto` es
                     // redundante desde 1978 (una local ya es automatica). No
                     // cambian lo que el programa HACE, asi que emitir algo por
                     // ellas seria emitir ruido. Se comen aqui para que el

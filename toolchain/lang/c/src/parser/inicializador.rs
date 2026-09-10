@@ -24,7 +24,7 @@
 //!
 //! === Como lo hacen los compiladores maestros ===
 //!
-//! Hay **dos escuelas**, y elegir mal se paga durante anos:
+//! Hay **dos escuelas**, y elegir mal se paga durante anios:
 //!
 //! - **GCC** (`gcc/c/c-typeck.c`) -- una *pila de constructores* incremental:
 //!   `push_init_level` / `set_init_index` / `set_init_label` /
@@ -49,7 +49,7 @@
 //!
 //! - **MSVC** -- el contraejemplo, y por eso vale la pena nombrarlo: su
 //!   compilador de C **no tuvo designated initializers hasta 2020**
-//!   (VS 2019 16.8, con `/std:c11`). Veinte anos de `#ifdef _MSC_VER` en medio
+//!   (VS 2019 16.8, con `/std:c11`). Veinte anios de `#ifdef _MSC_VER` en medio
 //!   mundo. Un frontend que no termina el estandar que dice hablar se lo cobra
 //!   el ecosistema, no el.
 //!

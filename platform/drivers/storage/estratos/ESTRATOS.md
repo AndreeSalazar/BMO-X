@@ -659,7 +659,7 @@ carpeta, sino una propiedad del suelo**:
 
 | Sistema | Lo que vale | Lo que se deja |
 |---|---|---|
-| **NTFS** | **Todo es un archivo, incluidos los metadatos** (la tabla maestra es ella misma un archivo, y por eso el FS puede hacer crecer sus propias estructuras con su propio asignador). **Atributos con nombre**: un archivo no es un chorro de bytes, es un conjunto de flujos. **Archivos pequenos residentes**: los que caben viven *dentro* de su registro y no gastan bloque | 30 anos de compatibilidad hacia atras |
+| **NTFS** | **Todo es un archivo, incluidos los metadatos** (la tabla maestra es ella misma un archivo, y por eso el FS puede hacer crecer sus propias estructuras con su propio asignador). **Atributos con nombre**: un archivo no es un chorro de bytes, es un conjunto de flujos. **Archivos pequenos residentes**: los que caben viven *dentro* de su registro y no gastan bloque | 30 anios de compatibilidad hacia atras |
 | **ZFS / btrfs** | Copy-on-write, checksums en todo, arbol de Merkle (el hash raiz valida el arbol entero), instantaneas gratis | Volumenes, RAID, cache ARC, compresion -- nada de eso hace falta todavia |
 | **Git** | Direccionamiento por contenido: **deduplicacion gratis**, y el historial son solo raices extra | Que viva en una carpeta aparte del FS |
 | **Log-structured (NILFS2, LFS)** | Escribir **siempre secuencial**, que es exactamente lo que ama un SSD, y da instantaneas continuas | -- (pero trae el recolector: section 9) |

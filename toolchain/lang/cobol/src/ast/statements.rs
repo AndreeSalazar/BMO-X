@@ -166,7 +166,7 @@ pub enum CobolStatement {
     /// Es la otra mitad de `PERFORM ... THRU X-SALIR`: el descarte. Sin el, saltar
     /// al parrafo de salida hay que escribirlo con un interruptor y un `IF`, que
     /// dice lo mismo con tres lineas mas y una variable que alguien tendra que
-    /// entender dentro de diez anos.
+    /// entender dentro de diez anios.
     ///
     /// * **No confundir con `PERFORM`**: `PERFORM X` ejecuta X y VUELVE;
     /// `GO TO X` se va y no vuelve. Fingir uno con el otro es lo que hacia el

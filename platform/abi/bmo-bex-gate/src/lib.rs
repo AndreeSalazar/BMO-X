@@ -163,7 +163,7 @@ pub const REQUISITOS: u8 = 0x15;
 /// **LA REGLA**: solo cuatro tipos son memoria del programa. Todo lo demas
 /// --manifiesto, firma, simbolos, recursos, y **cualquier tipo desconocido**--
 /// es data para otro, y se salta. Un tipo que no me incumbe no es un error: es
-/// data que no voy a abrir. Es lo que ha mantenido vivo a ELF treinta anos.
+/// data que no voy a abrir. Es lo que ha mantenido vivo a ELF treinta anios.
 pub fn se_carga(kind: u8) -> bool {
     matches!(kind, CODE | RODATA | DATA | BSS)
 }

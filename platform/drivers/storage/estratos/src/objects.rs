@@ -390,7 +390,7 @@ impl Entrada {
     /// Latin-1 y no UTF-8 porque es lo que hablan la consola, el teclado y el
     /// framebuffer de BMO: un byte por caracter, sin decodificador en el
     /// camino. Y por eso el plegado cubre tambien los acentos -- `N` y `n` son
-    /// 0xD1 y 0xF1, y si no se plegaran, `Ano` y `ANO` serian dos archivos
+    /// 0xD1 y 0xF1, y si no se plegaran, `an~o` y `AN~O` serian dos archivos
     /// distintos en un sistema que dice ignorar mayusculas.
     pub fn se_llama(&self, otro: &str) -> bool {
         let a = &self.name[..self.nombre_len];
@@ -558,7 +558,7 @@ mod tests {
 
     #[test]
     fn los_acentos_tambien_ignoran_mayusculas() {
-        // Latin-1: si `N~` (0xD1) y `n~` (0xF1) no se plegaran, "Ano" y "ANO"
+        // Latin-1: si `N~` (0xD1) y `n~` (0xF1) no se plegaran, "an~o" y "AN~O"
         // serian dos archivos distintos en un sistema que dice ignorarlas.
         let name = [b'A', 0xD1, b'O']; // A N~ O
         let e = Entrada::nueva(core::str::from_utf8(&[b'A', b'x', b'O']).unwrap(), BlockPtr::NULO).unwrap();

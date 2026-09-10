@@ -96,7 +96,7 @@ El ciclo se cierra solo:
 3. La organizacion lo audita leyendo tablas y hashes.
 4. Si pasa, su hash entra en la lista de aprobados.
 5. A partir de ahi es estandar **para esa organizacion** -- sin comite, sin
-   esperar anos, y sin que nadie mas tenga que aceptarlo.
+   esperar anios, y sin que nadie mas tenga que aceptarlo.
 
 Lo que impide la anarquia no es prohibir: es que **todo lo que se hace queda
 declarado**. Un mod dice de quien hereda; un binario dice de que mod salio.

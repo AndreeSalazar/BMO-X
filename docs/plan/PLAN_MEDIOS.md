@@ -174,7 +174,7 @@ dependencia**, decodifica a YUV y trae la conversion a RGB.
 | salida | un buffer de pixeles, que es exactamente lo que BMO sabe pintar |
 | sonido | MP2, y sale por el mismo tubo que M1 |
 
-*** **Esto es lo mas cerca de "VLC" que esta maquina puede estar este ano, y la
+*** **Esto es lo mas cerca de "VLC" que esta maquina puede estar este anio, y la
 distancia entre M3 y VLC no es de calidad: es de catalogo.** MPEG-1 no es H.264.
 Lo que M3 demuestra --demux, decodificar, sincronizar video con audio, pintar a
 tiempo-- es el 100% de la arquitectura de un reproductor. Lo que le falta a M3

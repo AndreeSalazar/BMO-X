@@ -1045,7 +1045,7 @@ la misma persona que despues la incumplio.
 
    *** La consecuencia que costo la leccion: **una estimacion generica es una
    estimacion de OTRO PROYECTO.** Decir "meses" sobre el driver de GPU era
-   ponerle precio a `amdgpu` --cuatro millones de lineas para quince anos de
+   ponerle precio a `amdgpu` --cuatro millones de lineas para quince anios de
    tarjetas-- cuando lo que aqui se escribe es un perfil de UNA. Y encima
    incumplia la ley 11 dos veces: **se le supuso a un aparato al que no se le
    habia preguntado.**
@@ -3263,7 +3263,7 @@ mas raro -- *"que se divida en 10 lo que MAS PUEDA para que llegue el destino"*.
 `syscall` y `sysretq` son **un par de instrucciones**. Microcodigo del CPU: leer
 dos MSR, cambiar CS/SS y el CPL, enmascarar RFLAGS, serializar el cauce. No hay
 forma de ejecutar un tercio de eso. El perfil los estima en ~150 ticks, y ese es
-el unico numero de toda la cuenta que **no ha bajado en treinta anos**.
+el unico numero de toda la cuenta que **no ha bajado en treinta anios**.
 
 ### ★★★ Y LA OTRA MITAD ES EXACTAMENTE CORRECTA
 
@@ -3808,7 +3808,7 @@ eso pide la ene con tilde"*. Tiene razon, y hay un argumento mejor que "es feo".
 ### La casa QUITA la ene con tilde. `Duenno` la DOBLABA
 
 ```text
-   tamano   pequeno   ano   senal   ninguno      <- se quita
+   tamano   pequeno   anio   senal   ninguno      <- se quita
    Duenno                                        <- se doblaba
 ```
 
@@ -3848,3 +3848,84 @@ verde**: un guardian que no encuentra lo que mira aprueba en silencio.
 [!] Y las entradas anteriores de esta bitacora dicen `Titular` porque se
 renombraron hoy. El dia que se escribieron decian `Duenno` -- se dice aqui en
 vez de dejar que un `grep` de dentro de tres meses no encuentre nada.
+
+---
+
+## Ep. 74 -- La ene caida tiro de un hilo, y al final del hilo estaba INTI
+
+**2026-09-09.** El dueno lo pidio de pasada y riendose: *"si encuentras `anio` y
+otros sustantivos, eso suena feo, e ironicamente sabes por que"*. Si lo sabia.
+Lo que no sabia era donde acababa el hilo.
+
+### La regla de la casa, y las DOS que la rompen
+
+Aqui se **quita** la virgulilla: `tamano`, `pequeno`, `senal`, `ninguno`.
+Funciona porque lo que queda no es ninguna palabra. Con dos no funciona -- una
+de ellas ES otra palabra, y no es la que se queria decir.
+
+** Y NO todas las que se parecen son sospechosas. Se comprobaron una a una:
+
+```text
+   campana   la CAMPANA del AHCI (`doorbell`).  Correcta, se queda
+   sana      "una placa sana".                  Correcta, se queda
+```
+
+*** Por eso el guardian es un **diccionario CERRADO** y no un patron: un patron
+habria marcado esas dos, y un guardian que se equivoca se apaga en una semana.
+
+### Y entonces el barrido empezo a romper cosas, una a una
+
+**Roto 1: un test del ABI.** `dynobj/texto.rs` existe para demostrar que la
+cabecera cuenta **BYTES y no caracteres**, y su ejemplo es el par: la palabra en
+ASCII (4 bytes) contra la misma con virgulilla (4 caracteres, CINCO bytes).
+
+> El barrido convirtio la primera en su forma larga --y la puso en 5 bytes--
+> asi que **el test que explica la virgulilla murio por quitarle la virgulilla**.
+
+De ahi salio la marca `ene-caida-adrede`, **por LINEA y no por fichero**:
+eximir el fichero entero habria dejado pasar las que SI son un fallo en el
+mismo sitio. Es la forma de R14 con sus sondas -- se anota, no se apaga.
+
+**Roto 2, y este es el bueno: un test de INTI.**
+`un_nombre_con_tilde_vale_y_se_avisa` comprueba que si escribes un
+identificador con virgulilla, INTI **te avisa y te sugiere la forma ASCII**.
+
+```rust
+'\u{f1}' => 'n',   // palabras/mod.rs:302
+```
+
+*** **INTI le sugeria al programador que escribiera la palabra que significa
+otra cosa.** Con la mejor intencion, dentro de un aviso amable, desde que
+existe.
+
+★★★ Y lo encontro un `sed` mal apuntado. La casilla que el barrido rompio por
+accidente **era la casilla correcta**: el test ya esperaba la forma larga.
+
+### El arreglo, y por que NO es el mismo que el del barrido
+
+INTI gana la misma tabla cerrada, con una diferencia que importa:
+
+```text
+   el barrido   escribe PROSA     puede cambiar una palabra por otra
+   INTI         sugiere un NOMBRE un identificador NO se puede traducir
+```
+
+Por eso alarga con una `i` en vez de traducir: quien llamo a su variable con
+esa palabra queria decir eso, y una sugerencia que le cambia el significado es
+peor que ninguna.
+
+** Y compara la palabra ENTERA: `hermanos` acaba igual y no tiene nada que ver.
+Comparar por sufijo habria convertido a los hermanos en `hermanios`.
+
+### Lo que queda vigilado
+
+```text
+   132 sitios arreglados en prosa, codigo, .cob y .md
+   1 guardian nuevo en `ascii-sweep`, con su diccionario cerrado
+   1 marca de exencion POR LINEA, usada en los DOS sitios donde es correcta
+   1 fallo real en el consejo de INTI, que llevaba ahi desde el principio
+```
+
+> Una broma sobre una palabra fea acabo siendo un fallo del compilador. Y el
+> unico motivo por el que se encontro es que **el barrido rompio un test en vez
+> de pasar de largo**.

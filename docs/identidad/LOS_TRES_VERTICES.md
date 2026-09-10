@@ -48,7 +48,7 @@ convivir.
 | | lo que gana | lo que paga |
 |---|---|---|
 | **Mac** | coherencia: un solo objetivo, todo encaja | **libertad**: corre lo que ellos deciden |
-| **Windows** | libertad: tu maquina, tu binario de hace 20 anos | **coherencia**: treinta anos de capas encima de capas |
+| **Windows** | libertad: tu maquina, tu binario de hace 20 anios | **coherencia**: treinta anios de capas encima de capas |
 | **bare metal** | potencia: nada entre tu y el silicio | **las dos**: te lo escribes todo |
 
 ★★ **Cada uno de los tres compra su vertice pagando con otro.** Un sistema que
@@ -112,14 +112,14 @@ lo que no se concede, y `QUE_DESBLOQUEA` pone los numeros.
 
 ## 2.2 -- Entonces que es la libertad de Windows, de verdad
 
-**Que un binario de hace veinte anos sigue arrancando.** Esa es la superpotencia
+**Que un binario de hace veinte anios sigue arrancando.** Esa es la superpotencia
 real de Microsoft y no la reconoce casi nadie: no es que tenga muchos programas
 -- es que **nunca rompio el contrato**.
 
 > **Lo que compras de un sistema no es su codigo: es la lista de cosas que
 > promete no romper.**
 
-Y esa lista, en Windows, se paga con treinta anos de capas. **BMO-X coge la
+Y esa lista, en Windows, se paga con treinta anios de capas. **BMO-X coge la
 promesa sin la deuda**, y puede porque la promesa cabe en una pagina.
 
 ## 2.3 -- Lo que ya existe y se lo gana
@@ -175,7 +175,7 @@ del suelo, parte 4, y no se disimula.
 ```
 
 Los dos primeros son **fiabilidad**. El tercero es **autoridad**. Una app puede
-reventar cada minuto sin ser una vulnerabilidad, y un kernel que lleva un ano sin
+reventar cada minuto sin ser una vulnerabilidad, y un kernel que lleva un anio sin
 caerse puede estar lleno de agujeros.
 
 ★ Y desde el 26-08 hay un cuarto escalon que casi ningun sistema tiene: **la
@@ -201,9 +201,9 @@ Vuelve la tesis, ya con los tres vertices puestos:
 
 > Los tres pelean **cuando la superficie es grande**. Una superficie grande hay
 > que mantenerla (mata la elegancia), no se puede prometer entera durante diez
-> anos (mata la libertad), y necesita capas para gobernarse (mata la potencia).
+> anios (mata la libertad), y necesita capas para gobernarse (mata la potencia).
 
-**Una promesa que cabe en una pagina se puede cumplir diez anos.** Y de ahi salen
+**Una promesa que cabe en una pagina se puede cumplir diez anios.** Y de ahi salen
 los tres a la vez:
 
 | porque la superficie es pequena... | ...se puede |

@@ -35,7 +35,7 @@ Un sistema operativo **multiplexa**, y multiplexar es una forma de generosidad:
 
 > Le miente a cada programa diciendole que la maquina entera es suya. Memoria
 > infinita, un CPU para el solo, ficheros que siempre estan. La mentira es util
-> --lleva cincuenta anos siendolo-- y tiene un precio que no se factura: **para
+> --lleva cincuenta anios siendolo-- y tiene un precio que no se factura: **para
 > mantenerla, el sistema tiene que darlo todo por defecto** y despues quitarlo
 > con comprobaciones.
 
@@ -77,7 +77,7 @@ Esta en la cabecera de `task/autoridad.rs`, y se escribio resolviendo otra cosa:
 > *"Asi que no se resolvio la delegacion: **se quito**. La autoridad no viaja."*
 
 Un SO habria construido un sistema de delegacion, con reglas para prestarla y
-reglas para revocarla, y habria pasado diez anos tapando escaladas. **Aqui la
+reglas para revocarla, y habria pasado diez anios tapando escaladas. **Aqui la
 respuesta a un mecanismo dificil de acotar fue no tenerlo.** Eso es el celo:
 no la vigilancia, sino **la negativa a repartir**.
 

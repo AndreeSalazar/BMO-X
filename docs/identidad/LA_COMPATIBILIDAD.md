@@ -28,7 +28,7 @@ Y de ahi sale la aritmetica que decide el producto entero:
 
 BMO-X eligio la segunda, **y esa eleccion es el producto**: dos puertas
 congeladas y 93 operaciones aditivas es una promesa que cabe en una pagina, y
-una promesa que cabe en una pagina se puede cumplir diez anos.
+una promesa que cabe en una pagina se puede cumplir diez anios.
 
 ---
 

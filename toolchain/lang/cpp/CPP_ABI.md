@@ -12,7 +12,7 @@
 Microsoft **nunca publico** la especificacion del ABI de C++ de MSVC. Clang
 tuvo que hacerle ingenieria inversa --de ahi `MicrosoftMangle.cpp`, un fichero
 entero dedicado a adivinar lo que alguien no escribio-- y el ecosistema pago
-anos partido en dos.
+anios partido en dos.
 
 Es el mismo patron que ya esta anotado en `parser/inicializador.rs` sobre los
 inicializadores designados: **lo que un frontend deja sin terminar o sin

@@ -194,7 +194,7 @@ solo**, sin interrupcion, sin TSS y sin tocar el kernel.
 |---|---|---|
 | Consumo esperando | **100%** | el de un nucleo dormido |
 | Hace falta IPI / TSS / GS por-CPU | no | **no** |
-| Puede volver del sueno | si | **si** |
+| Puede volver del reposo | si | **si** |
 | Latencia para arrancar la faena | minima | unos cientos de ciclos |
 
 ⚠ **No se supone: se comprueba.** `MONITOR`/`MWAIT` tienen su bit de CPUID

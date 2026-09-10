@@ -53,7 +53,7 @@ seccion 12 dice por que.
 
 ### 1.1 La cronologia, que casi nadie recuerda bien
 
-| ano | que paso |
+| anio | que paso |
 |---|---|
 | 1969 | Unix v1, **en ensamblador de PDP-7**. C no existe |
 | 1970 | Thompson escribe **B** (sin tipos, heredado de BCPL). No basta: no sabe de bytes ni de `struct` |
@@ -247,7 +247,7 @@ No es "Python es lento". Son tres eslabones, y **basta romper uno**:
 | salida | quien | precio |
 |---|---|---|
 | **cerrojo global** | CPython | correcto, barato, **un solo nucleo** |
-| **contadores sesgados / por objeto** | PEP 703, Python 3.14t | ~4x en multihilo, pero **5-10% mas lento en un hilo**, **15-20% mas memoria**, **rompio la ABI** (hubo que cambiar la cabecera del objeto) y llego tras 13 anos. "GIL apagado por defecto": 2028-2030 |
+| **contadores sesgados / por objeto** | PEP 703, Python 3.14t | ~4x en multihilo, pero **5-10% mas lento en un hilo**, **15-20% mas memoria**, **rompio la ABI** (hubo que cambiar la cabecera del objeto) y llego tras 13 anios. "GIL apagado por defecto": 2028-2030 |
 | **que no haya nada compartido** | Erlang, Pony, **Starlark** | rompe el eslabon 2 y los otros dos sobran |
 
 ★★★ **INTI rompe el eslabon 2, y la pieza ya esta implementada aqui.**
@@ -281,7 +281,7 @@ identidad mas fuerte que va a tener INTI.
 
 ⚠ **Lo que se pierde, sin adornos:** no puedes tener una lista grande y mutable
 que dos nucleos toquen a la vez. Es la limitacion que acepta Erlang, y es la
-razon de que Erlang lleve 40 anos sin un data race.
+razon de que Erlang lleve 40 anios sin un data race.
 
 ★ Premio de sistema: si codigo, constantes y runtime estan congelados, **el
 kernel los presta en vez de copiarlos**. Arrancar el segundo programa de INTI
@@ -385,7 +385,7 @@ especula y desaparece del camino critico. **El coste de la seguridad se paga en
 
 | modelo | quien | que hace | veredicto |
 |---|---|---|---|
-| **Parchear C** | *Friendly C* (Cuoq, Flatt, Regehr, 2014) | convierte 14 categorias de UB en valores no especificados: el desbordamiento con signo da la vuelta, se elimina el alias estricto, leer sin inicializar da un valor cualquiera | ⚠ **deja fuera lo peor** (memoria liberada, fuera de limites siguen indefinidos) y **once anos despues los compiladores solo ofrecen banderas sueltas** (`-fwrapv`, `-fno-strict-aliasing`), no el dialecto. **Parchear no funciono** |
+| **Parchear C** | *Friendly C* (Cuoq, Flatt, Regehr, 2014) | convierte 14 categorias de UB en valores no especificados: el desbordamiento con signo da la vuelta, se elimina el alias estricto, leer sin inicializar da un valor cualquiera | ⚠ **deja fuera lo peor** (memoria liberada, fuera de limites siguen indefinidos) y **once anios despues los compiladores solo ofrecen banderas sueltas** (`-fwrapv`, `-fno-strict-aliasing`), no el dialecto. **Parchear no funciono** |
 | **Detectar** | **Zig** | lo llama *comportamiento ilegal detectable*: en `Debug` y `ReleaseSafe` da panico; en `ReleaseFast` **vuelve a ser UB** | ⚠ honesto pero a medias: **el binario que entregas es el que no comprueba** |
 | **★ Definir** | **WebAssembly**, Java, y en su capa segura Rust | **cada instruccion tiene semantica definida, sin nada indefinido ni dependiente de la implementacion**; lo que no tiene resultado sensato **atrapa** (trap), y atrapar es un resultado | ✅ **es el que coge INTI** |
 
@@ -496,7 +496,7 @@ La primera es una prohibicion y se comprueba leyendo. La segunda es una
 ⚠ **Y lo que la sonda NO dice, por delante:** que INTI compile para 32 bits. No
 compila -- no hay emisor, ni convencion de llamada, ni marco. Lo que decide es si
 ese trabajo sera *escribir un emisor* o *desenterrar ochos repartidos por el
-compilador*, que es la diferencia entre un mes y un ano. **Salio lo primero.**
+compilador*, que es la diferencia entre un mes y un anio. **Salio lo primero.**
 
 Sigue en pie lo unico que no se puede saber sin hardware: C no demostro nada en
 1973 escribiendo el kernel; lo demostro en **1977 moviendolo al Interdata**. INTI
@@ -1353,7 +1353,7 @@ hacerlas antes de tener registros es pintar una casa sin cimientos.
 
 ### 13.7 SIMD: no se autovectoriza, y es una decision
 
-GCC y LLVM llevan veinte anos en la autovectorizacion y **sigue siendo fragil**:
+GCC y LLVM llevan veinte anios en la autovectorizacion y **sigue siendo fragil**:
 funciona hasta que cambias una linea y deja de funcionar sin decirtelo.
 
 INTI da **SIMD por intrinsecos de tabla**, con el mecanismo que ya existe
@@ -1432,7 +1432,7 @@ son de velocidad; el cuarto es el ironico de verdad.
 #### 1. El ensamblador de ayer es el codigo lento de manana
 
 Copiar memoria en x86 tuvo **tres respuestas correctas distintas en veinte
-anos**:
+anios**:
 
 ```text
    antes de 2012   `rep movsb` es lento -> todo el mundo escribe copias SSE
@@ -1546,7 +1546,7 @@ se construye sobre otros; lo que separa un diseno de una copia es si se sabe
 | Congelar al terminar el modulo | **Starlark** | es lo que quita el GIL sin cerrojos |
 | VALOR / COSA, con copia-al-escribir | **Swift** | prueba de que refcount + valores funciona en un lenguaje de sistema |
 | Definirlo TODO, sin nada indefinido | **WebAssembly** | portabilidad y cero UB a la vez: C decia que habia que elegir |
-| Aislamiento en vez de cerrojos | **Erlang, Pony** | 40 anos sin un data race |
+| Aislamiento en vez de cerrojos | **Erlang, Pony** | 40 anios sin un data race |
 | Errores como datos | Go, Rust | pero sin `panic`: aqui un error es un valor y punto |
 | Mensajes que ensenan | **Elm, Rust** | 9.2: el error es la interfaz principal |
 | Una sola estructura y pocas palabras | **Lua** | un lenguaje se juzga por lo que RESERVA |
@@ -1815,7 +1815,7 @@ no escribiste dependen de el. Un material es **ancho y mutable** -- manana puede
 tener una palabra clave mas.
 
 ★★ Confundirlos es lo que produce sistemas donde tocar el lenguaje rompe
-binarios ajenos. Y es exactamente el reparto que Unix tuvo cincuenta anos: **C
+binarios ajenos. Y es exactamente el reparto que Unix tuvo cincuenta anios: **C
 fue el material, la tabla de syscalls fue el contrato.** Ninguno sustituyo al
 otro, y no por falta de tiempo.
 
@@ -1961,7 +1961,7 @@ que si sin medirlo seria justo el mito que esta seccion desmonta.
 ### Lo que Rust hace mejor, y hay que decirlo primero
 
 Mas maduro, con un comprobador de prestamos que INTI no va a igualar pronto, un
-ecosistema enorme y quince anos de trabajo encima. **INTI no es mejor que Rust**
+ecosistema enorme y quince anios de trabajo encima. **INTI no es mejor que Rust**
 y decir lo contrario haria dudar de todo lo demas.
 
 ### Lo que Rust no puede ser aqui, que es otra cosa
@@ -1987,7 +1987,7 @@ fuera: pide que el compilador sea del sistema.
 > **Rust escribe el kernel de hoy. INTI es el lenguaje al que el sistema quiere
 > llegar.** No es una sustitucion en marcha: es el mismo movimiento que Unix hizo
 > con el ensamblador del PDP-7, y alli tampoco se tiro todo el ensamblador -- el
-> arranque y el cambio de contexto siguen en ASM cincuenta anos despues.
+> arranque y el cambio de contexto siguen en ASM cincuenta anios despues.
 
 ⚠ Y el limite honesto: **INTI no tiene que tragarse `entry.rs`.** La seccion 1.1
 lo dice y sigue valiendo -- *el lenguaje del sistema nunca escribio el 100% del

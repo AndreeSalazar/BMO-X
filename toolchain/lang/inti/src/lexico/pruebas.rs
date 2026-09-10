@@ -300,7 +300,7 @@ fn un_nombre_con_tilde_vale_y_se_avisa() {
     let c = barrer("a\u{f1}o = 2026", &vocab());
     assert_eq!(c.codigos(), vec!["A2010"]);
     assert!(!c.hay_errores(), "un aviso no impide compilar");
-    assert!(c.avisos[0].que_hacer.contains("ano"));
+    assert!(c.avisos[0].que_hacer.contains("anio"));
 }
 
 /// La prueba de que el idioma es una columna: el mismo barrido, otro

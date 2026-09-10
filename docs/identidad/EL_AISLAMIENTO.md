@@ -40,7 +40,7 @@ Son ejes distintos y no se cambian el uno por el otro:
 | | se puede caer | se puede colar alguien |
 |---|---|---|
 | una app que revienta cada minuto | si | **no necesariamente** |
-| un kernel que lleva un ano sin caerse | no | **puede estar lleno de agujeros** |
+| un kernel que lleva un anio sin caerse | no | **puede estar lleno de agujeros** |
 
 ★★ **La calculadora se murio y BMO sigue vivo: eso fue una app fallando y el
 aislamiento haciendo su trabajo.** Es la linea de CABINA:
@@ -269,7 +269,7 @@ brutal:
 ★★ **BMO-X eligio la segunda, y esa eleccion ES el producto.** Dos puertas
 congeladas y 93 operaciones aditivas es una promesa que cabe en una pagina --
 y una promesa que cabe en una pagina es una promesa que se puede cumplir diez
-anos.
+anios.
 
 ## 6.2 -- Y la compatibilidad **se comprueba en la puerta**, no se confia
 

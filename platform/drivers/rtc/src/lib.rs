@@ -17,7 +17,7 @@
 //! significan. Quien los lee es `ring0/dev/reloj.rs`, con `in`/`out` sobre
 //! `0x70`/`0x71`. La ventaja no es de estilo -- es que **la parte que se
 //! equivoca se prueba en el anfitrion**: el BCD, las doce horas, el siglo y el
-//! ano de dos digitos son cuatro trampas y ninguna necesita un CPU.
+//! anio de dos digitos son cuatro trampas y ninguna necesita un CPU.
 //!
 //! ## Las cuatro trampas del CMOS, y son todas del mismo tipo
 //!
@@ -30,7 +30,7 @@
 //!    es PM** -- y hay que quitarlo ANTES de convertir el BCD, no despues.
 //! 3. **Las 12 de la noche son la hora 12, no la 0.** `12 AM` -> 0 y `12 PM` ->
 //!    12. Sin ese caso, a mediodia y a medianoche el reloj se va doce horas.
-//! 4. **El siglo.** El registro de ano tiene DOS digitos. El registro de siglo
+//! 4. **El siglo.** El registro de anio tiene DOS digitos. El registro de siglo
 //!    (`0x32`) existe en casi todas las placas pero **no esta garantizado**, asi
 //!    que si no dice nada creible se supone 20xx.
 
@@ -256,7 +256,7 @@ mod tests {
         assert_eq!((f.anio, f.hora, f.segundo), (2026, 21, 45));
     }
 
-    /// Sin registro de siglo se supone 20xx -- salvo que el ano de dos digitos
+    /// Sin registro de siglo se supone 20xx -- salvo que el anio de dos digitos
     /// sea >= 70, que es la ventana que usa todo el mundo desde el efecto 2000.
     #[test]
     fn sin_siglo_se_supone_el_veintiuno() {

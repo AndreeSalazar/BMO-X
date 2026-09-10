@@ -76,7 +76,7 @@ pub enum Medio {
 /// lectura aleatoria (WinSAT) puntuaba como SSD, porque los SSD tempranos
 /// contestaban `0000h` o valores falsos.
 ///
-/// Eso es `R-FW2` de esta casa, escrita once anos despues y con otras palabras:
+/// Eso es `R-FW2` de esta casa, escrita once anios despues y con otras palabras:
 /// *"lo que el firmware declara se comprueba contra lo que el aparato hace. Si
 /// no coinciden, gana el aparato."* Por eso `Medio` tiene `NoContesta` como
 /// estado propio y no lo colapsa a "rotacional": **la ausencia de respuesta es

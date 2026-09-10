@@ -598,13 +598,13 @@ fn printf_con_el_formato_en_una_variable() {
         r#"
 int main() {
     char *f;
-    f = "%s tiene %d anos\n";
+    f = "%s tiene %d anios\n";
     printf(f, "andre", 26);
     return 0;
 }
 "#,
     );
-    assert_eq!(out, "andre tiene 26 anos\n");
+    assert_eq!(out, "andre tiene 26 anios\n");
 }
 
 /// ** LA ANCHURA SE APLICA, y el `printf` en linea no puede aplicarla.

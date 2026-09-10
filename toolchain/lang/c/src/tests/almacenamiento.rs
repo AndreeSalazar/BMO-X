@@ -122,7 +122,7 @@ fn un_prototipo_sin_definicion_no_se_inventa_la_funcion() {
 // -- auto y register: se aceptan y no cambian nada ---------------------
 
 /// `auto` y `register` se aceptan y se **tiran**. No es pereza: `register` es
-/// una sugerencia que todos los compiladores ignoran desde hace treinta anos y
+/// una sugerencia que todos los compiladores ignoran desde hace treinta anios y
 /// `auto` es redundante desde 1978. Lo que importa del test es que el programa
 /// de **lo mismo** con ellas y sin ellas.
 #[test]

@@ -111,7 +111,7 @@ pub struct Pantalla {
     /// herramienta para eso.
     sucio: core::cell::Cell<crate::sin_gpu::sucio::Sucias>,
     /// Lo que ha costado mover pixeles. Ver [`Volcado`]: es el numero que
-    /// decide si una GPU compra algo o solo cuesta un ano.
+    /// decide si una GPU compra algo o solo cuesta un anio.
     volcado: core::cell::Cell<Volcado>,
 }
 

@@ -113,7 +113,7 @@ Texto:
 
 ```text
 saludo = "hola"
-con_hueco = "hola {nombre}, tienes {edad} anos"     # interpolacion
+con_hueco = "hola {nombre}, tienes {edad} anios"     # interpolacion
 en_bruto = crudo_texto "C:\ruta\sin\escapes"
 multi = """
    varias lineas, y la sangria del margen se quita

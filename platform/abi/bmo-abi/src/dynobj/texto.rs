@@ -31,8 +31,8 @@
 //! una decision, no una comodidad:
 //!
 //! ```text
-//!    "anos"   sin la virgulilla  ->  4 bytes,  4 caracteres
-//!    "anos"   con la virgulilla  ->  5 bytes,  4 caracteres
+//!    "anos"   sin la virgulilla  ->  4 bytes,  4 caracteres   (ene-caida-adrede)
+//!    "anos"   con la virgulilla  ->  5 bytes,  4 caracteres   (ene-caida-adrede)
 //! ```
 //!
 //! Contar caracteres en UTF-8 **es un recorrido**, no una lectura. Poner ese
@@ -278,7 +278,10 @@ mod pruebas {
     /// **BYTES, no caracteres**, y este es el caso que lo demuestra.
     #[test]
     fn la_cabecera_cuenta_bytes_y_no_caracteres() {
-        let b = con("anos", false);
+        // La forma ASCII es la mitad DELIBERADA del par que este test
+        // demuestra, asi que aqui no se toca. La marca va en la MISMA linea
+        // porque la exencion del guardian es por linea y no por fichero.
+        let b = con("anos", false); // ene-caida-adrede
         assert_eq!(revisar(&b).unwrap().bytes, 4);
 
         // La misma palabra con la ene: cuatro caracteres, CINCO bytes.

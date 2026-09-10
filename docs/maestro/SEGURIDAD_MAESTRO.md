@@ -75,7 +75,7 @@ BMO-X va a copiar aritmetica con constantes en cuanto toque Ed25519 --el primo
 ## 2.3 La cadena de suministro
 
 `xz-utils`, marzo de 2024: alguien se gano el mantenimiento de una libreria de
-compresion a lo largo de dos anos y metio, **en los ficheros de construccion y
+compresion a lo largo de dos anios y metio, **en los ficheros de construccion y
 no en el fuente**, algo que enganchaba la autenticacion de `sshd`. Lo destapo un
 ingeniero que estaba midiendo latencias y noto medio segundo de mas en un login.
 

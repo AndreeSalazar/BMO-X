@@ -38,7 +38,7 @@
 //!
 //! ## * Regla 1: NO SE TOCA EL DISPLAY
 //!
-//! Y es lo que convierte esto de "un ano" en "un driver del tamano del de
+//! Y es lo que convierte esto de "un anio" en "un driver del tamano del de
 //! AHCI". El firmware UEFI **ya programo el motor de pantalla** y dejo un
 //! framebuffer lineal a 1920x1080 (GOP). Si se deja como esta, **se salta
 //! DCN entero** -- el controlador de display, que es la parte mas grande y
@@ -95,7 +95,7 @@
 //! Todo lo de arriba es **acelerar el compositor con SDMA**: un motor, sin
 //! sombreadores, sin 3D. Es del tamano del driver de AHCI y es alcanzable.
 //!
-//! **Correr juegos de Vulkan es otra meta y es un proyecto de anos.** Vive en
+//! **Correr juegos de Vulkan es otra meta y es un proyecto de anios.** Vive en
 //! `PLAN_VULKAN.md`, en esta misma carpeta, con sus piezas contadas y con la
 //! ruta que casi nadie considera primero: **Vulkan por software**, que borra
 //! el muro del PSP y el compilador de ISA de golpe.
@@ -108,14 +108,14 @@
 //! **RX 9060 XT 16GB** (Navi 44 / GFX1200). Soporte en kernel desde 6.11 y
 //! firmware en `linux-firmware`. Es lo mas nuevo de los candidatos --
 //! deliberadamente, porque el perfil tiene que seguir siendo el perfil
-//! dentro de tres anos, y la parte que se va a usar (SDMA) es de las mas
+//! dentro de tres anios, y la parte que se va a usar (SDMA) es de las mas
 //! estables del stack de AMD entre generaciones.
 //!
 //! [!] **Comprobar antes de comprar** (ley 11: se pregunta, no se supone):
 //! que la SKU concreta tenga su firmware en `linux-firmware` y sus cabeceras
 //! de registros publicadas. Alternativas mas maduras si eso fallara: RDNA 3
 //! (Navi 33, RX 7600) o RDNA 2 (Navi 23, RX 6600) -- el trabajo de SDMA es
-//! practicamente el mismo y llevan mas anos de rodaje.
+//! practicamente el mismo y llevan mas anios de rodaje.
 
 #![no_std]
 

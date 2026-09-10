@@ -92,7 +92,7 @@
 //! arrancarlo**. Un sistema viejo que ejecuta un programa nuevo ignorando lo que
 //! no entiende es un sistema que arranca y falla despues, lejos de la causa.
 //!
-//! Asi un BMO-X de dentro de un ano puede pedir cosas que este no conoce, y este
+//! Asi un BMO-X de dentro de un anio puede pedir cosas que este no conoce, y este
 //! contesta que no **con el renglon del programa en la mano** en vez de
 //! arrancarlo a medias.
 

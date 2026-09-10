@@ -30,7 +30,7 @@
 //! === * La leccion de MSVC, que es la razon de que este fichero exista ===
 //!
 //! Microsoft nunca publico la especificacion de su ABI. Clang tuvo que hacerle
-//! ingenieria inversa --de ahi `MicrosoftMangle.cpp`-- y el ecosistema pago anos
+//! ingenieria inversa --de ahi `MicrosoftMangle.cpp`-- y el ecosistema pago anios
 //! partido en dos por un documento que no se escribio.
 //!
 //! > **Regla, no observacion: el ABI de C++ de BMO se escribe el mismo dia que

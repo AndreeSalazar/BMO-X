@@ -1,7 +1,7 @@
 # bmo-mods -- extender BMO sin pedirle permiso a nadie
 
 Un comite decide que entra en un lenguaje y cuando. Da estabilidad y cuesta
-anos por cada cambio. Aqui no hay comite: **el que quiere una extension la
+anios por cada cambio. Aqui no hay comite: **el que quiere una extension la
 declara y la usa.**
 
 Esta libreria es el contrato de ese mecanismo. Como todo en `forge/`, se

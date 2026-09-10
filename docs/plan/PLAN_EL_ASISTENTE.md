@@ -261,7 +261,7 @@ Ring 3, y se escribe en INTI por los mismos cuatro motivos.**
 
 ## 4.1 -- El choque, dicho entero
 
-`amdgpu` son millones de lineas. Son millones porque **soporta quince anos de
+`amdgpu` son millones de lineas. Son millones porque **soporta quince anios de
 tarjetas**: descubrimiento de bloques en tiempo de ejecucion, decenas de juegos
 de firmware, mapas de registros por generacion, gestion de energia para cada una.
 
@@ -283,12 +283,12 @@ delante:
 | 1 | enumerar PCIe, mapear BAR | el bus es una **especificacion** | -- ya hecho (xHCI, AHCI) |
 | 2 | **el PSP** | -- | ⚠ una secuencia, no una tabla. Ver 4.3 |
 | 3 | anillos + timbres | -- | **la forma es la de xHCI**, ya peleada en metal |
-| 4 | VRAM, GTT, tablas de pagina | `amdgpu` lo hace para 15 anos de aperturas | **UNA apertura, UN formato**: se conoce, se escribe |
+| 4 | VRAM, GTT, tablas de pagina | `amdgpu` lo hace para 15 anios de aperturas | **UNA apertura, UN formato**: se conoce, se escribe |
 | 5 | SPIR-V -> ISA de RDNA | -- | **la ISA esta PUBLICADA**, y una ISA es una TABLA |
 | 6 | la API de Vulkan | ** SI es software: generico, y se reutiliza de B1 | -- |
 
 *** **Y la fila 5 es la que mas cambia al mirarla asi.** "Escribir un compilador
-de sombreadores" suena a proyecto de anos. Pero `sem-asm` existe y su promesa
+de sombreadores" suena a proyecto de anios. Pero `sem-asm` existe y su promesa
 esta escrita: *"anadir una instruccion = 1 entrada TOML, CERO Rust"*. Un
 `tables/arch/gfx1200/` es **la misma forma** que `tables/arch/x86_64/`, que ya
 tiene cuatro ficheros y 72 intrinsecos.
@@ -453,7 +453,7 @@ en microsegundos, contra la que da Windows en el mismo cable.**
 
 *** **La ultima fila NO dice "meses", y esa es la correccion.** Decia el
 proyecto mas grande del repo, y eso le ponia precio a `amdgpu` --generico,
-quince anos de tarjetas-- cuando lo que se escribe aqui es un perfil de UNA
+quince anios de tarjetas-- cuando lo que se escribe aqui es un perfil de UNA
 (ley 24). De las seis piezas de B2, **cuatro ya estan hechas, son tablas, o son
 software que se reutiliza**; la que no se sabe es el PSP, y no saberlo no es lo
 mismo que saber que es largo.
