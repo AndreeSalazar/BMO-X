@@ -39,7 +39,7 @@ memoria, `exp` en INTI-- baja con el, salvo lo que sirva a otra cosa.
 
 # 2. 🔴 CRITICO -- lo que hace falsa una promesa que el sistema ya hace
 
-## [ ] C1 -- el juez del DMA solo esta cableado en UN aparato de tres
+## [x] C1 -- HECHO el 2026-09-10, y **eran NUEVE sitios que resultaron ser UNO**
 
 ```text
    AHCI    4 sitios   comprueba la paridad, y nada mas
@@ -61,8 +61,31 @@ para quien lo usa, y **el xHCI no lo usa**. N2 cablo el juez en el disco
 ```text
    el juez        HECHO, y no se puede rodear      N0/N1, 09-09
    en el AHCI     CABLEADO                        N2, 09-09
-   en el xHCI     nueve sitios, ninguno pasa      <-- ESTO
+   en el xHCI     CABLEADO                        N2b, 10-09
 ```
+
+### *** Y AL MIRARLO, LOS NUEVE ERAN UNO
+
+Los nueve se miraron uno a uno, y **ocho no pueden estar mal**:
+
+```text
+   los anillos TRB, el DCBAA, los contextos, el ERST   su propio CORRAL
+   el bufer del teclado y el del raton                 `alloc_dma_pages`
+   -> los ocho salen de `Titular::Neutro`, como la NIC: no se comprueban
+      porque NO PUEDEN estar mal
+```
+
+El unico que recibe una direccion DE FUERA es el bufer que una app de Ring 3
+presta para el audio. **Y ahi habia un agujero de verdad**, escrito entero en
+`dev/usb/audio.rs`: `hay = escrito - leido` miraba que hubiera BYTES, y nadie
+miraba que el TRAMO CUPIERA. Con `leido` cerca del final, el xHC leia mas alla
+del bufer prestado y mandaba memoria de otro por el altavoz.
+
+** Es la tercera vez esta semana que un numero grande resulta ser mucho mas
+pequenyo al mirarlo -- y las tres veces lo que aparecio debajo era **mas
+concreto y mas util** que el numero.
+
+  > Contar sitios mide el trabajo. Mirarlos dice cual es.
 
 ** Y por eso es el critico numero uno: no porque el juez sea malo, sino porque
 **la casa ya cree que el problema esta resuelto**. Un mecanismo bueno aplicado

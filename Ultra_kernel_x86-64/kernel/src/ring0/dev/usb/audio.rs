@@ -486,6 +486,15 @@ struct Prestado {
 
 static mut PRESTADO: Option<Prestado> = None;
 
+/// Tramas que el juez del DMA VETO. **Tiene que ser CERO**: cada una es un
+/// tramo que se salia del bufer que la app presto, y que el xHC habria leido.
+static mut VETOS: u64 = 0;
+
+/// La cuenta de los vetos, para quien la quiera ensenar.
+pub fn vetos_dma() -> u64 {
+    unsafe { VETOS }
+}
+
 /// **Adoptar el bufer de una app.** `va` y `bytes` son del bloque que ella pidio.
 ///
 /// Devuelve `false` si esa VA no es suya -- que es lo que impide que una app
@@ -551,6 +560,50 @@ pub fn soltar(pid: u32) {
 ///
 /// Devuelve la fisica de donde empieza y cuantos bytes son, y **avanza el
 /// indice**. No copia ni un byte: lo que se devuelve es una direccion.
+// == *** N2b: EL JUEZ DEL DMA, CABLEADO EN EL xHCI (2026-09-10) ===========
+//
+// # Nueve sitios eran UNO, y este es
+//
+// `EMBUDO.txt` cuenta NUEVE sitios del xHCI que escriben una direccion fisica
+// en un descriptor, y por eso `EL_ORDEN.md` lo puso de critico numero uno. Al
+// mirarlos uno a uno, ocho **no pueden estar mal**:
+//
+// ```text
+//    los anillos TRB, el DCBAA, los contextos, el ERST   su propio CORRAL
+//    el bufer del teclado y el del raton                 `alloc_dma_pages`
+//    -> los ocho salen de `Titular::Neutro`. Como la NIC: no se comprueban
+//       porque NO PUEDEN estar mal (`INTELIGENTE.txt`, forma 1)
+// ```
+//
+// *** El unico que recibe una direccion DE FUERA es este: el bufer que una app
+// de Ring 3 presta para el audio. Y ahi habia un agujero de verdad.
+//
+// # [!] LO QUE NADIE COMPROBABA
+//
+// `hay = escrito - leido` mira que haya BYTES SUFICIENTES, y **`escrito` lo
+// mueve la app**. Lo que no miraba nadie es que el TRAMO QUEPA:
+//
+// ```text
+//    bytes = 4096, leido = 4000, largo = 192
+//    hay = escrito - leido, y si la app dice escrito = 8000 -> hay = 4000
+//    4000 >= 192   ->  pasa
+//    desde = fisica + 4000, y el xHC lee 192 bytes
+//    -> LEE 96 BYTES MAS ALLA del bufer prestado
+// ```
+//
+// ** No corrompe RAM --es una lectura-- pero **manda memoria de otro por el
+// altavoz**, y no da fault ni sintoma. Es exactamente la clase que el juez
+// existe para atrapar.
+//
+// # Y por que el JUEZ y no un `if`
+//
+// Un `if` aqui cierra este caso y hay que acordarse de escribirlo en el
+// siguiente sitio. `juzgar` devuelve una `Prenda`, y **`Prenda` no tiene
+// constructor publico**: la unica forma de tener una direccion que darle al
+// aparato es haberla juzgado. El embudo lo cuenta el compilador.
+//
+//   > Un `if` protege una linea. Un tipo protege la forma de escribirlas.
+
 fn siguiente_trama(largo: u64) -> Option<(u64, u16)> {
     unsafe {
         let p = PRESTADO.as_mut()?;
@@ -562,6 +615,54 @@ fn siguiente_trama(largo: u64) -> Option<(u64, u16)> {
             return None;
         }
         let desde = p.fisica + p.leido;
+        // *** EL JUEZ. El marco es del aparato porque el KERNEL LO PRESTA --
+        // `prestando: true`, igual que el camino directo del disco-- y el
+        // `Marco` declara la base y el tamano REALES del bufer de la app, que
+        // es lo que hace que un tramo que se sale no pase.
+        let veredicto = bmo_dma_juicio::juzgar(
+            bmo_dma_juicio::Peticion {
+                fisica: desde,
+                bytes: largo,
+                aparato: crate::ring0::mm::titular::APARATO_XHCI as u16,
+                // El xHC pide los bufers de datos alineados a 64 bytes.
+                alineacion: 64,
+                // El campo de longitud de un TRB normal son 17 bits.
+                bits_de_cuenta: 17,
+                prestando: true,
+            },
+            bmo_dma_juicio::Marco {
+                es_neutro: false,
+                en_vuelo_para: None,
+                base: p.fisica,
+                bytes: p.bytes,
+                aparato: crate::ring0::mm::titular::APARATO_XHCI as u16,
+            },
+        );
+        if let Err(v) = veredicto {
+            // ** Se cuenta y se calla el altavoz esta vuelta. Mandar la trama
+            // igual seria justo lo que este juez existe para no hacer, y
+            // pararlo entero por una trama seria peor que un chasquido.
+            VETOS = VETOS.wrapping_add(1);
+            // ** El MOTIVO y no un numero: los seis vetos se arreglan en
+            // sitios distintos, y `SeSaleDelMarco` --el que se espera aqui--
+            // apunta a la aritmetica circular del bufer, no al aparato.
+            let porque: &str = match v {
+                bmo_dma_juicio::Veto::SeSaleDelMarco =>
+                    "audio: la trama SE SALE del bufer que presto la app",
+                bmo_dma_juicio::Veto::MalAlineada { .. } =>
+                    "audio: la trama no cumple la alineacion que pide el xHC",
+                bmo_dma_juicio::Veto::NoCabeLaCuenta { .. } =>
+                    "audio: la trama no cabe en el campo de longitud del TRB",
+                bmo_dma_juicio::Veto::NoPideNada =>
+                    "audio: una trama de cero bytes",
+                bmo_dma_juicio::Veto::DeOtroAparato { .. } =>
+                    "audio: ese marco lo tiene OTRO aparato en vuelo",
+                bmo_dma_juicio::Veto::NoEsDeUnAparato =>
+                    "audio: ese marco no es de ningun aparato",
+            };
+            crate::ring0::cabina::warn("audio", porque, VETOS);
+            return None;
+        }
         p.leido += largo;
         // La vuelta al principio: el bufer es circular por acuerdo con la app,
         // que reinicia su `escrito` al mismo tiempo.
