@@ -226,6 +226,21 @@ pub fn repartir(faena: Faena, obreros: u32) -> bool {
 /// desactivado y no "durmiendo por si acaso".
 pub fn parar() {
     PARAR.store(true, Ordering::SeqCst);
+    // == *** Y SE TOCA `RONDA` A PROPOSITO (2026-09-10) =================
+    //
+    // Desde que los obreros DUERMEN, la vigilancia del `monitor` esta puesta
+    // sobre `RONDA` -- no sobre esta bandera. Un obrero dormido no ve la
+    // escritura de arriba hasta que vence su plazo.
+    //
+    // ** Tocar `RONDA` lo despierta AL INSTANTE, por el mismo mecanismo que
+    // usa el trabajo de verdad. No es un apanyo: es la unica forma de avisar
+    // que este modulo tiene, y usarla es mas barato que acortar el plazo de
+    // todos para que este caso se note.
+    //
+    // [!] Y no rompe nada: el obrero mira `PARAR` ANTES que la ronda, asi que
+    // ve la parada y no llega a buscar faena. Que la ronda suba sin trabajo
+    // publicado es exactamente lo que ya pasaba con `RONDA` sin `TAREA`.
+    RONDA.fetch_add(1, Ordering::SeqCst);
 }
 
 /// Estan parados?
