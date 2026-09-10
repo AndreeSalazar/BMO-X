@@ -179,6 +179,18 @@ Los ocho declaran seguir el metodo de `SMP_MAESTRO.md`.
 El formato, dicho por `PLAN_ALMACENAMIENTO.md`: *"casillas ordenadas, cada una
 con **que la bloquea** y **como se sabe que quedo hecha**"*.
 
+### ★★ [`EL_ORDEN.md`](plan/EL_ORDEN.md) -- **que va PRIMERO**
+
+`ABIERTO.md` dice que falta. Este dice **en que orden**, con el criterio
+delante: lo que DESBLOQUEA, lo que CORRIGE UNA MENTIRA, lo que ya esta medido,
+lo que pide el metal, y lo grande que no bloquea a nadie.
+
+** Y la segunda es la que mas cambia el orden: *lo que falta se nota; lo que
+miente, no*. Por eso lo que miente va antes.
+
+[!] Se escribe a mano y envejece -- es un juicio sobre que desbloquea a que, no
+una cuenta. Por eso lleva fecha y `ABIERTO.md` no.
+
 ### ★★ [`ABIERTO.md`](plan/ABIERTO.md) -- **empieza por aqui**
 
 Son **26 planes y 10.803 lineas**. Para saber que queda pendiente habia que
