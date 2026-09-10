@@ -72,13 +72,65 @@ LAS OCHO
             numero  vetos de esa clase = 0
 
   R-DMA-8   Todo vuelo tiene PLAZO: ninguno dura para siempre
-            juez    ** NO EXISTE TODAVIA. Es el paso N5
-            numero  --
+            juez    `mm::titular::caducados(ahora, plazo)`, y lo que mide es
+                    el SILENCIO de un aparato con trabajo abierto, no lo que
+                    dura un vuelo. Ver abajo
+            numero  caducados = 0 -- y hoy no puede subir: el PLAZO todavia
+                    no se ha medido y vale cero
 
 
-  *** SIETE DE LAS OCHO YA TIENEN JUEZ. La octava es exactamente lo que falta,
-  y por eso esta escrita: una regla sin juez, DICHA, es una deuda con nombre.
-  Sin escribir seria un agujero sin nombre.
+  *** LAS OCHO TIENEN JUEZ desde el 2026-09-10. La octava fue la ultima, y
+  estuvo escrita SIN juez varios dias a proposito: una regla sin juez, DICHA,
+  es una deuda con nombre. Sin escribir habria sido un agujero sin nombre.
+
+
+*** R-DMA-8: EL PLAZO, Y LAS DOS COSAS QUE CASI SALEN MAL
+----------------------------------------------------------
+
+  1. EL PLAZO ES DEL APARATO, NO DEL MARCO
+
+     Un sello de tiempo por marco son 4.194.304 x 8 = 32 MiB de BSS. Por
+     aparato son 360 bytes. Y no es solo mas barato: *"se murio este marco"* no
+     significa nada. La pregunta es *"se murio el DISCO"*, y esa es una por
+     aparato aunque tenga cien marcos en el aire.
+
+  2. SE MIDE EL SILENCIO, NO LA DURACION
+
+     Cronometrar desde el despegue mata al aparato SANO: un disco leyendo un
+     fichero grande nunca se queda sin nada en el aire, asi que ese cronometro
+     no para nunca y el plazo saltaria por estar ocupado.
+
+       despega un vuelo   -> hay noticia suya
+       aterriza un vuelo  -> hay noticia suya
+       silencio = ahora - ultima noticia, SOLO con vuelos abiertos
+
+     Un aparato ocupado da noticias todo el rato. Uno muerto deja de darlas
+     con la cuenta en alto. Es un perro guardian, y es lo que hace el hardware
+     desde siempre.
+
+  [!] Y `mm` NO PREGUNTA LA HORA: el que programa el descriptor trae el
+  `cuando`, y aqui ese numero es OPACO. Si `mm` leyera el reloj aparecerian una
+  flecha nueva --memoria -> planificador-- y al reves de como se apoyan. Es la
+  misma decision que `bmo-dma-juicio` recibiendo un `bool` en vez del enum.
+
+
+  LO QUE FALTA ES EL NUMERO (N5b), y no se elige:
+
+    `mm::titular::peor_silencio()` guarda lo peor visto por aparato, y CABINA
+    lo ensena como `mudo=aparato:microsegundos`. El plazo sale de ahi con
+    margen despues de varios arranques. `PLAZO_SIN_MEDIR = 0` significa SIN
+    PLAZO, y no es un valor prudente: es la negativa a inventarse uno.
+
+    ** Y esta medida se lee AL REVES que todas las demas de esta casa.
+    `ciclos.bex` lo ensena midiendo un bucle vacio en el Ryzen:
+
+      bucle vacio      min  11 ticks     media 122 ticks
+      llamada normal   min  30 ticks     media  31 ticks
+
+    Para saber lo que CUESTA algo se mira el minimo, porque la media es la
+    maquina mas todo lo que pasaba alrededor. Para saber cuanto ESPERAR se mira
+    lo peor que ha pasado nunca. Un plazo puesto en el minimo caduca vuelos
+    sanos todo el rato.
 
 
 *** R5c: LA UNICA QUE YA NO SOLO CUENTA

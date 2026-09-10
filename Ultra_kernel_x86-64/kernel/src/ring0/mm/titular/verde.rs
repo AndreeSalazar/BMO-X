@@ -24,7 +24,8 @@
 //! ** Por eso `vuelo=V:P:C` esta delante de la cara en CABINA y `cubiertos`
 //! no: el precio de una cuenta decide DONDE se puede ensenar.
 
-use super::{tabla, MARCOS, EN_VUELO_CHOQUES, EN_VUELO_PISADOS, EN_VUELO_VIVOS,
+use super::{tabla, CADUCADOS, MARCOS, EN_VUELO_CHOQUES, EN_VUELO_PISADOS,
+            EN_VUELO_VIVOS, PEOR_SILENCIO,
             NEUTROS_SOLTADOS, NEUTROS_VIVOS};
 
 
@@ -76,6 +77,40 @@ pub fn vuelos() -> (u64, u64, u64) {
 /// Las dos son de leer un `static`: la cuenta la lleva [`marcar`], que es el
 /// unico sitio por el que un marco cambia de dueno. Preguntar esto **no
 /// recorre nada**, asi que se puede poner en un panel que se repinta.
+
+/// **EL PEOR SILENCIO QUE SE LE HA VISTO A UN APARATO**, y a cual:
+/// `(aparato, cuanto, caducados)`.
+///
+/// *** ES EL NUMERO DE N5b. El plazo de R-DMA-8 sale de aqui con margen, y no
+/// de una eleccion: LEY 24 dice que el hardware se PERFILA, y *"un segundo
+/// porque suena bien"* es una estimacion de OTRO proyecto.
+///
+/// ** Y hay que leerlo al reves que todas las demas medidas de esta casa:
+///
+/// ```text
+///    lo que CUESTA algo    se mira el MINIMO. La media es la maquina mas
+///                          todo lo que pasaba alrededor
+///    cuanto ESPERAR        se mira LO PEOR que ha pasado nunca
+/// ```
+///
+/// `ciclos.bex` lo ensena en el Ryzen midiendo un bucle vacio: minimo 11 ticks,
+/// media 122. Un plazo puesto en 11 caducaria vuelos sanos todo el rato.
+///
+/// [!] `cuanto` viene en las unidades del reloj que use quien llama a
+/// `en_vuelo`, y aqui no se sabe cuales son. Quien lo ensena las sabe.
+pub fn peor_silencio() -> (u8, u64, u64) {
+    let mut quien = 0u8;
+    let mut peor = 0u64;
+    for a in 1..16usize {
+        let v = unsafe { PEOR_SILENCIO[a] };
+        if v > peor {
+            peor = v;
+            quien = a as u8;
+        }
+    }
+    (quien, peor, unsafe { CADUCADOS })
+}
+
 pub fn neutros() -> (u64, u64) {
     unsafe { (NEUTROS_VIVOS, NEUTROS_SOLTADOS) }
 }

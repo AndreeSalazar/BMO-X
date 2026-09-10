@@ -212,14 +212,31 @@ pub static mut DMA_VETOS: u64 = 0;
 /// Simetrico con [`juzgar_el_dma`] a proposito: los dos recorren lo mismo. Un
 /// juez que mira N paginas y un bit que marca UNA es peor que ninguno de los
 /// dos, porque da la impresion de cubrir el tramo.
-fn marcar_el_tramo(phys: u64, bytes: u64, poner: bool) {
+/// Pone o quita el bit EN VUELO en todas las paginas de un tramo.
+///
+/// # *** EL RELOJ SE LEE UNA VEZ POR TRANSFERENCIA, NO POR PAGINA (N5)
+///
+/// `mm` no pregunta la hora: la trae quien programa el descriptor, que es este
+/// fichero. Y se lee **fuera del bucle** a proposito, porque `ciclos.bex` ya
+/// midio lo que cuesta preguntarla en esta placa:
+///
+/// ```text
+///    un `rdtsc`                  112 ticks   (~30 ns a 3,7 GHz)
+///    una lectura de 4 KiB al AHCI    decenas de MICROsegundos
+/// ```
+///
+/// ** Por pagina serian 112 ticks x N y crecerian con el tamano de la lectura;
+/// por transferencia son 112 y punto. Contra una vuelta al disco no se nota --
+/// pero que no se note es una consecuencia de donde esta la linea, no una
+/// propiedad del reloj.
+fn marcar_el_tramo(phys: u64, bytes: u64, poner: bool, cuando: u64) {
     let mut p = phys & !(mm::PAGE - 1);
     let fin = phys + bytes;
     while p < fin {
         if poner {
-            mm::phys::en_vuelo(p, mm::phys::APARATO_AHCI);
+            mm::phys::en_vuelo(p, mm::phys::APARATO_AHCI, cuando);
         } else {
-            mm::phys::aterrizo(p, mm::phys::APARATO_AHCI);
+            mm::phys::aterrizo(p, mm::phys::APARATO_AHCI, cuando);
         }
         p += mm::PAGE;
     }
@@ -273,9 +290,12 @@ fn mandar_lectura(lba: u64, count: u16, phys: u64, prestando: bool) -> Option<u1
     // Un juez que mira N paginas y un bit que marca UNA es peor que ninguno de
     // los dos: da la impresion de cubrir el tramo.
     let bytes = count as u64 * SECTOR as u64;
-    marcar_el_tramo(phys, bytes, true);
+    marcar_el_tramo(phys, bytes, true, crate::ring0::task::scheduler::rdtsc());
     let r = unsafe { bmo_ahci::read_sectors_phys(PORT, lba, count, phys) };
-    marcar_el_tramo(phys, bytes, false);
+    // ** La segunda lectura del reloj no es un adorno: la diferencia entre
+    // las dos ES lo que tardo el disco, y de ahi sale `peor_silencio`, que es
+    // el numero del que saldra el plazo de R-DMA-8 (N5b).
+    marcar_el_tramo(phys, bytes, false, crate::ring0::task::scheduler::rdtsc());
     match r {
         Ok(n) => Some(n),
         Err(e) => {
