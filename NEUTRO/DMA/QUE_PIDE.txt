@@ -1,0 +1,180 @@
+QUE PIDE UN APARATO CON DMA -- y por que se prueba EN USO
+==========================================================
+
+  Pregunta del dueno, 2026-09-10: "en DMA que se solicita para aplicar? [...]
+  no es ir lo tipico sino en que se basa, por que, y que quiere -- es mas
+  profundo".
+
+  Lo tipico es la lista de registros. Esto no es esa lista.
+
+
+PRIMERO, LO QUE NO ES DIFICIL
+------------------------------
+
+  El mecanismo son TRES LINEAS.
+
+    escribe una direccion en un registro del aparato
+    escribe una longitud
+    toca la campana
+
+  Eso es todo. No hay un cuarto paso escondido. Cualquiera que haya escrito un
+  driver lo hace la primera tarde.
+
+  *** Asi que la pregunta interesante no es como se hace. Es **por que un
+  mecanismo de tres lineas necesita nueve ficheros alrededor**.
+
+
+LO QUE EL APARATO PIDE DE VERDAD: UNA PROMESA DE CUATRO PARTES
+---------------------------------------------------------------
+
+  Un aparato no pide MEMORIA. Pide que se le prometan cuatro cosas, y **ninguna
+  de las cuatro se la puede dar el solo**:
+
+
+  1. UNA DIRECCION QUE ENTIENDA EL BUS
+
+     No virtual: el aparato no tiene CR3 ni camina tablas. Y "fisica" solo por
+     casualidad -- lo que necesita es una direccion DEL BUS, que en esta placa
+     coincide con la fisica. Eso es una propiedad de la maquina, no una ley;
+     hay placas donde no coinciden, y Linux tiene cuarenta funciones por eso.
+
+       en BMO-X:  el espejo lineal. `virt = fisica + HIGH_MEM_BASE`, y la
+                  traduccion es una RESTA, no una pregunta (2026-08-10)
+
+
+  2. UN TRAMO SEGUIDO EN ESA VISTA
+
+     El aparato avanza SUMANDO. No tiene forma de saltar de una pagina a otra
+     porque no sabe que existen las paginas.
+
+     ** Y aqui esta lo que casi nadie dice en voz alta: **la contiguidad fisica
+     es lo unico que el CPU dejo de necesitar hace cuarenta anios y el aparato
+     no.** Todo lo que hace incomodo el DMA sale de esa asimetria.
+
+       en BMO-X:  `bmo-dma-forma`, y si no lo esta -> REBOTE
+
+
+  3. UNA VENTANA DE TIEMPO EN LA QUE NADIE SE LO QUITE
+
+     La que nadie escribe. Un bufer prestado deja de estar prestado cuando el
+     que lo tenia muere, y el aparato no se entera: sigue escribiendo en una
+     direccion que ya es de otro.
+
+     *** Una IOMMU **no** arregla esto. Contesta DONDE puede escribir, y la
+     respuesta sigue siendo "puede" cuando la correcta era "ya no".
+
+       en BMO-X:  el bit EN VUELO (N4) y el plazo (N5)
+
+
+  4. UNA FORMA DE DECIR QUE ACABO
+
+     La unica de las cuatro en la que el aparato CONTESTA en vez de pedir. Y por
+     eso es la que se puede comprobar.
+
+       en BMO-X:  el `PRDBC`, y desde el 10-09 se comprueba que no diga de mas
+
+
+  ** LAS CUATRO SON PROMESAS SOBRE EL FUTURO, hechas por un sistema que reparte
+  memoria. Ese es todo el problema, dicho en una linea:
+
+    > El aparato no quiere permiso. Quiere que nadie le mueva el sitio mientras
+    > escribe. Eso no es un permiso: es propiedad con horario.
+
+
+Y LO QUE QUIERE, QUE ES OTRA COSA
+-----------------------------------
+
+  El DMA existe para **sacar al CPU del camino del dato**. Lo que el aparato
+  quiere es NO TENER QUE PREGUNTAR.
+
+  *** De ahi sale una consecuencia incomoda y honesta: **cada comprobacion que
+  anadimos es una que el aparato no pidio.** No son para el. Son para nosotros.
+
+    el aparato pide          4 cosas
+    el sistema necesita      7 respuestas
+    la diferencia            es la materia entera
+
+  Las siete estan en `REGLAS.txt` y en `PLAN_EL_NEUTRO_VIGILADO.md`. Seis tienen
+  quien las conteste; la septima --DONDE, o sea la IOMMU-- es N7.
+
+
+POR QUE SE PRUEBA EN USO Y NO CON UNA SONDA
+---------------------------------------------
+
+  Peticion del dueno, la misma frase: "para saber como test pero inteligente,
+  EN USO CONSTANTE".
+
+  ** Una sonda contesta *"funciono cuando la corri"*. Y ningun fallo de esta
+  lista aparece cuando uno mira:
+
+    un marco pisado         se ve tres arranques despues, con otra cara
+    dos aparatos a la vez   hace falta que coincidan
+    un desbordamiento       hace falta un tamano raro, un lote raro, un dia raro
+    un aparato muerto       hace falta que se muera
+
+  *** Todos son fallos DE COINCIDENCIA. Una sonda no puede provocarlos porque
+  no controla la coincidencia; lo unico que la produce es **el uso de verdad**.
+
+    > Una prueba que hay que acordarse de lanzar solo protege los dias que uno
+    > se acuerda. Y el fallo no elige esos dias.
+
+  Asi que en BMO-X las pruebas del DMA **viajan pegadas al trabajo real**, y
+  todas cumplen tres cosas:
+
+    1. cuestan casi nada         si costaran, se apagarian, y apagadas no valen
+    2. no cambian la decision    una prueba que decide deja de ser una prueba
+    3. tienen un numero que es   `pisados = 0`, `choques = 0`, `rotas = 0`
+       CERO
+
+
+  LAS QUE HAY HOY, Y LO QUE CUESTA CADA UNA
+
+    pisados      un marco cambio de titular con DMA dentro   2 comparaciones
+    choques      dos aparatos sobre el mismo marco           1 comparacion
+    soltados     un marco de aparato se solto (N3)           2 comparaciones
+    mudo         cuanto lleva callado un aparato (N5)        1 resta
+    motivos      de que se queja cada rebote                 1 suma
+    la cuenta    el HBA dijo mover mas de lo pedido          1 comparacion
+    el borde     escribio mas alla de lo que declaro         8 lecturas
+
+  ** Ninguna llega al precio de una vuelta al disco, que son decenas de
+  MICROsegundos. Por eso pueden estar siempre encendidas, y por eso valen.
+
+
+*** EL CENTINELA, Y POR QUE SOLO MIRA EL BORDE
+-----------------------------------------------
+
+  La ultima de la lista es la mas nueva y la que mejor ensena la idea.
+
+  La pagina de rebote son 4096 bytes y un lote los llena enteros. Asi que se
+  piden DOS marcos contiguos y el segundo no se usa para nada: es el centinela,
+  con un patron conocido en sus primeros 64 bytes.
+
+    un desbordamiento tiene que CRUZAR la frontera para existir
+    -> con vigilar la frontera basta
+
+  ** Comparar los 4 KiB costaria como el `memcpy` del propio rebote: seria
+  DUPLICAR el precio del camino lento para vigilarlo. Mirar el borde son ocho
+  lecturas de `u64`. La diferencia entre las dos versiones no es de listeza: es
+  la diferencia entre una prueba que se queda encendida y una que se apaga.
+
+  [!] Y A QUIEN VIGILA DE VERDAD ES A NOSOTROS. Es facil leerlo como "por si el
+  HBA miente", y esa es la mitad menos util. La longitud del PRDT **la
+  calculamos aqui** -- `PER_BATCH`, `MAX_POR_COMANDO`, tres `min()` encadenados.
+  Esa aritmetica es exactamente la que se equivoca por uno.
+
+    con centinela   equivocarse por uno se paga en una pagina nuestra, y se DICE
+    sin centinela   se paga en la memoria de otro, y no se dice nunca
+
+  Cuesta 4 KiB de RAM, una vez, para siempre.
+
+
+DONDE VIVE CADA COSA
+---------------------
+
+  las tres formas y cuando usar cada una  ->  INTELIGENTE.txt
+  las ocho reglas y sus jueces            ->  REGLAS.txt
+  quien le da una direccion a un aparato  ->  EMBUDO.txt
+  el centinela                            ->  Ultra_kernel_x86-64/kernel/src/
+                                              ring0/dev/disk/centinela.rs
+  que copiar del mundo                    ->  docs/maestro/DMA_MAESTRO.md

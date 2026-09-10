@@ -82,6 +82,9 @@ ejes, dos cuerpos de trabajo previo, dos maestros.
                                     aparato, y cuando vale cada una
        REGLAS.txt                   las OCHO que valen para CUALQUIERA de las
                                     tres, cada una con su juez y su numero
+       QUE_PIDE.txt                 que solicita un aparato de verdad --las
+                                    CUATRO promesas-- y por que las pruebas
+                                    del DMA viajan pegadas al trabajo real
 
    docs/maestro/DMA_MAESTRO.md      que copiar del mundo sobre disciplina DMA
    docs/maestro/IOMMU_MAESTRO.md    que copiar sobre AMD-Vi / VT-d / SMMU

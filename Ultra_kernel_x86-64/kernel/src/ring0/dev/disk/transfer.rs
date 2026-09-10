@@ -326,6 +326,18 @@ fn mandar_lectura(lba: u64, count: u16, phys: u64, prestando: bool) -> Option<u1
 /// El trozo de rebote de siempre, para cuando el destino no sirve para DMA.
 fn leer_rebotando(lba: u64, batch: u16, dma: u64, buf: &mut [u8], done: u16) -> Option<u16> {
     let got = mandar_lectura(lba, batch, dma, false)?;
+    // == *** LAS DOS COMPROBACIONES QUE VIAJAN CON EL TRABAJO =============
+    //
+    // ** No son una sonda. Corren en CADA rebote, con los tamanos de verdad,
+    // y nadie tiene que acordarse de lanzarlas. Ver `centinela.rs` para por
+    // que eso es distinto de probar el DMA una vez.
+    //
+    // 1. la CUENTA: el HBA no puede haber movido mas de lo que se le pidio.
+    //    Una comparacion, y si falla se devuelve lo pedido: creerle aqui
+    //    haria copiar de mas, o sea propagar el fallo en vez de pararlo.
+    // 2. el BORDE: la pagina de al lado sigue intacta. Ocho lecturas.
+    let got = super::centinela::cuadra_la_cuenta(batch, got);
+    super::centinela::mirar();
     if got == 0 { return None; }
     let src = mm::phys_to_virt(dma) as *const u8;
     let dst_off = done as usize * SECTOR;

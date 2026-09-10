@@ -1043,6 +1043,19 @@ pub(crate) fn shell_mem() {
     //
     // ** Solo se dicen los que NO son cero. Una lista de seis renglones con
     // cuatro ceros esconde los dos que importan.
+    // ** EL CENTINELA: lo que se comprueba EN USO, no con una sonda.
+    //
+    // `miradas` sube con cada rebote; las otras dos son CERO o hay un aparato
+    // escribiendo fuera de lo que declaro. Ver `dev/disk/centinela.rs`.
+    let (mir, rotas, de_mas) = crate::ring0::dev::disk::cuentas_centinela();
+    row("centinela", |l| {
+        l.dec(mir);
+        l.txt(" bordes mirados, ");
+        l.dec(rotas);
+        l.txt(" ROTOS, ");
+        l.dec(de_mas);
+        l.txt(" veces que el HBA dijo de mas");
+    });
     let motivos = crate::ring0::dev::disk::motivos_dma();
     let cuales = [
         bmo_dma_forma::PorQue::EsSuyo,
