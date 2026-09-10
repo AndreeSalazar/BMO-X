@@ -148,6 +148,34 @@ pub const INFO_DMA_CENTINELA_ROTAS: u64 = 0x5B;
 /// Del carril del DMA. Ver `NEUTRO/DMA/REGLAS.txt`.
 pub const INFO_DMA_HBA_DE_MAS: u64 = 0x5C;
 
+// == *** LO QUE CUESTA TENER LOS DOCE EN PIE (2026-09-10) ==================
+//
+// Hasta hoy levantar los nucleos costaba once girando al 100%, asi que el
+// numero que hacia falta era `girando`. Con `MWAITX` la pregunta cambia: ya no
+// es *cuantos giran*, es **cuanto tiempo estan apagados de verdad**.
+//
+// ** Y son DOS campos y no uno a proposito: mil siestas de un microsegundo se
+// ven igual de bien en la cuenta y no apagan nada. El que demuestra el ahorro
+// es el tiempo; la cuenta solo dice si el mecanismo se uso.
+//
+// El tercero --el C-state-- es el que dice si el silicio se lo tomo en serio:
+// C1 para el nucleo y le deja los relojes; C6 lo apaga. Ver `plat/smp/dormir.rs`.
+
+/// **Veces que un obrero se durmio de verdad con MWAITX. 0 = no hay MONITORX.**
+///
+/// Del carril de AXION. Ver `plat/smp/dormir.rs`.
+pub const INFO_SMP_SIESTAS: u64 = 0x5D;
+
+/// **TICKS del TSC pasados durmiendo, sumando todos los obreros.**
+///
+/// Del carril de AXION. Ver `plat/smp/dormir.rs`.
+pub const INFO_SMP_MS_APAGADOS: u64 = 0x5E;
+
+/// **Que tan hondo se duerme: el C-state, ya en numero (1 = C1). 0 = no duerme.**
+///
+/// Del carril de AXION. Ver `plat/smp/dormir.rs`.
+pub const INFO_SMP_CSTATE: u64 = 0x5F;
+
 /// **La frecuencia efectiva del nucleo AHORA, en Hz.** `0` = no se puede medir.
 ///
 /// No es [`INFO_TSC_HZ`]: ese es el reloj de referencia, que no cambia nunca.

@@ -290,6 +290,27 @@ pub fn render_hud() {
     let (c_mir, c_rotas, c_demas) = crate::ring0::dev::disk::cuentas_centinela();
     r.txt(" borde="); r.dec(c_mir);
     r.txt(":"); r.dec(c_rotas + c_demas);
+    // ** `zzz=Cn:ms` -- LO QUE CUESTA TENER LOS DOCE EN PIE.
+    //
+    // Hasta el 10-09 levantar los nucleos costaba once girando al 100%. Con
+    // `MWAITX` duermen, y lo que hay que ver no es cuantos hay: es **cuanto
+    // estan apagados**. `Cn` dice que tan hondo -- C1 solo para el nucleo,
+    // C6 lo apaga-- y sale de CPUID hoja 5, no de una suposicion.
+    //
+    // [!] Si sale `zzz=0`, este silicio no trae MONITORX y los obreros GIRAN.
+    // Ver `plat/smp/dormir.rs`.
+    let cstate = if crate::ring0::plat::smp::dormir::se_puede() {
+        (crate::ring0::plat::smp::dormir::profundidad() >> 4) + 1
+    } else {
+        0
+    };
+    r.txt(" zzz="); r.dec(cstate as u64);
+    if cstate != 0 {
+        let hz_z = crate::ring0::task::scheduler::tsc_freq();
+        let por_ms = if hz_z >= 1000 { hz_z / 1000 } else { 1 };
+        r.txt(":");
+        r.dec(crate::ring0::plat::smp::dormir::ticks_dormidos() / por_ms);
+    }
     let health = if n_soltados != 0 || v_pisados != 0 || v_choques != 0
         || caducados != 0 || c_rotas != 0 || c_demas != 0
     {

@@ -30,5 +30,5 @@ cobol/7/cuentas.bex 6272
 cobol/8/cierre.bex 5008
 cobol/9/comisio.bex 9920
 inti/cpu.ibex 11200
-sys/d.bex 611160
+sys/d.bex 614744
 sys/precio.bex 29984
