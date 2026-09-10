@@ -475,6 +475,22 @@ Un plan que no diga donde acaba es propaganda.
   Se verifica: `caducados = 0` en `mudo=` de CABINA. Hoy no puede subir porque
   el plazo vale cero -- que es N5b.
 
+- [ ] **N2b -- EL JUEZ EN EL xHCI.** `bmo-dma-juicio` esta cableado en el disco
+  desde el 09-09 y **solo ahi**. El controlador USB tiene NUEVE sitios que
+  escriben una direccion fisica en un descriptor
+  (`drivers/usb/xhci/{lib,enumerar,transferencia}.rs`) y ninguno construye una
+  `Prenda`.
+
+  *** El embudo es un TIPO y es incorruptible -- para quien lo usa. Un
+  mecanismo bueno aplicado a un tercio del arbol se lee desde fuera igual que
+  uno completo, y eso es peor que no tenerlo: **hace creer que esta resuelto.**
+
+  [!] Y el xHCI es mas delicado que el disco: sus anillos se rellenan UNA vez y
+  se usan mil, asi que aqui `expuesto` y `en vuelo` dejan de coincidir -- que
+  es justo el caso que `DESDE_LA_RAM.txt` reserva para R-DMA-9.
+
+  Se verifica: `EMBUDO.txt` baja de 14 a 5, y el censo lo dice.
+
 - [ ] **N5b -- EL NUMERO, y no se elige (LEY 24).** `peor_silencio()` guarda lo
   peor visto por aparato y CABINA lo ensena como `mudo=aparato:microsegundos`.
   El plazo sale de ahi con margen despues de varios arranques.

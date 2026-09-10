@@ -1,4 +1,32 @@
 # PLAN SEGURIDAD -- las casillas que faltan, medidas contra el codigo
+---
+
+# [!] LA DEUDA QUE SE CAYO ENTRE DOS PLANES (2026-09-10)
+
+Al ordenar los veintiun planes aparecio que **la firma de los `.bex` no tenia
+casilla en ningun plan vivo**. Su unica mencion estaba dentro de
+`PLAN_EL_ASISTENTE`, escalon 3d -- y ese plan acaba de pasar a ser el ultimo
+por decision del dueno.
+
+*** O sea que la deuda mas seria de seguridad del arbol estaba enterrada dentro
+del plan aparcado. Se saca aqui, que es su sitio.
+
+- [ ] **S-FIRMA -- `sig_algo = 0` y el ancla de confianza vacia.** Todo `.bex`
+      sale sin firmar, y `bef/validator.rs:296` lo dice por escrito: *"eso es
+      integridad, no autoria"*. El README promete que un binario corrupto se
+      rechaza ANTES de ejecutar, y hoy eso es media verdad.
+
+  ** Y ya no es un problema de criptografia: `bmo-cripto` tiene Ed25519
+  completo --637 lineas-- con SHA-512 debajo. **Falta cablearlo y decidir el
+  ancla**, no inventarlo.
+
+  *** Es el ejemplo exacto de lo que el README llama *estricto consigo mismo*:
+  un sistema que promete verificar y no verifica no se estorba a si mismo -- se
+  deja una puerta abierta y no lo dice.
+
+  Se verifica: un `.bex` con la firma cambiada un bit **no arranca**, y lo dice
+  con motivo.
+
 
 > Escrito el **2026-08-18** y **RELEIDO CONTRA EL CODIGO el 2026-08-25**: de las
 > siete casillas, **dos estaban hechas y una estaba mal medida**. Lo que cambio

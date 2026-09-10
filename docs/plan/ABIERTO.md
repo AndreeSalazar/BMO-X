@@ -7,9 +7,9 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   160 casillas ABIERTAS en 21 planes
+   162 casillas ABIERTAS en 22 planes
    114 hechas
-     5 planes CUMPLIDOS (ni una casilla pendiente)
+     4 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
 
@@ -98,6 +98,15 @@
 - [ ] 4 ada como lib no_std toolchain/lang/ada/src/lib.rs con
 - ... y 4 mas
 
+## [`PLAN_EL_NEUTRO_VIGILADO.md`](PLAN_EL_NEUTRO_VIGILADO.md) -- 7 abiertas, 11 hechas
+
+*PLAN EL NEUTRO VIGILADO -- que algo procese el DMA aunque la CPU no mire*
+
+- [ ] N2b -- EL JUEZ EN EL xHCI. bmo-dma-juicio esta cableado en el disco
+- [ ] N5b -- EL NUMERO, y no se elige (LEY 24). peor_silencio() guarda lo
+- [ ] varios arranques con mudo= anotado, incluido uno con DOOM leyendo el WAD
+- ... y 4 mas
+
 ## [`PLAN_ESTRUCTURA.md`](PLAN_ESTRUCTURA.md) -- 7 abiertas, 1 hechas
 
 *PLAN DE ESTRUCTURA -- el taller de BMO-X, en F1*
@@ -115,15 +124,6 @@
 - [ ] M1 WAV dias despues del tubo
 - [ ] M2 MP3 (= A5) media tarde de comprobar la coma flotante antes
 - ... y 4 mas
-
-## [`PLAN_EL_NEUTRO_VIGILADO.md`](PLAN_EL_NEUTRO_VIGILADO.md) -- 6 abiertas, 11 hechas
-
-*PLAN EL NEUTRO VIGILADO -- que algo procese el DMA aunque la CPU no mire*
-
-- [ ] N5b -- EL NUMERO, y no se elige (LEY 24). peor_silencio() guarda lo
-- [ ] varios arranques con mudo= anotado, incluido uno con DOOM leyendo el WAD
-- [ ] elegir el margen y escribirlo en PLAZO_SIN_MEDIR con su porque
-- ... y 3 mas
 
 ## [`PLAN_EL_PIXEL.md`](PLAN_EL_PIXEL.md) -- 6 abiertas, 0 hechas
 
@@ -198,6 +198,12 @@
 
 - [ ] 7 ficheros dorados como oraculo -> toolchain/tools/maqueta/pruebas/calc.dorado
 
+## [`PLAN_SEGURIDAD.md`](PLAN_SEGURIDAD.md) -- 1 abiertas, 17 hechas
+
+*PLAN SEGURIDAD -- las casillas que faltan, medidas contra el codigo*
+
+- [ ] S-FIRMA -- sig_algo = 0 y el ancla de confianza vacia. Todo .bex
+
 ---
 
 # CUMPLIDOS -- todas sus casillas marcadas
@@ -208,6 +214,5 @@ que algo se hizo asi, y eso se consulta mas que la casilla.
 - [`PLAN_ALMACENAMIENTO.md`](PLAN_ALMACENAMIENTO.md) -- 5 hechas, 205 lineas
 - [`PLAN_DIRECTOR.md`](PLAN_DIRECTOR.md) -- 7 hechas, 1005 lineas
 - [`PLAN_EL_PERFIL_TOTAL.md`](PLAN_EL_PERFIL_TOTAL.md) -- 8 hechas, 611 lineas
-- [`PLAN_SEGURIDAD.md`](PLAN_SEGURIDAD.md) -- 17 hechas, 785 lineas
 - [`PLAN_SUELO_RING3.md`](PLAN_SUELO_RING3.md) -- 4 hechas, 316 lineas
 

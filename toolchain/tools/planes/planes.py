@@ -62,6 +62,19 @@ RAIZ = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")
 PLANES = os.path.join(RAIZ, "docs", "plan")
 INDICE = os.path.join(PLANES, "ABIERTO.md")
 
+# == *** LOS DOS INDICES DE LA CARPETA, y ninguno es un plan ==============
+#
+# `ABIERTO.md` dice QUE falta y lo genera esta herramienta. `EL_ORDEN.md` dice
+# QUE VA PRIMERO y lo escribe una persona.
+#
+# ** Los dos llevan casillas, y ninguna es trabajo PROPIO: son punteros a
+# casillas que ya viven en un plan. Contarlas seria contar dos veces lo mismo,
+# y el guardian lo caza al primer intento -- que es como se descubrio.
+#
+#     > Un indice que se cuenta a si mismo infla justo el numero que existe
+#     > para que se pueda confiar en el.
+NO_SON_PLANES = ("ABIERTO.md", "EL_ORDEN.md")
+
 # == *** UNA CASILLA TAMBIEN PUEDE SER UN ENCABEZADO (2026-09-10) =========
 #
 # La primera version pedia que la linea empezara por `- [ ]`, y por eso dijo
@@ -98,7 +111,7 @@ def censo():
     """[(fichero, titulo, hechas, [pendientes]), ...] ordenado por pendientes."""
     filas = []
     for n in sorted(os.listdir(PLANES)):
-        if not n.endswith(".md") or n == os.path.basename(INDICE):
+        if not n.endswith(".md") or n in NO_SON_PLANES:
             continue
         p = os.path.join(PLANES, n)
         with io.open(p, encoding="utf-8", errors="replace") as fh:
