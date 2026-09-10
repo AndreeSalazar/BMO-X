@@ -76,6 +76,7 @@ correr -- que es la definicion de agnostico y la razon de que no viva dentro de
 | [`ARQUITECTURAS.md`](ARQUITECTURAS.md) | lo agnostico: la misma categoria en x86-64, ARM64 y RISC-V |
 | [`REQUISITOS.md`](REQUISITOS.md) | ★ **que falta para completarlo**, con lo hecho marcado |
 | [`FRONTERA.txt`](FRONTERA.txt) | que ES neutro y que NO, para no estirar la palabra |
+| [`DMA/`](DMA/README.md) | ** desde el **09-09**: el MECANISMO. La tercera condicion de esta frontera, por completo |
 
 ### Y lo que NO esta aqui, a proposito
 
@@ -83,7 +84,16 @@ correr -- que es la definicion de agnostico y la razon de que no viva dentro de
    la CATEGORIA y su porque   ->  docs/identidad/EL_NEUTRO.md
    el juez de la cesion       ->  platform/.../bmo-mmio-juicio
    la etiqueta de los marcos  ->  Ultra_kernel_x86-64/.../mm/duenno.rs
+   que COPIAR del mundo       ->  docs/maestro/DMA_MAESTRO.md   (el CUANDO)
+                              ->  docs/maestro/IOMMU_MAESTRO.md (el DONDE)
+   las casillas               ->  docs/plan/PLAN_EL_NEUTRO_VIGILADO.md
 ```
+
+** Los dos maestros viven en `docs/maestro/` y no aqui **porque un maestro no es
+"el documento grande de un tema"**: `docs/README.md` ordena por PREGUNTA, y la
+suya es *"que copiar del mundo y que seria un error copiar"*. Esta carpeta
+contesta otra --*quien alcanza la RAM sin permiso*-- y por eso los cita en vez de
+guardarlos. Ver [`DMA/README.md`](DMA/README.md), seccion 1.
 
 ** Es el mismo reparto que `VALKYRIE-ABI/`: **la carpeta guarda el estandar, no
 el codigo que lo cumple.** `EL_NEUTRO.md` se queda en `identidad/` porque

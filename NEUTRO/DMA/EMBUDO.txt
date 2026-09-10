@@ -1,0 +1,99 @@
+EL EMBUDO -- quien le da una direccion FISICA a un aparato, y cuantas veces
+============================================================================
+
+  La lista, no la prosa. El porque esta en README.md y el plan en
+  docs/plan/PLAN_EL_NEUTRO_VIGILADO.md, paso N0.
+
+  Esto es el censo de N0: mientras este numero sea mayor que UNO, cualquier
+  juez del DMA es un juez al que se puede rodear.
+
+
+POR QUE ESTE FICHERO Y NO OTRO GREP
+------------------------------------
+
+  Porque un grep contesta HOY y se olvida. El censo del neutro (CENSO.txt) ya
+  demostro que la diferencia entre las dos cosas es un guardian: desde el
+  2026-09-07 nadie puede etiquetar un marco como `Duenno::Neutro` sin tener su
+  fila, porque el build lo comprueba.
+
+  *** Esta lista quiere lo mismo, y todavia no lo tiene. Hasta que exista su
+  guardian, el numero de abajo se toma a mano y puede envejecer -- lo cual se
+  dice aqui en vez de fingir que no.
+
+
+LAS COLUMNAS
+------------
+
+  aparato       quien recibe la direccion
+  sitios        cuantas lineas escriben una direccion fisica en su descriptor
+  fichero       donde
+  de donde      como consigue esa direccion quien la escribe
+  comprueba     que valida ANTES de dársela al aparato
+
+
+EL CENSO, AL 2026-09-09
+------------------------
+
+  aparato  sitios  fichero                              de donde        comprueba
+  -------  ------  -----------------------------------  --------------  ---------
+  AHCI          4  drivers/storage/ahci/comando.rs      llega de fuera  paridad
+  xHCI          9  drivers/usb/xhci/{lib,enumerar,      anillos propios nada
+                   transferencia}.rs                    + de fuera
+  NIC           1  drivers/net/anillo.rs                DE UNA ARENA    por construccion
+  -------  ------
+  TOTAL        14
+
+
+  ** LAS TRES FILAS NO SON EL MISMO PROBLEMA, y por eso el censo tiene la
+  columna `de donde`:
+
+    AHCI   recibe `buf_phys` de su llamador y lo mete en el PRDT. Comprueba
+           `buf_phys & 1` --la paridad-- y nada mas. Es LA MINA que
+           docs/identidad/EL_NEUTRO.md lleva nombrando desde que existe
+
+    xHCI   se fabrica sus propios anillos (TRB, DCBAA, contextos) y esos SI
+           salen de marcos que el kernel le dio como `Duenno::Neutro`. Pero el
+           bufer de una transferencia --transferencia.rs:584-- viene de fuera,
+           igual que en AHCI
+
+    NIC    *** LA UNICA QUE YA ESTA BIEN. Pide UN corral contiguo entero
+           (dev/net/mod.rs:325, `Duenno::Neutro`) y todos sus bufers salen de
+           ahi. La direccion fisica no se valida porque NO PUEDE estar mal:
+           se calcula como `base + i * tamano` dentro de la arena
+
+
+LO QUE ESTE NUMERO TIENE QUE LLEGAR A SER
+------------------------------------------
+
+  1
+
+  No porque catorce sea feo, sino porque un juez solo sirve si no se le puede
+  rodear. Mientras haya catorce puertas, anadir la comprobacion a una deja las
+  otras trece abiertas -- y peor: hace creer que el problema esta resuelto.
+
+  ** Y el camino ya esta descubierto: la NIC no necesita comprobacion porque
+  su direccion no puede estar mal POR CONSTRUCCION. Un embudo que reparta desde
+  arenas hace innecesario comprobar en vez de obligatorio comprobar, que es
+  siempre mejor.
+
+
+LO QUE NO ENTRA, Y POR QUE
+---------------------------
+
+  el framebuffer      el CPU escribe en MMIO del aparato. Va en la otra
+                      direccion: el aparato no toca la RAM
+  los registros MMIO  el CPU escribe una direccion de APARATO, no de RAM. Su
+                      juez es `bmo-mmio-juicio`, que ya existe
+  el microcodigo      no pide memoria a este asignador. CENSO.txt lo declara
+  el SMM              igual: no la pide, se la toma
+
+
+COMO SE REHACE ESTA CUENTA
+---------------------------
+
+  Hasta que exista el guardian, a mano:
+
+    grep -rn "phys" --include=*.rs platform/drivers/ | grep -E "write_volatile|\.store\("
+
+  Y contar por crate. Si el total sube y este fichero no, esta lista miente --
+  que es exactamente el fallo que R5b describe para el censo de al lado.
