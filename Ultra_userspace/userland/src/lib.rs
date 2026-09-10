@@ -262,6 +262,8 @@ pub const INFO_SMP_SIESTAS: u64 = 0x5D;
 pub const INFO_SMP_MS_APAGADOS: u64 = 0x5E;
 /// Que tan hondo se duerme: el C-state, ya en numero (1 = C1). 0 = no duerme.
 pub const INFO_SMP_CSTATE: u64 = 0x5F;
+/// Siestas que algo corto antes del plazo. Alta en reposo = alguien despierta.
+pub const INFO_SMP_SIESTAS_CORTAS: u64 = 0x60;
 /// La frecuencia efectiva del nucleo AHORA, en Hz. `0` = no se puede medir.
 /// Es una MEDIDA: dos lecturas seguidas dan la velocidad de ese intervalo.
 pub const INFO_CPU_HZ_REAL: u64 = 0x20;

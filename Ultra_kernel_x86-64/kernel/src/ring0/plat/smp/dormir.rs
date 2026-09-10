@@ -118,6 +118,24 @@ static TICKS_DORMIDOS: AtomicU64 = AtomicU64::new(0);
 /// El `EAX` que se le pasa a `MWAITX`: **que tan profundo se duerme**.
 /// `u32::MAX` = todavia no se ha mirado.
 static PROFUNDIDAD: AtomicU32 = AtomicU32::new(u32::MAX);
+/// Siestas que acabaron MUCHO antes del plazo, o sea que **algo desperto al
+/// obrero**.
+///
+/// == *** EL NUMERO QUE CONVIERTE UNA SOSPECHA EN UN DATO ================
+///
+/// El arranque del 10-09 dio 12.502 siestas y 147 s dormidos: **11,7 ms de
+/// media contra un plazo de 27**. O sea que mas de la mitad de las siestas se
+/// cortaron, y con solo esas dos cuentas **no hay forma de saber por que**.
+///
+/// ** Un despertar temprano solo puede venir de tres sitios: trabajo de
+/// verdad, una escritura en la MISMA LINEA de cache que `RONDA` (el falso
+/// compartimiento que se arreglo el mismo dia), o una interrupcion. Esta
+/// cuenta no dice cual -- dice **cuantas**, que es lo que hacia falta para
+/// saber si el arreglo sirvio.
+///
+///   > Sin este contador, arreglar el falso compartimiento habria sido un
+///   > cambio del que solo se puede decir que no rompio nada.
+static SIESTAS_CORTAS: AtomicU64 = AtomicU64::new(0);
 
 /// Si el silicio trae `MONITORX`. Se resuelve UNA vez, en el arranque.
 static SE_PUEDE: AtomicU64 = AtomicU64::new(SIN_MIRAR);
@@ -291,8 +309,14 @@ pub fn esperar(celda: &AtomicU32, visto: u32) {
             in("ecx") 2,
             options(nostack, preserves_flags),
         );
-        TICKS_DORMIDOS.fetch_add(
-            super::ficha::ciclos().wrapping_sub(t0), Ordering::Relaxed);
+        let duro = super::ficha::ciclos().wrapping_sub(t0);
+        TICKS_DORMIDOS.fetch_add(duro, Ordering::Relaxed);
+        // ** Menos de la mitad del plazo = algo la corto. El umbral es la
+        // mitad y no un 99% porque el plazo no es exacto: lo que se busca no
+        // es precision, es distinguir *durmio lo suyo* de *lo despertaron*.
+        if duro < (PLAZO_TICKS as u64) / 2 {
+            SIESTAS_CORTAS.fetch_add(1, Ordering::Relaxed);
+        }
     }
     DORMIDAS.fetch_add(1, Ordering::Relaxed);
 }
@@ -312,4 +336,14 @@ pub fn dormidas() -> u64 {
 /// de un microsegundo se ven igual de bien en `dormidas` y no apagan nada.
 pub fn ticks_dormidos() -> u64 {
     TICKS_DORMIDOS.load(Ordering::Relaxed)
+}
+
+/// **Siestas que algo corto antes de tiempo.**
+///
+/// Comparada con `dormidas`, dice que fraccion de las siestas NO llego a su
+/// plazo. Si es alta con la maquina en reposo, alguien esta escribiendo en la
+/// linea de `RONDA` o llegando una interrupcion -- y las dos se arreglan en
+/// sitios distintos.
+pub fn siestas_cortas() -> u64 {
+    SIESTAS_CORTAS.load(Ordering::Relaxed)
 }

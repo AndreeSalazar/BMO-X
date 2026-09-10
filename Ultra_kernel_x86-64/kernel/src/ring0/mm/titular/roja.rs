@@ -188,6 +188,10 @@ pub fn en_vuelo(phys: u64, aparato: u8, cuando: u64) -> bool {
     }
     tabla()[i] = (antes & 0x0F) | (aparato << 4);
     if quien == 0 {
+        // ** Se mira ANTES de sumar: lo que interesa no es cuantos hay ahora,
+        // es si habia alguno DURANTE el silencio que se va a apuntar. Un
+        // aparato que pasa de 0 a 1 estaba libre, no callado.
+        let habia = unsafe { VUELOS_DE[aparato as usize] } != 0;
         unsafe {
             EN_VUELO_VIVOS += 1;
             VUELOS_DE[aparato as usize] += 1;
@@ -195,7 +199,7 @@ pub fn en_vuelo(phys: u64, aparato: u8, cuando: u64) -> bool {
         // ** HAY NOTICIA SUYA. Se apunta en CADA despegue y en CADA
         // aterrizaje, no solo al empezar: es un perro guardian, y lo que
         // vigila es el SILENCIO. Ver la nota del plazo, arriba.
-        anoto(aparato, cuando);
+        anoto(aparato, cuando, habia);
     }
     true
 }
@@ -205,7 +209,27 @@ pub fn en_vuelo(phys: u64, aparato: u8, cuando: u64) -> bool {
 ///
 /// ** El PEOR y no la media, y no el minimo: es la unica medida de esta casa
 /// donde el minimo es la respuesta equivocada. Ver la nota del plazo.
-fn anoto(aparato: u8, cuando: u64) {
+/// Deja constancia de que este aparato dio senyales, y apunta el silencio
+/// anterior **solo si durante ese silencio habia trabajo pendiente**.
+///
+/// # *** EL METAL LO CORRIGIO: 2,47 SEGUNDOS QUE NO ERAN UN SILENCIO
+///
+/// El arranque del 2026-09-10 saco `y callo 2467697 us` para el disco. Un
+/// disco no tarda dos segundos y medio en contestar: **eso no era un aparato
+/// callado, era un aparato OCIOSO**.
+///
+/// ** La primera version media el hueco entre dos noticias sin mirar si habia
+/// algo abierto en medio. O sea que una lectura a las 12:00 y otra a las
+/// 12:00:02 apuntaban dos segundos de *silencio* con el disco sin nada que
+/// hacer -- y de ese numero iba a salir el plazo de R-DMA-8.
+///
+///   > Un aparato que no tiene trabajo no esta callado. Esta libre. Medir las
+///   > dos cosas con el mismo reloj da un plazo que nunca caduca a nadie.
+///
+/// [!] Y el fallo no lo caza ninguna prueba: el numero SALIA, era plausible, y
+/// solo se vio raro al mirarlo en la maquina con el disco parado. Es la clase
+/// exacta que `LEY 24` describe -- lo que no se perfila se supone.
+fn anoto(aparato: u8, cuando: u64, habia_trabajo: bool) {
     let a = aparato as usize;
     unsafe {
         let antes = ULTIMA_NOTICIA[a];
@@ -214,7 +238,7 @@ fn anoto(aparato: u8, cuando: u64) {
         // medirlo daria un `peor` enorme el primer dia y el plazo saldria de
         // ahi. Un numero que sale de no tener con que comparar es peor que
         // no tener numero.
-        if antes != 0 {
+        if antes != 0 && habia_trabajo {
             let callado = cuando.wrapping_sub(antes);
             if callado > PEOR_SILENCIO[a] {
                 PEOR_SILENCIO[a] = callado;
@@ -280,9 +304,13 @@ pub fn aterrizo(phys: u64, aparato: u8, cuando: u64) -> bool {
         EN_VUELO_VIVOS = EN_VUELO_VIVOS.saturating_sub(1);
         VUELOS_DE[aparato as usize] = VUELOS_DE[aparato as usize].saturating_sub(1);
     }
+    // ** Aqui `habia_trabajo` es SIEMPRE cierto y no hay que preguntarlo: se
+    // acaba de cerrar un vuelo, asi que durante el silencio anterior ese
+    // vuelo estaba abierto. Este es el unico sitio que mide un silencio de
+    // verdad -- lo que tardo el aparato en contestar.
     // ** Aterrizar TAMBIEN es dar noticias. Un aparato que aterriza no esta
     // callado, por muchos vuelos que le queden abiertos.
-    anoto(aparato, cuando);
+    anoto(aparato, cuando, true);
     true
 }
 
