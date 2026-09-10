@@ -209,7 +209,7 @@ static mut TOTAL: u64 = 0;
 /// morgue: *"decia que la pila no tiene duena y no decia quien la solto"*.
 /// Aquello se arreglo mirando una tabla que ya existia. Esto tambien.
 ///
-/// [!] SIN CERROJO, y decidido igual que `duenno_de_pila`: lo llama la pantalla
+/// [!] SIN CERROJO, y decidido igual que `titular_de_pila`: lo llama la pantalla
 /// de fallo con la maquina ya rota. Colgarse aqui cambia un volcado legible por
 /// un silencio, y un dato de hace un tick sirve para un diagnostico.
 ///
@@ -217,7 +217,7 @@ static mut TOTAL: u64 = 0;
 /// entregado y no ser de aqui --una pila de kernel, un buffer de fichero, la
 /// imagen de un proceso-- asi que `None` **no** significa "de nadie": significa
 /// "de nadie DE AQUI". La pantalla pregunta a las tres tablas por turno.
-pub fn duenno_de_fisica(fisica: u64) -> Option<(u32, u64)> {
+pub fn titular_de_fisica(fisica: u64) -> Option<(u32, u64)> {
     let cuentas = unsafe { &*core::ptr::addr_of!(CUENTAS) };
     for c in cuentas.iter() {
         if c.pid == 0 {

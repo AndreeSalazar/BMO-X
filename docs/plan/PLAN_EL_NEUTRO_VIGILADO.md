@@ -48,13 +48,13 @@ Antes de proponer nada se conto lo que existe. Cinco piezas, y ninguna estaba
 puesta ahi pensando en esto:
 
 ```text
-   1. LA ETIQUETA        `Duenno::Neutro` (mm/duenno.rs:137). Los marcos que un
+   1. LA ETIQUETA        `Titular::Neutro` (mm/titular.rs:137). Los marcos que un
                          aparato usa para DMA se marcan como suyos, y AHCI, NIC
                          y xHCI lo hacen desde el 2026-09-07
-   2. LA PREGUNTA        `phys::duenno_de(fisica)` contesta de quien es un
+   2. LA PREGUNTA        `phys::titular_de(fisica)` contesta de quien es un
                          marco. Existe, es O(1) y ya se usa
    3. EL PRECEDENTE      `vmm/roja.rs:224`, `es_tabla()`: usa esa etiqueta como
-                         PUERTA -- se niega a caminar una direccion cuyo duenno
+                         PUERTA -- se niega a caminar una direccion cuyo titular
                          dice otra cosa, y hasta razona su escape para
                          `Anonimo`. El molde ya esta escrito
    4. EL CENSO           `NEUTRO/CENSO.txt` lista quien alcanza la RAM por su
@@ -78,7 +78,7 @@ prdt.add(1).write_volatile((buf_phys >> 32) as u32);
 ```
 
 Ahi se le da a un aparato una direccion fisica **sin preguntarle a
-`duenno_de`**. Dos lineas mas arriba hay una comprobacion --`if buf_phys & 1 !=
+`titular_de`**. Dos lineas mas arriba hay una comprobacion --`if buf_phys & 1 !=
 0`, o sea la alineacion-- asi que el sitio donde comprobar ya existe y solo
 comprueba una cosa de las cinco que se pueden comprobar.
 
@@ -136,7 +136,7 @@ continua**.
 de aparato:
 
 ```text
-   el marco es `Duenno::Neutro`?              si no, es memoria de otro
+   el marco es `Titular::Neutro`?              si no, es memoria de otro
    es del APARATO que va a escribir?          si no, un aparato pisa a otro
    addr + len se queda dentro del marco?      el desbordamiento clasico
    la alineacion es la que pide el aparato?   ya se comprueba a medias
@@ -193,7 +193,7 @@ la ventana si. Y si el juez basta, la ventana no se construye.
 que esta casa tiene apuntado.**
 
 Un marco con DMA en vuelo **no se puede liberar, ni desmapear, ni reasignar**
-hasta que el aparato diga que termino. Hoy nada lo impide: `Duenno::Neutro`
+hasta que el aparato diga que termino. Hoy nada lo impide: `Titular::Neutro`
 dice de quien es el marco, no si **hay algo volando hacia el**.
 
 ```text
@@ -203,7 +203,7 @@ dice de quien es el marco, no si **hay algo volando hacia el**.
                   marco que un aparato todavia esta escribiendo
 ```
 
-** Y encaja con lo que ya hay: `Duenno` es un `u8` por marco con su cuenta en
+** Y encaja con lo que ya hay: `Titular` es un `u8` por marco con su cuenta en
 O(1); un bit mas es una casilla mas del mismo mapa.
 
 ```text
@@ -297,7 +297,7 @@ Un plan que no diga donde acaba es propaganda.
   ```
 
   ** Y el juez no comparte vocabulario con nadie: recibe un `bool` en vez de
-  `Duenno::Neutro`, y un `u16` que solo compara consigo mismo en vez de un enum
+  `Titular::Neutro`, y un `u16` que solo compara consigo mismo en vez de un enum
   de aparatos. **No tiene `[riesgo] ESPEJO` porque no hay copia.**
 
   Seis preguntas, 16 filas, la mitad para decir que NO. La sexta salio
@@ -331,7 +331,7 @@ Un plan que no diga donde acaba es propaganda.
      -> los dos ejes NO eran independientes, y esto lo demuestra
   ```
 
-  Lo que hace falta: un estado mas en `Duenno`, puesto al programar el
+  Lo que hace falta: un estado mas en `Titular`, puesto al programar el
   descriptor y quitado al consumir la interrupcion de fin. Se verifica: la
   cuenta de marcos en vuelo al apagar es **CERO**, igual que `soltados` en N3
   del censo del neutro.
@@ -340,7 +340,7 @@ Un plan que no diga donde acaba es propaganda.
   Hoy el juez existe y **no lo llama nadie**. Ponerlo en el camino pide cambiar
   la firma de los que escriben descriptores para que pidan `Prenda` en vez de
   `u64`, y eso toca `platform/drivers/{ahci,xhci}` y quien los llama en Ring 0
-  --que es el que sabe `duenno_de`--.
+  --que es el que sabe `titular_de`--.
 
   [!] **Ese es el trabajo de verdad, y no se ha hecho.** El crate sin cablear
   vale igual --las 16 filas son un contrato escrito y probado-- pero **no

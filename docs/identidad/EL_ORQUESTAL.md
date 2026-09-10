@@ -44,11 +44,11 @@ Un orquestador **no da nada. Presta.**
 ```text
    SO              tienes todo, y te comprobamos cuando pidas de mas
    BMO             tienes lo que DECLARASTE, sabes que es prestado, y el
-                   prestamo se acaba cuando el duenno quiere
+                   prestamo se acaba cuando el titular quiere
 ```
 
 ** Y ahi esta el celo, que no es un rasgo de caracter: es la unica forma de que
-la frase del duenno --*"esta maquina me obedece solo a mi"*-- sea algo mas que
+la frase del titular --*"esta maquina me obedece solo a mi"*-- sea algo mas que
 una intencion. **Un kernel generoso puede ser capturado por un programa. Uno
 celoso, no**, porque nunca solto nada que no pueda recuperar.
 
@@ -62,11 +62,11 @@ actitud del documento: son sitios del arbol, y cada uno se puede abrir.
 | el celo | el mecanismo | donde |
 |---|---|---|
 | **La maquina vuelve, siempre** | `Ctrl+Alt+ESC` devuelve teclado *y* pantalla al kernel desde cualquier programa, comprobado en el unico punto de Ring 0 por el que pasa toda tecla | `core/gato/` |
-| **Y vuelve ENTERA** | LA PURGA cierra todo Ring 3, fuerza la recogida y **lo demuestra** -- no vuelve el duenno de la pantalla: vuelven todos | `core/purga.rs` |
+| **Y vuelve ENTERA** | LA PURGA cierra todo Ring 3, fuerza la recogida y **lo demuestra** -- no vuelve el titular de la pantalla: vuelven todos | `core/purga.rs` |
 | **La pantalla es un prestamo** | devolverla **termina** el prestamo, y terminar el prestamo cierra la app. No hay estado intermedio en el que la tenga a medias | `obj/fb/` |
 | **La autoridad no viaja** | `EJECUTAR` y `REINICIAR` piden autoridad, se fija **al nacer** y solo desde Ring 0. Un `.bex` que lanzo el escritorio no puede lanzar otro ni reiniciar | `task/autoridad.rs` |
 | **El NO llega antes que el si** | LA REGLA 7: el kernel rechaza una carga **antes de reservar el primer marco**, comparando lo declarado contra lo que hay | `task/admitir.rs` |
-| **Cada marco tiene duenno** | el asignador sabe decir *"ese marco NO es tuyo"*, y la azul dice si esta ENTREGADO | `mm/phys/` |
+| **Cada marco tiene titular** | el asignador sabe decir *"ese marco NO es tuyo"*, y la azul dice si esta ENTREGADO | `mm/phys/` |
 | **Pedir tiene tope** | el presupuesto de la puerta: una app que pide sin parar se queda sin turno, no sin maquina | `syscall/presupuesto.rs` |
 | **Y cuando algo cae, se sabe de quien fue** | LA MORGUE: la azul dejo de decir *"de NADIE VIVO"* y dice de quien era la pila | `core/autopsy.rs` |
 
@@ -93,7 +93,7 @@ Toda regla trae su sacrificio, y este tiene tres y son reales:
 * **Todo lo que un programa necesita hay que declararlo antes.** No hay pedir en
   caliente lo que no se pidio al nacer, asi que un caso que no se previo no se
   resuelve con un `if`: se resuelve cambiando lo que la app declara.
-* **El duenno de la maquina tiene poder absoluto sobre lo que corre**, y el
+* **El titular de la maquina tiene poder absoluto sobre lo que corre**, y el
   software que exige opacidad --DRM de kernel, anti-cheat-- **se auto-excluye**.
   No es un fallo de compatibilidad: es la consecuencia directa de que la maquina
   obedezca a una sola persona.

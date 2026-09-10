@@ -138,7 +138,7 @@ pub(super) extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u6
     let mut l = Line::new();
     // Se ANOTA dentro del veredicto y se imprime DESPUES, en su propia
     // linea: pegado detras de `marco OCUPADO` se salia de la pantalla.
-    let mut duenno_del_marco: Option<u64> = None;
+    let mut titular_del_marco: Option<u64> = None;
     l.s("rsp=0x"); l.hex(fault_rsp, 16);
     // ** Y DE QUIEN ES ESA PILA, que es la pregunta siguiente y no se contestaba.
     //
@@ -162,9 +162,9 @@ pub(super) extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u6
     // planificador cree**; esto es **sobre que pila estaba el CPU**. Hoy las dos
     // salieron distintas --`tid=05 (Ring 3)` sobre una pila de kernel-- y esa
     // diferencia no es un error de ninguna de las dos: es el hallazgo.
-    if let Some((duenno, user)) = crate::ring0::task::scheduler::duenno_de_pila(fault_rsp) {
+    if let Some((titular, user)) = crate::ring0::task::scheduler::titular_de_pila(fault_rsp) {
         l.s(" de tid=");
-        l.hex(duenno as u64, 2);
+        l.hex(titular as u64, 2);
         l.s(if user { " (Ring 3)" } else { " (Ring 0)" });
     } else if fault_rsp >= 0xFFFF_8000_0000_0000 {
         // [!] Que no sea de nadie tambien es una respuesta, y de las caras: una
@@ -272,7 +272,7 @@ pub(super) extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u6
                     // [!] Y la linea de al lado (`iq:`) tambien sale cortada.
                     // Esta pantalla se lee con una CAMARA: lo que no entra en
                     // el ancho no existe.
-                    duenno_del_marco = Some(fisica);
+                    titular_del_marco = Some(fisica);
                 }
                 None => l.s(" marco fuera del espejo"),
             }
@@ -288,9 +288,9 @@ pub(super) extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u6
     // `marco OCUPADO` dice que el asignador lo da por entregado; esto dice A
     // QUIEN, que es lo unico que convierte "se entrego dos veces" en algo que
     // se pueda ir a mirar.
-    if let Some(fisica) = duenno_del_marco {
+    if let Some(fisica) = titular_del_marco {
         let mut l = Line::new();
-        if let Some((pid, desp)) = crate::ring0::obj::memory::duenno_de_fisica(fisica) {
+        if let Some((pid, desp)) = crate::ring0::obj::memory::titular_de_fisica(fisica) {
             l.s("  ese marco es AHORA del bloque de pid=");
             l.hex(pid as u64, 2);
             l.s(" +0x");
@@ -310,13 +310,13 @@ pub(super) extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u6
             // rendia diciendo "contabilidad rota" cuando la contabilidad estaba
             // bien y lo que faltaba era la pregunta.
             //
-            // `mm::duenno` guarda PARA QUE se pidio cada marco, que es otra
+            // `mm::titular` guarda PARA QUE se pidio cada marco, que es otra
             // cosa que de quien es. Con las pilas etiquetadas, este renglon
             // pasa de *no lo sabe nadie* a **"ahora es una TABLA de paginas"**
             // -- o sea el nombre de quien se la llevo.
-            let q = crate::ring0::mm::duenno::duenno_de(fisica);
-            if q == crate::ring0::mm::duenno::Duenno::Nadie
-                || q == crate::ring0::mm::duenno::Duenno::Anonimo
+            let q = crate::ring0::mm::titular::titular_de(fisica);
+            if q == crate::ring0::mm::titular::Titular::Nadie
+                || q == crate::ring0::mm::titular::Titular::Anonimo
             {
                 l.s("  y NINGUNA tabla reclama ese marco: contabilidad rota");
             } else {

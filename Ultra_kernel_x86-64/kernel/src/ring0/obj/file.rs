@@ -232,7 +232,7 @@ static mut BUF_FIS: [u64; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 /// asi que puede ser perfectamente el otro dueno de un marco entregado dos
 /// veces -- y sin esta pregunta, ese caso se veria igual que cualquier otro.
 ///
-/// [!] Sin cerrojo, por lo mismo que `duenno_de_fisica`: la maquina ya esta
+/// [!] Sin cerrojo, por lo mismo que `titular_de_fisica`: la maquina ya esta
 /// rota cuando esto se llama.
 pub fn buffer_de_fisica(fisica: u64) -> Option<usize> {
     unsafe {

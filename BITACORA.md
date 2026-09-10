@@ -3668,7 +3668,7 @@ Si el que escribe el descriptor pide `Prenda` en vez de `u64`:
 ### ★★ Y ESTE JUEZ NO TIENE `[riesgo] ESPEJO`, a proposito
 
 Los otros jueces lo tienen: la misma pregunta escrita en dos sitios que se
-separan. Este recibe **un `bool`** en vez de `Duenno::Neutro`, y **un `u16`**
+separan. Este recibe **un `bool`** en vez de `Titular::Neutro`, y **un `u16`**
 que solo compara consigo mismo en vez de un enum de aparatos.
 
 ```text
@@ -3714,7 +3714,7 @@ guardian. Es la regla de las hojas de metal.
 
 **El juez existe y no lo llama nadie.** Ponerlo en el camino (N2) pide cambiar
 la firma de los que escriben descriptores en `platform/drivers/{ahci,xhci}` y en
-quien los llama desde Ring 0 --que es el unico que sabe `duenno_de`--.
+quien los llama desde Ring 0 --que es el unico que sabe `titular_de`--.
 
 > Un juez sin cablear es un contrato escrito y probado. No es una barrera. Y
 > decirlo importa mas que tenerlo.
@@ -3752,7 +3752,7 @@ catorce.
 let directo = tramo_dma(va, restante).and_then(|(phys, bytes)| ...
 ```
 
-Esa `phys` sale del **bufer del que llamo**. No es `Duenno::Neutro`, no es del
+Esa `phys` sale del **bufer del que llamo**. No es `Titular::Neutro`, no es del
 aparato, y **tiene todo el derecho a no serlo**: el disco escribe ahi porque el
 kernel se lo presto para esa lectura.
 
@@ -3797,3 +3797,54 @@ el caso ESTRECHO --un aparato, ahora-- y por eso se mira antes.
 cablearlo.
 
 > Un plan se prueba escribiendolo. Un orden se prueba EJECUTANDOLO.
+
+---
+
+## Ep. 73 -- `Duenno` era la unica que doblaba la ene
+
+**2026-09-09.** El dueno: *"en Duenno reemplazar por Boss u otro nombre porque
+eso pide la ene con tilde"*. Tiene razon, y hay un argumento mejor que "es feo".
+
+### La casa QUITA la ene con tilde. `Duenno` la DOBLABA
+
+```text
+   tamano   pequeno   ano   senal   ninguno      <- se quita
+   Duenno                                        <- se doblaba
+```
+
+*** Era **la excepcion a su propia regla**, y no por descuido: `Dueno` con una
+sola ene se lee mal, asi que la palabra misma era el problema. Un barrido de
+todo el arbol confirma que era la unica: los demas `nn` son `channel`, `inner`,
+`running` -- inglesas de verdad.
+
+### El nombre: `Titular`, y no `Boss`
+
+```text
+   Titular   espanol, sin ene con tilde, y MAS PRECISO: un titular es quien
+             tiene el TITULO de algo, que es justo lo que la etiqueta dice
+   Boss      seria el unico sustantivo ingles en una capa que es `Marco`,
+             `Peticion`, `Veto`, `Prenda`, `carril`, `cuesta`. Y "jefe" implica
+             MANDO; un marco no obedece a su titular, le PERTENECE
+```
+
+### ★ Lo que hizo la mudanza segura, y hubo que comprobarlo antes
+
+```text
+   duenno  (nn)  el TIPO                      73 veces
+   dueno   (n)   la prosa sobre el DUENO       852 veces
+```
+
+*** Las dos palabras eran **distinguibles por un `sed`**, y eso no se dio por
+hecho: se conto primero. Renombrar `dueno` habria convertido ochocientas
+cincuenta menciones al dueno del proyecto en "el titular del proyecto".
+
+### 32 ficheros, y el guardian se renombro solo
+
+`censo_neutro.py` busca la etiqueta **como texto** --`MARCA = "Duenno::Neutro"`
+en su linea 57-- asi que entraba en el mismo barrido. Si hubiera quedado fuera,
+el censo del neutro habria dicho *"0 ficheros etiquetan"* y **habria pasado en
+verde**: un guardian que no encuentra lo que mira aprueba en silencio.
+
+[!] Y las entradas anteriores de esta bitacora dicen `Titular` porque se
+renombraron hoy. El dia que se escribieron decian `Duenno` -- se dice aqui en
+vez de dejar que un `grep` de dentro de tres meses no encuentre nada.

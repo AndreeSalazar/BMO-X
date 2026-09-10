@@ -48,11 +48,11 @@
 //! escrita en dos sitios que se separan. Este **no lo tiene**, y es a proposito.
 //!
 //! ```text
-//!    NO recibe `Duenno::Neutro`     recibe un `bool`: `es_neutro`
+//!    NO recibe `Titular::Neutro`     recibe un `bool`: `es_neutro`
 //!    NO recibe un enum de aparatos  recibe un `u16` que solo compara consigo
 //! ```
 //!
-//! *** El kernel escribe `phys::duenno_de(p) == Duenno::Neutro` y pasa el
+//! *** El kernel escribe `phys::titular_de(p) == Titular::Neutro` y pasa el
 //! resultado. Si algun dia esa etiqueta cambia de nombre, de numero o de
 //! fichero, **aqui no hay nada que actualizar**: no hay copia que se pueda
 //! desincronizar porque no hay copia.
@@ -117,11 +117,11 @@ impl Prenda {
 
 /// Lo que el kernel SABE del marco, y se lo cuenta al juez.
 ///
-/// ** `es_neutro` es un `bool` y no un `Duenno`: ver la cabecera. Aqui no hay
+/// ** `es_neutro` es un `bool` y no un `Titular`: ver la cabecera. Aqui no hay
 /// espejo que se pueda desincronizar.
 #[derive(Clone, Copy, Debug)]
 pub struct Marco {
-    /// `phys::duenno_de(base) == Duenno::Neutro`, ya resuelto por quien sabe.
+    /// `phys::titular_de(base) == Titular::Neutro`, ya resuelto por quien sabe.
     ///
     /// ** Es el caso 1: **el aparato escribe en SU propio corral** -- la pagina
     /// de rebote, los anillos, el DCBAA.

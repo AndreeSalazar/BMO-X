@@ -946,8 +946,8 @@ pub(crate) fn admit_payload_desde(
     // zero_frame -- restored as zeros: backptr=0, pops to rsp=0x78, iretq
     // with cs=0 => the observed #GP(0)).
     // La pila de kernel de una tarea de Ring 3: la MISMA que aparecio pisada
-    // en la azul del 04-09. Ver `mm::duenno`.
-    let Some(kstack_base) = phys::alloc_frames_contig_de(KERNEL_STACK_PAGES, phys::Duenno::Pila)
+    // en la azul del 04-09. Ver `mm::titular`.
+    let Some(kstack_base) = phys::alloc_frames_contig_de(KERNEL_STACK_PAGES, phys::Titular::Pila)
     else {
         crate::ring0::cabina::fault(
             "proc",

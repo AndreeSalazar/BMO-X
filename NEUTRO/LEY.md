@@ -30,8 +30,8 @@ existe**, que es peor que una que se sabe rota.
 
 ## N2 -- TODO MARCO QUE UN NEUTRO PUEDA ESCRIBIR SE ETIQUETA
 
-**Componente:** `mm/duenno.rs`, clase `Duenno::Neutro`.
-**Numero:** `duenno::neutros()`.
+**Componente:** `mm/titular.rs`, clase `Titular::Neutro`.
+**Numero:** `titular::neutros()`.
 
 Un marco que un aparato tiene programado como destino de DMA **lleva su
 etiqueta**. No `Anonimo`, que significa *sin opinion*.
@@ -55,7 +55,7 @@ tenia etiqueta.
 
 ## N3 -- UN MARCO NEUTRO NO SE DEVUELVE
 
-**Componente:** `mm/duenno.rs`, `puede_soltar`.
+**Componente:** `mm/titular.rs`, `puede_soltar`.
 
 Los cuatro aparatos piden sus marcos **una vez, en el arranque**, y viven lo que
 vive el kernel. Devolver uno significaria que el asignador se lo da a otro
@@ -76,7 +76,7 @@ mientras el aparato sigue escribiendo -- que es la pista **1.5** de la hoja del
 
 ## N4 -- LA CUENTA DEL NEUTRO TIENE QUE ESTAR QUIETA
 
-**Componente:** `duenno::neutros()`.
+**Componente:** `titular::neutros()`.
 **Numero:** `neutro=vivos:soltados`, en la fila `sys` del panel.
 
 En una maquina sana ese numero **sube en el arranque y no se mueve mas**. Si

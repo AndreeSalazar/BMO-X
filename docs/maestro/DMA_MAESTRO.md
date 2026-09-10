@@ -89,7 +89,7 @@ un usuario que somos nosotros es no tener disciplina.
 
 ```text
    drivers/net/anillo.rs:102   una ARENA: un corral contiguo entero
-   dev/net/mod.rs:325          pedido como `Duenno::Neutro`
+   dev/net/mod.rs:325          pedido como `Titular::Neutro`
 ```
 
 La tarjeta de red no valida sus direcciones fisicas **porque no pueden estar

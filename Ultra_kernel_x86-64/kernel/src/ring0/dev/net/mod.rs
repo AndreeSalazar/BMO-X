@@ -326,7 +326,7 @@ pub fn rx_start() -> bool {
     // `NEUTRO/LEY.md`, N2.
     let arena = match crate::ring0::mm::phys::alloc_frames_contig_de(
         paginas,
-        crate::ring0::mm::phys::Duenno::Neutro,
+        crate::ring0::mm::phys::Titular::Neutro,
     ) {
         Some(p) => p,
         None => {

@@ -34,7 +34,7 @@ Cada linea se verifico leyendo el arbol, no razonando sobre el.
 | hecho | como se comprobo |
 |---|---|
 | `fault_rsp` es la pila que el kernel pisaba de verdad | sale del marco de `iretq`, no del manejador. `plat/faults/roja.rs`, `fault_dispatch(.., fault_rsp)` |
-| `de NADIE VIVO` es HONESTO, no un falso negativo | `spawn_user` guarda la pila de kernel de una tarea de Ring 3 en `stack_phys`, asi que `duenno_de_pila` la habria visto. `task/scheduler/roja.rs` |
+| `de NADIE VIVO` es HONESTO, no un falso negativo | `spawn_user` guarda la pila de kernel de una tarea de Ring 3 en `stack_phys`, asi que `titular_de_pila` la habria visto. `task/scheduler/roja.rs` |
 | `cr2 = 0x8FFFFFFF` es BASURA, no un calculo | cae entre `USER_STACK_TOP` (0x8000_0000) y `CHANNEL_VA_BASE` (0xC000_0000): un hueco donde no se mapea nada jamas. `mm/vmm/verde.rs` |
 | ...y es un valor de 32 bits | los 32 bits altos en cero. Una direccion calculada del kernel no tiene esa forma |
 | `gs k=0` NO es un sintoma | Ring 0 corre con `KERNEL_GS_BASE = 0` por diseno. `task/percpu.rs`, cabecera |

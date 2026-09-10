@@ -94,7 +94,7 @@ const MARCOS: usize = (PHYSMAP_SIZE / PAGE) as usize;
 /// Los duenos de un marco en este kernel son SUBSISTEMAS antes que procesos.
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
-pub enum Duenno {
+pub enum Titular {
     /// Libre. Nadie lo tiene.
     Nadie = 0,
     /// Entregado, y quien lo pidio no dijo para que. **No es un error**: es la
@@ -137,40 +137,40 @@ pub enum Duenno {
     Neutro = 8,
 }
 
-impl Duenno {
+impl Titular {
     /// El nombre, para CABINA. Un numero en una pantalla que se lee con una
     /// camara no lo descifra nadie -- es la leccion del `motivo` de la morgue.
     pub fn nombre(self) -> &'static str {
         match self {
-            Duenno::Nadie => "libre",
-            Duenno::Anonimo => "anonimo",
-            Duenno::Tabla => "TABLA",
-            Duenno::Hoja => "hoja",
-            Duenno::Pila => "pila",
-            Duenno::Bloque => "bloque",
-            Duenno::Bufer => "bufer",
-            Duenno::Kernel => "kernel",
+            Titular::Nadie => "libre",
+            Titular::Anonimo => "anonimo",
+            Titular::Tabla => "TABLA",
+            Titular::Hoja => "hoja",
+            Titular::Pila => "pila",
+            Titular::Bloque => "bloque",
+            Titular::Bufer => "bufer",
+            Titular::Kernel => "kernel",
             // En MAYUSCULAS como `TABLA`, y por el mismo motivo: los dos
             // aparecen en una pantalla azul que se lee con una camara, y los
             // dos significan "esto no lo tocaba quien creias".
-            Duenno::Neutro => "NEUTRO (un aparato)",
+            Titular::Neutro => "NEUTRO (un aparato)",
         }
     }
 
-    fn de_byte(b: u8) -> Duenno {
+    fn de_byte(b: u8) -> Titular {
         match b {
-            2 => Duenno::Tabla,
-            3 => Duenno::Hoja,
-            4 => Duenno::Pila,
-            5 => Duenno::Bloque,
-            6 => Duenno::Bufer,
-            7 => Duenno::Kernel,
-            8 => Duenno::Neutro,
-            1 => Duenno::Anonimo,
+            2 => Titular::Tabla,
+            3 => Titular::Hoja,
+            4 => Titular::Pila,
+            5 => Titular::Bloque,
+            6 => Titular::Bufer,
+            7 => Titular::Kernel,
+            8 => Titular::Neutro,
+            1 => Titular::Anonimo,
             // [!] Un byte que esta tabla no sabe producir se lee como `Nadie` y
             // NO como un dueno inventado. Un juez que se inventa una respuesta
             // ante un dato corrupto es peor que uno que se calla.
-            _ => Duenno::Nadie,
+            _ => Titular::Nadie,
         }
     }
 }
@@ -225,13 +225,13 @@ static mut NEUTROS_VIVOS: u64 = 0;
 static mut NEUTROS_SOLTADOS: u64 = 0;
 
 /// Apuntar para que se pidio un marco. Lo llama `alloc_frame_de`.
-pub fn marcar(phys: u64, q: Duenno) {
+pub fn marcar(phys: u64, q: Titular) {
     if let Some(i) = indice(phys) {
         let antes = tabla()[i];
         tabla()[i] = q as u8;
         // La cuenta del neutro, en O(1). Ver la nota de arriba.
-        let era = antes == Duenno::Neutro as u8;
-        let es = q == Duenno::Neutro;
+        let era = antes == Titular::Neutro as u8;
+        let es = q == Titular::Neutro;
         unsafe {
             if es && !era {
                 NEUTROS_VIVOS += 1;
@@ -244,10 +244,10 @@ pub fn marcar(phys: u64, q: Duenno) {
 }
 
 /// **De quien es?** `Nadie` si esta libre o si cae fuera del espejo.
-pub fn duenno_de(phys: u64) -> Duenno {
+pub fn titular_de(phys: u64) -> Titular {
     match indice(phys) {
-        Some(i) => Duenno::de_byte(tabla()[i]),
-        None => Duenno::Nadie,
+        Some(i) => Titular::de_byte(tabla()[i]),
+        None => Titular::Nadie,
     }
 }
 
@@ -263,13 +263,13 @@ pub enum Veredicto {
     /// Alguno de los dos no declaro. Se deja pasar.
     SinOpinion,
     /// Los dos declararon y DIFIEREN: `(quien lo tiene, quien lo suelta)`.
-    NoEsTuyo(Duenno, Duenno),
+    NoEsTuyo(Titular, Titular),
 }
 
 /// **Puede `quien` soltar este marco?** Ver la regla en la cabecera.
-pub fn puede_soltar(phys: u64, quien: Duenno) -> Veredicto {
-    let tiene = duenno_de(phys);
-    if tiene == Duenno::Anonimo || tiene == Duenno::Nadie || quien == Duenno::Anonimo {
+pub fn puede_soltar(phys: u64, quien: Titular) -> Veredicto {
+    let tiene = titular_de(phys);
+    if tiene == Titular::Anonimo || tiene == Titular::Nadie || quien == Titular::Anonimo {
         return Veredicto::SinOpinion;
     }
     if tiene == quien {
@@ -323,5 +323,5 @@ pub fn neutros() -> (u64, u64) {
 /// la misma direccion con techos distintos y la maquina se paro.
 const _: () = {
     assert!(MARCOS == (PHYSMAP_SIZE / PAGE) as usize);
-    assert!(Duenno::Nadie as u8 == 0, "libre TIENE que ser el cero del BSS");
+    assert!(Titular::Nadie as u8 == 0, "libre TIENE que ser el cero del BSS");
 };

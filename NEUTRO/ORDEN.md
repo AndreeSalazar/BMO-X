@@ -154,7 +154,7 @@ tienen sus sitios y **no se mudan**, porque `docs/README.md` ordena por PREGUNTA
    que casillas faltan     ->  docs/plan/PLAN_EL_NEUTRO_VIGILADO.md
    por que es una categoria->  docs/identidad/EL_NEUTRO.md
    que EXIGE cada aparato  ->  docs/componente/EL_DISCO_EXIGE.md, EL_TECLADO_...
-   el codigo               ->  platform/drivers/, y la etiqueta en mm/duenno.rs
+   el codigo               ->  platform/drivers/, y la etiqueta en mm/titular.rs
 ```
 
 *** Traerse los maestros aqui seria ordenar por tema en un sitio y por pregunta
