@@ -358,6 +358,36 @@ static mut EN_VUELO_PISADOS: u64 = 0;
 /// bufer. Se rechaza Y se cuenta.
 static mut EN_VUELO_CHOQUES: u64 = 0;
 
+// == *** EL PERRO GUARDIAN DEL PLAZO -- EL PASO N5 =========================
+//
+// ** Son 360 bytes para las cuatro tablas, contra los 32 MiB que costaria un
+// sello de tiempo por marco. El razonamiento entero --por que el plazo es del
+// APARATO y por que lo que se mide es el SILENCIO y no la duracion-- esta en
+// la nota del plazo de `roja.rs`, que es quien las escribe.
+//
+// [!] Y viven aqui por lo mismo que las otras cinco: las escribe el rojo y las
+// lee el verde. Una cuenta que se lleva en un carril y se ensena en otro es de
+// los dos, y ponerla en cualquiera de ellos obligaria al otro a subir a por
+// ella -- que es como el letrero de la carpeta se vuelve decoracion.
+
+/// Vuelos abiertos AHORA MISMO de cada aparato. Indice = su numero (1..15).
+static mut VUELOS_DE: [u32; 16] = [0; 16];
+/// Cuando se supo de cada aparato por ultima vez -- despegue o aterrizaje.
+///
+/// ** El numero es OPACO: lo trae quien programa el descriptor y aqui no se
+/// sabe de que reloj sale. Cero significa **nunca se supo nada de el**, que no
+/// es lo mismo que llevar mucho callado.
+static mut ULTIMA_NOTICIA: [u64; 16] = [0; 16];
+/// El PEOR silencio visto de cada aparato teniendo trabajo pendiente.
+///
+/// *** Esto es N5b: **el plazo sale de aqui**, con margen, despues de varios
+/// arranques. No se elige (LEY 24). Y es el peor y no el minimo porque un
+/// plazo se pone en la cola, no en el mejor caso.
+static mut PEOR_SILENCIO: [u64; 16] = [0; 16];
+/// Vuelos que pasaron de plazo. **R-DMA-8: tiene que ser CERO.** Hoy no puede
+/// subir, porque el plazo todavia no se ha medido y vale cero.
+static mut CADUCADOS: u64 = 0;
+
 mod amarilla;
 mod roja;
 mod verde;
@@ -367,9 +397,9 @@ mod verde;
 // dentro no puede costarle una linea a quien llama: si costara, la particion
 // se estaria pagando con el diff de otro.
 pub use amarilla::{marcar, puede_soltar, titular_de, Veredicto};
-pub use roja::{aterrizo, en_vuelo, en_vuelo_de, APARATO_AHCI, APARATO_GPU,
-               APARATO_NIC, APARATO_XHCI};
-pub use verde::{cubiertos, neutros, vuelos};
+pub use roja::{aterrizo, caducados, en_vuelo, en_vuelo_de, APARATO_AHCI,
+               APARATO_GPU, APARATO_NIC, APARATO_XHCI, PLAZO_SIN_MEDIR};
+pub use verde::{cubiertos, neutros, peor_silencio, vuelos};
 
 
 /// **EL GUARDIAN DEL TECHO**, y corre en compilacion.

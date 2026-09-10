@@ -264,7 +264,27 @@ pub fn render_hud() {
     r.txt(" vuelo="); r.dec(v_vivos);
     r.txt(":"); r.dec(v_pisados);
     r.txt(":"); r.dec(v_choques);
-    let health = if n_soltados != 0 || v_pisados != 0 || v_choques != 0 {
+    // *** `mudo=aparato:MICROsegundos` -- EL NUMERO DEL QUE SALDRA EL PLAZO.
+    //
+    // Es lo peor que se ha visto callar a un aparato **teniendo trabajo
+    // pendiente**. De aqui sale el plazo de R-DMA-8 (N5b), con margen, y no de
+    // una eleccion: LEY 24 dice que el hardware se PERFILA.
+    //
+    // ** Se ensena en microsegundos y no en ticks porque el numero con el que
+    // hay que compararlo --lo que tarda una vuelta al disco-- se sabe en
+    // microsegundos. Un numero que hay que convertir a mano delante de la
+    // maquina es un numero que no se mira.
+    //
+    // [!] Y OJO CON LEERLO COMO LAS DEMAS MEDIDAS DE ESTA CASA: aqui interesa
+    // LO PEOR, no el minimo. `ciclos.bex` mide un bucle vacio en 11 ticks de
+    // minimo y 122 de media; un plazo puesto en el mejor caso caducaria vuelos
+    // sanos todo el rato.
+    let (mudo_quien, mudo_ticks, caducados) = crate::ring0::mm::titular::peor_silencio();
+    let hz = crate::ring0::task::scheduler::tsc_freq();
+    let mudo_us = if hz != 0 { mudo_ticks / (hz / 1_000_000).max(1) } else { 0 };
+    r.txt(" mudo="); r.dec(mudo_quien as u64);
+    r.txt(":"); r.dec(mudo_us);
+    let health = if n_soltados != 0 || v_pisados != 0 || v_choques != 0 || caducados != 0 {
         // Gana sobre la RAM baja: quedarse sin memoria es incomodo, un marco de
         // aparato suelto es corrupcion esperando su turno.
         C_FAULT

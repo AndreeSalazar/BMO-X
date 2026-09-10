@@ -453,9 +453,43 @@ Un plan que no diga donde acaba es propaganda.
 - [x] **N4 -- MOVIDO ARRIBA el 2026-09-09.** Estaba aqui, detras de N2 y N3,
   y el intento de cablear el juez demostro que va DELANTE. Ver su casilla.
 
-- [ ] **N5 -- EL PLAZO DEL APARATO MUERTO.** Cuanto se espera antes de dar por
-  perdido un DMA en vuelo. **No se elige: se mide** -- el peor tiempo de
-  respuesta real de AHCI y del xHC en esta placa, con margen. LEY 24.
+- [x] **N5a -- EL PERRO GUARDIAN. HECHO el 2026-09-10.** R-DMA-8 era la unica
+  de las ocho sin juez, y ya lo tiene: `mm::titular::caducados(ahora, plazo)`.
+
+  Dos cosas casi salen mal, y las dos son del enunciado y no del codigo:
+
+  1. **el plazo es del APARATO, no del marco.** Por marco son 32 MiB de BSS;
+     por aparato, 360 bytes. Y ademas *"se murio este marco"* no significa
+     nada: la pregunta es *"se murio el disco"*
+
+  2. **se mide el SILENCIO, no la duracion.** Cronometrar desde el despegue
+     mata al aparato SANO -- un disco leyendo un fichero grande nunca se queda
+     sin nada en el aire, y ese cronometro no para nunca. Lo que se mide es
+     cuanto lleva sin dar noticias TENIENDO trabajo abierto
+
+  [!] Y `mm` no pregunta la hora: el `cuando` lo trae quien programa el
+  descriptor, y aqui es un numero OPACO. Leer el reloj desde `mm` habria
+  abierto una flecha nueva --memoria -> planificador-- y al reves de como se
+  apoyan. Misma decision que `bmo-dma-juicio` con su `bool`.
+
+  Se verifica: `caducados = 0` en `mudo=` de CABINA. Hoy no puede subir porque
+  el plazo vale cero -- que es N5b.
+
+- [ ] **N5b -- EL NUMERO, y no se elige (LEY 24).** `peor_silencio()` guarda lo
+  peor visto por aparato y CABINA lo ensena como `mudo=aparato:microsegundos`.
+  El plazo sale de ahi con margen despues de varios arranques.
+
+  ** Y esta medida se lee AL REVES que todas las demas de esta casa. `ciclos.bex`
+  lo ensena midiendo un bucle vacio en el Ryzen: **min 11 ticks, media 122**,
+  mientras la llamada normal va clavada en 30/31. Para saber lo que CUESTA algo
+  se mira el minimo --la media es la maquina mas lo que pasaba alrededor--; para
+  saber cuanto ESPERAR se mira lo peor que ha pasado nunca.
+
+  > Un plazo puesto en el mejor caso caduca vuelos sanos todo el rato.
+
+  [ ] varios arranques con `mudo=` anotado, incluido uno con DOOM leyendo el WAD
+  [ ] elegir el margen y escribirlo en `PLAZO_SIN_MEDIR` con su porque
+  [ ] y solo entonces, decidir si `caducados` corta o sigue contando
 
 - [ ] **N6 -- LA VENTANA Y EL REBOTE** (N-C), *si* N1..N5 no bastan. Se decide
   con un numero, no con una opinion: cuantas veces el juez ha dicho que no en
