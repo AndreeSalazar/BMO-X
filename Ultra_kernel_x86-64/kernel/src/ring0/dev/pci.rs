@@ -473,6 +473,21 @@ pub fn find_storage_of(kind: StorageKind, skip: usize) -> Option<StorageLoc> {
 fn enable_mem_bus_master(bus: u8, dev: u8, func: u8) {
     let cmd = cfg_read32(bus, dev, func, 0x04);
     cfg_write32(bus, dev, func, 0x04, cmd | 0x0006);
+    // == *** Y SE APUNTA QUIEN FUE (2026-09-09) ==========================
+    //
+    // Esta es la UNICA linea de BMO-X que enciende el bit de maestro del bus,
+    // asi que es el unico sitio donde se puede saber sin suponer **quien
+    // alcanza la RAM porque nosotros lo dejamos**.
+    //
+    // ** El portero duro --`dev/portero/roja.rs`-- cierra a los demas. Que su
+    // lista se rellene AQUI, en el acto de adoptar, es lo que impide que se
+    // quede corta: el dia que se adopte la GPU, su fila aparece sola. Una
+    // lista escrita a mano habria cerrado la grafica recien estrenada.
+    //
+    // [!] Si algun dia hay un segundo sitio que ponga este bit, tiene que
+    // llamar aqui tambien -- y si no lo hace, su aparato acabara cerrado.
+    // Queda dicho para que el fallo se pague donde se cometa.
+    super::portero::adoptado(bus, dev, func);
 }
 
 /// El controlador de almacenamiento numero `index` del barrido, SIN tocar su

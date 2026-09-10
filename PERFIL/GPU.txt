@@ -15,7 +15,7 @@ LA QUE HAY PUESTA HOY
   familia: Ampere (GA106)
   driver en BMO-X: NINGUNO
 
-  ** Y desde el 07-09 la maquina LO DICE. `dev/portero.rs` censa el bus y suelta
+  ** Y desde el 07-09 la maquina LO DICE. `dev/portero/verde.rs` censa el bus y suelta
   en CABINA: "hay una GRAFICA NVIDIA y BMO-X no tiene codigo para ella".
   Antes esa tarjeta estaba dentro y el sistema no la nombraba ni una vez.
 
@@ -76,7 +76,7 @@ A QUIEN EXPONE
 expone: platform/drivers/gpu/rdna4
    el crate entero: el perfil, `claims()` y la maquina de estados del PSP
 
-expone: Ultra_kernel_x86-64/kernel/src/ring0/dev/portero.rs
+expone: Ultra_kernel_x86-64/kernel/src/ring0/dev/portero/verde.rs
    el censo del bus, que es quien hoy DICE que hay una grafica sin codigo
 
 expone: NEUTRO/CENSO.txt

@@ -56,8 +56,11 @@ LAS OCHO
 
   R-DMA-5   Todo aparato que alcanza la RAM esta en el censo
             juez    R5a `censo-neutro` en el build (codigo <-> censo)
-                    R5b `dev/portero.rs` en el arranque (censo <-> maquina),
-                        contando el bit BUS MASTER del registro Command
+                    R5b `dev/portero/verde.rs` en el arranque (censo <->
+                        maquina), contando el bit BUS MASTER del Command
+                    R5c `dev/portero/roja.rs` -- EL PORTERO DURO: el unico
+                        juez de las ocho que puede HACER algo con su propia
+                        respuesta. Ver abajo
             numero  maestros del bus <= aparatos censados
 
   R-DMA-6   La FORMA de cada peticion esta declarada, no supuesta
@@ -76,6 +79,42 @@ LAS OCHO
   *** SIETE DE LAS OCHO YA TIENEN JUEZ. La octava es exactamente lo que falta,
   y por eso esta escrita: una regla sin juez, DICHA, es una deuda con nombre.
   Sin escribir seria un agujero sin nombre.
+
+
+*** R5c: LA UNICA QUE YA NO SOLO CUENTA
+----------------------------------------
+
+  Peticion del dueno, 2026-09-09: *un portero duro con hot unmapping*.
+
+  Sin IOMMU no se puede desmapear una pagina. Lo que si se puede es quitarle
+  al aparato **la capacidad de emitir**: el bit 2 del registro Command, Bus
+  Master Enable. Mas basto que un desmapeo y mas fuerte -- y es una escritura
+  de 32 bits que se deshace con otra.
+
+    ** POR ESO ES CALIENTE DE VERDAD: no reinicia nada, no desmonta ningun
+    driver (son justo los aparatos que nadie adopto) y no invalida ningun TLB.
+
+  A quien se le retira:  a un maestro del bus que ESTE kernel no encendio.
+  La lista de los que si se rellena sola, en `pci::enable_mem_bus_master`, que
+  es la unica linea de BMO-X que pone ese bit. Una lista escrita a mano se
+  quedaria corta el dia que se adopte la GPU -- y ese dia cerraria la GPU.
+
+  A quien NO se le retira, jamas:
+
+    los PUENTES (clase 0x06)   su bit no gobierna al puente: gobierna si deja
+                               pasar lo que escriben los de abajo. Cerrarlo
+                               calla la rama entera, el disco del arranque
+                               incluido
+    los adoptados              por el registro de arriba
+    TODOS, hoy                 el cerrojo sale de fabrica en `Mirar`
+
+  [!] Y EMPEZAR EN `Mirar` ES EL SACRIFICIO (L3): hoy esto no protege de nada.
+  Se acepta por lo mismo que las otras siete cuentan y no cortan -- esto corre
+  en el arranque, y una barrera mal afinada ahi no da un aviso: deja la maquina
+  sin poder leer su propio sistema, y el arreglo es un flasheo a ciegas.
+
+    > Una barrera que se enciende antes de saber a quien para no es una
+    > barrera: es una averia con buenas intenciones.
 
 
 [!] LO QUE ESTAS REGLAS NO SON

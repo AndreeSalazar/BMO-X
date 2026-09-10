@@ -355,6 +355,20 @@ pub fn render_hud() {
     r.txt(" placa="); r.dec(b_fn as u64);
     r.txt(":"); r.dec(b_int as u64);
     r.txt(":"); r.dec(b_sin as u64);
+    // *** `ajenos=vistos:cerrados:puentes` -- EL PORTERO DURO.
+    //
+    // `vistos` son maestros del bus que alcanzan la RAM y **este kernel no
+    // encendio**: ni el disco, ni la red, ni el USB. Cada uno es un aparato
+    // que escribe en la memoria de esta maquina sin que nadie lo adoptara.
+    //
+    // ** `cerrados` es cuantos se quedaron sin el bit, y de fabrica es CERO:
+    // el cerrojo sale en `Mirar`. `puentes` son los que no se tocan jamas --
+    // cerrar un puente calla la rama entera, el disco del arranque incluido.
+    // Ver `dev/portero/roja.rs`.
+    let (a_vis, a_cer, a_pue) = crate::ring0::dev::portero::ajenos();
+    r.txt(" ajenos="); r.dec(a_vis as u64);
+    r.txt(":"); r.dec(a_cer as u64);
+    r.txt(":"); r.dec(a_pue as u64);
     // ** `puertas=esperando:PERDIDOS:barridos:reparados` -- QUE LAS PUERTAS SIGAN
     // ABIERTAS.
     //

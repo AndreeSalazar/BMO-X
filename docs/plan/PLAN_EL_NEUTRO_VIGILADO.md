@@ -422,6 +422,34 @@ Un plan que no diga donde acaba es propaganda.
   Se verifica: en el arranque, `maestros del bus, y el censo los conoce a
   todos`. Si sale el aviso, hay un aparato con DMA que nadie censo.
 
+- [x] **N3b -- EL PORTERO DURO. HECHO el 2026-09-09.** N3 sabia CONTAR la
+  diferencia; esto sabe hacer algo con ella.
+
+  Peticion del dueno: *"crear un portero duro con hot unmapping"*. Sin IOMMU
+  no se puede desmapear una pagina, asi que la pregunta honesta es que queda
+  cuando no se puede -- y queda **el mismo bit**: retirarle el BME a un maestro
+  del bus le quita la capacidad de emitir. Mas basto que un desmapeo y mas
+  fuerte, y es una escritura de 32 bits que se deshace con otra. *** Eso es lo
+  que lo hace CALIENTE de verdad: no reinicia nada, no desmonta ningun driver
+  --son justo los que nadie adopto-- y no invalida ningun TLB.
+
+  ** La lista de quien NO se toca **se rellena sola**: la escribe
+  `pci::enable_mem_bus_master`, la unica linea de BMO-X que enciende ese bit.
+  Una lista a mano se quedaria corta el dia que se adopte la GPU, y ese dia
+  cerraria la GPU.
+
+  [!] Y los PUENTES no se cierran jamas: su bit no gobierna al puente, gobierna
+  si deja pasar lo que escriben los de abajo. Cerrar el puerto raiz de la
+  grafica calla la rama entera, el disco del arranque incluido.
+
+  El cerrojo sale de fabrica en `Mirar` (L3): hoy **no protege de nada**, y se
+  acepta por lo mismo que las ocho reglas cuentan y no cortan. Ver
+  `NEUTRO/DMA/REGLAS.txt`, R5c.
+
+  Se verifica: en el arranque, `ajenos=vistos:cerrados:puentes` en CABINA. Con
+  el cerrojo en `Mirar`, `cerrados` es 0 y `vistos` es la lista que el dueno
+  tiene que reconocer uno a uno antes de cambiar la palabra.
+
 - [x] **N4 -- MOVIDO ARRIBA el 2026-09-09.** Estaba aqui, detras de N2 y N3,
   y el intento de cablear el juez demostro que va DELANTE. Ver su casilla.
 

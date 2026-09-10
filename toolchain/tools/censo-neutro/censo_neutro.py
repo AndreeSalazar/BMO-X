@@ -163,22 +163,25 @@ def filas_del_censo():
 #
 # > Un numero copiado CON guardian es una cita. Sin guardian es una
 # > suposicion con cara de dato.
-PORTERO = os.path.join(BASE, "dev", "portero.rs")
+# ** `dev/portero.rs` se partio en carriles el 09-09 y la cita bajo al
+# VERDE, que es el que cuenta. El rojo de al lado cierra, y un numero
+# citado no tiene nada que hacer en el carril que escribe en el bus.
+PORTERO = os.path.join(BASE, "dev", "portero", "verde.rs")
 RE_CENSADOS = re.compile(r"APARATOS_CENSADOS:\s*u32\s*=\s*(\d+)")
 
 
 def la_cita_del_portero(filas):
     """Queja si el numero de `portero.rs` no es el de filas con fichero."""
     if not os.path.exists(PORTERO):
-        return ["falta dev/portero.rs: la cita del censo no se puede comprobar"]
+        return ["falta dev/portero/verde.rs: la cita del censo no se puede comprobar"]
     with open(PORTERO, "r", encoding="utf-8", errors="replace") as fh:
         m = RE_CENSADOS.search(fh.read())
     if not m:
-        return ["dev/portero.rs ya no declara APARATOS_CENSADOS: la cita"
+        return ["dev/portero/verde.rs ya no declara APARATOS_CENSADOS: la cita"
                 " desaparecio y con ella el aviso del arranque"]
     dice = int(m.group(1))
     if dice != len(filas):
-        return ["dev/portero.rs dice %d aparatos censados y el censo tiene %d"
+        return ["dev/portero/verde.rs dice %d aparatos censados y el censo tiene %d"
                 " fila(s) con fichero" % (dice, len(filas))]
     return []
 
