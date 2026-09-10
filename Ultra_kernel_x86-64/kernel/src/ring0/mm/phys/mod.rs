@@ -53,7 +53,12 @@ mod amarilla;
 mod roja;
 
 pub use amarilla::zero_frame;
-pub use super::titular::{titular_de, Titular};
+// ** `en_vuelo`, `aterrizo`, `en_vuelo_de` y `vuelos` son el paso N4: quien
+// tiene un DMA EN VUELO hacia un marco. Ver `mm/titular.rs`.
+pub use super::titular::{
+    aterrizo, en_vuelo, en_vuelo_de, titular_de, vuelos, Titular,
+    APARATO_AHCI, APARATO_GPU, APARATO_NIC, APARATO_XHCI,
+};
 pub use roja::{
     alloc_frame, alloc_frame_de, alloc_frames_contig, alloc_frames_contig_de, esta_libre,
     se_devolvio_dos_veces,

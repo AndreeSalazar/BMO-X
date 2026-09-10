@@ -314,7 +314,47 @@ Un plan que no diga donde acaba es propaganda.
   verifica: un censo dice cuantos sitios escriben una direccion fisica en un
   descriptor, y ese numero tiene que ser **1**.
 
-- [ ] **N4 -- ★★★ EL BIT EN VUELO, Y AHORA VA ANTES QUE N2.**
+- [x] **N4 -- EL BIT EN VUELO. HECHO el 2026-09-09.**
+
+  ** Vive en el **nibble alto del byte del titular**, y no hizo falta ni una
+  tabla nueva: `Titular` nunca paso de 8, asi que los cuatro bits de arriba
+  llevaban libres desde el primer dia -- y ese byte ya se leia y escribia en un
+  solo sitio (`marcar`), que es lo que lo hace seguro.
+
+  ```text
+     bits 0..3   el titular    0..8
+     bits 4..7   EL APARATO    0 = nada en vuelo, 1..15 = quien
+  ```
+
+  Cuatro funciones (`en_vuelo`, `aterrizo`, `en_vuelo_de`, `vuelos`), los cuatro
+  aparatos numerados **por las filas de `NEUTRO/CENSO.txt`**, y tres cuentas:
+
+  ```text
+     vivos     lo que hay ahora. Al apagar, CERO
+     pisados   ** CERO. Un marco que cambia de titular con DMA dentro
+     choques   ** CERO. Dos aparatos pidiendo el mismo bufer
+  ```
+
+  ★ **`pisados` se detecta desde el lado del MARCADO**, no en el camino de
+  devolucion. Es la misma tecnica que este fichero invento para `NEUTROS_SOLTADOS`
+  y por el mismo motivo: ese camino es rojo, es donde vive la azul del 07-09, y
+  R4 dice que no se toca hasta reproducirla. **Se puede saber que una regla se
+  rompio sin ponerse delante de ella.**
+
+  [!] Y NO IMPIDE NADA: cuenta y dice. Negarse a marcar desde el camino rojo con
+  un dato que aun no se ha ganado la confianza dejaria la maquina sin memoria --
+  peor que el fallo que evita. Primero el numero; la barrera, cuando el numero
+  lleve arranques diciendo cero.
+
+  ** Cableado en el AHCI, en `mandar_lectura`, que es el embudo de las DOS
+  lecturas. Se verifica: `run c/ciclos.bex` no basta -- hace falta que CABINA
+  ensene `vuelos()`. Esa fila es N4b.
+
+- [ ] **N4b -- QUE LAS TRES CUENTAS SE VEAN.** `vuelos()` existe y no lo mira
+  nadie, que es exactamente el fallo que esta casa lleva cazando toda la semana.
+  Va donde ya esta `neutros()`. Se verifica: al apagar, `vivos` en cero.
+
+- [x] **N4-original -- el enunciado, conservado.**
 
   *** El orden de este plan estaba MAL, y lo demostro intentar cablear el juez.
   `dev/disk/transfer.rs:64` --el camino DIRECTO de una lectura-- le da al disco

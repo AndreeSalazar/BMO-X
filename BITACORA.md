@@ -3929,3 +3929,83 @@ Comparar por sufijo habria convertido a los hermanos en `hermanios`.
 > Una broma sobre una palabra fea acabo siendo un fallo del compilador. Y el
 > unico motivo por el que se encontro es que **el barrido rompio un test en vez
 > de pasar de largo**.
+
+---
+
+## Ep. 75 -- N4: el bit en vuelo cabia en un byte que ya existia
+
+**2026-09-09.** El paso que el propio juez del DMA pidio, y que el intento de
+cablearlo demostro que iba delante de todo lo demas.
+
+### *** NO HIZO FALTA NI UNA TABLA NUEVA
+
+```text
+   bits 0..3   el titular    0..8, y sobran cuatro
+   bits 4..7   EL APARATO    0 = nada en vuelo, 1..15 = quien
+```
+
+`Titular` nunca paso de 8, asi que el nibble alto de su byte llevaba libre desde
+el primer dia. **Cero memoria nueva**, y lo que lo hace seguro no es la
+aritmetica: es que ese byte ya se leia y escribia **en un solo sitio**
+--`marcar`-- desde que existe.
+
+> Una tabla con un solo escritor admite un campo mas. Una con treinta, no.
+
+### Los cuatro aparatos, numerados por el CENSO
+
+```text
+   1 AHCI    2 NIC    3 xHCI    4 GPU (cuando llegue)
+```
+
+** El orden son las filas de `NEUTRO/CENSO.txt`, y esa es toda la regla. Un
+numero que no salga de la lista de quien alcanza la RAM por su cuenta seria un
+aparato que nadie censo escribiendo en la memoria de alguien.
+
+[!] El CERO esta reservado a "nada en vuelo", y por eso `en_vuelo` lo **rechaza**
+en vez de aceptarlo como un aparato mas.
+
+### ★★ Y `pisados` SE MIRA DESDE EL LADO DEL MARCADO
+
+Un marco que cambia de titular con el nibble alto puesto es **un bufer
+reasignado mientras un aparato todavia escribia en el**. No da fault y no tiene
+sintoma: da un dato ajeno apareciendo en la memoria de otro, mas tarde.
+
+*** Y se detecta sin entrar en el camino de devolucion, que es ROJO y donde vive
+la azul del 07-09. Es la misma tecnica que este fichero invento para
+`NEUTROS_SOLTADOS`, y su propia frase se aplica igual:
+
+> Se puede saber que una regla se rompio sin ponerse delante de ella.
+
+### [!] Y NO IMPIDE NADA. Cuenta y dice.
+
+Negarse a marcar desde el camino rojo, con un dato que todavia no se ha ganado
+la confianza, dejaria la maquina sin memoria -- **peor que el fallo que evita**.
+Primero el numero; la barrera, cuando el numero lleve arranques diciendo cero.
+
+### Lo que hoy NO caza, dicho antes de que alguien lo cuente al reves
+
+`read_sectors_phys` es **sincrona**: sondea hasta que el disco termina. Asi que
+la ventana entre poner y quitar es corta, y **el fallo que este bit existe para
+cazar no puede pasar por ahi**. Lo que se gana hoy son tres cosas distintas:
+
+```text
+   1. `vivos` en CERO al apagar caza a un driver que se va sin aterrizar
+   2. `choques` caza a dos aparatos sobre el mismo bufer
+   3. y `en_vuelo_de` deja de devolver siempre `None` -- que era lo unico
+      que bloqueaba el paso N2
+```
+
+** El valor de verdad llega el dia que un camino sea ASINCRONO. Ponerlo hoy es
+lo que hace que ese dia no haya que inventar nada, y que la cuenta ya lleve
+arranques diciendo cero.
+
+### El sitio del cableado, y por que ese y no otro
+
+`mandar_lectura` es el embudo que su propia cabecera declara: *"la llaman los
+DOS caminos de `read` --el directo y el de rebote-- que es lo unico que hay"*.
+
+★ El del rebote pone en vuelo la pagina de DMA. **El DIRECTO pone en vuelo el
+bufer del que llamo** -- que no es del aparato, y que es exactamente el caso por
+el que `bmo-dma-juicio` necesitaba este dato para no rechazar una lectura buena.
+
+El kernel crecio **4.392 B**. Ese es el precio, y esta dicho.

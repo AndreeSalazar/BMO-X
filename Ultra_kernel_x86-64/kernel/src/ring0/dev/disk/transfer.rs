@@ -134,7 +134,41 @@ pub fn cuentas_dma() -> (u64, u64) { unsafe { (SIN_REBOTE, CON_REBOTE) } }
 /// [!] Da por hecho que el disco YA esta tomado. Ver `tomar_disco`: tomarlo aqui
 /// dentro convertiria cada vuelta de `read` en una peticion anidada.
 fn mandar_lectura(lba: u64, count: u16, phys: u64) -> Option<u16> {
-    match unsafe { bmo_ahci::read_sectors_phys(unsafe { PORT }, lba, count, phys) } {
+    // == *** EL BIT EN VUELO (N4), Y ESTE ES SU PRIMER CLIENTE ============
+    //
+    // ** Se pone ANTES de mandar y se quita DESPUES de que el disco conteste.
+    // Entre las dos lineas, `mm::phys::en_vuelo_de(phys)` dice la verdad: **el
+    // AHCI tiene un DMA hacia ese marco AHORA**.
+    //
+    // *** Y este es el sitio, no otro. `mandar_lectura` es el embudo que la
+    // cabecera de arriba declara: la llaman los DOS caminos de `read` --el
+    // directo y el de rebote-- y no hay un tercero. El del rebote pone en
+    // vuelo la pagina de DMA; **el DIRECTO pone en vuelo el bufer del que
+    // llamo**, que no es del aparato y por eso `bmo-dma-juicio` necesitaba
+    // este dato para no rechazar una lectura legitima.
+    //
+    // [!] LO QUE HOY NO CAZA, y hay que decirlo: `read_sectors_phys` es
+    // SINCRONA -- sondea hasta que el disco termina-- asi que la ventana entre
+    // las dos lineas es corta y **el fallo que este bit existe para cazar no
+    // puede pasar por AQUI**. Lo que se gana hoy son otras tres cosas:
+    //
+    // ```text
+    //    1. la cuenta `vivos` tiene que ser CERO al apagar: caza a un driver
+    //       que se vaya sin aterrizar
+    //    2. `choques` caza a dos aparatos sobre el mismo bufer
+    //    3. y `en_vuelo_de` deja de devolver siempre `None`, que es lo que
+    //       bloqueaba el paso N2 del plan
+    // ```
+    //
+    // ** El valor de verdad llega el dia que un camino sea ASINCRONO. Ponerlo
+    // hoy, con la ventana corta, es lo que hace que ese dia no haya que
+    // inventar nada -- y que la cuenta ya lleve arranques diciendo cero.
+    let marcado = mm::phys::en_vuelo(phys & !(mm::PAGE - 1), mm::phys::APARATO_AHCI);
+    let r = unsafe { bmo_ahci::read_sectors_phys(unsafe { PORT }, lba, count, phys) };
+    if marcado {
+        mm::phys::aterrizo(phys & !(mm::PAGE - 1));
+    }
+    match r {
         Ok(n) => Some(n),
         Err(e) => {
             // El LBA y no el numero de sectores: cuando un disco se queja, lo
