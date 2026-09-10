@@ -80,6 +80,8 @@ ejes, dos cuerpos de trabajo previo, dos maestros.
                                     fisica a un aparato, y cuantas veces
        INTELIGENTE.txt              las TRES formas de darle memoria a un
                                     aparato, y cuando vale cada una
+       REGLAS.txt                   las OCHO que valen para CUALQUIERA de las
+                                    tres, cada una con su juez y su numero
 
    docs/maestro/DMA_MAESTRO.md      que copiar del mundo sobre disciplina DMA
    docs/maestro/IOMMU_MAESTRO.md    que copiar sobre AMD-Vi / VT-d / SMMU

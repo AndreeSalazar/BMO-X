@@ -1,0 +1,124 @@
+LAS OCHO REGLAS DEL DMA -- lo que vale para CUALQUIERA de ellos
+================================================================
+
+  Peticion del dueno, 2026-09-09: "crea reglas ESTRICTAS de DMA, cuales son EN
+  GENERAL, que SIEMPRE es DMA cualquiera de ellas, para ser convertido en DMA
+  inteligente".
+
+  *** Y esa frase tiene dentro la idea que ordena todo esto:
+
+
+  LAS REGLAS NO ESTRECHAN LA ELECCION. SON LO QUE LA HACE LIBRE.
+  ---------------------------------------------------------------
+
+  `INTELIGENTE.txt` dice que hay TRES formas de darle memoria a un aparato --su
+  corral, un prestamo, o un rebote-- y que lo inteligente es elegir por camino.
+
+  ** Elegir sale barato **solo si las ocho reglas de abajo valen sea cual sea la
+  eleccion**. Si dependieran de la forma, cambiar un camino de rebote a directo
+  obligaria a auditar el camino entero, y entonces nadie lo cambiaria nunca.
+
+    > Un invariante que sobrevive a las tres formas es lo que convierte una
+    > decision en un ajuste.
+
+
+COMO SE LEE ESTA LISTA
+-----------------------
+
+  Cada regla trae SU JUEZ y SU NUMERO. Es L0 de la casa: un eje sin juez es
+  prosa. Una regla que no se puede comprobar no es una regla -- es una
+  intencion, y las intenciones no fallan el build.
+
+    regla     lo que SIEMPRE vale
+    juez      quien lo comprueba
+    numero    que tiene que salir
+
+
+LAS OCHO
+---------
+
+  R-DMA-1   TODA direccion fisica que llega a un aparato ha pasado por el juez
+            juez    el TIPO. `bmo-dma-juicio::Prenda` no tiene constructor
+                    publico, asi que rodearlo es un error de compilacion
+            numero  constructores de `Prenda` = 1, POR CONSTRUCCION
+
+  R-DMA-2   TODO marco en vuelo esta marcado, y desmarcado al aterrizar
+            juez    `mm::titular::vuelos().0`
+            numero  vivos = 0 AL APAGAR
+
+  R-DMA-3   Un marco EN VUELO no cambia de titular
+            juez    `vuelos().1`, contado desde el lado del MARCADO
+            numero  pisados = 0, siempre
+
+  R-DMA-4   Dos aparatos nunca tienen el mismo marco en vuelo
+            juez    `vuelos().2` y `Veto::DeOtroAparato`
+            numero  choques = 0, siempre
+
+  R-DMA-5   Todo aparato que alcanza la RAM esta en el censo
+            juez    R5a `censo-neutro` en el build (codigo <-> censo)
+                    R5b `dev/portero.rs` en el arranque (censo <-> maquina),
+                        contando el bit BUS MASTER del registro Command
+            numero  maestros del bus <= aparatos censados
+
+  R-DMA-6   La FORMA de cada peticion esta declarada, no supuesta
+            juez    `Peticion.prestando`: corral (false) o prestamo (true)
+            numero  -- no tiene cuenta: se comprueba leyendo la llamada
+
+  R-DMA-7   Toda transferencia cabe en el campo de CUENTA del aparato
+            juez    `Veto::NoCabeLaCuenta`, con `bits_de_cuenta`
+            numero  vetos de esa clase = 0
+
+  R-DMA-8   Todo vuelo tiene PLAZO: ninguno dura para siempre
+            juez    ** NO EXISTE TODAVIA. Es el paso N5
+            numero  --
+
+
+  *** SIETE DE LAS OCHO YA TIENEN JUEZ. La octava es exactamente lo que falta,
+  y por eso esta escrita: una regla sin juez, DICHA, es una deuda con nombre.
+  Sin escribir seria un agujero sin nombre.
+
+
+[!] LO QUE ESTAS REGLAS NO SON
+-------------------------------
+
+  NO SON UNA BARRERA, TODAVIA. Hoy R-DMA-2, 3, 4 y 7 se CUENTAN y se dicen; solo
+  R-DMA-4 corta, y solo en su caso mas grave. El motivo esta escrito donde se
+  cablearon (`dev/disk/transfer.rs`):
+
+    esto es el camino del DISCO, o sea el del ARRANQUE. Una regla mal afinada
+    aqui no da un aviso: deja la maquina sin poder leer su propio sistema.
+
+  ** El dia que los contadores lleven arranques diciendo cero, cortar con las
+  ocho es cambiar una linea. Al reves --cortar hoy y relajar despues-- se paga
+  con un flasheo a ciegas.
+
+  Y NO CUBREN AL QUE NO PIDE MEMORIA. El microcodigo y el modo SMM cumplen las
+  tres condiciones del neutro y **no piden marcos a este asignador**, asi que
+  ninguna de las ocho les llega. `NEUTRO/CENSO.txt` los escribe igual, y
+  `ORDEN.md` les reserva el mecanismo 2.
+
+
+LO QUE UNA REGLA NUEVA TIENE QUE TRAER
+---------------------------------------
+
+  La misma exigencia que `NEUTRO/LEY.md` le hace a las suyas:
+
+    1. valer para las TRES formas         si solo vale para una, es una nota
+                                          del camino, no una regla del DMA
+    2. traer su JUEZ                      quien la comprueba, con nombre
+    3. traer su NUMERO                    que sale cuando se cumple
+    4. y traer su SACRIFICIO (L3)         que se pierde por tenerla
+
+  [!] La 1 es la que descarta mas candidatas, y es la util. *"Los bufers se
+  alinean a 64"* suena a regla y es del xHC; *"toda transferencia cabe en el
+  campo de cuenta de SU aparato"* vale para los tres y por eso es R-DMA-7.
+
+
+DONDE VIVE CADA COSA
+---------------------
+
+  las tres formas y cuando usar cada una  ->  INTELIGENTE.txt
+  quien le da una direccion a un aparato  ->  EMBUDO.txt
+  las casillas y su orden                 ->  docs/plan/PLAN_EL_NEUTRO_VIGILADO.md
+  que copiar del mundo                    ->  docs/maestro/DMA_MAESTRO.md
+  quien alcanza la RAM sin permiso        ->  ../CENSO.txt

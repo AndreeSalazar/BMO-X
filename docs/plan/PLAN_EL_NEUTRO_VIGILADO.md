@@ -403,12 +403,24 @@ Un plan que no diga donde acaba es propaganda.
 - [x] **N2-original -- MOVIDO ARRIBA, delante de N3.** Decia *"es una linea"*,
   y lo es -- pero solo despues de N4. Ver su casilla.
 
-- [ ] **N3 -- EL CENSO CONTRA LA MAQUINA** (N-A, y es R5b de
-  `NEUTRO/REQUISITOS.md`). R5a --censo contra codigo-- ya corre en el build
-  desde el 07-09. Falta la otra mitad, que **solo se puede ver arrancando**:
-  `dev/portero.rs` escribe lo que encuentra en el PCI y algo compara. Se
-  verifica: la diferencia entre lo listado y lo encontrado es cero, o se dice
-  cual falta y por que lado.
+- [x] **N3 -- HECHO el 2026-09-09. El censo contra la maquina, por un BIT.**
+
+  La pregunta del censo no es *cuantos aparatos hay*: es **quien puede escribir
+  en la RAM por su cuenta**. Y PCI la contesta con el bit 2 del registro
+  Command --BUS MASTER ENABLE--, que es la tercera condicion de `FRONTERA.txt`
+  **leida del silicio en vez de escrita a mano**.
+
+  ** Y lo que puede descubrir no es solo un olvido nuestro: un BME encendido
+  que este kernel no encendio es **la ventana del arranque** que
+  `IOMMU_MAESTRO.md` describe, medida en vez de supuesta.
+
+  [!] `APARATOS_CENSADOS` es una COPIA del censo, y lleva juez a proposito:
+  `censo-neutro` comprueba en cada build que diga lo mismo que las filas, y
+  esta probado que sabe decir que no. Es la leccion de R19 aplicada **el mismo
+  dia que se aprendio**.
+
+  Se verifica: en el arranque, `maestros del bus, y el censo los conoce a
+  todos`. Si sale el aviso, hay un aparato con DMA que nadie censo.
 
 - [x] **N4 -- MOVIDO ARRIBA el 2026-09-09.** Estaba aqui, detras de N2 y N3,
   y el intento de cablear el juez demostro que va DELANTE. Ver su casilla.

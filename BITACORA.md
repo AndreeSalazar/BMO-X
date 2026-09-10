@@ -4156,3 +4156,81 @@ motivo de que nadie la consulte.
 
 Reescribir el cuerpo de `mandar_lectura` se llevo un `unsafe` anidado que
 sobraba desde antes.
+
+---
+
+## Ep. 78 -- N3: el censo contra la maquina, y son OCHO reglas
+
+**2026-09-09.** El dueno pidio dos cosas: N3, y *"crea reglas ESTRICTAS de DMA,
+cuales son EN GENERAL, que SIEMPRE es DMA cualquiera de ellas, para ser
+convertido en DMA inteligente"*. La segunda ordena la primera.
+
+### *** N3 SE CONTESTA CON UN BIT
+
+La pregunta del censo **no es cuantos aparatos hay**: es *quien puede escribir
+en la RAM por su cuenta*. Y PCI la contesta con el bit 2 del registro Command:
+
+```text
+   BME = 0   el aparato solo contesta cuando le preguntan
+   BME = 1   *** puede iniciar transacciones: alcanza la RAM SOLO
+```
+
+** Esa es **la tercera condicion de `FRONTERA.txt` leida del silicio** en vez de
+escrita a mano. `dev/portero.rs` ya recorria el bus; ahora ademas cuenta cuantos
+la tienen encendida y lo compara con lo que el censo declara.
+
+★ Y lo que puede descubrir no es solo un olvido nuestro: **un BME encendido que
+este kernel no encendio es la ventana del arranque** que `IOMMU_MAESTRO.md`
+describe -- medida en vez de supuesta.
+
+### La copia lleva juez, y es la leccion de R19 aplicada el mismo dia
+
+`APARATOS_CENSADOS = 3` es un numero copiado del censo. Hace ocho horas esta
+casa descubrio lo que cuesta una copia sin juez --el `OP_PID` que llevaba
+semanas siendo `CONSOLE_READ`-- asi que este nace con el suyo: `censo-neutro`
+comprueba en cada build que diga lo mismo que las filas, y esta **probado que
+sabe decir que no**.
+
+> Un numero copiado CON guardian es una cita. Sin guardian es una suposicion
+> con cara de dato.
+
+### ★★ Y LAS OCHO REGLAS: `NEUTRO/DMA/REGLAS.txt`
+
+La frase del dueno lleva dentro la idea que ordena todo el DMA:
+
+> Las reglas no estrechan la eleccion. Son lo que la hace LIBRE.
+
+`INTELIGENTE.txt` dice que hay tres formas de darle memoria a un aparato y que
+lo inteligente es elegir por camino. ** Elegir sale barato **solo si los
+invariantes valen sea cual sea la eleccion**. Si dependieran de la forma,
+cambiar un camino de rebote a directo obligaria a auditar el camino entero -- y
+entonces nadie lo cambiaria nunca.
+
+```text
+   R-DMA-1  toda direccion pasa por el juez     el TIPO `Prenda`
+   R-DMA-2  todo vuelo se marca y se quita      vivos = 0 al apagar
+   R-DMA-3  un marco en vuelo no cambia dueno   pisados = 0
+   R-DMA-4  un marco, un aparato                choques = 0
+   R-DMA-5  todo aparato censado                R5a build + R5b arranque
+   R-DMA-6  la FORMA esta declarada             `Peticion.prestando`
+   R-DMA-7  cabe en el campo de CUENTA          `Veto::NoCabeLaCuenta`
+   R-DMA-8  todo vuelo tiene PLAZO              ** SIN JUEZ. Es N5
+```
+
+*** **Siete de las ocho ya tienen juez y numero.** La octava esta escrita
+precisamente porque no lo tiene: una regla sin juez, DICHA, es una deuda con
+nombre; sin escribir seria un agujero sin nombre.
+
+### Y lo que una regla NUEVA tiene que traer
+
+```text
+   1. valer para las TRES formas    si solo vale para una, es una nota del
+                                    camino, no una regla del DMA
+   2. su JUEZ                       quien la comprueba, con nombre
+   3. su NUMERO                     que sale cuando se cumple
+   4. su SACRIFICIO (L3)            que se pierde por tenerla
+```
+
+[!] La 1 es la que descarta mas candidatas, y es la util. *"Los bufers se
+alinean a 64"* suena a regla y es del xHC. *"Toda transferencia cabe en el campo
+de cuenta de SU aparato"* vale para los tres, y por eso es R-DMA-7.
