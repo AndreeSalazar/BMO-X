@@ -187,8 +187,21 @@ fn cap_err(err: (u32, u32)) -> BmoStatus {
 
 fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
     match operation {
-        TASK_OP_GET_PID => BmoStatus::ok_value(scheduler::current_pid() as u64),
-        TASK_OP_GET_TID => BmoStatus::ok_value(scheduler::current_tid() as u64),
+        // ** LAS DOS QUE EL METRO MIDE, sin cerrojo. `invoke_current_task` solo
+        // se llama desde `invoke`, y `invoke` solo desde `dispatch`, que es lo
+        // que llama el stub: siempre dentro del trap. Ver
+        // `current_tid_en_trap` para la demostracion y su sacrificio.
+        //
+        // [!] Y NO se cambian los otros ~45 `current_pid()` de este fichero,
+        // aunque estan en el mismo trap y serian igual de correctos. Estos dos
+        // son los que `ciclos.bex` mide, asi que son los dos donde el cambio se
+        // puede COMPROBAR. Los demas se cambian cuando algo los mida.
+        TASK_OP_GET_PID => {
+            BmoStatus::ok_value(unsafe { scheduler::current_pid_en_trap() } as u64)
+        }
+        TASK_OP_GET_TID => {
+            BmoStatus::ok_value(unsafe { scheduler::current_tid_en_trap() } as u64)
+        }
         // These switch at the syscall boundary; when (if) this context runs
         // again it resumes here and reports success.
         TASK_OP_YIELD => {
@@ -1057,9 +1070,22 @@ extern "C" fn dispatch(frame: &mut TrapFrame) -> u64 {
     // Igual que el timer: donde tallo su area este trap y para quien. Un
     // SYSCALL de Ring 3 aterriza en la pila que le haya puesto el planificador,
     // asi que si esa rampa apuntara donde no debe, esto lo ensena.
+    // ** EL CERROJO QUE PAGABA TODA PUERTA, y se fue el 2026-09-09.
+    //
+    // Esto llamaba a `scheduler::current_tid()`, que toma `SCHED_LOCK` --o sea
+    // `pushfq` + `cli` + `lock xchg` + `popfq`-- **para leer un `u32`**, y lo
+    // hacia en el coste FIJO de todas las puertas.
+    //
+    // `c/ciclos.bex` lo midio: la misma puerta cuesta 633 ticks rechazada y 780
+    // leyendo un `pid`. Esos 147 no son la lectura.
+    //
+    // Aqui la version sin cerrojo es correcta por construccion --un solo
+    // escritor, ningun otro nucleo planificando, y `IF` ya en cero por el
+    // `SFMASK`-- y la demostracion entera vive en `current_tid_en_trap`.
+    // `dispatch` SIEMPRE corre dentro del trap: es lo que el stub llama.
     crate::ring0::plat::trap::registrar_publicacion(
         crate::ring0::task::percpu::trap_rsp(),
-        scheduler::current_tid(),
+        unsafe { scheduler::current_tid_en_trap() },
     );
     // ** DE QUE CLASE ES ESTA PUERTA -- lo que faltaba para saber DONDE se usa.
     //

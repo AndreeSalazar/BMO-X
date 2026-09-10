@@ -542,14 +542,25 @@ pub extern "C" fn contexto_podrido(motivo: u64, rsp: u64) -> ! {
         l.s("rsv="); l.hex(rsv, 12);
         l.s("  noxcr0="); l.hex(noxcr0, 12);
         inf.push(l);
-        // `bv0` es el MISMO campo leido al entrar en el despachador. Si bv0 ya
-        // esta podrido, el culpable esta entre el xsave64 y el call; si bv0
-        // esta sano, esta dentro del despachador. Una linea que parte el codigo
-        // sospechoso por la mitad.
-        let mut l = Line::new();
-        l.s("bv0="); l.hex(t::cabecera_al_entrar(), 12);
-        l.s("  (dispatch)");
-        inf.push(l);
+        // == *** AQUI SALIA `bv0=`, Y SE FUE EL 2026-09-09 ================
+        //
+        // Era *"el mismo campo leido al entrar en el despachador"*, y partia
+        // por la mitad la ventana entre el `xsave64` del PROLOGO y la guardia
+        // del epilogo.
+        //
+        // ** Esa ventana ya no existe: el `xsave64` se bajo a la via lenta, y
+        // `registrar_publicacion` --que tomaba la foto-- corre antes de que
+        // haya ningun `xsaveopt64`. La foto era del offset 512 de un area
+        // recien tallada, o sea **pila sin inicializar**, y costaba un
+        // `read_volatile` de una linea fria en CADA puerta.
+        //
+        // Un informe con un numero que ya no significa nada es peor que un
+        // informe con una linea menos. Ver `plat/trap.rs`.
+        //
+        // [!] Y lo que SI sigue estando es `bvx`/`basex` de abajo, que las lee
+        // el ENSAMBLADOR del `rsp` que uso el `xsaveopt64`, sin nadie en medio.
+        // Esa sigue siendo cierta -- y es la que de verdad contesto la
+        // pregunta.
         // Y la version SIN indirecciones: leida por el stub justo despues del
         // xsave64, del rsp que la propia instruccion uso.
         let (bvx, basex) = t::tras_xsave();

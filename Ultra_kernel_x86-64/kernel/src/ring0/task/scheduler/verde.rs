@@ -362,6 +362,86 @@ pub fn current_pid() -> u32 {
     s.tasks[s.current].pid
 }
 
+/// **QUIEN SOY, SIN CERROJO.** Solo desde un trap, y la condicion no es un
+/// consejo: es lo que hace que esto sea correcto.
+///
+/// # *** De donde sale, con el numero delante
+///
+/// El **2026-09-09** `c/ciclos.bex` midio una puerta en el Ryzen y salio esto:
+///
+/// ```text
+///    RECHAZO (op)   633 ticks     una puerta que NO HACE NADA
+///    PID            780 ticks     la misma, leyendo un `u32`
+///    ------------------------------------------------------
+///    "trabajo" de PID   147 ticks   para leer UN ENTERO
+/// ```
+///
+/// *** 147 ticks no los cuesta la lectura: los cuesta el cerrojo. `SpinLock::lock`
+/// hace `pushfq` + `cli` + `lock xchg`, y su `Guard` un `popfq` al soltarlo --
+/// cuatro operaciones serializantes para leer cuatro bytes.
+///
+/// Y peor: **`registrar_publicacion(trap_rsp(), current_tid())` corre en TODA
+/// puerta**, asi que ese cerrojo estaba en el coste FIJO de todas.
+///
+/// # ** LA DEMOSTRACION, en tres hechos comprobables
+///
+/// ```text
+///    1. `s.current` tiene UN SOLO ESCRITOR: `schedule_locked`
+///       (`roja.rs:591`), que corre con `SCHED_LOCK` en la mano y las
+///       interrupciones apagadas. Su propia cabecera lo declara.
+///
+///    2. NINGUN OTRO NUCLEO planifica. `plat/smp/crew.rs` lo dice de si
+///       mismo: *"Esto no es un planificador. No hay colas, ni prioridades,
+///       ni cambio de contexto, ni tareas de Ring 3 corriendo en otro
+///       nucleo"*. Un AP reparte una funcion pura sobre su rango y no toca
+///       ninguno de los 236 `static mut` del kernel.
+///
+///    3. QUIEN LLAMA A ESTO ESTA EN UN TRAP, y en un trap `IF` ya esta en
+///       cero -- lo apago el `MSR_SFMASK` en el `syscall` y no vuelve hasta
+///       que `sysretq` restaure los RFLAGS de `r11`. O sea que **el `cli` del
+///       cerrojo apaga algo que ya estaba apagado**.
+/// ```
+///
+/// Los tres juntos dicen que entre esta lectura y su uso **no cabe nadie**: no
+/// hay otro escritor, no hay otro nucleo, y no hay interrupcion.
+///
+/// # [!] LO QUE ESTA FUNCION SACRIFICA (L3), y es lo que la mantiene honesta
+///
+/// ```text
+///    [ ] no vale fuera de un trap. Un hilo de kernel con `IF` en uno que
+///        llame a esto puede leer un `current` de hace un instante -- y para
+///        eso siguen estando `current_tid` y `current_pid`, con su cerrojo
+///    [ ] no se puede usar para DECIDIR sobre otra tarea. Contesta "quien
+///        soy", que es la unica pregunta que el que pregunta ya sabe
+///    [ ] y el punto 2 de la demostracion CADUCA. El dia que un AP entre en
+///        el planificador, esto es una carrera -- y `crew.rs` ya declara que
+///        lo que falta para eso son 236 `static mut`, uno a uno. Ese dia hay
+///        que volver aqui, y por eso la demostracion esta escrita y no
+///        supuesta
+/// ```
+///
+/// ** No se cambian los ~60 sitios que llaman a las de cerrojo: solo los TRES
+/// que el metro senala --`registrar_publicacion`, `TASK_OP_GET_PID` y
+/// `TASK_OP_GET_TID`--. Quitarle el cerrojo a una funcion con sesenta clientes
+/// que no se han auditado es cambiar sesenta cosas para arreglar tres.
+///
+/// # Seguridad
+///
+/// Es `unsafe` a proposito, y lo que el que llama promete es el punto 3: **estoy
+/// en un trap con las interrupciones apagadas**. No se puede comprobar desde
+/// aqui, asi que se declara.
+pub unsafe fn current_tid_en_trap() -> u32 {
+    let s = sched();
+    s.tasks[s.current].tid
+}
+
+/// Igual que [`current_tid_en_trap`], para el `pid`. Misma demostracion, mismo
+/// sacrificio, misma promesa.
+pub unsafe fn current_pid_en_trap() -> u32 {
+    let s = sched();
+    s.tasks[s.current].pid
+}
+
 
 /// El espacio de direcciones (`cr3`) del proceso `pid`, si vive.
 ///
