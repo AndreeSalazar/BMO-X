@@ -119,6 +119,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-dma-juicio"
+version = "0.1.0"
+
+[[package]]
 name = "bmo-estratos"
 version = "0.1.0"
 dependencies = [

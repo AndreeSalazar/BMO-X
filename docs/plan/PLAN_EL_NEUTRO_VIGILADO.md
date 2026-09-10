@@ -279,7 +279,34 @@ Un plan que no diga donde acaba es propaganda.
 
 # 6. LOS PASOS
 
-- [ ] **N0 -- LA PRIMERA PIEDRA: UN SOLO EMBUDO.** Antes de escribir ningun
+- [x] **N0 y N1 -- HECHOS EL 2026-09-09, y son LA MISMA PIEZA.**
+
+  ** Al escribirlo se vio que N0, tal como estaba redactado --*"hacer que todo
+  pase por una funcion"*--, **es una regla que hay que acordarse de cumplir**.
+  El decimoquinto sitio entra igual; solo que ademas hay una funcion que nadie
+  le obligo a llamar.
+
+  *** La forma que SI se cumple sola es un **TIPO**. `bmo-dma-juicio::Prenda`
+  envuelve un `u64` y su campo es privado: **la unica forma de obtener uno es
+  `juzgar`**, y los drivers son crates distintos, asi que no pueden construirlo.
+
+  ```text
+     el embudo lo cuenta el COMPILADOR, no un grep
+     rodearlo no es "olvidarse": es un error de tipos
+     y el numero de constructores es 1 POR CONSTRUCCION
+  ```
+
+  ** Y el juez no comparte vocabulario con nadie: recibe un `bool` en vez de
+  `Duenno::Neutro`, y un `u16` que solo compara consigo mismo en vez de un enum
+  de aparatos. **No tiene `[riesgo] ESPEJO` porque no hay copia.**
+
+  Seis preguntas, 16 filas, la mitad para decir que NO. La sexta salio
+  escribiendo las pruebas: `bytes == 0` pasa las otras cinco.
+
+  Se verifica: `cargo test -p bmo-dma-juicio` -- 16 filas, y `Prenda(0)` desde
+  fuera del crate no compila.
+
+- [x] **N0-original -- el enunciado, conservado.** Antes de escribir ningun
   juez, hacer que **toda** direccion fisica que va a un aparato pase por UNA
   funcion. Hoy son tres sitios en tres crates (`ahci/comando.rs:293`,
   `xhci/lib.rs:217`, y `net`), cada uno con sus propias comprobaciones o
@@ -287,10 +314,16 @@ Un plan que no diga donde acaba es propaganda.
   verifica: un censo dice cuantos sitios escriben una direccion fisica en un
   descriptor, y ese numero tiene que ser **1**.
 
-- [ ] **N1 -- `bmo-dma-juicio`, con sus filas rojas.** Las cinco preguntas de
-  N-B, en una funcion pura, probadas en el anfitrion. Se verifica: el crate
-  aparece en el banco con N filas y **al menos dos de ellas prueban que sabe
-  decir que NO** (L4).
+- [ ] **N2 -- EL EMBUDO LLAMA AL JUEZ, y es donde esto empieza a costar.**
+  Hoy el juez existe y **no lo llama nadie**. Ponerlo en el camino pide cambiar
+  la firma de los que escriben descriptores para que pidan `Prenda` en vez de
+  `u64`, y eso toca `platform/drivers/{ahci,xhci}` y quien los llama en Ring 0
+  --que es el que sabe `duenno_de`--.
+
+  [!] **Ese es el trabajo de verdad, y no se ha hecho.** El crate sin cablear
+  vale igual --las 16 filas son un contrato escrito y probado-- pero **no
+  vigila nada todavia**, y decirlo importa mas que tenerlo. Se verifica: una
+  direccion fuera de un marco `Neutro` no llega al aparato, y CABINA lo dice.
 
 - [ ] **N2 -- el embudo llama al juez.** Es una linea, y es la que convierte
   N1 de biblioteca en guardian. Se verifica: una direccion fuera de un marco

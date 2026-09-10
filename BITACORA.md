@@ -3633,3 +3633,88 @@ ponerlo flojo por si acaso: eso es no tener trinquete.
 ** **CUATRO operaciones por puerta cumplen la meta**, no ocho como decia la
 tanda anterior. Y el suelo del lote son **75 ticks**: por debajo hay que
 abaratar el trabajo, o no cruzar.
+
+---
+
+## Ep. 71 -- N0 y N1 eran la misma pieza, y el embudo es un TIPO
+
+**2026-09-09.** El dueno dijo *"intenta un poco mas con eso y con el N0, ese DMA
+inteligente que ya sabes, mapeo y unmapping"*.
+
+### *** N0, TAL COMO ESTABA ESCRITO, NO SE PODIA CUMPLIR
+
+El plan pedia *"hacer que toda direccion fisica pase por UNA funcion"*. Y eso
+**es una regla que hay que acordarse de cumplir**: el decimoquinto sitio entra
+igual, solo que ahora ademas hay una funcion que nadie le obligo a llamar.
+
+*** La forma que SI se cumple sola es un **TIPO**.
+
+```rust
+pub struct Prenda(u64);           // el campo es PRIVADO
+pub fn juzgar(p, m) -> Result<Prenda, Veto>   // el unico constructor
+```
+
+Los drivers son crates distintos, asi que **no pueden construir una `Prenda`**.
+Si el que escribe el descriptor pide `Prenda` en vez de `u64`:
+
+```text
+   el embudo lo cuenta el COMPILADOR, no un grep
+   rodearlo no es "olvidarse": es un error de tipos
+   y el numero de constructores es 1 POR CONSTRUCCION
+```
+
+> Un contrato, no un cerebro. La regla de la casa, y aqui cayo sola.
+
+### ★★ Y ESTE JUEZ NO TIENE `[riesgo] ESPEJO`, a proposito
+
+Los otros jueces lo tienen: la misma pregunta escrita en dos sitios que se
+separan. Este recibe **un `bool`** en vez de `Duenno::Neutro`, y **un `u16`**
+que solo compara consigo mismo en vez de un enum de aparatos.
+
+```text
+   si la etiqueta cambia de nombre, de numero o de fichero
+   -> aqui NO hay nada que actualizar, porque no hay copia
+```
+
+** Lo que sacrifica (L3): los vetos dicen *"el aparato 2"* y no *"la tarjeta de
+red"*. **Un numero que no miente vale mas que un nombre que se puede quedar
+viejo.**
+
+### La sexta pregunta la trajeron las pruebas
+
+El plan tenia cinco. Escribiendo las filas salio la sexta: **`bytes == 0` pasa
+las otras cinco** --las comprobaciones de "cabe" dan que si-- y deja un
+descriptor vacio que hace algo indefinido. Es la clase de caso que solo aparece
+cuando alguien tiene que decidir que devuelve.
+
+Y otra que no era del plan: `bits_de_cuenta`. **No es el ancho de la direccion,
+es el del campo de LONGITUD.** El PRDT de AHCI guarda la direccion en 32+32 y la
+cuenta en **22 bits**: pedir mas de 4 MiB no da error, da una **cuenta truncada**
+-- una transferencia mas corta de la que el driver cree. Silencio puro.
+
+### 16 filas, y la mitad para decir que NO (L4)
+
+```text
+   un marco que no es de ningun aparato        rechazado
+   un aparato escribiendo en el marco de otro  rechazado
+   cero bytes                                  rechazado
+   por debajo del marco / pasandose del final  rechazado
+   el desbordamiento de u64 que finge que CABE rechazado
+   impar donde se exige par                    rechazado
+   8 MiB en un campo de 22 bits                rechazado
+   ---
+   y las de AL LADO: el que llena el marco EXACTO pasa, `alineacion: 1` deja
+   pasar un impar, y `bits_de_cuenta: 0` quiere decir sin limite
+```
+
+** Sin las de al lado, un juez que rechazara SIEMPRE tambien pasaria por
+guardian. Es la regla de las hojas de metal.
+
+### [!] Y LO QUE NO SE HA HECHO, QUE ES LO QUE CUESTA
+
+**El juez existe y no lo llama nadie.** Ponerlo en el camino (N2) pide cambiar
+la firma de los que escriben descriptores en `platform/drivers/{ahci,xhci}` y en
+quien los llama desde Ring 0 --que es el unico que sabe `duenno_de`--.
+
+> Un juez sin cablear es un contrato escrito y probado. No es una barrera. Y
+> decirlo importa mas que tenerlo.

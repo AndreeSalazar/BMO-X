@@ -1,0 +1,20 @@
+[package]
+name = "bmo-dma-juicio"
+version = "0.1.0"
+edition = "2021"
+description = "El juez del DMA: se le puede dar esta direccion fisica a este aparato?"
+license = "Apache-2.0"
+
+[lib]
+
+# ** CERO DEPENDENCIAS, igual que sus dos hermanos.
+#
+# Lo consumen los drivers --que corren en el metal, sin asignador-- y
+# `cargo test` en el anfitrion. Una sola dependencia que arrastrara `alloc` lo
+# dejaria fuera de los tres consumidores por los que existe.
+#
+# *** Y tampoco depende del KERNEL, que es lo que le quita el `[riesgo] ESPEJO`
+# que tienen los otros jueces: no recibe `Duenno::Neutro` sino un `bool`, y no
+# recibe un enum de aparatos sino un `u16` que solo compara consigo mismo. No
+# hay copia que se pueda desincronizar porque no hay copia. Ver su cabecera.
+[dependencies]
