@@ -229,6 +229,7 @@ dependencies = [
  "bmo-ciudad",
  "bmo-dibujo",
  "bmo-disco-juicio",
+ "bmo-dma-juicio",
  "bmo-estratos",
  "bmo-fat32",
  "bmo-firma",

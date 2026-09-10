@@ -29,6 +29,7 @@ fn peticion_buena() -> Peticion {
         aparato: 1,
         alineacion: 2,
         bits_de_cuenta: 22,
+        prestando: false,
     }
 }
 
@@ -187,57 +188,67 @@ fn un_marco_ajeno_se_rechaza_antes_de_mirar_la_aritmetica() {
         aparato: 9,
         alineacion: 4096,
         bits_de_cuenta: 8,
+        prestando: false,
     };
     assert_eq!(juzgar(p, m), Err(Veto::NoEsDeUnAparato));
 }
 
 // -- CASO 2: el marco PRESTADO, y por que existe ------------------------
 //
-// *** Estas cuatro filas nacieron de un fallo. La primera version del juez solo
-// tenia `es_neutro`, y al ir a cablearlo en el AHCI aparecio el camino DIRECTO
-// de una lectura (`dev/disk/transfer.rs:64`): el disco escribe en el bufer del
-// que llamo, que **no es del aparato y tiene todo el derecho a no serlo**.
+// *** Estas filas nacieron de dos fallos, con dos dias de diferencia de horas.
 //
-// Un juez con una sola regla habria rechazado una lectura legitima y dejado el
-// disco sin funcionar. Y no lo encontro una lectura del codigo: lo encontro el
-// INTENTO de cablearlo.
+// El primero: la version original del juez solo tenia `es_neutro`, y al ir a
+// cablearlo aparecio el camino DIRECTO de una lectura -- el disco escribe en
+// el bufer del que llamo, que **no es del aparato y no lo va a ser nunca**.
+//
+// El segundo, al cablearlo DE VERDAD (N2): `en_vuelo_para` no bastaba. Es un
+// HECHO sobre el marco --quien lo tiene-- y lo que justifica el prestamo no es
+// un hecho: es que **alguien con derecho lo cede**. De ahi `prestando`.
 
 #[test]
-fn un_marco_prestado_a_este_aparato_pasa_aunque_no_sea_suyo() {
-    let m = Marco { es_neutro: false, en_vuelo_para: Some(1), ..marco_bueno() };
+fn prestando_deja_pasar_un_marco_que_no_es_del_aparato() {
+    // El camino DIRECTO del AHCI, exactamente.
+    let m = Marco { es_neutro: false, ..marco_bueno() };
+    let p = Peticion { prestando: true, ..peticion_buena() };
+    assert!(juzgar(p, m).is_ok());
+}
+
+#[test]
+fn sin_prestar_un_marco_ajeno_se_rechaza() {
+    // ** La de al lado. Sin esta, `prestando` seria una puerta abierta y no
+    // una declaracion: el corral seguiria siendo estricto solo si alguien se
+    // acuerda de poner el `false`.
+    let m = Marco { es_neutro: false, ..marco_bueno() };
+    assert_eq!(juzgar(peticion_buena(), m), Err(Veto::NoEsDeUnAparato));
+}
+
+#[test]
+fn ni_prestando_se_puede_pisar_a_otro_aparato() {
+    // *** EL VETO QUE NO TIENE EXPLICACION INOCENTE, y por eso se mira
+    // PRIMERO: ni el kernel prestando ni el dueno del corral pueden escribir
+    // en un bufer que OTRO aparato esta usando ahora mismo.
+    let m = Marco { es_neutro: true, en_vuelo_para: Some(7), ..marco_bueno() };
+    let p = Peticion { prestando: true, ..peticion_buena() };
+    assert_eq!(juzgar(p, m), Err(Veto::DeOtroAparato { suyo: 7, pide: 1 }));
+}
+
+#[test]
+fn rearmar_el_propio_bufer_en_vuelo_vale() {
+    // Un driver que reprograma SU bufer antes de que el anterior termine esta
+    // haciendo algo suyo. Sin esta fila, el juez le prohibiria reintentar.
+    let m = Marco { en_vuelo_para: Some(1), ..marco_bueno() };
     assert!(juzgar(peticion_buena(), m).is_ok());
 }
 
 #[test]
-fn un_marco_prestado_a_otro_se_rechaza_con_nombre() {
-    // ** El fallo mas peligroso de los seis: dos aparatos sobre el mismo bufer.
-    // Se informa como `DeOtroAparato` y no como `NoEsDeUnAparato` porque el
-    // segundo mandaria a mirar el sitio equivocado.
-    let m = Marco { es_neutro: false, en_vuelo_para: Some(7), ..marco_bueno() };
-    assert_eq!(
-        juzgar(peticion_buena(), m),
-        Err(Veto::DeOtroAparato { suyo: 7, pide: 1 })
-    );
-}
-
-#[test]
-fn el_prestamo_manda_sobre_el_titular_del_corral() {
-    // ** Un marco que es del aparato 1 por corral pero esta prestado al 2: el
-    // que vale AHORA es el prestamo. Sin esta fila, un juez que mirara primero
-    // `es_neutro` dejaria pasar al 1 sobre un bufer que ya no es suyo.
-    let m = Marco { es_neutro: true, en_vuelo_para: Some(2), aparato: 1, ..marco_bueno() };
-    assert_eq!(
-        juzgar(peticion_buena(), m),
-        Err(Veto::DeOtroAparato { suyo: 2, pide: 1 })
-    );
-}
-
-#[test]
-fn sin_prestamo_y_sin_corral_no_hay_forma_de_pasar() {
-    // La de al lado de las tres anteriores: `None` + `es_neutro: false` es
-    // memoria de otro, y punto.
-    let m = Marco { es_neutro: false, en_vuelo_para: None, ..marco_bueno() };
-    assert_eq!(juzgar(peticion_buena(), m), Err(Veto::NoEsDeUnAparato));
+fn prestando_no_apaga_la_aritmetica() {
+    // ** Lo que `prestando` relaja es DE QUIEN es el marco, y nada mas. Que la
+    // peticion quepa, este alineada y su cuenta entre en el campo se sigue
+    // comprobando igual -- si no, prestar seria apagar el juez.
+    let m = Marco { es_neutro: false, ..marco_bueno() };
+    let p = Peticion { prestando: true, fisica: 0x0010_0E00, bytes: 1024,
+                       ..peticion_buena() };
+    assert_eq!(juzgar(p, m), Err(Veto::SeSaleDelMarco));
 }
 
 // -- Y EL EMBUDO, que es el paso N0 -------------------------------------

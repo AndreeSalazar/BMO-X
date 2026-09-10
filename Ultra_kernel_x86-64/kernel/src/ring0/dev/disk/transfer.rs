@@ -68,7 +68,7 @@ pub fn read(lba: u64, count: u16, buf: &mut [u8]) -> u16 {
 
         let (batch, got) = match directo {
             Some((phys, batch)) => {
-                let got = match mandar_lectura(lba + done as u64, batch, phys) {
+                let got = match mandar_lectura(lba + done as u64, batch, phys, true) {
                     Some(n) => n,
                     None => return done,
                 };
@@ -133,7 +133,99 @@ pub fn cuentas_dma() -> (u64, u64) { unsafe { (SIN_REBOTE, CON_REBOTE) } }
 ///
 /// [!] Da por hecho que el disco YA esta tomado. Ver `tomar_disco`: tomarlo aqui
 /// dentro convertiria cada vuelta de `read` en una peticion anidada.
-fn mandar_lectura(lba: u64, count: u16, phys: u64) -> Option<u16> {
+/// **EL JUEZ DEL DMA, CABLEADO -- paso N2, 2026-09-09.**
+///
+/// Se le pregunta a `bmo-dma-juicio` **pagina a pagina**, y eso no es celo: es
+/// lo unico que hace que el juicio NO SEA CIRCULAR.
+///
+/// *** El `Marco` tiene que salir del ASIGNADOR --quien es el titular, quien
+/// lo tiene en vuelo, y que una pagina mide una pagina-- y no de lo que diga
+/// el que pide. Construirlo con los datos del llamante seria preguntarle a la
+/// peticion si la peticion esta bien.
+///
+/// # [!] Y SOLO SE RECHAZA UN VETO DE LOS SEIS. A proposito.
+///
+/// Esto es el camino del DISCO, o sea el del ARRANQUE. Una regla mia mal
+/// afinada aqui no da un aviso: **deja la maquina sin poder leer su propio
+/// sistema**, y ni siquiera queda log porque el log vive en el disco.
+///
+/// ** Asi que se sigue la forma que esta casa ya eligio en su comprobacion mas
+/// arriesgada --`vmm::es_tabla`, que deja pasar `Anonimo`--:
+///
+/// > Se corta solo lo que no tiene explicacion inocente. Lo demas se cuenta.
+///
+/// ```text
+///    DeOtroAparato   *** SE RECHAZA. Dos aparatos sobre el mismo bufer no
+///                    tiene lectura buena ninguna, y es el fallo que este
+///                    juez existe para cazar
+///    los otros 5     se CUENTAN y se dicen en CABINA. Son reglas que
+///                    todavia no han visto un arranque, y cortar con ellas
+///                    seria apostar el arranque a que las afine bien a la
+///                    primera
+/// ```
+///
+/// ** El dia que el contador lleve arranques diciendo cero, cortar con los
+/// seis es cambiar una linea. Al reves --cortar hoy y relajar despues-- se
+/// paga con un flasheo a ciegas.
+fn juzgar_el_dma(phys: u64, bytes: u64, prestando: bool) -> bool {
+    let mut p = phys & !(mm::PAGE - 1);
+    let fin = phys + bytes;
+    while p < fin {
+        // El marco, con lo que sabe el ASIGNADOR y nada mas.
+        let marco = bmo_dma_juicio::Marco {
+            es_neutro: mm::phys::titular_de(p) == mm::phys::Titular::Neutro,
+            en_vuelo_para: mm::phys::en_vuelo_de(p).map(|a| a as u16),
+            base: p,
+            bytes: mm::PAGE,
+            aparato: mm::phys::APARATO_AHCI as u16,
+        };
+        // Y el trozo de la peticion que cae en ESTA pagina.
+        let desde = if phys > p { phys } else { p };
+        let hasta = if fin < p + mm::PAGE { fin } else { p + mm::PAGE };
+        let pet = bmo_dma_juicio::Peticion {
+            fisica: desde,
+            bytes: hasta - desde,
+            aparato: mm::phys::APARATO_AHCI as u16,
+            // El PRDT del AHCI: direccion par, y la CUENTA en 22 bits.
+            alineacion: 2,
+            bits_de_cuenta: 22,
+            prestando,
+        };
+        if let Err(v) = bmo_dma_juicio::juzgar(pet, marco) {
+            unsafe { DMA_VETOS = DMA_VETOS.wrapping_add(1) };
+            if let bmo_dma_juicio::Veto::DeOtroAparato { suyo, .. } = v {
+                crate::ring0::cabina::fault("dma", "otro aparato en vuelo", suyo as u64);
+                return false;
+            }
+        }
+        p += mm::PAGE;
+    }
+    true
+}
+
+/// Vetos del juez del DMA desde el arranque. **Se ensena y no corta**, salvo
+/// `DeOtroAparato`. Ver [`juzgar_el_dma`].
+pub static mut DMA_VETOS: u64 = 0;
+
+/// **Pone o quita el bit EN VUELO en todas las paginas de un tramo.**
+///
+/// Simetrico con [`juzgar_el_dma`] a proposito: los dos recorren lo mismo. Un
+/// juez que mira N paginas y un bit que marca UNA es peor que ninguno de los
+/// dos, porque da la impresion de cubrir el tramo.
+fn marcar_el_tramo(phys: u64, bytes: u64, poner: bool) {
+    let mut p = phys & !(mm::PAGE - 1);
+    let fin = phys + bytes;
+    while p < fin {
+        if poner {
+            mm::phys::en_vuelo(p, mm::phys::APARATO_AHCI);
+        } else {
+            mm::phys::aterrizo(p);
+        }
+        p += mm::PAGE;
+    }
+}
+
+fn mandar_lectura(lba: u64, count: u16, phys: u64, prestando: bool) -> Option<u16> {
     // == *** EL BIT EN VUELO (N4), Y ESTE ES SU PRIMER CLIENTE ============
     //
     // ** Se pone ANTES de mandar y se quita DESPUES de que el disco conteste.
@@ -163,11 +255,27 @@ fn mandar_lectura(lba: u64, count: u16, phys: u64) -> Option<u16> {
     // ** El valor de verdad llega el dia que un camino sea ASINCRONO. Ponerlo
     // hoy, con la ventana corta, es lo que hace que ese dia no haya que
     // inventar nada -- y que la cuenta ya lleve arranques diciendo cero.
-    let marcado = mm::phys::en_vuelo(phys & !(mm::PAGE - 1), mm::phys::APARATO_AHCI);
-    let r = unsafe { bmo_ahci::read_sectors_phys(unsafe { PORT }, lba, count, phys) };
-    if marcado {
-        mm::phys::aterrizo(phys & !(mm::PAGE - 1));
+    // ** EL JUEZ VA ANTES DE PONER EL BIT, y el orden es la mitad del sentido:
+    // si se pusiera primero, `en_vuelo_de` diria que el marco es del AHCI y el
+    // juez se estaria dando la razon a si mismo. Aqui contesta lo que hay
+    // ANTES de que este camino toque nada.
+    if !juzgar_el_dma(phys, count as u64 * SECTOR as u64, prestando) {
+        return None;
     }
+    // ** SE MARCAN TODAS LAS PAGINAS DEL TRAMO, no solo la primera.
+    //
+    // La primera version marcaba `phys & !(PAGE-1)` y ya, y eso era incoherente
+    // con el juez de arriba --que SI recorre el tramo entero--: una lectura
+    // directa de varias paginas dejaba las demas sin marcar, o sea **libres de
+    // que alguien las reasignara con el disco escribiendo dentro**, que es
+    // justo el fallo que el bit existe para cazar.
+    //
+    // Un juez que mira N paginas y un bit que marca UNA es peor que ninguno de
+    // los dos: da la impresion de cubrir el tramo.
+    let bytes = count as u64 * SECTOR as u64;
+    marcar_el_tramo(phys, bytes, true);
+    let r = unsafe { bmo_ahci::read_sectors_phys(PORT, lba, count, phys) };
+    marcar_el_tramo(phys, bytes, false);
     match r {
         Ok(n) => Some(n),
         Err(e) => {
@@ -182,7 +290,7 @@ fn mandar_lectura(lba: u64, count: u16, phys: u64) -> Option<u16> {
 
 /// El trozo de rebote de siempre, para cuando el destino no sirve para DMA.
 fn leer_rebotando(lba: u64, batch: u16, dma: u64, buf: &mut [u8], done: u16) -> Option<u16> {
-    let got = mandar_lectura(lba, batch, dma)?;
+    let got = mandar_lectura(lba, batch, dma, false)?;
     if got == 0 { return None; }
     let src = mm::phys_to_virt(dma) as *const u8;
     let dst_off = done as usize * SECTOR;

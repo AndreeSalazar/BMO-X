@@ -82,6 +82,26 @@ def marcas_en_codigo():
                 pelada = linea.strip()
                 if pelada.startswith("//"):
                     continue
+                # == *** Y COMPARAR TAMPOCO ES ETIQUETAR (2026-09-09) =====
+                #
+                # ** El razonamiento de arriba se extiende solo. Un comentario
+                # que nombra la clase no la pone; **una linea que la COMPARA,
+                # tampoco**:
+                #
+                #     titular_de(p) == Titular::Neutro    PREGUNTA
+                #     alloc_frames_contig_de(n, Titular::Neutro)   ETIQUETA
+                #
+                # *** Lo trajo el paso N2: al cablear `bmo-dma-juicio` en el
+                # disco, `dev/disk/transfer.rs` tuvo que preguntar si un marco
+                # es de un aparato -- y este guardian le pidio una fila de
+                # censo por leer la etiqueta que el propio censo vigila.
+                #
+                # [!] Y la diferencia importa: exigirle censo a los LECTORES
+                # castiga justo a quien usa el dato. Un guardian que hace mas
+                # caro consultar su propia tabla se convierte en el motivo de
+                # que nadie la consulte.
+                if "==" in pelada or "!=" in pelada:
+                    continue
                 if MARCA in pelada:
                     n += 1
             if n:
