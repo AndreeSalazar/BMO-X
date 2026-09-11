@@ -690,6 +690,75 @@ impl Codegen {
         Ok(())
     }
 
+    /// **EL EMBUDO DE LO QUE NO SE SABE. AQUI NO SE ADIVINA.**
+    ///
+    /// # La regla, con las palabras del dueno
+    ///
+    /// > *"si encuentra lo que es adivinar, no compila hasta que lo aclares.
+    /// > No me gustaria que la CPU tenga que perder tiempo en adivinar. NUNCA
+    /// > ADIVINA."*
+    ///
+    /// # Que se estaba adivinando
+    ///
+    /// Ocho sitios del emisor decian `pointee_type(x).unwrap_or(TypeSpec::Long)`:
+    /// *"no se a que apunta esto, asumo ocho bytes"*. Y con ese tipo se elige
+    /// **el ANCHO de la instruccion que se emite**.
+    ///
+    /// ```text
+    ///    el tipo de verdad es `char`   -> se escriben 8 bytes donde cabe 1
+    ///    y los 7 de al lado son        -> la variable siguiente
+    /// ```
+    ///
+    /// ** Ese fallo ya se pago una vez en este mismo arbol, y esta escrito en
+    /// `emitir/direccion.rs`: *"`*(p+1)` con `int *p` leia 8 bytes, o sea dos
+    /// enteros pegados: devolvia 504403158366158848 en vez de 6"*. Un
+    /// `unwrap_or` de un TIPO no es un valor por defecto: es una suposicion
+    /// sobre la memoria de otro.
+    ///
+    /// # [!] Y NO ROMPE NADA, porque se MIDIO antes de escribirla
+    ///
+    /// Se instrumentaron los ocho sitios con un contador y se compilo el arbol
+    /// entero: **DOOM --56.976 lineas de C de verdad-- y los catorce ejemplos
+    /// dieron CERO adivinanzas**. Nunca hizo falta suponer.
+    ///
+    ///   > Una regla que nadie incumple hoy no es una regla inutil: es la unica
+    ///   > que se puede poner sin negociar.
+    ///
+    /// * Devuelve `Long` para poder SEGUIR y encontrar mas fallos en la misma
+    /// pasada. Da igual cual devuelva: el error ya esta apuntado y
+    /// `emit_program` se niega a entregar el `.bex` si hay uno solo.
+    pub(super) fn exige_tipo(
+        &mut self,
+        conocido: Option<TypeSpec>,
+        que: &str,
+        aclara: &str,
+    ) -> TypeSpec {
+        // ** `void` CUENTA COMO NO SABERLO, y ese matiz costo verlo.
+        //
+        // Con `void *p`, `pointee_type` contesta `Some(Void)` -- o sea que el
+        // tipo SI se sabe. Lo que no existe es su ANCHO: `void` no mide nada,
+        // asi que el emisor caia en su comodin y escribia ocho bytes.
+        //
+        // *** La misma suposicion con otro traje, y la mas facil de colar:
+        // `void*` es EL tipo con el que se pasa memoria de un lado a otro en C.
+        // Desreferenciarlo no es C valido, y aqui deja de compilar en vez de
+        // mover ocho bytes por si acaso.
+        let conocido = match conocido {
+            Some(TypeSpec::Void) => None,
+            otro => otro,
+        };
+        match conocido {
+            Some(t) => t,
+            None => {
+                self.errors.push(format!(
+                    "no se puede saber {que}, y aqui NO SE ADIVINA: elegir un \
+                     ancho sin saberlo escribe encima de lo de al lado. {aclara}"
+                ));
+                TypeSpec::Long
+            }
+        }
+    }
+
     fn collect_strings(&mut self, program: &Program) {
         for func in &program.functions {
             for stmt in &func.body { self.collect_stmt_strings(stmt); }
@@ -843,7 +912,7 @@ impl Codegen {
     ///
     /// El indice tiene que ser constante, y si no lo es se contesta `None` para
     /// que el error salga arriba con el nombre de la tabla delante.
-    fn direccion_de_global(&self, e: &Expr) -> Option<(String, i64)> {
+    fn direccion_de_global(&mut self, e: &Expr) -> Option<(String, i64)> {
         let Expr::AddrOf(interior) = e else { return None };
         match interior.as_ref() {
             Expr::Var(n) => Some((n.clone(), 0)),

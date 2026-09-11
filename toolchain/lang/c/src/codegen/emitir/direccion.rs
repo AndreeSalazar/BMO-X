@@ -129,7 +129,7 @@ impl Codegen {
                     // la direccion y luego llaman a `emit_load_elem`. Tomar la
                     // direccion es exactamente eso menos el ultimo paso.
                     Expr::IndexPtr(base, index) => {
-                        let elem = &self.pointee_type(base).unwrap_or(TypeSpec::Long);
+                        let elem = &self.exige_tipo(self.pointee_type(base), "a que apunta este puntero", "Declara el tipo del puntero, o pon un cast: `*(int*)p`.");
                         self.emit_index_ptr_addr(base, index, &elem.clone());
                     }
                     Expr::Field(base, _campo) => {
@@ -184,7 +184,7 @@ impl Codegen {
                 self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // rax = valor (resultado del assign)
             }
             Expr::IndexPtr(base, index) => {
-                let elem = &self.pointee_type(base).unwrap_or(TypeSpec::Long);
+                let elem = &self.exige_tipo(self.pointee_type(base), "a que apunta este puntero", "Declara el tipo del puntero, o pon un cast: `*(int*)p`.");
                 // p->arr[i]: direccion = base(puntero) + i*sizeof(elem), luego load
                 self.emit_index_ptr_addr(base, index, elem);
                 self.emit_load_elem(&elem.clone());
@@ -193,7 +193,7 @@ impl Codegen {
                 // La puerta SSE: si el elemento es flotante, se guarda por xmm0.
                 let lv = Expr::IndexPtr(base.clone(), index.clone());
                 if self.emit_guardar_flotante(&lv, val) { return; }
-                let elem = &self.pointee_type(base).unwrap_or(TypeSpec::Long);
+                let elem = &self.exige_tipo(self.pointee_type(base), "a que apunta este puntero", "Declara el tipo del puntero, o pon un cast: `*(int*)p`.");
                 self.emit_expr(val);          // rax = valor
                 self.code.push(0x50);         // push valor
                 self.emit_index_ptr_addr(base, index, elem); // rax = direccion

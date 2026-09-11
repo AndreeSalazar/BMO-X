@@ -84,7 +84,7 @@ impl Codegen {
         // correcto-- pero ser una copia es como se llega a que una crezca y
         // la otra no: le faltaban los agregados y el `float`.
         pub(super) fn emit_leer_por_puntero(&mut self, a: &Expr) {
-            let apuntado = self.pointee_type(a).unwrap_or(TypeSpec::Long);
+            let apuntado = self.exige_tipo(self.pointee_type(a), "a que apunta este puntero", "Declara el tipo del puntero, o pon un cast: `*(int*)p`.");
             self.emit_expr(a); // rax = direccion
             self.emit_load_elem(&apuntado);
         }
@@ -111,7 +111,7 @@ impl Codegen {
         // tipo no se resuelve: ocho bytes. No se convierte en error aqui
         // porque eso es una decision aparte y mas ancha que este arreglo.
         pub(super) fn emit_guardar_por_puntero(&mut self, addr: &Expr, val: &Expr) {
-            let apuntado = self.pointee_type(addr).unwrap_or(TypeSpec::Long);
+            let apuntado = self.exige_tipo(self.pointee_type(addr), "a que apunta este puntero", "Declara el tipo del puntero, o pon un cast: `*(int*)p`.");
             // *** UN AGREGADO NO CABE EN `rdx`, asi que no va por aqui.
             //
             // `*next = *(next-1)` de `r_bsp.c` copia un `cliprange_t`. Por
@@ -170,13 +170,27 @@ impl Codegen {
     }
 
     /// Tipo del elemento de un array/puntero (para cargas/stores del tamano exacto).
-    pub(super) fn elem_type_of(&self, name: &str) -> TypeSpec {
+    /// El tipo del ELEMENTO de `name[i]`.
+    ///
+    /// ** AQUI TAMPOCO SE ADIVINA, y este sitio casi se escapa: su suposicion
+    /// no estaba escrita `unwrap_or(TypeSpec::Long)` sino como un brazo
+    /// `_ => TypeSpec::Long`. El censo por sintaxis --que encontro los otros
+    /// ocho-- no lo vio.
+    ///
+    ///   > Buscar una forma de escribir encuentra una forma de escribir.
+    ///   > Adivinar tiene mas de una.
+    pub(super) fn elem_type_of(&mut self, name: &str) -> TypeSpec {
         let t = self.var_offsets.get(name).map(|&(_, ref t)| t.clone())
             .or_else(|| self.global_offsets.get(name).map(|&(_, ref t)| t.clone()));
-        match t {
-            Some(TypeSpec::Array(e, _)) | Some(TypeSpec::Ptr(e)) => *e,
-            _ => TypeSpec::Long,
-        }
+        let elem = match t {
+            Some(TypeSpec::Array(e, _)) | Some(TypeSpec::Ptr(e)) => Some(*e),
+            _ => None,
+        };
+        self.exige_tipo(
+            elem,
+            "de que tipo son los elementos de esta tabla",
+            "Declara `name` como tabla o como puntero con su tipo.",
+        )
     }
 
     /// rax = rax * scale (shl si es potencia de 2; imul si no -- structs)
@@ -344,7 +358,7 @@ impl Codegen {
                 self.emit_subscript_addr(name, index)
             }
             Expr::IndexPtr(base, index) => {
-                let elem = self.pointee_type(base).unwrap_or(TypeSpec::Long);
+                let elem = self.exige_tipo(self.pointee_type(base), "a que apunta este puntero", "Declara el tipo del puntero, o pon un cast: `*(int*)p`.");
                 self.emit_index_ptr_addr(base, index, &elem)
             }
             Expr::Field(base, campo) => {
@@ -370,8 +384,8 @@ impl Codegen {
     /// --con sus propios brazos y sus propios huecos-- y se fue con las otras
     /// dos. El `unwrap_or` se queda aqui, que es donde hay que elegir un ancho
     /// para emitir: el juez no inventa, el llamante decide.
-    pub(super) fn tipo_del_lvalue(&self, lvalue: &Expr) -> TypeSpec {
-        crate::tipos::tipo_de(self, lvalue).unwrap_or(TypeSpec::Long)
+    pub(super) fn tipo_del_lvalue(&mut self, lvalue: &Expr) -> TypeSpec {
+        self.exige_tipo(crate::tipos::tipo_de(self, lvalue), "de que tipo es este destino de asignacion", "Declara la variable, o el campo del struct al que se asigna.")
     }
 
     /// Los bytes de cada operacion, con `rdx` = izquierdo y `rax` = derecho,
@@ -446,7 +460,7 @@ impl Codegen {
                 self.emit_subscript_addr(name, index);
             }
             Expr::IndexPtr(base, index) => {
-                let elem = self.pointee_type(base).unwrap_or(TypeSpec::Long);
+                let elem = self.exige_tipo(self.pointee_type(base), "a que apunta este puntero", "Declara el tipo del puntero, o pon un cast: `*(int*)p`.");
                 self.emit_index_ptr_addr(base, index, &elem);
             }
             _ => self.emit_expr(expr),

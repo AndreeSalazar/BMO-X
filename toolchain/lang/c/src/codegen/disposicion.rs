@@ -138,8 +138,9 @@ impl Codegen {
     /// [!] El `.max(1)` no es cosmetico: un paso de 0 convierte `a[i]` en
     /// `a[0]` para todo `i`, y eso no falla -- devuelve el primer elemento
     /// siempre.
-    pub(super) fn paso_de_elemento(&self, name: &str) -> u32 {
-        self.type_stack_size(&self.elem_type_of(name)).max(1)
+    pub(super) fn paso_de_elemento(&mut self, name: &str) -> u32 {
+        let elem = self.elem_type_of(name);
+        self.type_stack_size(&elem).max(1)
     }
 
     /// **EL OFFSET de un campo**, preguntado a la tabla y no al nodo.

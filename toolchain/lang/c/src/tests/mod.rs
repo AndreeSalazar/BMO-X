@@ -66,6 +66,7 @@ mod simbolos;
 mod sonda_param_array;
 mod sonda_resta_de_punteros;
 mod flotante_por_lugar;
+mod nunca_adivina;
 mod literales_y_sufijos;
 mod sonda_columnas_de_doom;
 mod sonda_layout_sha1;
