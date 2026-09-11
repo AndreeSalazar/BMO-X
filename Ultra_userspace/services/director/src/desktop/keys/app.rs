@@ -64,6 +64,22 @@ const PULSADA: u64 = 0x200;
 /// `BMO_SUP_EV_RATON` de `<bmo/superficie.h>`.
 const RATON: u64 = 1 << 63;
 
+/// Bit 62: esta ranura es un CARACTER ya cocido, no un scancode. El gemelo en C
+/// es `BMO_SUP_EV_CARACTER` de `<bmo/superficie.h>`.
+///
+/// ** POR QUE HACIA FALTA UN TERCER TIPO DE RANURA, y por que no es un capricho
+/// de formato: **el mapa de teclado existe UNA sola vez y esta en el kernel.**
+/// Una app que recibe scancodes y quiere letras tiene que traducirlos, y
+/// traducirlos significa copiar la distribucion espanola --tildes, la ene,
+/// AltGr, las teclas muertas-- a un segundo sitio. Dos mapas son dos teclados,
+/// y se separan el dia que alguien arregle una tecla en uno de los dos.
+///
+/// El kernel ya cocina, y el escritorio ya drena esa cola para la linea de
+/// Ejecutar. Lo que pasaba es que **cuando el foco era una app, el caracter se
+/// TIRABA** (ver el `continue` de `keys::dispatch`): el unico que sabia la letra
+/// la descartaba justo delante del unico que la necesitaba.
+const CARACTER: u64 = 1 << 62;
+
 /// Cuantos eventos se sacan de la cola por vuelta.
 ///
 /// El tope existe por lo mismo que el de la consola en `compose`: una racha de
@@ -197,5 +213,44 @@ pub(crate) fn reenviar(dsk: &mut Desktop, e: &bmo::Entrada, m: u8) {
         if let Some(s) = dsk.table.get_mut(i) {
             s.publicar(ev);
         }
+    }
+}
+
+/// **Un CARACTER para la app con foco**, dejado en su buzon. `true` si entro.
+///
+/// Lo llama `keys::dispatch` en el sitio exacto donde antes habia un
+/// `continue`: despues de que la cascada entera haya tenido su turno. Eso es lo
+/// que hace que esto no le robe una tecla a nadie -- si el caracter era de un
+/// atajo del escritorio, aqui no llega.
+///
+/// ** LOS CODIGOS DE CONTROL NO PASAN, y esa es la unica decision de esta
+/// funcion. `Ctrl+letra` llega cocido como 0x01..0x1A, y reenviarlo seria
+/// darle a las apps los `Ctrl+algo` que `del_escritorio` les quita en la cola
+/// cruda: el mismo gesto haria dos cosas distintas segun por que cola viajara.
+/// Pasan los cuatro que un teclado produce sin Ctrl --retroceso, tabulador,
+/// salto y retorno-- y todo lo imprimible de 32 arriba, que incluye los codigos
+/// de navegacion 0x80..0x94 de `<bmo/entrada.h>`.
+///
+/// [!] Y su precio, dicho: `Ctrl+H`, `Ctrl+I`, `Ctrl+J` y `Ctrl+M` son, byte a
+/// byte, retroceso, tabulador, salto y retorno. Esa ambiguedad es de la
+/// convencion de terminal, no de aqui, y no se puede deshacer mirando el byte:
+/// el scancode que lo produjo viaja por la otra cola.
+///
+/// ** Y una app SIN buzon no recibe nada: `publicar` contesta `false` y la
+/// tecla se pierde, igual que en la cola cruda. Quien quiera letras, que pida
+/// buzon -- es el mismo contrato de `R-APP6`.
+pub(crate) fn caracter(dsk: &mut Desktop, c: u8) -> bool {
+    if c < 32 && c != 8 && c != 9 && c != 10 && c != 13 {
+        return false;
+    }
+    let Some(Ventana::App(i)) = dsk.win.focus.actual() else {
+        return false;
+    };
+    // `PULSADA` va puesta siempre: un caracter no tiene dos caras. La cola
+    // cocida solo existe al bajar el dedo -- ahi el soltar no llega nunca.
+    let ev = CARACTER | HAY | PULSADA | c as u64;
+    match dsk.table.get_mut(i as usize) {
+        Some(s) => s.publicar(ev),
+        None => false,
     }
 }

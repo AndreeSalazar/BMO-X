@@ -152,7 +152,8 @@ linea**:
 | una cara declarativa, con su tabla de golpeo | MAQUETA |
 | que un fallo suyo no mate el escritorio | R-APP5 y R-APP6 |
 | saber si se la ve, sin preguntar y sin cruzar una puerta | la VISTA del buzon (R-APP8) |
-| las diez cabeceras con las que se escribe todo lo de arriba | **REX**, [`META-SDK_HARD.md`](META-SDK_HARD.md) |
+| **la LETRA que el usuario escribio**, con tildes y ene, sin copiarse el teclado | el caracter cocido del buzon (bit 62, `keys/app.rs`) |
+| las trece cabeceras con las que se escribe todo lo de arriba | **REX**, [`META-SDK_HARD.md`](META-SDK_HARD.md) |
 
 ★★ **Eso ultimo es lo que ningun framework da**: aqui el aislamiento no es una
 promesa de la libreria, es la frontera del proceso.

@@ -151,6 +151,23 @@
  * cero, y el cero es "se ve". Una app vieja no lo lee y sigue pintando como
  * siempre; una app sin buzon no tiene donde leerlo, y tampoco se le reprocha.
  *
+ * == ** Y SE PUEDE ESCRIBIR DENTRO (2026-09-11) ==
+ *
+ * El buzon traia SCANCODES: que tecla se movio. Con eso se juega --un juego
+ * pregunta si la flecha abajo esta pulsada AHORA-- y no se escribe, porque
+ * quien escribe pregunta que LETRA salio. Sacar la letra del scancode obligaba
+ * a copiar la distribucion espanola dentro de cada app, y **dos mapas de
+ * teclado son dos teclados**.
+ *
+ * Asi que la letra la manda quien ya la sabe: el kernel la cocina, el DIRECTOR
+ * la deja en el buzon con el **bit 62** puesto, y la app la lee con
+ * `bmo_sup_es_caracter` / `bmo_sup_caracter`. Las dos colas viajan por el mismo
+ * anillo y ninguna le roba nada a la otra: un juego mira el scancode, un editor
+ * mira el caracter, y quien mire los dos contara cada tecla dos veces. Los
+ * detalles --lo que pasa y lo que no-- en `superficie/amarilla.h`.
+ *
+ * ** Esto es lo que hizo posible `examples/texto_C.c`, el bloc de notas.
+ *
  * == Como se usa ==
  *
  *     BMO_SUPERFICIE *s = bmo_superficie_crear_con_buzon(640, 400, 64);

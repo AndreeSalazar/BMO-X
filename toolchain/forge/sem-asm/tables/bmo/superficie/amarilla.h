@@ -10,8 +10,8 @@
  * [cuesta]  NADA         se equivoca y una app cree que se pulso una tecla que
  *                        nadie pulso
  * [riesgo]  ESPEJO SILENCIO
- *                        ESPEJO: el bit 63 lo enciende el DIRECTOR y lo lee
- *                        esto. SILENCIO: leer `e & 0xFF` sin preguntar por ese
+ *                        ESPEJO: los bits 63 --raton-- y 62 --caracter-- los
+ *                        enciende el DIRECTOR y los lee esto. SILENCIO: leer `e & 0xFF` sin preguntar por ese
  *                        bit hace creer que se pulso la tecla numero 1 en cada
  *                        clic -- el fichero ya lo avisa; y el byte 2 del
  *                        estado (VISTA) lo escribe el DIRECTOR y lo lee esto
@@ -33,10 +33,12 @@
  * numero 1 cada vez que alguien haga clic. Por eso el bit tiene su propia
  * pregunta --`bmo_sup_es_raton`-- y no se deja al llamante recordarlo.
  *
- *    bit 63       1 = raton, 0 = tecla
- *    bit 8        HAY, en los dos
+ *    bit 63       1 = raton
+ *    bit 62       1 = CARACTER ya cocido (ver abajo)
+ *    bit 8        HAY, en los tres
  *    bit 9        PULSADA: la tecla baja, o el boton baja
- *    bits 0..7    el scancode, o la mascara de BOTONES (1 izq, 2 der)
+ *    bits 0..7    el scancode, la mascara de BOTONES (1 izq, 2 der), o el
+ *                 byte Latin-1 del caracter
  *    bits 16..31  x dentro de la app, en pixeles suyos
  *    bits 32..47  y
  *
@@ -68,6 +70,47 @@ int bmo_sup_raton_y(unsigned long long e) {
 }
 
 int bmo_sup_raton_botones(unsigned long long e) {
+    return (int)(e & 0xFF);
+}
+
+/* -- ** UNA RANURA TAMBIEN PUEDE SER UNA LETRA (2026-09-11) --------------
+ *
+ * Un scancode dice QUE TECLA FUE; un caracter dice QUE LETRA SALIO. No son la
+ * misma pregunta y un juego solo necesita la primera -- pero un editor de texto
+ * necesita la segunda, y sacarla del scancode significa copiar la distribucion
+ * espanola entera --tildes, la ene, AltGr, teclas muertas-- dentro de la app.
+ *
+ * ** Y ESE MAPA EXISTE UNA SOLA VEZ, en el kernel. Dos mapas de teclado son dos
+ * teclados, y se separan el dia que alguien arregle una tecla en uno de los
+ * dos. Asi que la letra no se deduce aqui: la manda quien ya la sabe.
+ *
+ *    bit 62 encendido     el byte bajo es un byte LATIN-1, no un scancode
+ *    siempre PULSADA      un caracter no tiene dos caras: la cola cocida del
+ *                         kernel solo se llena al bajar el dedo
+ *    32..255              lo imprimible, mas los codigos de navegacion
+ *                         0x80..0x94 de `<bmo/entrada.h>` (flechas, Inicio,
+ *                         Fin, Supr, paginas)
+ *    8 9 10 13            retroceso, tabulador, salto y retorno
+ *
+ * [!] **`Ctrl+letra` NO LLEGA.** El escritorio se queda las teclas con
+ * modificador --es su forma de no entregar el aparato-- y por eso los codigos
+ * de control 0x01..0x1A no se reenvian. Un atajo propio de la app se hace con
+ * una tecla desnuda o con un boton de su superficie, que para eso llega el
+ * raton. Y ojo al reverso de la convencion de terminal: `Ctrl+H` ES el byte 8,
+ * o sea retroceso; eso no se puede distinguir mirando el byte.
+ */
+#define BMO_SUP_EV_CARACTER 0x4000000000000000ULL
+
+int bmo_sup_es_caracter(unsigned long long e) {
+    if ((e & BMO_SUP_EV_CARACTER) != 0) {
+        return 1;
+    }
+    return 0;
+}
+
+/* El byte Latin-1 de un evento de caracter. Sin preguntar antes por
+ * `bmo_sup_es_caracter` esto devuelve un scancode disfrazado de letra. */
+int bmo_sup_caracter(unsigned long long e) {
     return (int)(e & 0xFF);
 }
 
