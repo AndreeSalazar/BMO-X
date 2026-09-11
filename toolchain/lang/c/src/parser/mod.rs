@@ -189,8 +189,44 @@ impl Parser {
             // `struct { ... } g;` have no tag, and they are handled where the
             // TYPE is parsed (`parse_type_spec`) -- one place that knows the
             // whole shape, instead of two that have to agree.
+            // == *** Y UN PUNTERO A AGREGADO NO ENTRA AQUI (2026-09-10) =======
+            //
+            // Esta rama existe por UNA cosa que el camino general no sabe
+            // hacer: **el agregado POR VALOR**. Un `struct P` ocupa lo que
+            // ocupe, se copia entero, y devolverlo pide un puntero oculto que
+            // todavia no esta -- por eso el error con nombre de mas abajo.
+            //
+            // ** Un `struct P *` no es nada de eso. Es una palabra de maquina,
+            // y el camino general lleva sabiendo declarar punteros desde el
+            // principio: con sus comas, sus funciones y sus inicializadores.
+            //
+            // Al no distinguirlos, estas dos lineas NO COMPILABAN:
+            //
+            // ```c
+            //    struct c *p;              "expected type, got Ident(p)"
+            //    struct c *f(void) { }     "expected type, got Ident(f)"
+            // ```
+            //
+            // El `advance()` de mas abajo pedia un nombre, se encontraba el
+            // asterisco, **el `if let` fallaba en silencio** y el nombre se
+            // quedaba suelto para la vuelta siguiente -- que es de donde sale
+            // ese mensaje, apuntando al nombre cuando el problema era el `*`.
+            //
+            // *** Salio buscando las bandas de DOOM. DOOM no lo pisa porque
+            // declara todo con `typedef` --`cliprange_t*`, `seg_t*`-- y la
+            // rama del typedef si pasa por el camino general. O sea que el
+            // hueco llevaba ahi desde siempre, tapado por un estilo.
+            //
+            //   > Una limitacion que solo aparece con un estilo de escritura
+            //   > no se descubre leyendo: se descubre escribiendo distinto.
+            //
+            // [!] `struct P { ... } *p;` --cuerpo Y asterisco-- sigue sin
+            // compilar, y se dice en vez de callarlo: el cuerpo ya se consumio
+            // cuando aparece el asterisco, asi que no hay a donde volver. Es
+            // una forma rara y su arreglo es otro: partir esta rama en dos.
             if (*self.peek() == Token::Struct || *self.peek() == Token::Union)
                 && matches!(self.tokens.get(self.pos + 1), Some(Token::Ident(_)))
+                && self.tokens.get(self.pos + 2) != Some(&Token::Star)
             {
                 let is_union = *self.peek() == Token::Union;
                 self.advance();
@@ -200,6 +236,28 @@ impl Parser {
                 };
                 if *self.peek() == Token::OpenBrace {
                     let members = self.parse_aggregate_body()?;
+                    // ** Y SI DETRAS DEL CUERPO VIENE UN ASTERISCO, SE DICE.
+                    //
+                    // `struct P { ... } *p;` define el tipo Y declara un
+                    // puntero en la misma frase. El asterisco de arriba lo
+                    // manda al camino general, pero aqui ya no se puede: el
+                    // cuerpo esta consumido y registrado, no hay a donde
+                    // volver.
+                    //
+                    // Sin esta linea el `;` no aparecia, la vuelta siguiente
+                    // veia el `*` y contestaba "expected type, got Star" --
+                    // **un mensaje que apunta al token en vez de a lo que
+                    // falta**, y que manda a revisar un tipo que esta bien.
+                    if *self.peek() == Token::Star {
+                        return Err(CError::new(
+                            self.line(),
+                            format!(
+                                "definir '{name}' y declarar un puntero a el en la misma \
+                                 frase todavia no se compila: pon el cuerpo en una frase \
+                                 ('struct {name} {{ ... }};') y el puntero en la siguiente"
+                            ),
+                        ));
+                    }
                     self.skip_semicolon();
                     if is_union {
                         self.compute_union_layout(&name, &members);
