@@ -172,6 +172,7 @@ Los ocho declaran seguir el metodo de `SMP_MAESTRO.md`.
 | [`DMA_MAESTRO.md`](maestro/DMA_MAESTRO.md) | 09-09 | el **CUANDO**: un bufer es del CPU o del aparato, nunca de los dos -- y de las 40 funciones de Linux sobreviven DOS ideas |
 | [`INTI_Y_LA_GPU.md`](maestro/INTI_Y_LA_GPU.md) | 09-10 | **la unidad no es el REGISTRO, es la PARTE**: con una GPU no se habla, se le deja un paquete y se toca un timbre -- o sea que es el cuarto aparato del NEUTRO |
 | [`IOMMU_MAESTRO.md`](maestro/IOMMU_MAESTRO.md) | 09-09 | el **DONDE**, y su letra pequena: identidad antes que aislamiento, y por que va el ULTIMO |
+| [`EFICIENCIA_MAESTRO.md`](maestro/EFICIENCIA_MAESTRO.md) | 09-11 | **lo que no hace nada, no gasta -- y lo que gasta dice quien y por que**. Todo el hardware, no solo el CPU; el silicio no se toca. Pareja de `PLAN_VATIOS.md` |
 
 ---
 
