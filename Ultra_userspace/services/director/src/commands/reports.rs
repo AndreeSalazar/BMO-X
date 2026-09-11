@@ -467,6 +467,16 @@ pub(crate) fn report_consumo(s: &mut Output) {
         }
     }
 
+    // *** LA CAJA NEGRA EN RAM (2026-09-11). `generacion` sube uno por arranque
+    // SI la placa conserva la DRAM en un reinicio en caliente; `recuperado` son
+    // los bytes de la sesion anterior que ya estan en CAIDA.TXT. Es el perfil
+    // de una hipotesis: ver `cabina/caida.rs`.
+    s.text(b"    caja negra en RAM -- lo ultimo que dijo el arranque anterior ...................\n");
+    fila(s, b"generacion", bmo::info(bmo::INFO_CAIDA_GENERACION), b"",
+         b"arranques que vio la region de 64 MiB. Si SUBE, la RAM sobrevive al reinicio");
+    fila(s, b"recuperado", bmo::info(bmo::INFO_CAIDA_RECUPERADO), b"bytes",
+         b"de la sesion anterior, ya en datos/CAIDA.TXT. 0 = sin rastro");
+
     fila(s, b"centinela", bmo::info(bmo::INFO_DMA_CENTINELA_MIRADAS), b"",
          b"bordes mirados tras un rebote");
     fila_cero(s, b"rotos", bmo::info(bmo::INFO_DMA_CENTINELA_ROTAS),

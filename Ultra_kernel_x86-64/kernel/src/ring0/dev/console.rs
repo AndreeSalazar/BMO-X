@@ -31,6 +31,11 @@ pub fn init() {
 }
 
 pub fn serial_write_byte(b: u8) {
+    // ** PRIMERO A LA CAJA NEGRA EN RAM, y antes del puerto serie a proposito:
+    // el serie puede no existir y salir por el timeout de abajo; la RAM esta
+    // siempre. Este es EL embudo --nueve sitios escriben aqui-- asi que un
+    // solo gancho captura todo lo que la maquina dice.
+    crate::ring0::cabina::caida::anotar(b);
     // Timeout guard: if COM1 is not wired/enabled by BIOS, inb returns
     // 0x00 and THRE (bit 5) is never set. Without this timeout, every
     // serial_write() call hangs the boot indefinitely. 100K iterations

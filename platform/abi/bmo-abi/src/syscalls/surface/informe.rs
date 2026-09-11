@@ -192,6 +192,14 @@ pub const INFO_DMA_AJENO_1: u64 = 0x62;
 pub const INFO_DMA_AJENO_2: u64 = 0x63;
 pub const INFO_DMA_AJENO_3: u64 = 0x64;
 
+/// **Bytes que la RAM conservo del arranque anterior**, y que ya estan en
+/// `CAIDA.TXT`. Cero = no habia rastro. Es la respuesta a *"la placa conserva
+/// la DRAM en un reinicio en caliente?"*. Ver `cabina/caida.rs`.
+pub const INFO_CAIDA_RECUPERADO: u64 = 0x65;
+/// Cuantos arranques ha visto la caja negra en RAM. 1 = esta es la primera
+/// vez que hay cabecera; si en el siguiente sale 2, la RAM sobrevivio.
+pub const INFO_CAIDA_GENERACION: u64 = 0x66;
+
 /// **La frecuencia efectiva del nucleo AHORA, en Hz.** `0` = no se puede medir.
 ///
 /// No es [`INFO_TSC_HZ`]: ese es el reloj de referencia, que no cambia nunca.

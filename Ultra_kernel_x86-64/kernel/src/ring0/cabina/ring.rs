@@ -122,4 +122,32 @@ pub fn record_fmt(sev: Severity, module: &str, msg: &str, value: u64, fmt: Fmt) 
         BUSY = false;
     }
     irq_restore(flags);
+    // ** Y TAMBIEN A LA CAJA NEGRA EN RAM, como texto (2026-09-11).
+    //
+    // Este anillo no pasa por el puerto serie --se pinta en el panel-- asi que
+    // el gancho de `serial_write_byte` NO lo veia. Sin estas lineas, el fichero
+    // de caida tendria lo que dijo DOOM y ninguno de los avisos del kernel:
+    // `[portero]`, `[firma]`, `[caida]`... que son los que explican una muerte.
+    //
+    // Se formatea DESPUES de soltar `BUSY` y las interrupciones: formatear son
+    // unas decenas de operaciones y no tocan el anillo. Y si `anotar` se
+    // interrumpe a si mismo, el precio es una linea partida, no un cuelgue.
+    {
+        let mut b = super::format::Buf::new();
+        b.txt(match sev {
+            Severity::Fault => "[!! ",
+            Severity::Warning => "[!  ",
+            _ => "[   ",
+        });
+        b.txt_max(module, 10);
+        b.txt("] ");
+        b.txt_max(msg, 60);
+        b.txt(" =");
+        b.dec(value);
+        b.txt("
+");
+        for c in b.as_str().bytes() {
+            super::caida::anotar(c);
+        }
+    }
 }

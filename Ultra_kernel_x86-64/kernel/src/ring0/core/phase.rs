@@ -437,6 +437,9 @@ pub fn main(ctx: &mut BootContext) {
     // de arranque sigue montada sin el, y asi se queda.
     splash::intro_paso(70);
     crate::ring0::fsys::fs::mount_data();
+    // Y lo que la RAM conservo del arranque anterior, al disco: ahora que el
+    // disco esta montado y es fiable, que es cuando NO lo estaba al morir.
+    crate::ring0::cabina::caida::volcar();
     // Y ESTRATOS, si alguna particion lleva uno. Solo lectura: el modulo no
     // sabe escribir, asi que montarlo no puede estropear nada.
     crate::ring0::fsys::estratos::mount();
