@@ -1,14 +1,14 @@
 <!-- GENERADO por toolchain/tools/planes. No se edita a mano. -->
 
-# LO QUE FALTA -- las casillas abiertas de los 27 planes
+# LO QUE FALTA -- las casillas abiertas de los 28 planes
 
 > Generado por `toolchain/tools/planes`. **El build comprueba que
 > este fichero y los planes dicen lo mismo**, asi que no puede
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   167 casillas ABIERTAS en 23 planes
-   122 hechas
+   174 casillas ABIERTAS en 24 planes
+   125 hechas
      4 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -114,6 +114,15 @@
 - [ ] el tubo abre (A1) <- lo unico que bloquea M1, y es un ARRANQUE
 - [ ] M1 WAV dias despues del tubo
 - [ ] M2 MP3 (= A5) media tarde de comprobar la coma flotante antes
+- ... y 4 mas
+
+## [`PLAN_NUNCA_ADIVINA.md`](PLAN_NUNCA_ADIVINA.md) -- 7 abiertas, 3 hechas
+
+*PLAN -- NUNCA ADIVINA: lo que el compilador no puede saber, no lo supone*
+
+- [ ] A4 -- LAS SUPOSICIONES DE DISPOSICION
+- [ ] A5 -- LA TABLA DEL UB, que era el encargo original
+- [ ] A5a -- las cinco que ya se pueden decidir al compilar (contador,
 - ... y 4 mas
 
 ## [`PLAN_EL_NEUTRO_VIGILADO.md`](PLAN_EL_NEUTRO_VIGILADO.md) -- 6 abiertas, 12 hechas
