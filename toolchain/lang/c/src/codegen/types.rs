@@ -153,6 +153,29 @@ impl Codegen {
             Expr::Neg(a) => self.expr_is_float(a),
             Expr::Field(_, _) | Expr::Arrow(_, _) => crate::tipos::tipo_de(self, e).map_or(false, |t| Self::is_float_ty(&t)),
             Expr::IndexPtr(base, _) => self.pointee_type(base).map_or(false, |t| Self::is_float_ty(&t)),
+            // *** `*p` Y `t[i]`, QUE FALTABAN, y no era una omision inocente.
+            //
+            // `p[i]` estaba, `v.f` estaba, `p->f` estaba. Estos dos no, asi
+            // que un `float*` desreferenciado se iba por el camino ENTERO y
+            // `emit_load_elem` hacia `mov eax,[rax]`: los BITS del float en un
+            // registro entero.
+            //
+            // ```text
+            //    float f; f = 3.5;  (int)f     ->  3            bien
+            //    float *p = &f;     (int)*p    ->  1080033280   los BITS
+            // ```
+            //
+            // ** Y no da error: da un numero. `1080033280` es el patron IEEE
+            // de 3.5 leido como entero -- el sintoma es que las cuentas salen
+            // absurdas, no que algo falle.
+            Expr::Deref(inner) => self.pointee_type(inner).map_or(false, |t| Self::is_float_ty(&t)),
+            Expr::Subscript(n, _) => self
+                .var_type_of(n)
+                .map_or(false, |t| match t {
+                    TypeSpec::Array(b, _) => Self::is_float_ty(&b),
+                    TypeSpec::Ptr(b) => Self::is_float_ty(&b),
+                    _ => false,
+                }),
             Expr::Conditional(_, a, b) => self.expr_is_float(a) || self.expr_is_float(b),
             // * Una LLAMADA es flotante si su funcion devuelve un flotante.
             //

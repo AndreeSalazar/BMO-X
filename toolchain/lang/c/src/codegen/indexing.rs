@@ -338,7 +338,7 @@ impl Codegen {
 
     /// La direccion de un lvalue, sea de la forma que sea. Reusa los mismos
     /// emisores que el resto del fichero: aqui no hay un segundo camino.
-    fn emit_lvalue_addr(&mut self, lvalue: &Expr) {
+    pub(super) fn emit_lvalue_addr(&mut self, lvalue: &Expr) {
         match lvalue {
             Expr::Subscript(name, index) => {
                 self.emit_subscript_addr(name, index)

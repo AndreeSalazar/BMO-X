@@ -9,9 +9,53 @@
 //!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
 //!
 
+/// **EL SUFIJO DE UN LITERAL ENTERO, que ES UN TIPO.**
+///
+/// # Por que existe, y desde cuando faltaba
+///
+/// Hasta el 2026-09-10 el lexer leia el sufijo y **lo tiraba**: una linea que
+/// avanzaba el cursor y no guardaba nada. O sea que `1UL` y `1` eran el mismo
+/// token, y por tanto el mismo TIPO: `int`.
+///
+/// ** Y de ahi salia un cero. `tipos.rs` decia que `1UL << 63` era una cuenta
+/// de 32 bits, `recortar_a_32` metia su `mov eax,eax` detras, y la mascara se
+/// perdia entera:
+///
+/// ```text
+///    1UL << 31   ->  0xFFFFFFFF80000000   (recortado y extendido con signo)
+///    1UL << 32   ->  0
+///    1UL << 63   ->  0
+///    a   << 63   ->  BIEN, porque en ejecucion nadie recorta
+/// ```
+///
+/// *** `1 << n` es EL modismo de las mascaras. Toda mascara de 64 bits escrita
+/// como literal salia CERO, sin un solo error: banderas, bits de pagina,
+/// capabilities. Y el sintoma es una comprobacion que no comprueba.
+///
+/// # Por que un sufijo se desazucara a un CAST y no a un tipo en el nodo
+///
+/// Porque eso es lo que un sufijo ES: el estandar dice que `1UL` tiene tipo
+/// `unsigned long`, ni mas ni menos. `Expr::Cast` ya existe y **los tres
+/// jueces del compilador ya saben leerlo** --`tipo_de`, `expr_is_float`,
+/// `expr_is_unsigned`--, asi que el arreglo no anade un caso a ninguno.
+///
+///   > Cuando la forma que sobra ya existe en el arbol, el arreglo no es
+///   > escribir codigo: es dejar de tirar un dato.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(crate) enum Suf {
+    /// Sin sufijo: `int`.
+    Ninguno,
+    /// `U` -- `unsigned int`.
+    U,
+    /// `L` o `LL` -- `long`. Aqui los dos miden 64 bits.
+    L,
+    /// `UL`, `LU`, `ULL`... -- `unsigned long`.
+    UL,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Token {
-    Ident(String), IntLit(i64), FloatLit(f64), StringLit(String), CharLit(u8),
+    Ident(String), IntLit(i64, Suf), FloatLit(f64), StringLit(String), CharLit(u8),
     Int, Void, Char, Short, Long, Unsigned, Signed,
     If, Else, While, Do, For, Switch, Case, Default, Break, Continue,
     Float, Double,
@@ -55,6 +99,30 @@ struct TokStream {
     /// los guarda y el parser se niega a seguir al verlos. Sin esto, la unica
     /// salida era un valor inventado.
     errores: Vec<crate::CError>,
+}
+
+/// **Lee el sufijo de un literal entero y avanza el cursor.**
+///
+/// `U`, `L`, `UL`, `LU`, `LL`, `ULL`... en cualquier orden y cualquier caja,
+/// que es lo que C permite. Se cuentan las letras y de ahi sale el tipo: si
+/// hay alguna `u` es sin signo, si hay alguna `l` es de 64 bits.
+///
+/// * Va aparte y no repetida en las dos ramas del literal --hexadecimal y
+/// decimal-- porque esas dos ramas ya divergieron una vez: el `unwrap_or(0)`
+/// estaba arreglado en una y vivo en la otra. Dos copias de una regla son dos
+/// sitios donde solo se arregla uno.
+fn sufijo(c: &[char], i: &mut usize) -> Suf {
+    let (mut u, mut l) = (false, false);
+    while *i < c.len() && matches!(c[*i], 'u' | 'U' | 'l' | 'L') {
+        if c[*i] == 'u' || c[*i] == 'U' { u = true; } else { l = true; }
+        *i += 1;
+    }
+    match (u, l) {
+        (false, false) => Suf::Ninguno,
+        (true, false) => Suf::U,
+        (false, true) => Suf::L,
+        (true, true) => Suf::UL,
+    }
 }
 
 impl TokStream {
@@ -254,8 +322,9 @@ pub(crate) fn tokenize(source: &str) -> (Vec<Token>, Vec<usize>, Vec<crate::CErr
                     // capability 0.
                     let bits = u64::from_str_radix(&n[2..], 16)
                         .or_else(|_| i64::from_str_radix(&n[2..], 16).map(|v| v as u64));
+                    let suf = sufijo(&c, &mut i);
                     match bits {
-                        Ok(v) => t.push(Token::IntLit(v as i64)),
+                        Ok(v) => t.push(Token::IntLit(v as i64, suf)),
                         // Mas de 16 digitos no es un entero de esta maquina.
                         // Callarlo seria repetir el mismo error con otro valor.
                         Err(_) => {
@@ -264,7 +333,7 @@ pub(crate) fn tokenize(source: &str) -> (Vec<Token>, Vec<usize>, Vec<crate::CErr
                                 linea,
                                 format!("literal hexadecimal fuera de 64 bits: {n}"),
                             ));
-                            t.push(Token::IntLit(0));
+                            t.push(Token::IntLit(0, suf));
                         }
                     }
                 } else {
@@ -277,10 +346,38 @@ pub(crate) fn tokenize(source: &str) -> (Vec<Token>, Vec<usize>, Vec<crate::CErr
                         t.push(Token::FloatLit(n.parse().unwrap_or(0.0)));
                         continue;
                     }
-                    t.push(Token::IntLit(n.parse().unwrap_or(0)));
+                    let suf = sufijo(&c, &mut i);
+                    // ** POR `i64` Y LUEGO POR `u64`, Y SI NO CABE SE DICE.
+                    //
+                    // *** Aqui ponia `n.parse().unwrap_or(0)`, y es EXACTAMENTE
+                    // el fallo que la rama hexadecimal de doce lineas mas
+                    // arriba ya tiene arreglado y comentado. La misma linea,
+                    // el mismo fichero, una rama si y la otra no:
+                    //
+                    // ```text
+                    //    18446744073709551615UL   ->  0, en silencio
+                    //    0xFFFFFFFFFFFFFFFF       ->  bien desde hace semanas
+                    // ```
+                    //
+                    // ** Un numero que el compilador no sabe representar y
+                    // convierte en CERO es la peor respuesta posible: cero es
+                    // un numero valido, asi que el programa sigue y la
+                    // comprobacion que dependia de esa constante deja de
+                    // comprobar. El dueno lo pidio con estas palabras: *si
+                    // adivina, no lo convierte en BEX*.
+                    let v = n.parse::<i64>().ok().or_else(|| n.parse::<u64>().ok().map(|x| x as i64));
+                    match v {
+                        Some(x) => t.push(Token::IntLit(x, suf)),
+                        None => {
+                            let linea = t.cur_line;
+                            t.errores.push(crate::CError::new(
+                                linea,
+                                format!("literal entero fuera de 64 bits: {n}"),
+                            ));
+                            t.push(Token::IntLit(0, suf));
+                        }
+                    }
                 }
-                // sufijos de literal entero: U, L, UL, LL, ULL (cualquier orden/caso)
-                while i < c.len() && matches!(c[i], 'u' | 'U' | 'l' | 'L') { i += 1; }
             }
             l if l.is_ascii_alphabetic() || l == '_' => {
                 let mut id = String::new();
