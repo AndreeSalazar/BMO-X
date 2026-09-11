@@ -130,7 +130,7 @@ nombre-- y despues `exige_firma() = true`. Las dos casillas viven en
 **Desbloqueaba**: `bmo-verify`, los mods de codigo, y que la Base inmutable sea
 un argumento y no una intencion.
 
-## [ ] C3 -- las bandas verticales de DOOM
+## [~] C3 -- las bandas verticales de DOOM: **causa encontrada el 11-09, falta el metal**
 
 El unico fallo VISIBLE que lleva semanas sin explicacion. Dos hipotesis
 falsadas y escritas (`sonda_columnas_de_doom.rs`, 22 celdas verdes): no era el
