@@ -500,13 +500,36 @@ vistazo.
 | Sintoma | Sospechoso |
 |---|---|
 | **Muere tras `M_LoadDefaults` sin decir mas** | **`&c->defaults[i]` = 0. Arriba** |
-| `DOOM: no hay pantalla` | se lanzo desde el escritorio con otra ventana delante |
+| `DOOM: no hay pantalla` | HASTA EL 11-09. Desde entonces con la pantalla ocupada DOOM pide una VENTANA; si sale `DOOM: ni pantalla ni ventana`, nadie compone y la pantalla es de otro |
 | `W_AddFile: doom1.wad no encontrado` | la ruta del WAD, o FAT32 no monta |
 | Se para y **no sale `W_Init`** | el WAD. Era `archivo::open` tragandoselo entero (arreglado el 08-11); si vuelve, mirar `arch` en CABINA |
 | Arranca y muere sin pintar | el monton: 12 MiB CONTIGUOS en fisico. CABINA dice si el kernel los nego |
 | Pinta y no responde | `DOOM: sin teclado` en la consola lo dice antes |
 | Anda solo y no para | la cola cruda no llega: el `soltar` se perdio |
 | Va a tirones | el blit, o `DG_SleepMs` cediendo mal |
+
+## [ ] DOOM EN UNA VENTANA -- escrito el 2026-09-11, sin metal todavia
+
+DOOM solo conocia `<bmo/pantalla.h>`: la pantalla entera o nada. Por eso *"se
+ejecuta sin nada"*: mientras corre no hay escritorio, y al morir no vuelve a
+nadie. El modelo de VENTANA existia desde el 23-08 (`<bmo/superficie.h>`,
+`ray.bex` en una caja con teclas por buzon); DOOM no lo pedia.
+
+Ahora `DG_Init` pregunta por la pantalla y, si la tiene el DIRECTOR, pide una
+superficie de 960x600 con buzon: `DG_DrawFrame` expande en esa memoria y sube
+la secuencia, `DG_GetKey` lee el buzon, `DG_SleepMs` duerme en vez de ceder.
+Con la pantalla libre --shell de Ring 0 o `presta`-- nada cambia.
+
+*** Y el cambio real fue del COMPILADOR: `WANTS_SCREEN` se deducia de
+`PANTALLA_RECLAMAR` y con ella el DIRECTOR se apartaba ANTES de lanzar, asi
+que DOOM siempre habria encontrado la pantalla libre. Un programa que ademas
+sabe componerse (`MI_PADRE`) ya no la lleva; `tests/bandera_de_pantalla.rs`
+son las primeras filas que esa bandera tuvo en el banco. Prueba en metal: V1 de
+`../metal/METAL_2026-09-10.md`.
+
+Lo que se paga, dicho: escala fija x3 (Bloq Despl no aplica), F12 no aplica,
+Alt es del escritorio (el ladeo con Alt+flecha no llega), y el coste de que el
+DIRECTOR pegue 576.000 pixeles por fotograma NO ESTA MEDIDO.
 
 ## ** LA PANTALLA "BUGEADA" NO ES DE DOOM
 

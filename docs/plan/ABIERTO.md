@@ -7,7 +7,7 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   174 casillas ABIERTAS en 24 planes
+   175 casillas ABIERTAS en 24 planes
    125 hechas
      4 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
@@ -125,6 +125,15 @@
 - [ ] A5a -- las cinco que ya se pueden decidir al compilar (contador,
 - ... y 4 mas
 
+## [`PLAN_DOOM.md`](PLAN_DOOM.md) -- 6 abiertas, 3 hechas
+
+*El plan largo: de "BMO C compila 69 de 81" a "DOOM se juega en el Ryzen"*
+
+- [ ] pendiente [~] a medias, y se dice cuanto [x] hecho, con fecha
+- [ ] DOOM EN UNA VENTANA -- escrito el 2026-09-11, sin metal todavia
+- [ ] 2 A: tipar la binaria las 3 casillas nuevas en verde, y 449 sin
+- ... y 3 mas
+
 ## [`PLAN_EL_NEUTRO_VIGILADO.md`](PLAN_EL_NEUTRO_VIGILADO.md) -- 6 abiertas, 12 hechas
 
 *PLAN EL NEUTRO VIGILADO -- que algo procese el DMA aunque la CPU no mire*
@@ -142,15 +151,6 @@
 - [ ] Y1.2 que BUS_PERIOD_MS salga del minimo de los aparatos vivos y no
 - [ ] no promete 0 ms, y llamarlo asi seria vender humo: un pixel viaja por
 - ... y 3 mas
-
-## [`PLAN_DOOM.md`](PLAN_DOOM.md) -- 5 abiertas, 3 hechas
-
-*El plan largo: de "BMO C compila 69 de 81" a "DOOM se juega en el Ryzen"*
-
-- [ ] pendiente [~] a medias, y se dice cuanto [x] hecho, con fecha
-- [ ] 2 A: tipar la binaria las 3 casillas nuevas en verde, y 449 sin
-- [ ] 3 recompilar doom.bex y comparar el tamano contra 880.250
-- ... y 2 mas
 
 ## [`PLAN_EL_SEMAFORO_COMPLETO.md`](PLAN_EL_SEMAFORO_COMPLETO.md) -- 5 abiertas, 4 hechas
 
