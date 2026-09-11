@@ -228,6 +228,25 @@ pub(crate) struct Tick {
     dormidas: u32,
     /// Las del ultimo segundo cerrado, y es lo que hace HONESTO el letrero.
     dormidas_por_segundo: u32,
+    /// == *** EL REPOSO (2026-09-11): si no pasa nada, no se pregunta ======
+    ///
+    /// Vueltas SEGUIDAS que no pintaron nada. El bucle pedia mil vueltas por
+    /// segundo aunque el dueno se hubiera ido a dormir -- el `INT 16h` de
+    /// COMMAND.COM, preguntar sin parar. Cuando lleva `REPOSO_TRAS` vueltas sin
+    /// nada que ensenar, deja el latido y duerme un plazo fijo: la vuelta pasa
+    /// de mil a ~125 por segundo. **Y la primera vuelta que pinta lo devuelve
+    /// a mil.** Una tecla despues de un rato quieto se ve como mucho 8 ms
+    /// tarde, que es lo que cuesta no despertar al CPU mil veces por segundo
+    /// para nada. Ver `docs/plan/PLAN_VATIOS.md`, W4.
+    ///
+    /// [!] Es la version que NO pide interrupciones del USB: el teclado sigue
+    /// viendose por sondeo, solo que ocho veces menos a menudo mientras nadie
+    /// lo toca. La de verdad --dormir SOBRE la entrada-- es W3+W4 del plan.
+    quietas: u32,
+    /// Vueltas del segundo en curso que durmieron en REPOSO (no en el latido).
+    reposos: u32,
+    /// Las del ultimo segundo cerrado: es lo que pone "reposo" en la barra.
+    pub reposos_por_segundo: u32,
     /// `rdtsc` justo antes de ceder, y `0` si todavia no se cedio nunca.
     cedio_en: u64,
     /// `rdtsc` del principio de esta vuelta. Reloj de PARED.
@@ -302,6 +321,9 @@ impl Tick {
             visto: 0,
             dormidas: 0,
             dormidas_por_segundo: 0,
+            quietas: 0,
+            reposos: 0,
+            reposos_por_segundo: 0,
             cedio_en: 0,
             inicio: 0,
             cpu_inicio: 0,

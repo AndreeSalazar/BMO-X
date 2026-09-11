@@ -87,6 +87,8 @@ pub(crate) struct Lectura {
     pub pinta: u32,
     /// El bucle va montado en el LATIDO del hardware (`WAIT`), no girando.
     pub en_latido: bool,
+    /// El bucle esta en REPOSO: nada que pintar, duerme 8 ms por vuelta.
+    pub en_reposo: bool,
 }
 
 /// **Lo que hay que ensenar, ya decidido.** El carril verde no vuelve a
@@ -108,6 +110,9 @@ pub(crate) struct Dictamen {
     pub pinta: u32,
     /// Va montado en el latido. Ver la decision 6.
     pub en_latido: bool,
+    /// Esta en reposo: duerme 8 ms por vuelta porque no hay nada que pintar.
+    /// Se ensena como `reposo` y NO dispara la alarma de ritmo bajo.
+    pub en_reposo: bool,
     /// El cuerpo se queda el segundo. Ver la decision 4.
     pub manda_cuerpo: bool,
 }
@@ -167,11 +172,14 @@ pub(crate) fn leer(l: &Lectura) -> Dictamen {
         // emergencia antes-- asi que darlo seria inventarlo. `None` y no un
         // cero: un cero es una medida, y esa medida no se tomo.
         ritmo: if l.sin_reloj { None } else { Some(l.vueltas) },
-        alarma: !l.sin_reloj && l.vueltas < RITMO_BAJO,
+        // Y en reposo no hay alarma: ~125 vueltas por segundo son las que se
+        // pidieron, no las que se pudieron.
+        alarma: !l.sin_reloj && !l.en_reposo && l.vueltas < RITMO_BAJO,
         cuerpo_ms: l.cuerpo_ms,
         puerta_ms: l.puerta_ms,
         pinta: l.pinta,
         en_latido: l.en_latido,
+        en_reposo: l.en_reposo,
         // ** DE QUE LADO TIRAR. Las dos mitades suenan igual desde fuera --"el
         // escritorio va lento"-- y no se arreglan en el mismo sitio: una es de
         // Ring 3 y la otra del planificador. El empate cae del lado del cuerpo
@@ -194,5 +202,6 @@ pub(crate) fn de(t: &desktop::Tick) -> Lectura {
         puerta_ms: t.puerta_ms,
         pinta: t.pintados_por_segundo,
         en_latido: t.en_latido(),
+        en_reposo: t.en_reposo(),
     }
 }

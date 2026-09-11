@@ -701,6 +701,29 @@ pub(crate) fn shell_smp_tabla() {
             l.txt(" duerme: ver plat/smp/dormir.rs");
         }
     });
+    // ** Y EL BSP (11-09): el que atiende cada syscall se aparcaba en `hlt`,
+    // o sea C1. Ahora duerme hondo, y esta fila es la medida de W1 de
+    // PLAN_VATIOS: cuanto tiempo la maquina no hacia nada Y lo apagaba.
+    // La fraccion va contra el TSC desde el reset, firmware incluido.
+    {
+        let hz = crate::ring0::task::scheduler::tsc_freq();
+        let por_ms = if hz >= 1000 { hz / 1000 } else { 1 };
+        let reposo = smp::dormir::ticks_reposo();
+        let ahora = crate::ring0::plat::smp::ficha::ciclos().max(1);
+        row("bsp", |l| {
+            if duerme {
+                l.txt("dormido hondo ");
+                l.dec(reposo / por_ms);
+                l.txt(" ms = ");
+                l.dec(reposo.saturating_mul(100) / ahora);
+                l.txt("% del tiempo, en ");
+                l.dec(smp::dormir::reposos());
+                l.txt(" siestas (~1000/s en reposo: el tick lo despierta)");
+            } else {
+                l.txt("en hlt (C1): sin MONITORX no duerme hondo");
+            }
+        });
+    }
 }
 
 /// **`smp prueba`** -- reparte una cuenta pura y mide la aceleracion real.

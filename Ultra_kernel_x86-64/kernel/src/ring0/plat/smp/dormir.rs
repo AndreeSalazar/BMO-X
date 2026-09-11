@@ -321,6 +321,93 @@ pub fn esperar(celda: &AtomicU32, visto: u32) {
     DORMIDAS.fetch_add(1, Ordering::Relaxed);
 }
 
+// == *** EL REPOSO DEL BSP (2026-09-11): el unico nucleo que trabajaba era el
+// == unico que NO dormia ======================================================
+//
+// La tarea idle del planificador hacia `sti; hlt`. `HLT` es C1: el nucleo
+// deja de ejecutar y **sigue encendido**, con sus relojes vivos. Los once
+// obreros llevaban desde el 10-09 durmiendo en el C-state mas profundo del
+// silicio con `mwaitx`; el BSP -- el que atiende cada syscall y cada tick --
+// se quedaba en C1 mil veces por segundo. El metal lo dijo sin que nadie lo
+// leyera: 58 W en reposo a 4495 MHz (`docs/plan/PLAN_VATIOS.md`).
+//
+// Aqui no se espera una escritura: se espera **una interrupcion**. `MWAITX`
+// las admite como despertador con `ECX` bit 0 -- *"interrupts break even if
+// masked"* -- y ademas se le deja el plazo del `EBX`, que aqui es solo la red
+// de seguridad de siempre. El `MONITORX` se arma sobre una celda propia que
+// nadie escribe: hace falta un `monitor` armado para que `mwaitx` duerma.
+//
+// ** Y se hace `sti` ANTES, como hacia el `hlt`: si una interrupcion llega
+// entre el `sti` y el `mwaitx`, se atiende y luego se duerme hasta la
+// siguiente -- que con el tick a 1 kHz esta a menos de un milisegundo. Es la
+// misma propiedad que ya tenia `sti; hlt`, ni mejor ni peor.
+//
+// [!] Lo que este reposo NO arregla, y esta escrito en el plan: el tick sigue
+// sonando mil veces por segundo, asi que el BSP entra y sale del C-state
+// profundo mil veces por segundo. Cuanto vale eso en vatios lo dice
+// `consumo` con la fila `bsp`, y es la medida que decide si W2 (tickless)
+// merece su riesgo.
+
+/// Celda sobre la que se arma el `MONITORX` del reposo. Nadie la escribe; el
+/// despertador es la interrupcion, no la memoria.
+static CELDA_REPOSO: AtomicU32 = AtomicU32::new(0);
+/// Veces que el BSP durmio de verdad (no `hlt`).
+static REPOSOS: AtomicU64 = AtomicU64::new(0);
+/// Ticks del TSC que el BSP paso dentro del `mwaitx`.
+static TICKS_REPOSO: AtomicU64 = AtomicU64::new(0);
+
+/// **El reposo del BSP: dormir hondo hasta la siguiente interrupcion.**
+///
+/// Si el silicio no trae `MONITORX`, hace exactamente lo de siempre: `sti;
+/// hlt`. Quien llama esta en un bucle infinito (la tarea idle), asi que
+/// volver antes de tiempo nunca es un fallo.
+pub fn reposo() {
+    if !se_puede() {
+        unsafe { core::arch::asm!("sti; hlt", options(nostack, preserves_flags)) };
+        return;
+    }
+    let hondo = profundidad();
+    let dir = &CELDA_REPOSO as *const _ as usize;
+    unsafe {
+        // Interrupciones abiertas ANTES de armar nada: un `mwaitx` con ellas
+        // cerradas y sin el bit 0 seria una maquina muerta, igual que un `hlt`.
+        core::arch::asm!("sti", options(nostack, preserves_flags));
+        core::arch::asm!(
+            "monitor",
+            in("rax") dir,
+            in("ecx") 0,
+            in("edx") 0,
+            options(nostack, preserves_flags),
+        );
+        let t0 = super::ficha::ciclos();
+        // ECX = 3: bit 0 las interrupciones despiertan, bit 1 `EBX` es plazo.
+        core::arch::asm!(
+            "mov {salvo}, rbx",
+            "mov ebx, {plazo:e}",
+            "mwaitx",
+            "mov rbx, {salvo}",
+            salvo = out(reg) _,
+            plazo = in(reg) PLAZO_TICKS,
+            in("eax") hondo,
+            in("ecx") 3,
+            options(nostack, preserves_flags),
+        );
+        TICKS_REPOSO.fetch_add(super::ficha::ciclos().wrapping_sub(t0), Ordering::Relaxed);
+    }
+    REPOSOS.fetch_add(1, Ordering::Relaxed);
+}
+
+/// **Cuantas veces durmio hondo el BSP.** 0 = sin `MONITORX`, o nunca estuvo ocioso.
+pub fn reposos() -> u64 {
+    REPOSOS.load(Ordering::Relaxed)
+}
+
+/// **Ticks del TSC que el BSP paso dormido.** Contra el TSC total, es el
+/// porcentaje del tiempo en que la maquina no hacia nada -- y lo apagaba.
+pub fn ticks_reposo() -> u64 {
+    TICKS_REPOSO.load(Ordering::Relaxed)
+}
+
 /// **Cuantas veces se durmio un obrero de verdad.**
 ///
 /// Es el numero que convierte *"ahora deberia gastar menos"* en un dato. Si

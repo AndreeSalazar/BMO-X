@@ -108,6 +108,8 @@ const INFO_DMA_AJENO_2: u64 = 0x63;
 const INFO_DMA_AJENO_3: u64 = 0x64;
 const INFO_CAIDA_RECUPERADO: u64 = 0x65;
 const INFO_CAIDA_GENERACION: u64 = 0x66;
+const INFO_BSP_REPOSOS: u64 = 0x67;
+const INFO_BSP_TICKS_REPOSO: u64 = 0x68;
 /// ** LA FRECUENCIA EFECTIVA, en Hz. `0` = no se puede medir.
 ///
 /// No es `INFO_TSC_HZ`: ese dice a que va el RELOJ de referencia, que no cambia
@@ -665,6 +667,9 @@ pub fn campo(n: u64) -> u64 {
         INFO_DMA_AJENO_3 => crate::ring0::dev::portero::ajeno_papeles(3),
         INFO_CAIDA_RECUPERADO => crate::ring0::cabina::caida::recuperado(),
         INFO_CAIDA_GENERACION => crate::ring0::cabina::caida::generacion(),
+        // W1 de PLAN_VATIOS: el BSP tambien duerme, y esto dice cuanto.
+        INFO_BSP_REPOSOS => crate::ring0::plat::smp::dormir::reposos(),
+        INFO_BSP_TICKS_REPOSO => crate::ring0::plat::smp::dormir::ticks_reposo(),
         INFO_DMA_CENTINELA_MIRADAS => crate::ring0::dev::disk::cuentas_centinela().0,
         INFO_DMA_CENTINELA_ROTAS => crate::ring0::dev::disk::cuentas_centinela().1,
         INFO_DMA_HBA_DE_MAS => crate::ring0::dev::disk::cuentas_centinela().2,

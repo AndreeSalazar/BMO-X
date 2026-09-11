@@ -195,7 +195,14 @@ toca.
 Cada una trae su medida ANTES y DESPUES con `consumo`. Una palanca sin las dos
 cifras no se da por hecha (L3, LEY 24).
 
-## [ ] W1 -- El BSP duerme como los obreros: `MWAIT` con pista
+## [x] W1 -- El BSP duerme como los obreros: `MWAIT` con pista -- CODIGO 2026-09-11, metal pendiente
+
+Hecho en `smp/dormir.rs::reposo()` y `scheduler/roja.rs::idle_thread`: `sti`,
+`monitor` sobre una celda propia, `mwaitx` con `ECX = 3` (la interrupcion
+despierta, `EBX` es el plazo de siempre) en el C-state mas profundo que
+enumera el CPUID; `sti; hlt` de reserva si no hay `MONITORX`. Se cuenta
+`reposos` y `ticks_reposo`, y salen en `consumo` (fila `bsp`) y en `save`
+(`bsp dormido`, `bsp reposo`, `bsp siestas`). INFO `0x67`/`0x68`.
 
 `scheduler/roja.rs:1167`, la tarea idle: en vez de `sti; hlt`, el mismo
 `mwaitx` de `dormir.rs` con el C-state mas profundo enumerado, `ECX bit 0`
@@ -251,7 +258,19 @@ cola ya llena en vez de ir al hardware.
             del raton por fin se respete
 ```
 
-## [ ] W4 -- El escritorio duerme sobre la ENTRADA, no sobre el reloj
+## [~] W4 -- El escritorio duerme sobre la ENTRADA, no sobre el reloj -- la mitad barata, 2026-09-11
+
+**Hecho el REPOSO** (`desktop/tick/roja.rs::ceder`): tras 500 vueltas seguidas
+sin nada que pintar (`will_paint` reune tecla, raton, superficie y el cuarto
+de segundo), el bucle deja el latido y duerme 8 ms por vuelta: de 1.000 a
+~125 vueltas por segundo. La primera vuelta que pinta lo devuelve a 1.000. La
+barra dice `reposo` y no dispara la alarma de ritmo bajo. Es el principio que
+pidio el dueno: *"si no hace nada, no consume; si esta activo, consume"*.
+
+**Lo que falta** es la otra mitad: dormir SOBRE la entrada (cero vueltas
+hasta que algo llegue), y esa pide W3. Con el reposo, la tecla tras un rato
+quieto se ve como mucho 8 ms tarde; con W3+W4 se veria al instante y sin
+vueltas.
 
 `director/src/main.rs:982`: `dsk.tick.ceder()` deja de esperar el LATIDO y
 pasa a `WAIT` sobre la entrada (o sobre un esperable que la entrada, las
@@ -270,7 +289,12 @@ por cada cosa que de verdad pase.**
    mide     W0c antes / despues. *** Es la que deberia cerrar la distancia
 ```
 
-## [ ] W5 -- `bmo_ceder` no es esperar: `bmo_esperar_tsc` en REX
+## [x] W5 -- DOOM espera DORMIDO -- 2026-09-11 (`DG_SleepMs` sobre `bmo_dormir`, en todos los modos)
+
+No hizo falta funcion nueva: `bmo_dormir` ya era `WAIT` con plazo. El bucle
+de `bmo_ceder` sobre el TSC se fue; DOOM entre tic y tic ya no ocupa un
+nucleo. El raycaster en pantalla entera sigue cediendo por fotograma, y esta
+bien: esta DIBUJANDO, y lo que trabaja consume.
 
 `<bmo/bmo.h>`: una funcion que BLOQUEA hasta un instante del TSC (sobre
 `WAIT` con plazo), y DOOM/raycaster en pantalla entera la usan. Cierra 1.5.
@@ -301,9 +325,10 @@ por cada cosa que de verdad pase.**
 
 ```text
    W0   medir tres veces           sin tocar nada     la base
-   W1   MWAIT en el BSP            40 lineas          barato, seguro, se nota
-   W5   bmo_esperar_tsc            10 lineas          barato, cierra las apps
-   W3   MSI para el xHC            un aparato         *** el nudo: sin el, W4 no existe
+   W1   MWAIT en el BSP            HECHO 11-09        barato, seguro, se nota
+   W5   DOOM duerme                HECHO 11-09        barato, cierra las apps
+   W4   reposo del escritorio      la mitad, 11-09    1000 -> 125 vueltas/s en vacio
+   W3   MSI para el xHC            un aparato         *** el nudo: sin el, W4 no se cierra
    W4   escritorio por evento      el DIRECTOR        la que cierra la distancia
    W2   tickless                   el reloj           la ultima: es la mas ancha
                                                        y solo vale con todo lo demas

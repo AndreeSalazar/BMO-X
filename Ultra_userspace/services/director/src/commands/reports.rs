@@ -356,6 +356,23 @@ pub(crate) fn report_consumo(s: &mut Output) {
         fila(s, b"duermen en", 0, b"",
              b"[!] sin MONITORX no se duerme: los obreros GIRAN al 100%");
     }
+    // == *** Y EL BSP, que era el unico que no dormia (11-09) ============
+    //
+    // El nucleo que atiende cada syscall se aparcaba en `hlt` (C1). Ahora
+    // duerme hondo como los obreros, y esta fila dice QUE PARTE del tiempo
+    // la maquina no hacia nada y lo apagaba. Es la medida de W1 de
+    // PLAN_VATIOS; si sale 0 con la maquina en reposo, el reposo no entra.
+    {
+        let hz3 = bmo::info(bmo::INFO_TSC_HZ);
+        let por_ms3 = if hz3 >= 1000 { hz3 / 1000 } else { 1 };
+        let reposo = bmo::info(bmo::INFO_BSP_TICKS_REPOSO);
+        let total = bmo::ciclos().max(1);
+        fila(s, b"bsp dormido", reposo / por_ms3, b"ms",
+             b"el nucleo principal, hondo (mwaitx), desde el arranque");
+        fila_barra(s, b"bsp reposo", reposo, total, b"");
+        fila(s, b"bsp siestas", bmo::info(bmo::INFO_BSP_REPOSOS), b"",
+             b"cuantas veces; ~1000/s en reposo = el tick lo despierta");
+    }
     let mw = bmo::info(bmo::INFO_CPU_MW_PAQUETE);
     if mw > 0 {
         fila_mili(s, b"gasta paquete", mw, b"W", b"los nucleos + fabric + memoria + L3");
