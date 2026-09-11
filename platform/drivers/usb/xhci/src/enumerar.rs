@@ -1,5 +1,12 @@
 //! **DE UN APARATO ENCHUFADO A UN APARATO CON DIRECCION.**
 //!
+//! [carril]  ROJO      escribe la fisica del anillo EP0 dentro del contexto de
+//!                     la ranura, que es lo que el xHC usara para siempre
+//! [cuesta]  APARATO   una vez por enchufe; si falla, ese aparato no existe
+//! [riesgo]  SILENCIO  `Address Device` contesta que si a un contexto que
+//!                     apunta mal: el fallo llega en la primera transferencia
+//!
+//!
 //! Puertos, `Enable Slot`, el anillo EP0 de cada ranura y `Address Device`.
 //!
 //! ## Por que soy un fichero (L6b)

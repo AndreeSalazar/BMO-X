@@ -1,5 +1,8 @@
 //! **RED -- de momento, solo RECONOCER.**
 //!
+//! [carril]  ROJO    -- programa un maestro del bus. Lo que se escribe aqui lo
+//!           ejecuta la TARJETA, no el CPU, y una tarjeta no pregunta
+//!
 //! [cuesta]  APARATO -- programa el filtro y el anillo de una NIC. Un bit de
 //!           mas y la tarjeta escribe en memoria que no es suya.
 //!

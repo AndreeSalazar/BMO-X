@@ -1,5 +1,10 @@
 //! BMO AHCI/SATA Storage Driver -- HAL-based.
 //!
+//! [carril]  VERDE     la fachada: `pub mod` y poco mas. El peligro vive en
+//!                     los modulos que nombra, no aqui
+//! [cuesta]  NADA
+//!
+//!
 //! Implements controller detection, port enumeration, DMA setup,
 //! and sector read/write. Uses `StorageHal` trait for kernel services
 //! (memory allocation and logging).

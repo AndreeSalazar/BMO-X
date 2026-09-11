@@ -76,6 +76,7 @@ import argparse
 # lista de nombres a mano seria una cuarta copia que se queda vieja sola.
 from contrato_ley import *  # noqa: F401,F403
 from contrato_rex import *  # noqa: F401,F403
+from contrato_drivers import *  # noqa: F401,F403
 import os
 import re
 import sys
@@ -948,6 +949,12 @@ def comprobar():
     copias = copias_de_operacion()
     quejas += [("R19 una app se copia una operacion", q)
                for q in r19_nadie_se_copia_una_operacion(copias)]
+    # ** R20: LOS DRIVERS. Son Ring 0 aunque no vivan en su carpeta -- el
+    # kernel los enlaza-- y ahi dentro esta todo el DMA. Con trinquete porque
+    # se empieza en 12 de 51 y no en 51 de 51.
+    drv = ficheros_de_drivers()
+    quejas += [("R20 L6g el semaforo de los drivers", q)
+               for q in r20_el_semaforo_de_los_drivers(drv, minimo_de_drivers())]
     quejas += [("R18 L6g los carriles fuera del kernel", q)
                for q in r18_los_carriles_fuera_del_kernel(
                    vias_fuera, CARRILES_FUERA_DEL_KERNEL)]
@@ -1051,6 +1058,27 @@ def comprobar():
         print("clean: el semaforo cubre los %d ficheros de fundamentals (la cara "
               "Rust del ABI) -- %s"
               % (len(fund), "  ".join("%s %d" % (c, cf[c]) for c in SEMAFORO)))
+    if drv:
+        cd = {c: 0 for c in SEMAFORO}
+        for txt in drv.values():
+            m = RE_CARRIL.search(txt)
+            if m and m.group(1) in cd:
+                cd[m.group(1)] += 1
+        hechos = sum(cd.values())
+        # *** SE DICE "N DE M", y no solo N.
+        #
+        # Un guardian que escribe "12 ficheros declaran su carril" se lee como
+        # cobertura completa. Escribir el denominador convierte el mismo numero
+        # en un AVANCE, que es lo que es -- y hace visible lo que falta sin
+        # tener que ir a contarlo.
+        print("clean: el semaforo cubre %d de los %d ficheros de platform/drivers "
+              "(%d%%) -- %s  (R20, trinquete: SOLO PUEDE SUBIR)"
+              % (hechos, len(drv), (100 * hechos) // len(drv),
+                 "  ".join("%s %d" % (c, cd[c]) for c in SEMAFORO)))
+        if hechos < len(drv):
+            print("       [i] %d sin letrero, y son Ring 0 igual: el kernel los "
+                  "enlaza. Ver docs/plan/PLAN_EL_SEMAFORO_COMPLETO.md"
+                  % (len(drv) - hechos))
     if r0:
         colores = {c: 0 for c in SEMAFORO}
         for txt in r0.values():

@@ -1,5 +1,13 @@
 //! **UN COMANDO**: emitirlo, esperarlo, y saber en que quedo.
 //!
+//! [carril]  ROJO      emite el comando que el disco va a ejecutar, y la PRDT
+//!                     dice DONDE escribe. Un trozo mal puesto no da fallo:
+//!                     da el disco escribiendo en memoria de otro
+//! [cuesta]  DATO      esto corre en CADA lectura y CADA escritura del sistema
+//! [riesgo]  SILENCIO  el aparato no comprueba nada. Obedece la cuenta que se
+//!                     le dio, y una cuenta mala se cobra tres arranques despues
+//!
+//!
 //! ## Por que soy un fichero (L6b)
 //!
 //! Porque esto es lo que corre **en cada lectura y en cada escritura** del

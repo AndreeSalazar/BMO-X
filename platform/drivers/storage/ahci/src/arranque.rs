@@ -1,5 +1,12 @@
 //! **ARRANCAR EL HBA**: prepararlo, censar sus puertos y montar el DMA.
 //!
+//! [carril]  ROJO      monta el DMA de cada puerto: escribe las tablas que el
+//!                     APARATO lee para decidir donde escribe el
+//! [cuesta]  APARATO   una vez por arranque, y si sale mal no hay disco
+//! [riesgo]  SILENCIO  su propia cabecera lo dice mas abajo: una PRDT mal
+//!                     armada no da un fallo, da memoria de otro pisada
+//!
+//!
 //! ## Por que soy un fichero (L6b)
 //!
 //! Porque contesto una pregunta que ocurre **UNA VEZ por arranque**, y la de al

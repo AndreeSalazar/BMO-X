@@ -1,5 +1,11 @@
 //! **La cola de avisos de puerto**: lo que el xHC cuenta, sin que se pise.
 //!
+//! [carril]  VERDE     un buzon de avisos de puerto, y **la unica parte de
+//!                     este driver que se prueba sin un xHC delante**
+//! [cuesta]  TAREA     si se pierde un aviso, ese aparato no se enumera -- y
+//!                     eso SE VE: no hay teclado
+//!
+//!
 //! === Por que existe este modulo ===
 //!
 //! El aviso de "cambio el puerto N" vivia en TRES estaticos sueltos:

@@ -1,5 +1,10 @@
 //! StorageHal -- trait for kernel services needed by storage drivers.
 //!
+//! [carril]  VERDE     un `trait` y sus punteros globales. Si esto esta mal,
+//!                     NO COMPILA -- y eso es el mejor fallo que hay
+//! [cuesta]  NADA      no toca hardware: declara quien lo tocara
+//!
+//!
 //! Implemented by the kernel and injected via global function pointers.
 
 use core::sync::atomic::{AtomicBool, Ordering};

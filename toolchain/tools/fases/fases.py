@@ -161,6 +161,27 @@ def main():
         mf = RE_FASE.search(txt)
         ma = RE_APARECE.search(txt)
         if not mf and not ma:
+            # == *** ESTO ERA UN `continue`, Y ERA UN AGUJERO (2026-09-10) ===
+            #
+            # Un fichero sin ninguna de las dos etiquetas se saltaba en
+            # SILENCIO. Sumado al trinquete, eso quiere decir que **un fichero
+            # NUEVO sin etiqueta pasaba**: `marcados` no bajaba --el nuevo
+            # nunca conto-- asi que el suelo se cumplia y el build decia clean.
+            #
+            # ** El guardian contaba lo que hay, no lo que falta. Es la misma
+            # forma que `EMBUDO.txt` el 10-09 y que `planes.py` el 09-09: un
+            # contador que solo mira lo declarado no cuenta de menos, **deja de
+            # ser un guardian**.
+            #
+            # *** Y se puede exigir a TODOS, sin trinquete, por la razon que
+            # R10 escribio para Ring 0: la cobertura ya es 39 de 39. Una regla
+            # que se cumple entera no necesita un suelo que tolere lo que ya
+            # estaba mal -- el trinquete de abajo se queda para que el numero
+            # no baje, pero el muro es este.
+            quejas.append(
+                "%s no declara [fase] ni [aparece]. Todo fichero de BMO C dice "
+                "en que fase falla y QUIEN lo caza -- si no, su fallo es una "
+                "sorpresa por definicion" % rel)
             continue
         marcados += 1
         if not mf:
@@ -209,9 +230,12 @@ def main():
     # ** El recuento de `DENTRO` va en la PRIMERA linea a proposito: el
     # envoltorio del build solo ensena esa, y ese numero es el que hay que ver
     # sin ir a buscarlo. La lista entera sale al correr el guardian a mano.
-    print("clean: %d fichero(s) de BMO C declaran su fase (%s) -- y en %d de "
-          "ellos el fallo APARECE LEJOS (`DENTRO`): ahi el banco no protege"
-          % (marcados,
+    # ** SE DICE "N DE N". Un numero suelto se lee como cobertura completa
+    # aunque no lo sea; con el denominador delante, el dia que no cuadren se
+    # ve en la misma linea y sin ir a contar nada.
+    print("clean: %d de los %d fichero(s) de BMO C declaran su fase (%s) -- y "
+          "en %d de ellos el fallo APARECE LEJOS (`DENTRO`): ahi el banco no protege"
+          % (marcados, len(ficheros()),
              " ".join("%s %d" % (f, len(por_fase[f])) for f in orden),
              len(dentro)))
     # *** LA LISTA QUE SE VIENE A BUSCAR: donde un error NO va a avisar.
