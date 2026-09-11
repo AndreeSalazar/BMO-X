@@ -5,6 +5,11 @@
 > [`EL_FUERO.md`](../../../../../FUERO/EL_FUERO.md). Esto es el indice de REX: que
 > hay, para que sirve cada pieza y por donde se empieza.
 
+** Y desde el 2026-09-11 `tables/` tiene nombre en el reparto de BMO C: es LA
+FABRICA, lo que C promete. Los ports --DOOM, y lo que venga-- son LA EXPANSION,
+y la tapan sin tocarla. La regla y el porque estan en
+[`toolchain/lang/c/README.md`](../../../../lang/c/README.md).
+
 REX es lo que hay entre las **dos puertas congeladas** (`INVOKE` y `WAIT`) y un
 programa. Doce cabeceras publicas, 3.580 lineas en 20 ficheros, y dos
 propiedades que conviene
