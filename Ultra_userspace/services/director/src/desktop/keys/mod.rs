@@ -342,6 +342,17 @@ pub(crate) fn dispatch(
         // que es donde caian antes de que existieran las cajas. Ver
         // `app::muda` para por que esto no se arregla en el foco.
         if !dsk.win.focus.es_para(Ventana::Run) && !app::muda(dsk) {
+            // ** Y AQUI SE LE ENTREGA LA LETRA, que hasta hoy se TIRABA.
+            //
+            // Este `continue` decia "la ventana de delante ya tuvo su turno", y
+            // era cierto para los scancodes --`app::reenviar` los reparte en
+            // `gather`-- y falso para los caracteres: esta cola no pasa por
+            // ahi. O sea que una app con foco recibia la tecla que fue y nunca
+            // la letra que produjo, y **el unico sitio del sistema que sabe esa
+            // letra es el kernel**. Sin esto, escribir dentro de una ventana
+            // pedia copiar la distribucion espanola a la app. Ver
+            // `app::caracter`.
+            app::caracter(dsk, c);
             continue;
         }
         if let Edit::Launch(target, n) = editor::on_key(dsk, p, c, g.ctrl) {
