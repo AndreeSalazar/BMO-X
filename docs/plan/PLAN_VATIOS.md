@@ -52,25 +52,37 @@ tercera bien hechas. Eso es lo que este plan mide y arregla.
    26-08   `save` en el escritorio             58,5 W           4495 MHz medidos
 ```
 
-*** **58 W en reposo, a 4,5 GHz de boost, sin que nadie haga nada.** Ese es el
-numero. Y `4495 MHz en reposo` no es un dato de frecuencia: es el sintoma de
-que **nadie esta en reposo** -- el SMU sube el reloj porque ve nucleos
-ocupados.
+*** **58 W en reposo, sin que nadie haga nada.** Ese es el numero.
+
+[!] **CORREGIDO el 11-09 por la tarde.** Aqui ponia que `4495 MHz en reposo` era
+*"el sintoma de que nadie esta en reposo"*. **Falso**: es MPERF/APERF, o sea la
+frecuencia MIENTRAS el nucleo ejecuta, y no dice nada del tiempo que duerme.
+Windows marca 118 % con un 85 % ocioso. Ver `EFICIENCIA_MAESTRO.md`, 2.1.
 
 [!] Desde el 10-09 los once obreros duermen con `MWAITX` en el C-state mas
 profundo que enumera el CPUID (`smp/dormir.rs`). **No se ha medido despues.**
 La primera linea del proximo `consumo` vale mas que todo lo que sigue.
 
-## 0.3 La base del HARDWARE, que la mide el dueno en Windows
+## 0.3 Windows es la INSPIRACION, no la vara
 
-LEY 24: el suelo de esta placa no se estima, se mide. En el MISMO Ryzen, con
-Windows en reposo, HWiNFO o Ryzen Master ensenan **"CPU Package Power"**. Ese
-numero es el suelo que el silicio + la placa + el firmware dejan alcanzar con
-un sistema que sabe dormir. BMO-X no puede bajar de ahi; **la distancia entre
-ese numero y los 58 W es lo que este plan tiene que cerrar.**
+[!] **CORREGIDO el 11-09 por la tarde, a peticion del dueno.** Aqui ponia que
+Windows en reposo era *"el suelo"* y que BMO-X *"no puede bajar de ahi"*. Las
+dos cosas eran falsas:
 
 ```text
-   [ ] W0a  Windows en reposo, 2 minutos sin tocar nada: Package Power = ___ W
+   el suelo    lo pone el SILICIO (y la placa y el firmware), no un sistema
+   Windows     tiene decenas de servicios despiertos. BMO-X no tiene NADA
+               detras (0.1), asi que puede quedar POR DEBAJO de Windows quieto
+```
+
+** Lo que Windows SI da es la **prueba de que se puede**: en este mismo Ryzen
+pasa el 83 % del tiempo ocioso en C2 (medido el 11-09). Eso es inspiracion, no
+meta. **La meta es ir tan abajo como deje el silicio**, y el numero que manda es
+el que mida el propio BMO-X con todo dormido. HWiNFO sigue valiendo para una
+cosa que BMO-X no ve: la grafica.
+
+```text
+   [ ] W0a  REFERENCIA, no suelo: Windows quieto 2 minutos, Package Power = ___ W
    [ ] W0b  BMO-X, shell de Ring 0, `consumo` dos veces seguidas:  ___ W
    [ ] W0c  BMO-X, escritorio, `save` dos veces seguidas:          ___ W
 ```
@@ -197,6 +209,12 @@ cifras no se da por hecha (L3, LEY 24).
 
 ## [x] W1 -- El BSP duerme como los obreros: `MWAIT` con pista -- CODIGO 2026-09-11, metal pendiente
 
+[!] **CORREGIDO el 11-09 por la tarde.** En este Ryzen el C-state mas hondo que
+enumera el CPUID es **C1** (`CPUID 5 EDX = 0x11`, leido desde el mismo chip):
+W1 no gano profundidad -- el BSP y los obreros duermen en C1, igual que con
+`hlt`. Lo que si gano es el despertar por interrupcion y el plazo. La
+profundidad de verdad es W6.
+
 Hecho en `smp/dormir.rs::reposo()` y `scheduler/roja.rs::idle_thread`: `sti`,
 `monitor` sobre una celda propia, `mwaitx` con `ECX = 3` (la interrupcion
 despierta, `EBX` es el plazo de siempre) en el C-state mas profundo que
@@ -220,6 +238,10 @@ semaforo.
 ```
 
 ## [ ] W2 -- Tickless: el LAPIC en one-shot, armado al proximo plazo
+
+[!] **BAJA AL FINAL, o se descarta (11-09 tarde).** Windows entra en C2 unas
+24.000 veces por segundo en este chip y vive ahi: el tick de 1 kHz no es el
+muro. Se mira solo si W6 deja un resto que se le pueda atribuir.
 
 `s2_mem` deja el LAPIC en periodico; `plat/timer.rs` pasa a rearmarlo en
 one-shot al salir de `on_timer`, con el minimo de: el fin del quantum si hay
@@ -259,6 +281,15 @@ cola ya llena en vez de ir al hardware.
 ```
 
 ## [~] W4 -- El escritorio duerme sobre la ENTRADA, no sobre el reloj -- la mitad barata, 2026-09-11
+
+[!] **Y LA MITAD BARATA NO ENTRA NUNCA (11-09 tarde).** `will_paint` incluye
+`tick.quarter`, que se enciende cada 250 ms (`director/src/main.rs:781`), asi
+que `quietas` vuelve a 0 cada ~250 vueltas y no llega nunca a las 500 del
+reposo. Compila y no hace lo que dice.
+
+```text
+   [ ] W4b  el cuarto de segundo pinta pero NO cuenta como actividad: `desktop/tick/roja.rs`
+```
 
 **Hecho el REPOSO** (`desktop/tick/roja.rs::ceder`): tras 500 vueltas seguidas
 sin nada que pintar (`will_paint` reune tecla, raton, superficie y el cuarto
@@ -303,6 +334,24 @@ bien: esta DIBUJANDO, y lo que trabaja consume.
    cuesta   NADA: diez lineas de cabecera y dos sitios que las llaman
    riesgo   ninguno nuevo: es `bmo_dormir` con otro reloj
    mide     `consumo` con DOOM en pantalla entera parado en el menu
+```
+
+## [ ] W6 -- C2/CC6 por el puerto de E/S del C-state: `C001_0073`, sin AML
+
+La palanca grande, y no estaba en la primera version de este plan. MWAIT en este
+Ryzen solo llega a C1; Windows vive en C2, y ese C2 sale del **puerto de E/S de
+C-state** que la BIOS programa en el MSR `C001_0073` (CStateBaseAddr, segun el
+PPR de AMD). Leer ese puerto duerme el nucleo en CC6. Y con los doce en CC6 el
+paquete puede bajar a PC6, que es donde la RAM entra en autorrefresco.
+
+```text
+   cuesta   MAQUINA si el nucleo no vuelve. ARAT = 1 en este chip: el tick del
+            APIC sigue contando en CC6, asi que el despertador no se pierde
+   riesgo   SILENCIO -- una direccion mal leida no da fault: da un nucleo en C1
+            creyendose en CC6. Por eso primero se LEE `C001_0073` y `C001_0296`
+            en el metal, se apunta, y solo despues se usa
+   gana     la unica profundidad que este silicio da
+   sitio    `plat/smp/dormir.rs` (APAGA, L6h), y el MSR en el perfil del Ryzen
 ```
 
 ## Lo que NO se hace, y por que

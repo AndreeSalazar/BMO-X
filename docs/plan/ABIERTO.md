@@ -7,7 +7,7 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   181 casillas ABIERTAS en 25 planes
+   183 casillas ABIERTAS en 25 planes
    127 hechas
      4 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
@@ -89,6 +89,15 @@
 - [ ] S3 -- EL PRIMER CLIENTE: INTI. Porque puede declarar el alias. Y
 - ... y 6 mas
 
+## [`PLAN_VATIOS.md`](PLAN_VATIOS.md) -- 8 abiertas, 2 hechas
+
+*PLAN_VATIOS -- lo que gasta el CPU en reposo, y por que*
+
+- [ ] pendiente [~] a medias, y se dice cuanto [x] hecho, con fecha
+- [ ] W0a REFERENCIA, no suelo: Windows quieto 2 minutos, Package Power = ___ W
+- [ ] W0b BMO-X, shell de Ring 0, consumo dos veces seguidas: ___ W
+- ... y 5 mas
+
 ## [`PLAN_AUTOHOSPEDAJE.md`](PLAN_AUTOHOSPEDAJE.md) -- 7 abiertas, 1 hechas
 
 *PLAN DEL AUTOHOSPEDAJE -- que BMO-X compile SOBRE SI MISMO*
@@ -150,15 +159,6 @@
 - [ ] Y1.1 subir el bInterval del raton a Ring 0 y a Ring 3. Sin ese
 - [ ] Y1.2 que BUS_PERIOD_MS salga del minimo de los aparatos vivos y no
 - [ ] no promete 0 ms, y llamarlo asi seria vender humo: un pixel viaja por
-- ... y 3 mas
-
-## [`PLAN_VATIOS.md`](PLAN_VATIOS.md) -- 6 abiertas, 2 hechas
-
-*PLAN_VATIOS -- lo que gasta el CPU en reposo, y por que*
-
-- [ ] pendiente [~] a medias, y se dice cuanto [x] hecho, con fecha
-- [ ] W0a Windows en reposo, 2 minutos sin tocar nada: Package Power = ___ W
-- [ ] W0b BMO-X, shell de Ring 0, consumo dos veces seguidas: ___ W
 - ... y 3 mas
 
 ## [`PLAN_EL_SEMAFORO_COMPLETO.md`](PLAN_EL_SEMAFORO_COMPLETO.md) -- 5 abiertas, 4 hechas
