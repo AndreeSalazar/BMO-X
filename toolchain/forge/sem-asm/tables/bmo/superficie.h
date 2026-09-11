@@ -15,8 +15,15 @@
  * Y esa es la parte que importa. En Windows, pantalla completa exclusiva
  * entrega el dispositivo: si el juego se cuelga, te llevas la maquina.
  *
- * Aqui, pantalla completa es **que el DIRECTOR no te dibuje el borde**. Sigue
- * componiendo, asi que Alt+Tab sigue, el conmutador sigue, y `Ctrl+Alt+ESC`
+ * Aqui, pantalla completa es **que el DIRECTOR no te dibuje el borde**, y desde
+ * el 2026-09-11 eso ya es codigo y no una promesa: Alt+Enter sobre una ventana
+ * de app quita el marco, se come la barra y centra la superficie en negro, en
+ * caliente. Lo que todavia NO pasa es que la app se entere del hueco nuevo para
+ * llenarlo -- mide lo que pidio, y eso se ve centrado. Ver
+ * `docs/plan/PLAN_DIRECTOR.md`.
+ *
+ * ** Y el DIRECTOR sigue componiendo igual, asi que Alt+Tab sigue, el
+ * conmutador sigue, y `Ctrl+Alt+ESC`
  * --que vive en Ring 0 y no depende de que nadie este vivo-- sigue. Un juego
  * colgado a pantalla completa se cierra con el teclado en vez de con el boton
  * de reset.

@@ -364,7 +364,9 @@ DOOM (`screenvisible`) y `ray.bex` se saltan el dibujo entero cuando no. La que
 sigue pintando oculta se acusa. Regla: R-APP8 de `META-APP_HARD.md`.
 
 ```text
-   [ ] W7b  "tapada por otra ventana": hoy el juez contesta "se ve" -- `scene/surface.rs`
+   [~] W7b  "tapada por otra ventana": HECHO el caso de PANTALLA COMPLETA
+            (11-09, `Vista::Tapada`). El solape corriente sigue abierto, y
+            pide geometria de verdad -- `scene/surface.rs`
    [ ] W7c  el metal: `consumo` con DOOM a la vista y minimizado -- `docs/metal/`
 ```
 

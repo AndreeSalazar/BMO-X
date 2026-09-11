@@ -114,7 +114,8 @@ de 10 MB acaba pesando 400.
 
 Si su superficie tiene buzon, lee la VISTA (`bmo_superficie_se_ve`) antes de
 cada fotograma, y si el DIRECTOR dice que no se la ve --minimizada, fuera de la
-pantalla, o con la pantalla prestada a otro-- **no dibuja y no sube su
+pantalla, tapada por otra a pantalla completa, o con la pantalla prestada a
+otro-- **no dibuja y no sube su
 `sequence`**. Sigue viva: su logica, su sonido y su entrada corren igual; lo
 unico que se para son los pixeles que nadie iba a mirar.
 

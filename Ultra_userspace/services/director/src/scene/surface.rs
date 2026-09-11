@@ -211,6 +211,27 @@ impl Surface {
     /// habria un borde donde se ve una cosa y se pulsa otra. Ese es el tipo de
     /// fallo que no da error -- da un numero.
     fn visible(&self, p: &bmo::Pantalla, cab: &Header) -> bmo_golpe::Visible {
+        // ** A PANTALLA COMPLETA: sin marco y CENTRADA (2026-09-11).
+        //
+        // La superficie mide lo que la app declaro --960x600 en DOOM-- y eso
+        // no cambia porque el marco desaparezca: el tamano es suyo y
+        // reescalarlo aqui seria una conversion por pixel y por fotograma en
+        // el proceso que menos puede permitirsela. Asi que se centra, y lo
+        // que sobra alrededor lo pinta de negro quien entra.
+        //
+        // [!] Lo que falta para que un juego LLENE el panel es que la app
+        // sepa el hueco nuevo y vuelva a ofrecer una superficie mayor -- eso
+        // pide avisarla, y no esta. Ver `docs/plan/PLAN_DIRECTOR.md`.
+        if self.chrome.is_fullscreen() {
+            let x = p.ancho.saturating_sub(cab.width) / 2;
+            let y = p.alto.saturating_sub(cab.height) / 2;
+            return bmo_golpe::Visible {
+                x,
+                y,
+                ancho: cab.width.min(p.ancho),
+                alto: cab.height.min(p.alto),
+            };
+        }
         let (x, y) = self.inner();
         let gap_w = self.chrome.width.saturating_sub(2);
         let gap_h = self.chrome.height.saturating_sub(TITLE_H + 1);
@@ -405,11 +426,12 @@ impl Surface {
     /// ** La acusacion se cuenta aqui: oculta, CON buzon, y la secuencia se
     /// sigue moviendo. Sin buzon no habia donde leer el veredicto, y culpar a
     /// quien no podia saberlo seria mentir.
-    fn decidir_vista(&mut self, p: &bmo::Pantalla, prestada: bool) -> bool {
+    fn decidir_vista(&mut self, p: &bmo::Pantalla, prestada: bool, tapada: bool) -> bool {
         let Some(cab) = Header::read(self.base, self.bytes) else {
             return false;
         };
-        let nueva = bmo_golpe::vista(self.visible(p, &cab), self.chrome.minimized, prestada);
+        let nueva =
+            bmo_golpe::vista(self.visible(p, &cab), self.chrome.minimized, prestada, tapada);
         if nueva == self.vista {
             if nueva != bmo_golpe::Vista::SeVe && cab.ranuras > 0 && cab.sequence != self.seq_oculta {
                 self.seq_oculta = cab.sequence;
@@ -511,11 +533,51 @@ impl Table {
     /// `true` si alguna vuelve a verse. Ver `Surface::decidir_vista` (R-APP8).
     pub(crate) fn vistas(&mut self, p: &bmo::Pantalla) -> bool {
         let prestada = self.prestada;
+        // ** Y EL UNICO SOLAPE QUE EL DIRECTOR SABE CALCULAR HOY: una ventana
+        // a PANTALLA COMPLETA tapa a todas las demas. Es el caso que importa
+        // --un juego llenando el panel con tres ventanas detras dibujando
+        // para nadie-- y no pide geometria: si una esta a pantalla completa,
+        // las otras no se ven. El solape general sigue abierto (W7b).
+        let fs = self.alguna_a_pantalla_completa();
         let mut vuelve = false;
         for s in self.iter_mut() {
-            vuelve |= s.decidir_vista(p, prestada);
+            let tapada = fs && !s.chrome.is_fullscreen();
+            vuelve |= s.decidir_vista(p, prestada, tapada);
         }
         vuelve
+    }
+
+    /// **Hay alguna caja a pantalla completa?** Lo pregunta el juez de la
+    /// VISTA --las demas estan tapadas-- y tambien el pintor del escritorio:
+    /// su mobiliario esta debajo, y pintarlo asomaria encima del juego.
+    pub(crate) fn alguna_a_pantalla_completa(&self) -> bool {
+        self.sup
+            .iter()
+            .flatten()
+            .any(|s| s.chrome.is_fullscreen() && !s.chrome.minimized)
+    }
+
+    /// **Pantalla completa para la caja `i`, o volver.** Devuelve `(el
+    /// rectangulo viejo, si AHORA esta a pantalla completa)`, o `None` si no
+    /// hay tal caja o esta minimizada -- una ventana escondida no se pone a
+    /// pantalla completa, porque no se veria el resultado.
+    ///
+    /// La app no se entera por aqui, y no le hace falta: lo que cambia para
+    /// ella es su VISTA, y a pantalla completa sigue diciendo que se ve.
+    pub(crate) fn pantalla_completa(
+        &mut self,
+        i: usize,
+        p: &bmo::Pantalla,
+    ) -> Option<((u32, u32, u32, u32), bool)> {
+        let s = self.sup.get_mut(i)?.as_mut()?;
+        if s.chrome.minimized {
+            return None;
+        }
+        let viejo = s.chrome.toggle_fullscreen(p);
+        // El cromo y los pixeles, los dos: al entrar no hay marco que pintar
+        // y al salir hay que volver a dibujarlo entero.
+        s.repaint_all();
+        Some((viejo, s.chrome.is_fullscreen()))
     }
 
     /// **La pantalla se presta entera, o vuelve.** Mientras dura el prestamo el
@@ -703,6 +765,11 @@ impl Table {
         let mut painted = false;
         for s in self.iter_mut() {
             if s.chrome.minimized {
+                continue;
+            }
+            // A pantalla completa no hay cromo que repintar: solo pixeles.
+            if s.chrome.is_fullscreen() {
+                painted |= s.compose(p);
                 continue;
             }
             if s.moved() {

@@ -505,6 +505,39 @@ fn dormir_un_rato() {
     bmo::wait(0, 0, VEINTE_MS_EN_NS);
 }
 
+/// **El escritorio ENTERO, otra vez.** Fondo, iconos, barra, terminal y su
+/// estado, en ese orden.
+///
+/// == Por que existe, y por que en un solo sitio ==
+///
+/// Porque hay DOS caminos que tapan el escritorio completo y los dos tienen
+/// que deshacerlo igual: devolver una pantalla prestada, y salir de una
+/// ventana a PANTALLA COMPLETA. Aqui estaba escrito a mano para el primero,
+/// y el segundo habria sido una segunda copia -- dos sitios que repintan el
+/// escritorio y que el dia que alguien anada un icono solo se acuerda de uno.
+///
+/// [!] Y el motivo original sigue valiendo: aqui hubo un `p.clear(BG)` a
+/// secas, y por eso el escritorio volvia **sin degradado, sin barra y sin
+/// iconos** -- la foto del 2026-08-11 que se leyo como *el escritorio se
+/// bugeo*. No estaba bugeado: estaba a medio pintar.
+pub(crate) fn repintar_escritorio(
+    p: &bmo::Pantalla,
+    dsk: &mut desktop::Desktop,
+    estado: &str,
+) {
+    scene::paint_background(p);
+    scene::launcher::paint(p, &dsk.launcher);
+    p.rect(16, 13, 14, 14, ACCENT);
+    p.texto(38, 14, "BMO-X", INK);
+    dsk.win.taskbar_dirty = true;
+    paint_run_box(p, &dsk.run_box);
+    paint_field(p, &dsk.run_box, dsk.field.line(), dsk.field.cur, true);
+    paint_output(p, &dsk.run_box, &dsk.out.grid);
+    paint_status(p, &dsk.run_box, estado, INK_OK);
+    p.vaciar();
+    dsk.tick.repaint_field = true;
+}
+
 fn lend_screen(
     p: bmo::Pantalla,
     input: Option<bmo::Entrada>,
@@ -889,17 +922,7 @@ pub extern "C" fn _start() -> ! {
                             // depende enteramente de estas lineas. Es el
                             // camino de error, que es el que nadie prueba a
                             // mano (patron 29).
-                            scene::paint_background(&p);
-                            scene::launcher::paint(&p, &dsk.launcher);
-                            p.rect(16, 13, 14, 14, ACCENT);
-                            p.texto(38, 14, "BMO-X", INK);
-                            dsk.win.taskbar_dirty = true;
-                            paint_run_box(&p, &dsk.run_box);
-                            paint_field(&p, &dsk.run_box, dsk.field.line(), dsk.field.cur, true);
-                            paint_output(&p, &dsk.run_box, &dsk.out.grid);
-                            paint_status(&p, &dsk.run_box, "pantalla devuelta", INK_OK);
-                            p.vaciar();
-                            dsk.tick.repaint_field = true;
+                            repintar_escritorio(&p, &mut dsk, "pantalla devuelta");
                         }
                         None => {
                             bmo::consola(

@@ -1003,3 +1003,49 @@ mirar miente sobre el bus.
 ⚠ **Nada de esto lo ha visto un CPU.** Compila, enlaza a `d.bex` (544.088 B) y
 el banco del anfitrion sigue en 1.304 filas verdes -- pero el gesto es del raton
 de una persona, y eso no se prueba en un emulador.
+
+---
+
+# PANTALLA COMPLETA, Y LO QUE LE FALTA (2026-09-11)
+
+Pedido por el dueno: *"que sea que la app tome TODA la pantalla es como que
+voy a jugar con configuracion pantalla completa en tiempo real"*. Y una
+sorpresa suya que conviene anotar: *"VENTANAS o WINDOW eso no lo tengo y me
+sorprendo como que DOOM abre ventana"*.
+
+## Lo que entro
+
+```text
+   estado propio      `Chrome::fs`, y NO es maximizar: maximizar deja la
+                      barra a la vista a proposito; esto se la come
+   sin cromo          ni sombra, ni borde, ni titulo, ni botones, ni agarre
+   Alt+Enter          entra y sale EN CALIENTE, sobre la app senalada. El
+                      mismo gesto para las dos direcciones
+   centrada en negro  la superficie mide lo que la app declaro; lo que sobra
+                      lo pinta el DIRECTOR una vez
+   el DIRECTOR calla  con una ventana a pantalla completa no pinta su
+                      mobiliario: estaba asomando encima del juego
+   las demas, TAPADAS  dejan de pintar (R-APP8, `Vista::Tapada`)
+```
+
+## ★ Lo que falta para que un juego LLENE el panel
+
+Hoy DOOM a pantalla completa se ve **centrado en negro a 960x600**, porque esa
+es la superficie que pidio al arrancar en ventana. Para llenar 1920x1080 tiene
+que ENTERARSE del hueco nuevo y ofrecer otra superficie -- y eso es un aviso
+que no existe:
+
+```text
+   [ ] el DIRECTOR le dice el hueco: una ranura de buzon con bit propio
+       (`BMO_SUP_EV_RATON` ya usa el 63) -- `superficie/amarilla.h`
+   [ ] la app puede REEMPLAZAR su superficie: hoy una segunda oferta del
+       mismo tid se toma como una ventana nueva -- `scene/surface.rs`
+   [ ] DOOM elige escala con el hueco, como ya hace al tomar la pantalla
+       entera (`g_escala_max`) -- el port, fuera del repo
+   [ ] y el cursor del raton: a pantalla completa se sigue pintando encima
+       -- `desktop/paint.rs`
+```
+
+[!] Escalar en el DIRECTOR seria lo facil y es lo que NO se hace: una
+conversion por pixel y por fotograma en el proceso que menos puede
+permitirsela. La app sabe dibujar a su tamano; lo que le falta es saberlo.
