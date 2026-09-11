@@ -50,5 +50,5 @@
 mod roja;
 mod verde;
 
-pub use roja::{adoptado, ajenos, duro, Cerrojo, EL_CERROJO};
+pub use roja::{adoptado, ajeno_papeles, ajenos, duro, Cerrojo, EL_CERROJO};
 pub use verde::{censar, stats, APARATOS_CENSADOS};
