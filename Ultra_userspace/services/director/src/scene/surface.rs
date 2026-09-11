@@ -156,6 +156,19 @@ pub(crate) struct Surface {
     /// El aspecto de la ultima vez, para saber si hay que repintar el cromo.
     width: u32,
     height: u32,
+    /// == ** LO QUE NO SE VE, NO SE PINTA (R-APP8, 2026-09-11) ============
+    ///
+    /// Lo que el DIRECTOR le ha dicho a la app de si se la ve: el byte 2 del
+    /// estado del buzon. Empieza en `SeVe` -- ante la duda, se pinta. Lo
+    /// decide `bmo_golpe::vista`, que se prueba en el anfitrion.
+    vista: bmo_golpe::Vista,
+    /// Fotogramas que la app ENTREGO mientras se le decia que no se la veia.
+    /// Es la acusacion, no un castigo: ver [`Table::acusar`].
+    pinto_oculta: u32,
+    /// La secuencia de la ultima vez que se miro estando oculta.
+    seq_oculta: u32,
+    /// Ya se acuso en esta racha oculta. Se canta UNA vez por racha.
+    acusada: bool,
 }
 
 impl Surface {
@@ -178,6 +191,10 @@ impl Surface {
             // "primera vez" que alguien pueda olvidarse de llamar.
             width: 0,
             height: 0,
+            vista: bmo_golpe::Vista::SeVe,
+            pinto_oculta: 0,
+            seq_oculta: cab.sequence,
+            acusada: false,
         })
     }
 
@@ -343,7 +360,10 @@ impl Surface {
             let xy = (x & 0xFFFF) | (y & 0xFFFF) << 16;
             unsafe { core::ptr::write_volatile((idx + 8) as *mut u32, xy) };
         }
-        let est = botones as u32 | (dentro as u32) << 8;
+        // ** Y la VISTA en el byte 2, en la MISMA escritura: esta palabra se
+        // pisa entera cada vuelta, y un veredicto escrito aparte lo borraria
+        // el siguiente movimiento del raton (R-APP8).
+        let est = botones as u32 | (dentro as u32) << 8 | (self.vista as u32) << 16;
         unsafe { core::ptr::write_volatile((idx + 12) as *mut u32, est) };
     }
 
@@ -372,6 +392,57 @@ impl Surface {
     /// no tiene por que enterarse de que le pasaron algo por encima.
     fn mark_dirty(&mut self) {
         self.stuck = self.stuck.wrapping_sub(1);
+    }
+
+    /// **Decide si esta caja se ve y, si cambio, se lo dice a la app** (R-APP8).
+    ///
+    /// La decision es de `bmo_golpe::vista`; aqui solo se juntan los hechos
+    /// --la MISMA caja `visible()` que usan el golpe y los pixeles-- y se
+    /// escribe el byte. Devuelve `true` si la caja vuelve a verse en esta
+    /// vuelta: su ultimo fotograma se repega aunque la app aun no haya
+    /// entregado uno nuevo, que es el sacrificio declarado de R-APP8.
+    ///
+    /// ** La acusacion se cuenta aqui: oculta, CON buzon, y la secuencia se
+    /// sigue moviendo. Sin buzon no habia donde leer el veredicto, y culpar a
+    /// quien no podia saberlo seria mentir.
+    fn decidir_vista(&mut self, p: &bmo::Pantalla, prestada: bool) -> bool {
+        let Some(cab) = Header::read(self.base, self.bytes) else {
+            return false;
+        };
+        let nueva = bmo_golpe::vista(self.visible(p, &cab), self.chrome.minimized, prestada);
+        if nueva == self.vista {
+            if nueva != bmo_golpe::Vista::SeVe && cab.ranuras > 0 && cab.sequence != self.seq_oculta {
+                self.seq_oculta = cab.sequence;
+                self.pinto_oculta = self.pinto_oculta.saturating_add(1);
+            }
+            return false;
+        }
+        let vuelve = nueva == bmo_golpe::Vista::SeVe;
+        self.vista = nueva;
+        self.seq_oculta = cab.sequence;
+        if !vuelve {
+            // Empieza una racha oculta: la cuenta y el aviso, desde cero.
+            self.pinto_oculta = 0;
+            self.acusada = false;
+        }
+        self.escribir_vista(&cab);
+        if vuelve {
+            self.mark_dirty();
+        }
+        vuelve
+    }
+
+    /// El byte 2 del estado, sin tocar los otros tres. Solo lo escribe el
+    /// DIRECTOR --la palabra entera es suya-- asi que leer, cambiar y escribir
+    /// no compite con nadie.
+    fn escribir_vista(&self, cab: &Header) {
+        if cab.ranuras == 0 {
+            return;
+        }
+        let idx = self.base + cab.buzon + 12;
+        let est = unsafe { core::ptr::read_volatile(idx as *const u32) };
+        let est = (est & !0x00FF_0000) | (self.vista as u32) << 16;
+        unsafe { core::ptr::write_volatile(idx as *mut u32, est) };
     }
 
     /// Igual, **y el cromo tambien**. Es lo que hay que llamar cuando se ha
@@ -422,11 +493,62 @@ fn tid_text(tid: u32, dst: &mut [u8; 12]) -> usize {
 /// **La mesa del DIRECTOR**: las apps que tienen caja ahora mismo.
 pub(crate) struct Table {
     sup: [Option<Surface>; MAX],
+    /// La pantalla entera esta prestada a otro programa: no se ve ninguna caja.
+    prestada: bool,
 }
+
+/// Cuantos fotogramas entregados a ciegas hacen falta para acusar: un segundo
+/// de DOOM, que dibuja a 35. Menos acusaria al fotograma que ya estaba en vuelo
+/// cuando se minimizo; mas dejaria pasar un segundo entero de gasto sin decirlo.
+const PINTA_OCULTA_TOPE: u32 = 35;
 
 impl Table {
     pub(crate) fn new() -> Self {
-        Table { sup: [None, None, None, None] }
+        Table { sup: [None, None, None, None], prestada: false }
+    }
+
+    /// **Una vez por vuelta: que se ve de cada caja**, y se le dice a su app.
+    /// `true` si alguna vuelve a verse. Ver `Surface::decidir_vista` (R-APP8).
+    pub(crate) fn vistas(&mut self, p: &bmo::Pantalla) -> bool {
+        let prestada = self.prestada;
+        let mut vuelve = false;
+        for s in self.iter_mut() {
+            vuelve |= s.decidir_vista(p, prestada);
+        }
+        vuelve
+    }
+
+    /// **La pantalla se presta entera, o vuelve.** Mientras dura el prestamo el
+    /// DIRECTOR no da vueltas, asi que el veredicto se deja escrito ANTES de
+    /// irse: ninguna ventana se ve hasta que vuelva.
+    pub(crate) fn prestar(&mut self, p: &bmo::Pantalla, si: bool) {
+        self.prestada = si;
+        self.vistas(p);
+    }
+
+    /// **Quien pinta sin que se le vea**: se dice por la consola UNA vez por
+    /// racha oculta, con su tid. `true` si se acuso a alguien.
+    ///
+    /// ** Acusar y no castigar, a proposito. La CPU es de la app; lo que no es
+    /// suyo es el veredicto de si se la ve, y ese ya se lo dio el DIRECTOR.
+    /// Quitarle turno pararia tambien su logica, y R-APP8 promete lo contrario:
+    /// oculta, sigue viva.
+    pub(crate) fn acusar(&mut self) -> bool {
+        for s in self.iter_mut() {
+            if s.acusada || s.pinto_oculta < PINTA_OCULTA_TOPE {
+                continue;
+            }
+            s.acusada = true;
+            let mut n = [0u8; 12];
+            let largo = tid_text(s.tid, &mut n);
+            bmo::consola("[vista] ");
+            if let Ok(t) = core::str::from_utf8(&n[..largo]) {
+                bmo::consola(t);
+            }
+            bmo::consola(" pinta sin que se le vea: no lee VISTA (R-APP8)\n");
+            return true;
+        }
+        false
     }
 
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut Surface> {

@@ -79,7 +79,7 @@
  *    +0   CABEZA (u32)   la escribe el DIRECTOR
  *    +4   COLA   (u32)   la escribe la app
  *    +8   PUNTERO: x en los 16 bajos, y en los 16 altos.  El DIRECTOR
- *    +12  BOTONES en el byte 0, y DENTRO en el byte 1.    El DIRECTOR
+ *    +12  BOTONES en el byte 0, DENTRO en el 1, VISTA en el 2. El DIRECTOR
  *    +16  las ranuras, de 8 bytes cada una
  * ```
  *
@@ -132,13 +132,27 @@
  * compositor esperando a una app que se colgo -- y entonces una app rota se
  * lleva el escritorio, que es justo lo que este diseno existe para impedir.
  *
+ * == ** LO QUE NO SE VE, NO SE PINTA (2026-09-11, R-APP8) ==
+ *
+ * El byte 2 del estado del buzon es la VISTA: el DIRECTOR escribe ahi si esta
+ * ventana se ve, y si no, por que -- minimizada, fuera de la pantalla, o con la
+ * pantalla prestada a otro. Una app que lo lea se salta el dibujo entero y
+ * sigue viva; al volver a verse, pinta lo de ahora. El detalle, y los numeros,
+ * en `superficie/amarilla.h`.
+ *
+ * ** Cabe sin romper nada: ese byte ya existia y el DIRECTOR lo escribia a
+ * cero, y el cero es "se ve". Una app vieja no lo lee y sigue pintando como
+ * siempre; una app sin buzon no tiene donde leerlo, y tampoco se le reprocha.
+ *
  * == Como se usa ==
  *
- *     BMO_SUPERFICIE *s = bmo_superficie_crear(640, 400);
+ *     BMO_SUPERFICIE *s = bmo_superficie_crear_con_buzon(640, 400, 64);
  *     for (;;) {
- *         dibujar_en(bmo_superficie_pixeles(s), 640, 400);
- *         bmo_superficie_lista(s);     // el dibujo esta entero
- *         bmo_ceder();
+ *         if (bmo_superficie_se_ve(s)) {   // R-APP8: lo que no se ve,
+ *             dibujar_en(bmo_superficie_pixeles(s), 640, 400);
+ *             bmo_superficie_lista(s);     // el dibujo esta entero
+ *         }                                // no se pinta
+ *         bmo_dormir(16000000);
  *     }
  *
  * -- ** ESTE FICHERO SE PARTIO (L6g, nivel 3) -------------------------

@@ -399,6 +399,40 @@ lista de donde mirar, y `contrato.py` la dice en cada build. Tres ficheros
 mezclaban una cosa que late con otra que se pide, y se partieron por esa costura
 (`META-KERNEL_HARD.md`, L6h).
 
+## ★★ 6.8 LO QUE NO SE VE, NO SE PINTA (idea del dueno, 11-09)
+
+> *"cuando la pantalla que renderiza consume... el juego o programas NO
+> RENDERIZA porque eso el usuario no lo nota POR COMPLETO... cuando vuelve,
+> sigue ejecutando y vuelve a renderizar en tiempo real"*
+
+Es la regla 1 --lo que no hace nada, no gasta-- aplicada a los pixeles: **un
+fotograma que nadie va a mirar no hace nada**, aunque cueste un nucleo
+dibujarlo. Y es la ilusion de Santa Monica: lo que no se ve no hace falta que
+exista; al volver, el mundo ya esta en su sitio.
+
+```text
+   quien decide        el DIRECTOR, con `bmo_golpe::vista` (pruebas en el
+                       anfitrion). La app no puede declararse vista
+   como lo dice        el byte 2 del estado del buzon: 0 se ve, 1 minimizada,
+                       2 fuera de pantalla, 3 pantalla prestada. Cero puertas
+   que se para         el dibujo y la secuencia. Logica, sonido y entrada, no
+   quien desobedece    no se castiga: se ACUSA por su tid, una vez por racha
+   hacia donde falla   hacia "se ve": ahorrar menos antes que congelar
+```
+
+** No es una idea exotica: es la que el mundo ya usa, y DOOM la traia puesta.
+Los navegadores dejan de dibujar las pestanas de fondo; Windows le dice a un
+juego tapado que esta oculto cuando presenta el fotograma; y Chocolate Doom
+--del que sale el DOOM de BMO-X-- tiene `screenvisible`: a falso, `D_RunFrame`
+se salta `D_Display` entero mientras `TryRunTics` y el sonido siguen. Lo que le
+faltaba era que alguien le dijera la verdad.
+
+[!] Lo que NO cubre todavia: una ventana TAPADA por otra. El DIRECTOR aun no
+calcula solapes y el juez contesta "se ve" -- ante la duda, se pinta. Cuanto
+ahorra lo dice el metal: `consumo` con DOOM a la vista y minimizado.
+
+La regla es R-APP8 de `META-APP_HARD.md`.
+
 ---
 
 # 7. EL ORDEN, por lo que desbloquea

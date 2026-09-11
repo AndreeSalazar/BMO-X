@@ -356,6 +356,18 @@ paquete puede bajar a PC6, que es donde la RAM entra en autorrefresco.
    sitio    `plat/smp/dormir.rs` (APAGA, L6h), y el MSR en el perfil del Ryzen
 ```
 
+## [x] W7 -- Lo que no se ve, no se pinta: la VISTA en el buzon -- CODIGO 2026-09-11, metal pendiente
+
+Idea del dueno. El DIRECTOR decide en cada vuelta si se ve cada ventana
+(`bmo_golpe::vista`, con pruebas) y lo deja en el byte 2 del estado del buzon;
+DOOM (`screenvisible`) y `ray.bex` se saltan el dibujo entero cuando no. La que
+sigue pintando oculta se acusa. Regla: R-APP8 de `META-APP_HARD.md`.
+
+```text
+   [ ] W7b  "tapada por otra ventana": hoy el juez contesta "se ve" -- `scene/surface.rs`
+   [ ] W7c  el metal: `consumo` con DOOM a la vista y minimizado -- `docs/metal/`
+```
+
 ## Lo que NO se hace, y por que
 
 ```text
