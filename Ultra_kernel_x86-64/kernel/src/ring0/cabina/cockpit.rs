@@ -423,6 +423,23 @@ pub fn render_hud() {
     r.txt(" ajenos="); r.dec(a_vis as u64);
     r.txt(":"); r.dec(a_cer as u64);
     r.txt(":"); r.dec(a_pue as u64);
+    // *** Y QUIENES SON, no solo cuantos (2026-09-10).
+    //
+    // `M3` de la tanda de metal pregunta *"quienes son los 3"*, y hasta hoy
+    // eso se contestaba leyendo los avisos del arranque en una foto de la
+    // pantalla. Aqui salen en el panel, que es un fichero.
+    //
+    // Formato: `vendor:device@bus:dev.func`, en hexadecimal, que es como los
+    // busca uno en una lista de PCI. Decirlo en decimal seria decirlo en un
+    // idioma en el que nadie ha escrito esas tablas.
+    for i in 0..(a_vis as usize).min(4) {
+        let p = crate::ring0::dev::portero::ajeno_papeles(i);
+        if p == 0 { break; }
+        r.txt(if i == 0 { " [" } else { " " });
+        r.hex(p >> 48, 4); r.txt(":"); r.hex((p >> 32) & 0xFFFF, 4);
+        r.txt("@"); r.hex(p & 0xFFFF, 4);
+        if i + 1 == (a_vis as usize).min(4) { r.txt("]"); }
+    }
     // ** `puertas=esperando:PERDIDOS:barridos:reparados` -- QUE LAS PUERTAS SIGAN
     // ABIERTAS.
     //

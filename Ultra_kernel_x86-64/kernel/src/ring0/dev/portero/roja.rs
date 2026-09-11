@@ -137,6 +137,28 @@ static mut CERRADOS: u32 = 0;
 /// diferencia entre "no habia" y "no se tocaron" no sea invisible.
 static mut PUENTES: u32 = 0;
 
+/// Cuantos maestros ajenos se guardan con NOMBRE Y APELLIDOS.
+///
+/// * Ocho, y si hubiera mas se dice en vez de recortar en silencio. Una
+/// maquina con nueve aparatos que nadie adopto tiene un problema distinto del
+/// que esta lista pretende contestar.
+pub const AJENOS_MAX: usize = 8;
+
+/// **QUIENES son, no cuantos.** `vendor<<48 | device<<32 | bdf`.
+///
+/// # Por que hacia falta guardarlos
+///
+/// El recorrido ya gritaba uno por uno --con estos mismos bits-- y eso bastaba
+/// para saber que hay tres. **No bastaba para saber CUALES**: los avisos salen
+/// en el arranque, entre otros cien, y el scroll se los lleva. La pregunta
+/// `M3` de la tanda de metal es literalmente *"quienes son los 3"*, y se
+/// contestaba mirando una foto de la pantalla.
+///
+/// ** Guardarlos los pone en `save`, que es un fichero. La diferencia entre
+/// una pregunta que contesta un fichero y una que contesta una foto es que la
+/// segunda hay que volver a hacerla cada vez.
+static mut AJENOS_QUIEN: [u64; AJENOS_MAX] = [0; AJENOS_MAX];
+
 /// `bus:dev.func` en un numero, que es como viaja por CABINA.
 fn bdf(bus: u8, dev: u8, func: u8) -> u16 {
     ((bus as u16) << 8) | ((dev as u16) << 3) | (func as u16)
@@ -196,6 +218,17 @@ pub fn ajenos() -> (u32, u32, u32) {
     unsafe { (AJENOS, CERRADOS, PUENTES) }
 }
 
+/// **Los papeles del ajeno `i`**, o `0` si no hay tantos.
+///
+/// `vendor<<48 | device<<32 | bdf`, los mismos bits que el aviso del arranque
+/// -- a proposito: dos formatos para el mismo dato es una pareja que un dia
+/// deja de cuadrar.
+pub fn ajeno_papeles(i: usize) -> u64 {
+    unsafe {
+        if i < AJENOS_MAX { AJENOS_QUIEN[i] } else { 0 }
+    }
+}
+
 /// **RECORRE EL BUS Y SE OCUPA DE QUIEN ALCANZA LA RAM SIN QUE NADIE LO
 /// ADOPTARA.** Se llama en el arranque, DESPUES del censo.
 ///
@@ -238,6 +271,15 @@ pub fn duro() {
                     continue;
                 }
                 ajenos += 1;
+                // Y se APUNTA quien, no solo que hubo uno. Ver `AJENOS_QUIEN`.
+                unsafe {
+                    let i = ajenos as usize - 1;
+                    if i < AJENOS_MAX {
+                        AJENOS_QUIEN[i] = ((vd & 0xFFFF) as u64) << 48
+                            | ((vd >> 16) as u64) << 32
+                            | (bdf(bus, dev, func) as u64);
+                    }
+                }
                 let papeles = ((vd & 0xFFFF) as u64) << 48
                     | ((vd >> 16) as u64) << 32
                     | (quien as u64);
