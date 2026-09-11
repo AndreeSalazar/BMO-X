@@ -5,8 +5,19 @@
 //! 15 quedan como interlineado). Trazos de 2 px NATIVOS: el renderer ya no
 //! necesita engordar nada -- dibuja exacto, con esquinas nitidas.
 //!
-//! Salida: `font16_data.rs`, una expresion `[[u8; 16]; 95]` que el kernel
-//! embebe con `include!`. Regenerar: `cargo run -p bmo-fontgen`.
+//! Salidas, y las TRES salen del MISMO arte (2026-09-11):
+//!
+//!   `font16_data.rs`   una expresion `[[u8; 16]; N]` que el kernel embebe
+//!                      con `include!`
+//!   `font16_extra.rs`  el byte Latin-1 de cada glifo extra, en su orden
+//!   `fuente/datos.h`   **la misma tabla en C, para REX**: sin ella una app
+//!                      dentro de su ventana no sabe escribir una letra --
+//!                      el DIRECTOR pinta con la fuente del kernel y una app
+//!                      solo tiene pixeles. Se genera AQUI y no se copia,
+//!                      porque dos tablas de glifos a mano son dos fuentes
+//!                      que se separan el dia que alguien corrija una letra
+//!
+//! Regenerar: `cargo run -p bmo-fontgen`.
 
 const ROWS: usize = 13;
 
@@ -334,13 +345,44 @@ fn main() {
     // glifos extra, EN EL MISMO ORDEN: el kernel busca ahi para traducir un
     // byte >= 0xA0 a su indice de glifo.
     let out_extra = out.replace("font16_data.rs", "font16_extra.rs");
+    // ** Y EL TERCERO ES LA MISMA TABLA EN C, PARA REX (2026-09-11).
+    //
+    // Una app dibuja en SU memoria, asi que escribir una letra es cosa suya: la
+    // fuente del kernel no le sirve de nada. Se emite PLANA --un solo indice--
+    // porque BMO C digiere mejor un array de una dimension que ciento veinte
+    // llaves anidadas, y `glifo * 16 + fila` es la misma cuenta que ya hace el
+    // renderer del kernel.
+    let out_c = std::env::args().nth(2).unwrap_or_else(|| {
+        "toolchain/forge/sem-asm/tables/bmo/fuente/datos.h".to_string()
+    });
 
-    let mut s = format!(
-        "// AUTO-GENERADO por toolchain/tools/fontgen — NO editar a mano.\n\
+    // ** LOS LETREROS SE GENERAN, NO SE PONEN A MANO (2026-09-11).
+    //
+    // `[carril]` (L6g) y `[consumo]` (L6h) se los exige `contrato.py` a TODO
+    // fichero de Ring 0, y estos dos lo son aunque los escriba una herramienta.
+    // Estaban anadidos a mano: regenerar la fuente los borraba, y el build caia
+    // por una regla que nadie habia incumplido. Lo que se genera, se genera
+    // entero -- letreros incluidos.
+    let letreros = |que: &str| {
+        format!(
+            "// [carril]  VERDE     {que}\n\
+             // [consumo] NADA      no corre: es una tabla\n\
+             // [!] `//` y no `//!` a proposito: esto NO es un modulo. `texto.rs` lo\n\
+             // mete con `include!` DENTRO de un `static`, o sea que su contenido es una\n\
+             // EXPRESION, y una expresion no admite documentacion de modulo.\n\n"
+        )
+    };
+
+    let glifos = 95 + EXTRA.len();
+
+    // -- 1. la tabla del kernel ------------------------------------------
+    let mut s = letreros("una fuente de 8x16, en una tabla");
+    s += &format!(
+        "// AUTO-GENERADO por toolchain/tools/fontgen -- NO editar a mano.\n\
          // Regenerar: cargo run -p bmo-fontgen\n\
          // Glifos 8x16 (arte en filas 2..14), trazos 2px nativos.\n\
          // Indices 0..94 = ASCII 32..=126; 95..{} = extras Latin-1 (ver font16_extra.rs).\n[\n",
-        94 + EXTRA.len()
+        glifos - 1
     );
     for (i, art) in ART.iter().enumerate() {
         let ch = (32 + i as u8) as char;
@@ -358,15 +400,63 @@ fn main() {
     s += "]\n";
     std::fs::write(&out, &s).expect("escribir font16_data.rs");
 
-    let mut e = String::from(
-        "// AUTO-GENERADO por toolchain/tools/fontgen — NO editar a mano.\n\
-         // Byte Latin-1 de cada glifo extra, en el orden en que estan en\n\
-         // font16_data.rs a partir del indice 95.\n[\n    ",
-    );
+    // -- 2. los bytes Latin-1 --------------------------------------------
+    let mut e = letreros("los glifos que le faltaban a la tabla de al lado");
+    e += "// AUTO-GENERADO por toolchain/tools/fontgen -- NO editar a mano.\n\
+          // Byte Latin-1 de cada glifo extra, en el orden en que estan en\n\
+          // font16_data.rs a partir del indice 95.\n[\n    ";
     for (code, _) in EXTRA.iter() { e += &format!("0x{:02X},", code); }
     e += "\n]\n";
     std::fs::write(&out_extra, &e).expect("escribir font16_extra.rs");
 
-    println!("generado {out} ({} glifos: 95 ASCII + {} Latin-1)", 95 + EXTRA.len(), EXTRA.len());
+    // -- 3. la misma tabla, en C, para REX -------------------------------
+    let mut c = String::from(
+        "/* fuente/datos.h -- los glifos de BMO-X, en C. AUTO-GENERADO.\n\
+         *\n\
+         * NO editar a mano. Regenerar: `cargo run -p bmo-fontgen`, que emite\n\
+         * este fichero Y la tabla del kernel DEL MISMO ARTE: dos tablas de\n\
+         * glifos mantenidas a mano son dos fuentes que se separan el dia que\n\
+         * alguien corrija una letra en una de las dos.\n\
+         *\n\
+         * [carril]  VERDE        una tabla. Aqui no corre nada\n\
+         * [cuesta]  NADA         un glifo mal sale feo, y se ve\n\
+         * [riesgo]  ESPEJO       el kernel tiene la MISMA tabla en\n\
+         *                        `font16_data.rs`, y las dos salen de\n\
+         *                        `toolchain/tools/fontgen`\n\
+         */\n\
+         #ifndef BMO_FUENTE_DATOS_H\n\
+         #define BMO_FUENTE_DATOS_H\n\n",
+    );
+    c += &format!("#define BMO_FUENTE_GLIFOS {}\n", glifos);
+    c += "#define BMO_FUENTE_ASCII 95\n";
+    c += &format!("#define BMO_FUENTE_EXTRAS {}\n\n", EXTRA.len());
+    c += "/* Glifo `g`, fila `f`: `bmo_fuente_glifos[g * 16 + f]`. El bit 7 es la\n\
+          * columna izquierda, el mismo contrato que el renderer del kernel. */\n";
+    c += &format!("static unsigned char bmo_fuente_glifos[{} * 16] = {{\n", glifos);
+    for (i, art) in ART.iter().enumerate() {
+        let lines: Vec<String> = art.iter().map(|l| l.to_string()).collect();
+        c += "    ";
+        for b in pack(&lines) { c += &format!("0x{:02X},", b); }
+        c += &format!("   /* ASCII {} */\n", 32 + i);
+    }
+    for (code, recipe) in EXTRA.iter() {
+        let lines = build_extra(recipe);
+        c += "    ";
+        for b in pack(&lines) { c += &format!("0x{:02X},", b); }
+        c += &format!("   /* Latin-1 0x{:02X} */\n", code);
+    }
+    c += "};\n\n";
+    c += "/* El byte Latin-1 de cada glifo extra, en el mismo orden en que estan\n\
+          * arriba a partir de BMO_FUENTE_ASCII. */\n";
+    c += "static unsigned char bmo_fuente_latin1[BMO_FUENTE_EXTRAS] = {\n    ";
+    for (code, _) in EXTRA.iter() { c += &format!("0x{:02X},", code); }
+    c += "\n};\n\n#endif /* BMO_FUENTE_DATOS_H */\n";
+    if let Some(dir) = std::path::Path::new(&out_c).parent() {
+        std::fs::create_dir_all(dir).expect("crear la carpeta de fuente/");
+    }
+    std::fs::write(&out_c, &c).expect("escribir fuente/datos.h");
+
+    println!("generado {out} ({glifos} glifos: 95 ASCII + {} Latin-1)", EXTRA.len());
     println!("generado {out_extra}");
+    println!("generado {out_c} (la misma tabla, en C, para REX)");
 }
