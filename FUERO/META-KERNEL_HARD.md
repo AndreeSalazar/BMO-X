@@ -1292,6 +1292,19 @@ controla el voltaje" seria falso, y este documento no puede permitirselo.
   En una maquina enchufada no se sacrifica latencia por vatios en ningun otro
   sitio. El dia que haya bateria, esta regla se reescribe **con su motivo**, no
   se amplia por costumbre.
+
+  ★★ **ACLARADA el 2026-09-11, y NO ampliada** -- lo aprobo el dueno: *el ocio
+  no es solo el CPU sin tareas; es todo trabajo cuyo resultado **nadie puede ver
+  ni oir**.* Un fotograma que nadie mira es ocio, aunque cueste un nucleo
+  dibujarlo. Por eso R-APP8 de [`META-APP_HARD.md`](META-APP_HARD.md) --lo que
+  no se ve, no se pinta-- cae DENTRO de esta regla y no contra ella: lo unico
+  que sacrifica --el primer fotograma al volver-- ocurre **fuera de la vista**,
+  que es justo lo que esta regla protege.
+
+  [!] La regla no crece: sigue teniendo UN dueno, y sigue prohibiendo cobrarle
+  latencia al dueno **donde esta mirando**. Lo que se aclara es la palabra
+  *ocio*, no el permiso. Un "modo ahorro" que baje el reloj mientras el juega
+  sigue prohibido por esta misma linea (error 1 de `EFICIENCIA_MAESTRO.md`).
 - **R-PWR5.** ** Pedir P-states esta permitido; **tocar voltajes o subir limites
   electricos, NO.** No es una regla de estilo: un error de ciclos se diagnostica
   con una foto y se revierte con un commit; un error de voltaje se diagnostica
