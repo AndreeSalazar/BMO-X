@@ -1037,7 +1037,8 @@ que no existe:
 
 ```text
    [ ] el DIRECTOR le dice el hueco: una ranura de buzon con bit propio
-       (`BMO_SUP_EV_RATON` ya usa el 63) -- `superficie/amarilla.h`
+       (el 63 es el raton y el 62 el caracter; el siguiente libre es el 61)
+       -- `superficie/amarilla.h`
    [ ] la app puede REEMPLAZAR su superficie: hoy una segunda oferta del
        mismo tid se toma como una ventana nueva -- `scene/surface.rs`
    [ ] DOOM elige escala con el hueco, como ya hace al tomar la pantalla
@@ -1049,3 +1050,85 @@ que no existe:
 [!] Escalar en el DIRECTOR seria lo facil y es lo que NO se hace: una
 conversion por pixel y por fotograma en el proceso que menos puede
 permitirsela. La app sabe dibujar a su tamano; lo que le falta es saberlo.
+
+---
+
+# ESCRIBIR DENTRO DE UNA VENTANA (2026-09-11)
+
+Pedido por el dueno junto con la pantalla completa: *"y que si es texto me
+gustaria que ese mismo como texto.bex ejecute a bloc de notas elegante"*.
+
+## El hueco que lo impedia, y donde estaba
+
+No era la fuente ni el editor: era que **una app no podia saber que letra se
+escribio**. El buzon llevaba SCANCODES desde el paso 2c, y eso es lo correcto
+para un juego --*"un juego no pregunta que letra se escribio: pregunta si la
+flecha abajo esta pulsada AHORA"*, dice `dev/usb/teclas.rs`-- y no sirve para
+escribir.
+
+Y el mapa de teclado existe UNA vez, en el kernel: tildes, la ene, AltGr y las
+teclas muertas. Traducir el scancode dentro de la app habria sido copiarlo, y
+**dos mapas de teclado son dos teclados** -- se separan el dia que alguien
+arregle una tecla en uno de los dos.
+
+** Lo que faltaba no era traducir: era DEJAR DE TIRAR lo ya traducido. El
+kernel cocina los caracteres en su propia cola, el escritorio la drena cada
+vuelta para la linea de Ejecutar, y `keys::dispatch` tenia esto escrito:
+
+```text
+   if !focus.es_para(Run) && !app::muda(dsk) { continue; }   // la letra, a la basura
+```
+
+O sea que el unico sitio del sistema que sabia la letra la descartaba justo
+delante del unico que la necesitaba. Ahora ese `continue` entrega.
+
+```text
+   bit 62 del evento    la ranura es un CARACTER ya cocido, no un scancode
+   siempre PULSADA      un caracter no tiene dos caras
+   32..255              lo imprimible, mas los codigos de navegacion
+                        0x80..0x94 (flechas, Inicio, Fin, Supr, paginas)
+   8 9 10 13            retroceso, tabulador, salto y retorno
+   1..31 NO             `Ctrl+letra` es del escritorio, como en la cola cruda
+```
+
+[!] El precio, dicho: **hoy una app no puede tener un `Ctrl+algo` propio**, ni
+por la cola cruda ni por esta. Era ya la regla de `keys/app.rs` y aqui se
+mantiene en vez de abrirle un hueco por la puerta de atras -- un mismo gesto que
+hiciera dos cosas distintas segun por que cola viajara es peor que la
+limitacion. Un atajo propio se hace con una tecla desnuda o con un boton de la
+superficie, que para eso llega el raton.
+
+## Lo que ya corre
+
+```text
+   texto.bex          `toolchain/lang/c/examples/texto_C.c`, 38.752 B con su
+                      icono dentro. Abre `datos/notas.txt`, se escribe encima,
+                      se guarda con el boton de su barra
+   fuente.h           texto dentro de TU superficie, con recorte. Los glifos
+                      los genera `tools/fontgen` DEL MISMO ARTE que la tabla
+                      del kernel, en la misma pasada
+   tres decisiones    de vatios y no de estilo: si no paso nada no se pinta,
+   de consumo         si no se ve no se pinta (R-APP8), y **el cursor no
+                      parpadea** -- parpadear son dos repintados por segundo
+                      para siempre, con la maquina en reposo y nadie delante
+```
+
+## ★ Casillas
+
+```text
+   [ ] el lanzador solo lista `apps\`, y `apps\` significa "lo que viene de
+       FUERA del repo" (lo dice `build/ejemplos.ps1`). Asi que `texto.bex`
+       vive en `c\` y hay que escribir `run c/texto.bex`: no tiene icono en
+       el escritorio aunque lo lleve dentro. Dos salidas, y la eleccion es
+       del dueno -- que el lanzador mire tambien `c\`, o que haya una carpeta
+       para las apps de la casa. **No se decide colando una excepcion en el
+       build** -- `scene/launcher.rs`
+   [ ] sin portapapeles: no hay marcar con el raton, ni copiar, ni pegar, y
+       eso no es del bloc de notas sino del sistema -- nadie tiene donde
+       dejar lo copiado
+   [ ] sin deshacer en `texto.bex`: un borrado es definitivo
+   [ ] `Ctrl+S` para guardar: hoy imposible por la regla de arriba. El dia
+       que se conceda un `Ctrl` a las apps sera una concesion con nombre
+   [ ] cerrar por el marco PIERDE lo no guardado, sin preguntar: el DIRECTOR
+       no sabe preguntarle a una app si puede morir -- `scene/chrome.rs`
+```

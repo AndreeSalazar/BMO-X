@@ -7,7 +7,7 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   187 casillas ABIERTAS en 26 planes
+   192 casillas ABIERTAS en 26 planes
    129 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
@@ -70,6 +70,15 @@
 - [ ] M0c -- los 112 ticks del match de INFO. El rechazo por campo
 - [ ] M1b -- CUANTO CUESTA REVOCAR UNA PAGINA, y va ANTES de M1. La seccion
 - ... y 8 mas
+
+## [`PLAN_DIRECTOR.md`](PLAN_DIRECTOR.md) -- 9 abiertas, 7 hechas
+
+*DIRECTOR -- de compositor a administrador*
+
+- [ ] el DIRECTOR le dice el hueco: una ranura de buzon con bit propio
+- [ ] la app puede REEMPLAZAR su superficie: hoy una segunda oferta del
+- [ ] DOOM elige escala con el hueco, como ya hace al tomar la pantalla
+- ... y 6 mas
 
 ## [`PLAN_EL_CODEGEN.md`](PLAN_EL_CODEGEN.md) -- 9 abiertas, 0 hechas
 
@@ -187,15 +196,6 @@
 - [ ] 2. EL JUEZ, en su crate. platform/shared/bmo-pila-juicio: *"se
 - [ ] 3. reap PREGUNTA AL JUEZ en vez de mirar solo su rsp. El cambio
 - ... y 2 mas
-
-## [`PLAN_DIRECTOR.md`](PLAN_DIRECTOR.md) -- 4 abiertas, 7 hechas
-
-*DIRECTOR -- de compositor a administrador*
-
-- [ ] el DIRECTOR le dice el hueco: una ranura de buzon con bit propio
-- [ ] la app puede REEMPLAZAR su superficie: hoy una segunda oferta del
-- [ ] DOOM elige escala con el hueco, como ya hace al tomar la pantalla
-- ... y 1 mas
 
 ## [`PLAN_LA_RAM_SALE_DEL_KERNEL.md`](PLAN_LA_RAM_SALE_DEL_KERNEL.md) -- 4 abiertas, 3 hechas
 
