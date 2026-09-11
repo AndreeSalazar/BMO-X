@@ -181,6 +181,17 @@ pub const INFO_SMP_CSTATE: u64 = 0x5F;
 /// Del carril de AXION. Ver `plat/smp/dormir.rs`.
 pub const INFO_SMP_SIESTAS_CORTAS: u64 = 0x60;
 
+/// **QUIEN es el maestro ajeno `i` (0..3)**: `vendor<<48 | device<<32 | bdf`.
+/// Cero si no hay tantos.
+///
+/// ** Existe porque `INFO_DMA_AJENOS_VISTOS` decia CUANTOS y la pregunta M3 de
+/// la tanda del 10-09 era CUALES. El arranque contesto `3` y los nombres se
+/// quedaron en el scroll del arranque, donde nadie los lee. Del carril del DMA.
+pub const INFO_DMA_AJENO_0: u64 = 0x61;
+pub const INFO_DMA_AJENO_1: u64 = 0x62;
+pub const INFO_DMA_AJENO_2: u64 = 0x63;
+pub const INFO_DMA_AJENO_3: u64 = 0x64;
+
 /// **La frecuencia efectiva del nucleo AHORA, en Hz.** `0` = no se puede medir.
 ///
 /// No es [`INFO_TSC_HZ`]: ese es el reloj de referencia, que no cambia nunca.

@@ -975,6 +975,32 @@ impl Machine {
                     other => panic!("grupo 83 /{other} no emitido por BMO"),
                 }
             }
+            // == *** `add rax, imm32` (2026-09-11) =================================
+            //
+            // `emit_add_offset` lo emite para todo campo de struct desde el byte
+            // 128 --`48 83 C0 ib` no llega: el `imm8` es con signo-- y este
+            // emulador contestaba *"opcode 0x05 no emitido por BMO"*.
+            //
+            // ** O sea que el banco ERA CIEGO a todo campo mas alla de 127
+            // bytes: `player_t`, `mobj_t`, `visplane_t.bottom`... los structs
+            // grandes de DOOM, que es donde un fallo del emisor mas cuesta.
+            // Cualquier fila que los tocara moria en el emulador y no decia
+            // nada del compilador.
+            //
+            // *** Y se descubrio buscando OTRA cosa: las bandas de DOOM. La
+            // sonda de los visplanes se paro aqui, y el mensaje --"no emitido
+            // por BMO"-- era falso desde el dia que `emit_add_offset` aprendio
+            // a sumar mas de 127.
+            //
+            //   > Un emulador que dice "esto no se emite" tiene que tener razon,
+            //   > o su banco entero prueba menos de lo que parece.
+            0x05 => {
+                let imm = self.fetch_u32() as i32 as i64 as u64;
+                let a = self.load(Operand::Reg(0), wide);
+                let r = a.wrapping_add(imm);
+                self.flags_logic(r);
+                self.store(Operand::Reg(0), r, ancho);
+            }
             // grupo 1 con imm32
             0x81 => {
                 let (ext, dst) = self.modrm(0, rex_x, rex_b);

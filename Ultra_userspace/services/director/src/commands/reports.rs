@@ -442,6 +442,30 @@ pub(crate) fn report_consumo(s: &mut Output) {
          b"a cuantos se les quito el BME (cerrojo en MIRAR: 0)");
     fila(s, b"puentes", bmo::info(bmo::INFO_DMA_PUENTES), b"",
          b"intocables: cerrarlos calla la rama entera");
+    // *** Y QUIENES SON (2026-09-11). El arranque del 10-09 contesto `ajenos 3`
+    // y la pregunta era CUALES: los nombres salian en el scroll del arranque,
+    // que es una foto. Aqui salen en el fichero, en hexadecimal --que es como
+    // estan escritas las tablas de PCI-- y como `vendor:device@bdf`.
+    {
+        let ids = [bmo::INFO_DMA_AJENO_0, bmo::INFO_DMA_AJENO_1,
+                   bmo::INFO_DMA_AJENO_2, bmo::INFO_DMA_AJENO_3];
+        for (i, id) in ids.iter().enumerate() {
+            let p = bmo::info(*id);
+            if p == 0 { break; }
+            s.text(b"      ajeno ");
+            s.dec(i as u64);
+            s.text(b"          ");
+            s.hex(p >> 48, 4);
+            s.byte(b':');
+            s.hex((p >> 32) & 0xFFFF, 4);
+            s.text(b" @ ");
+            s.hex(p & 0xFFFF, 4);
+            s.with_ink(INK_ECHO);
+            s.text(b"   vendor:device @ bus/dev/func -- 1022 es AMD, 1002 su grafica");
+            s.with_ink(INK_PLAIN);
+            s.byte(b'\n');
+        }
+    }
 
     fila(s, b"centinela", bmo::info(bmo::INFO_DMA_CENTINELA_MIRADAS), b"",
          b"bordes mirados tras un rebote");

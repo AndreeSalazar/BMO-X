@@ -102,6 +102,10 @@ const INFO_SMP_SIESTAS: u64 = 0x5D;
 const INFO_SMP_MS_APAGADOS: u64 = 0x5E;
 const INFO_SMP_CSTATE: u64 = 0x5F;
 const INFO_SMP_SIESTAS_CORTAS: u64 = 0x60;
+const INFO_DMA_AJENO_0: u64 = 0x61;
+const INFO_DMA_AJENO_1: u64 = 0x62;
+const INFO_DMA_AJENO_2: u64 = 0x63;
+const INFO_DMA_AJENO_3: u64 = 0x64;
 /// ** LA FRECUENCIA EFECTIVA, en Hz. `0` = no se puede medir.
 ///
 /// No es `INFO_TSC_HZ`: ese dice a que va el RELOJ de referencia, que no cambia
@@ -652,6 +656,11 @@ pub fn campo(n: u64) -> u64 {
         INFO_DMA_AJENOS_VISTOS => crate::ring0::dev::portero::ajenos().0 as u64,
         INFO_DMA_AJENOS_CERRADOS => crate::ring0::dev::portero::ajenos().1 as u64,
         INFO_DMA_PUENTES => crate::ring0::dev::portero::ajenos().2 as u64,
+        // *** QUIENES SON, no cuantos. M3 se contestaba con una foto del scroll.
+        INFO_DMA_AJENO_0 => crate::ring0::dev::portero::ajeno_papeles(0),
+        INFO_DMA_AJENO_1 => crate::ring0::dev::portero::ajeno_papeles(1),
+        INFO_DMA_AJENO_2 => crate::ring0::dev::portero::ajeno_papeles(2),
+        INFO_DMA_AJENO_3 => crate::ring0::dev::portero::ajeno_papeles(3),
         INFO_DMA_CENTINELA_MIRADAS => crate::ring0::dev::disk::cuentas_centinela().0,
         INFO_DMA_CENTINELA_ROTAS => crate::ring0::dev::disk::cuentas_centinela().1,
         INFO_DMA_HBA_DE_MAS => crate::ring0::dev::disk::cuentas_centinela().2,
