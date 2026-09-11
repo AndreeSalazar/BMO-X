@@ -1,0 +1,33 @@
+# EL SUELO DE R20 -- cuantos ficheros de `platform/drivers` declaran `[carril]`.
+#
+# ** POR QUE ESTOS TIENEN TRINQUETE Y RING 0 NO.
+#
+# R10 cubre Ring 0 SIN trinquete y lo dice con orgullo: *"se empieza en 162 de
+# 162, y una regla que se cumple entera el primer dia no necesita un suelo que
+# tolere lo que ya estaba mal"*.
+#
+# Aqui hay 19.016 lineas escritas antes de que existiera la regla. Un muro
+# dejaria el build ROJO hasta terminarlas -- y un build rojo que hoy no se puede
+# poner verde se acaba desactivando, que es como se pierde un guardian.
+#
+# *** Y LO QUE HAY DEBAJO NO ES CODIGO DE AL LADO: son los catorce crates que el
+# kernel ENLAZA, o sea Ring 0 con otra carpeta. Todos los sitios que le dan una
+# direccion fisica a un aparato (`NEUTRO/DMA/EMBUDO.txt`) viven aqui.
+#
+# El plan para llegar a 51: docs/plan/PLAN_EL_SEMAFORO_COMPLETO.md
+#
+# El numero va solo en la primera linea util. Lo de abajo es el inventario.
+
+12
+# ROJO      platform/drivers/net/src/anillo.rs
+# ROJO      platform/drivers/net/src/lib.rs
+# ROJO      platform/drivers/storage/ahci/src/arranque.rs
+# ROJO      platform/drivers/storage/ahci/src/comando.rs
+# ROJO      platform/drivers/storage/ahci/src/controller.rs
+# ROJO      platform/drivers/usb/xhci/src/enumerar.rs
+# ROJO      platform/drivers/usb/xhci/src/lib.rs
+# ROJO      platform/drivers/usb/xhci/src/transferencia.rs
+# AMARILLO  platform/drivers/gpu/rdna4/src/psp.rs
+# VERDE     platform/drivers/storage/ahci/src/lib.rs
+# VERDE     platform/drivers/storage/ahci/src/storage_hal.rs
+# VERDE     platform/drivers/usb/xhci/src/avisos.rs

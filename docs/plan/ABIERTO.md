@@ -1,14 +1,14 @@
 <!-- GENERADO por toolchain/tools/planes. No se edita a mano. -->
 
-# LO QUE FALTA -- las casillas abiertas de los 26 planes
+# LO QUE FALTA -- las casillas abiertas de los 27 planes
 
 > Generado por `toolchain/tools/planes`. **El build comprueba que
 > este fichero y los planes dicen lo mismo**, asi que no puede
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   162 casillas ABIERTAS en 22 planes
-   118 hechas
+   167 casillas ABIERTAS en 23 planes
+   122 hechas
      4 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -141,6 +141,15 @@
 - [ ] pendiente [~] a medias, y se dice cuanto [x] hecho, con fecha
 - [ ] 2 A: tipar la binaria las 3 casillas nuevas en verde, y 449 sin
 - [ ] 3 recompilar doom.bex y comparar el tamano contra 880.250
+- ... y 2 mas
+
+## [`PLAN_EL_SEMAFORO_COMPLETO.md`](PLAN_EL_SEMAFORO_COMPLETO.md) -- 5 abiertas, 4 hechas
+
+*PLAN -- EL SEMAFORO COMPLETO: donde el arbol todavia no dice de que color es*
+
+- [ ] S4 -- los 38 drivers que quedan (platform/drivers)
+- [ ] S5 -- platform/shared, 2 de 48
+- [ ] S6 -- platform/abi, 23 de 100
 - ... y 2 mas
 
 ## [`PLAN_LA_CARA_VIAJA.md`](PLAN_LA_CARA_VIAJA.md) -- 5 abiertas, 2 hechas

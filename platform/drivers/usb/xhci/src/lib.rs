@@ -1,5 +1,12 @@
 //! xHCI USB Controller Driver -- full device lifecycle + HID interrupt transfers.
 //!
+//! [carril]  ROJO      el DCBAA, los contextos y el ERST -- las tablas que el
+//!                     xHC recorre por su cuenta mientras la maquina anda
+//! [cuesta]  APARATO   sin esto no hay teclado: no se puede ni apagar bien
+//! [riesgo]  SILENCIO  el controlador es un maestro del bus, y un maestro no
+//!                     pregunta
+//!
+//!
 //! Modeled after the proven xhci-nostd crate at github.com/suhteevah/xhci-nostd.
 
 #![no_std]

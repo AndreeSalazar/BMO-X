@@ -1,5 +1,12 @@
 //! **HABLAR CON UN APARATO QUE YA TIENE DIRECCION.**
 //!
+//! [carril]  ROJO      encola TRBs con direcciones fisicas dentro, y el xHC
+//!                     los lee solo. Corre un millon de veces por sesion
+//! [cuesta]  DATO      por aqui pasan el teclado, el raton y el audio
+//! [riesgo]  SILENCIO  un TRB con una fisica que no es no da fault: el
+//!                     controlador lee o escribe donde se le dijo
+//!
+//!
 //! Transferencias de control, descriptores, configurar endpoints, resucitar uno
 //! parado, encolar una IN de interrupcion, y el sondeo que no bloquea.
 //!

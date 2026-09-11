@@ -1,5 +1,12 @@
 //! AHCI/SATA: el camino de comandos, escrito contra la especificacion.
 //!
+//! [carril]  ROJO      las TRES estructuras que el HBA lee POR DIRECCION
+//!                     FISICA: Command List, Command Table y PRDT
+//! [cuesta]  APARATO   sin esto no hay disco, y sin disco no hay arranque
+//! [riesgo]  SILENCIO  un puntero mal escrito aqui lo ejecuta el controlador,
+//!                     no el CPU: no hay excepcion que lo pare
+//!
+//!
 //! ## Como se le pide algo a un disco SATA
 //!
 //! El HBA no recibe ordenes por registros: se las deja escritas en memoria y

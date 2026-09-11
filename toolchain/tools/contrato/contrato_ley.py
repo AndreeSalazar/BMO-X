@@ -173,6 +173,39 @@ CARRILES_FUERA_DEL_KERNEL = (
     "Ultra_userspace/userland/src",
 )
 
+
+# -- R20: LOS DRIVERS, que SI son Ring 0 y estaban fuera del semaforo ---------
+#
+# *** LA TERCERA VEZ QUE APARECE LA MISMA FRASE, y la mayor con diferencia.
+#
+# R11 la escribio para REX y R17 para `fundamentals/`, las dos con las mismas
+# palabras: *"no lo cubria ninguna regla, porque L6g dice todo `.rs` de Ring 0
+# y esto no es Ring 0"*.
+#
+# ** Aqui esa frase es FALSA, y por eso este caso es distinto de los otros dos.
+# `platform/drivers` NO es codigo de al lado: son catorce crates que el kernel
+# ENLAZA --`bmo-ahci`, `bmo-xhci`, `bmo-net`, `bmo-fat32`...-- y que ejecutan
+# con el privilegio de Ring 0. Lo unico que no es de Ring 0 es su CARPETA.
+#
+#    19.016 lineas, 51 ficheros, y hasta el 2026-09-10 UNO con carril
+#
+# *** Y es justo donde vive el DMA. Los catorce sitios que `NEUTRO/DMA/
+# EMBUDO.txt` censa --los que le dan una direccion fisica a un aparato-- estan
+# TODOS aqui dentro. O sea que el codigo que le habla a los maestros del bus
+# era el menos senalizado del arbol, mientras Ring 0 estaba al 100%.
+#
+#   > Un semaforo cuyo alcance es una CARPETA y no un PRIVILEGIO deja fuera
+#   > justo lo que se mudo de carpeta.
+#
+# [!] Y ESTA SI LLEVA TRINQUETE, al reves que R10, R11 y R17. Las tres dicen
+# *"sin trinquete: se empieza cubriendo todos"*, y podian decirlo porque no
+# habia nada que tolerar. Aqui hay 19.000 lineas ya escritas: un muro dejaria
+# el build rojo hasta terminarlas, y un build rojo que no se puede poner verde
+# hoy se acaba desactivando. El suelo sube y no baja.
+DRIVERS_DIR = "platform/drivers"
+DRIVERS_TXT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "CARRILES_DRIVERS.txt")
+
 # -- R17: la CARA RUST del ABI, que tampoco llevaba letrero -------------------
 #
 # `fundamentals/` son los tipos que cruzan la frontera: `BmoStatus` en rax/rdx,

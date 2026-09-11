@@ -1,4 +1,11 @@
 //! **El plano del anillo de recepcion, y el corral donde la tarjeta puede
+//!
+//! [carril]  ROJO      el corral donde la tarjeta escribe. Su propia cabecera
+//!                     es el argumento: la NIC no comprueba nada
+//! [cuesta]  APARATO   programa el anillo de recepcion de una tarjeta de red
+//! [riesgo]  SILENCIO  no hay fallo ni excepcion: hay un sistema que se rompe
+//!                     tres arranques despues
+//!
 //! escribir.**
 //!
 //! # Que problema resuelve este fichero
