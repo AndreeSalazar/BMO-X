@@ -110,8 +110,49 @@ impl Codegen {
             }
             // `strncmp` y `memcmp` comparten emision y se distinguen en UN bool:
             // si el terminador corta o no. Ver `memoria::comparar_n`.
+            // == *** `abs` ES `int abs(int)`, Y EL ARGUMENTO SE CONVIERTE ANTES ====
+            //
+            // `memoria::absoluto` quita el signo a 64 bits, y aqui llegaba el
+            // valor tal como estaba en `rax`. Con un `unsigned int` eso es
+            // 0x00000000_FFFFFF9C: POSITIVO, y `abs` lo devolvia tal cual.
+            //
+            // ```text
+            //    unsigned a = 100, b = 200;
+            //    abs(a - b)     C de verdad:  100     (a-b -> int -100 -> 100)
+            //                   aqui:         4294967196
+            // ```
+            //
+            // *** Y ESTO ERAN LAS BANDAS DE DOOM (2026-09-11). `r_segs.c:421`:
+            //
+            // ```c
+            //    offsetangle = abs(rw_normalangle - rw_angle1);   // dos angle_t = unsigned
+            //    if (offsetangle > ANG90) offsetangle = ANG90;
+            //    distangle = ANG90 - offsetangle;                  // -> 0
+            //    sineval = finesine[distangle >> 19];              // -> finesine[0] = 0
+            //    rw_distance = FixedMul(hyp, sineval);             // -> 0
+            // ```
+            //
+            // Con `rw_distance = 0`, `R_ScaleFromGlobalAngle` se clava en el TOPE:
+            // la pared se proyecta a TODA la altura --no queda sitio para suelo
+            // ni techo: 36 spans en 3 filas-- y `dc_iscale` es tan pequeno que
+            // la columna muestrea UN texel: la banda plana. Las dos mitades de
+            // la foto, una causa, y le pasaba a toda pared con
+            // `rw_normalangle < rw_angle1`: la mitad, segun su orientacion.
+            //
+            // ** DOOM CUENTA con esa conversion. La resta de dos `angle_t`
+            // envuelve, pasa a `int` --negativa si es grande-- y `abs` la
+            // endereza. Es C de manual: el argumento se convierte al tipo del
+            // parametro, y el parametro es `int`.
+            //
+            // `movsxd rax, eax`: los 32 bits bajos, con su signo. Es la conversion
+            // a `int`, ni mas ni menos. Y vale igual para un `long` que no cabe:
+            // `abs(long)` en C tambien recorta, y los compiladores avisan.
+            //
+            //   > Cuatro zonas exoneradas y un instrumento en el metal para llegar
+            //   > a una instruccion que faltaba. La foto tenia razon desde agosto.
             ("abs", 1) => {
                 self.emit_expr(&args[0]);
+                self.code.extend_from_slice(&[0x48, 0x63, 0xC0]); // movsxd rax, eax
                 memoria::absoluto(&mut self.code);
                 Some(())
             }
