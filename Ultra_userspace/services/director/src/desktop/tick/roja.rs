@@ -178,12 +178,15 @@ impl Tick {
             }
             self.cedio_en = antes;
         }
-        // ** EL REPOSO va antes que el latido y antes que el giro: si esta
-        // vuelta no pinto nada y llevamos medio segundo asi, no hay latido que
-        // esperar -- se duerme un plazo y punto. `will_paint` es la senal
-        // correcta porque ya reune todo lo que puede pasar: una tecla, el
-        // raton, una superficie nueva o repintada, el cuarto de segundo.
-        if self.will_paint {
+        // ** EL REPOSO va antes que el latido y antes que el giro: si en esta
+        // vuelta no paso nada y llevamos medio segundo asi, no hay latido que
+        // esperar -- se duerme un plazo y punto. La senal es `actividad`: una
+        // tecla, el raton, una superficie nueva o repintada.
+        //
+        // [!] W4b (2026-09-11): aqui ponia `will_paint`, que ademas lleva el
+        // CUARTO DE SEGUNDO. El cuarto pinta, pero no es que pase algo -- y con
+        // el, `quietas` volvia a cero cada 250 ms y el reposo no entraba nunca.
+        if self.actividad {
             self.quietas = 0;
         } else {
             self.quietas = self.quietas.saturating_add(1);

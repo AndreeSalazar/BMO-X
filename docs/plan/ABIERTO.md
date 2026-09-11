@@ -7,8 +7,8 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   183 casillas ABIERTAS en 25 planes
-   127 hechas
+   182 casillas ABIERTAS en 25 planes
+   128 hechas
      4 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -89,15 +89,6 @@
 - [ ] S3 -- EL PRIMER CLIENTE: INTI. Porque puede declarar el alias. Y
 - ... y 6 mas
 
-## [`PLAN_VATIOS.md`](PLAN_VATIOS.md) -- 8 abiertas, 2 hechas
-
-*PLAN_VATIOS -- lo que gasta el CPU en reposo, y por que*
-
-- [ ] pendiente [~] a medias, y se dice cuanto [x] hecho, con fecha
-- [ ] W0a REFERENCIA, no suelo: Windows quieto 2 minutos, Package Power = ___ W
-- [ ] W0b BMO-X, shell de Ring 0, consumo dos veces seguidas: ___ W
-- ... y 5 mas
-
 ## [`PLAN_AUTOHOSPEDAJE.md`](PLAN_AUTOHOSPEDAJE.md) -- 7 abiertas, 1 hechas
 
 *PLAN DEL AUTOHOSPEDAJE -- que BMO-X compile SOBRE SI MISMO*
@@ -132,6 +123,15 @@
 - [ ] A4 -- LAS SUPOSICIONES DE DISPOSICION
 - [ ] A5 -- LA TABLA DEL UB, que era el encargo original
 - [ ] A5a -- las cinco que ya se pueden decidir al compilar (contador,
+- ... y 4 mas
+
+## [`PLAN_VATIOS.md`](PLAN_VATIOS.md) -- 7 abiertas, 3 hechas
+
+*PLAN_VATIOS -- lo que gasta el CPU en reposo, y por que*
+
+- [ ] pendiente [~] a medias, y se dice cuanto [x] hecho, con fecha
+- [ ] W0a REFERENCIA, no suelo: Windows quieto 2 minutos, Package Power = ___ W
+- [ ] W0b BMO-X, shell de Ring 0, consumo dos veces seguidas: ___ W
 - ... y 4 mas
 
 ## [`PLAN_DOOM.md`](PLAN_DOOM.md) -- 6 abiertas, 3 hechas
