@@ -273,6 +273,10 @@ pub const INFO_DMA_AJENO_3: u64 = 0x64;
 pub const INFO_CAIDA_RECUPERADO: u64 = 0x65;
 /// Arranques que ha visto la caja negra en RAM. Si sube, la RAM sobrevive.
 pub const INFO_CAIDA_GENERACION: u64 = 0x66;
+/// Veces que el BSP durmio hondo (mwaitx) en vez de hlt. 0 = sin MONITORX.
+pub const INFO_BSP_REPOSOS: u64 = 0x67;
+/// Ticks del TSC que el BSP paso dormido hondo.
+pub const INFO_BSP_TICKS_REPOSO: u64 = 0x68;
 /// La frecuencia efectiva del nucleo AHORA, en Hz. `0` = no se puede medir.
 /// Es una MEDIDA: dos lecturas seguidas dan la velocidad de ese intervalo.
 pub const INFO_CPU_HZ_REAL: u64 = 0x20;

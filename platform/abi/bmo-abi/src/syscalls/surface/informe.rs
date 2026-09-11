@@ -199,6 +199,12 @@ pub const INFO_CAIDA_RECUPERADO: u64 = 0x65;
 /// Cuantos arranques ha visto la caja negra en RAM. 1 = esta es la primera
 /// vez que hay cabecera; si en el siguiente sale 2, la RAM sobrevivio.
 pub const INFO_CAIDA_GENERACION: u64 = 0x66;
+/// **Veces que el BSP durmio HONDO (`mwaitx`) en vez de `hlt`.** 0 = sin
+/// `MONITORX`, o nunca estuvo ocioso. W1 de `docs/plan/PLAN_VATIOS.md`.
+pub const INFO_BSP_REPOSOS: u64 = 0x67;
+/// **Ticks del TSC que el BSP paso dormido hondo.** Contra el TSC total es el
+/// porcentaje del tiempo en que la maquina no hacia nada -- y lo APAGABA.
+pub const INFO_BSP_TICKS_REPOSO: u64 = 0x68;
 
 /// **La frecuencia efectiva del nucleo AHORA, en Hz.** `0` = no se puede medir.
 ///

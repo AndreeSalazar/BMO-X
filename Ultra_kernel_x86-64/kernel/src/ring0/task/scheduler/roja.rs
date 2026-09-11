@@ -1156,15 +1156,18 @@ pub fn wait_current_checked(
 /// en el tick siguiente.
 /// **El cuerpo de la tarea IDLE**: parar el CPU hasta la interrupcion siguiente.
 ///
-/// `sti; hlt` y no `hlt` a secas: si esta tarea llegara con las interrupciones
-/// apagadas, un `hlt` sin ellas es una maquina muerta. Es el mismo par que usa
-/// el camino de reposo de `core/entry.rs`.
+/// Hasta el 2026-09-11 era `sti; hlt`, o sea C1: el nucleo parado pero
+/// ENCENDIDO. Ahora es `dormir::reposo()`: el mismo `mwaitx` en el C-state mas
+/// profundo que ya usaban los once obreros, con la interrupcion de
+/// despertador -- y `sti; hlt` de reserva si el silicio no trae `MONITORX`.
+/// El BSP era el unico nucleo que trabajaba y el unico que no dormia. Ver
+/// `docs/plan/PLAN_VATIOS.md`, W1.
 ///
 /// ** Y no cede ni mide nada: no tiene nada que ceder. Su unico trabajo es
 /// EXISTIR para que `choose_next` tenga siempre a quien darle el turno.
 pub extern "C" fn idle_thread(_arg: u64) -> ! {
     loop {
-        unsafe { core::arch::asm!("sti; hlt", options(nostack, preserves_flags)) };
+        crate::ring0::plat::smp::dormir::reposo();
     }
 }
 

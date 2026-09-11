@@ -85,6 +85,8 @@ impl Tick {
             self.pintados = 0;
             self.dormidas_por_segundo = self.dormidas;
             self.dormidas = 0;
+            self.reposos_por_segundo = self.reposos;
+            self.reposos = 0;
             self.suma_cuerpo = 0;
             self.suma_puerta = 0;
             self.sample_at = now;

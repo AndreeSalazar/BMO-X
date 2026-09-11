@@ -74,7 +74,8 @@ pub(crate) fn pintar(p: &bmo::Pantalla, d: &Dictamen) {
     // ** EL NOMBRE DICE EL MODO. No es adorno: si el kernel no dio el latido,
     // el bucle gira igual de bien y las dos formas se verian identicas. Ver la
     // decision 6 de `amarilla.rs`.
-    let tx = p.texto(x + 4, ty, if d.en_latido { "latido " } else { "pulso " }, INK_DIM);
+    let modo = if d.en_reposo { "reposo " } else if d.en_latido { "latido " } else { "pulso " };
+    let tx = p.texto(x + 4, ty, modo, INK_DIM);
     let mut tx = match d.ritmo {
         None => p.texto(tx, ty, "SIN RELOJ ", INK),
         Some(v) => {

@@ -57,6 +57,24 @@ impl Tick {
         self.latido != 0 && self.dormidas_por_segundo > 0
     }
 
+    /// **El bucle esta en REPOSO**: la mayoria de sus vueltas del ultimo
+    /// segundo durmieron el plazo fijo y no el latido. Es lo que la barra
+    /// ensena como `reposo`, para que ~125 vueltas por segundo no se lean como
+    /// *"el escritorio va lento"*: va DORMIDO, que es lo que se le pidio.
+    pub fn en_reposo(&self) -> bool {
+        self.reposos_por_segundo > 0
+            && self.reposos_por_segundo >= self.dormidas_por_segundo / 2
+    }
+
+    /// Vueltas seguidas sin pintar nada antes de pasar a reposo. Medio segundo
+    /// a mil por segundo: lo bastante para que un arrastre o una animacion
+    /// no entren y salgan del reposo a cada fotograma.
+    const REPOSO_TRAS: u32 = 500;
+    /// Lo que se duerme en cada vuelta de reposo. 8 ms = ~125 vueltas por
+    /// segundo, por encima del `RITMO_BAJO` de la barra a proposito: el
+    /// reposo no es una alarma.
+    const REPOSO_NS: u64 = 8_000_000;
+
     /// El plazo de seguridad del `WAIT`, en nanosegundos.
     ///
     /// ** NO se pone `0` --que seria "solo el latido"-- y el motivo esta escrito
@@ -157,6 +175,22 @@ impl Tick {
                     .wrapping_add(cpu.wrapping_sub(self.cpu_inicio));
             }
             self.cedio_en = antes;
+        }
+        // ** EL REPOSO va antes que el latido y antes que el giro: si esta
+        // vuelta no pinto nada y llevamos medio segundo asi, no hay latido que
+        // esperar -- se duerme un plazo y punto. `will_paint` es la senal
+        // correcta porque ya reune todo lo que puede pasar: una tecla, el
+        // raton, una superficie nueva o repintada, el cuarto de segundo.
+        if self.will_paint {
+            self.quietas = 0;
+        } else {
+            self.quietas = self.quietas.saturating_add(1);
+        }
+        if self.quietas >= Self::REPOSO_TRAS {
+            bmo::wait(0, 0, Self::REPOSO_NS);
+            self.reposos = self.reposos.wrapping_add(1);
+            self.dormidas = self.dormidas.wrapping_add(1);
+            return;
         }
         if self.latido == 0 {
             bmo::yield_screen();
