@@ -287,9 +287,10 @@ se deshace va al final.**
 | [`METAL_2026-08-23.md`](metal/METAL_2026-08-23.md) | **2026-08-23** | lo que se MANDA teclear |
 | [`METAL_RED_PASO_1.md`](metal/METAL_RED_PASO_1.md) | **2026-08-24** | la unica que PREDICE por escrito antes de arrancar |
 | [`METAL_2026-08-24.md`](metal/METAL_2026-08-24.md) | **2026-08-24** | lo que el Ryzen CONTESTO |
-| [`METAL_2026-08-25.md`](metal/METAL_2026-08-25.md) | **2026-08-25** | ★ **la vigente**: lo que hay que teclear, y las DOS que pueden impedir el arranque |
+| [`METAL_2026-08-25.md`](metal/METAL_2026-08-25.md) | **2026-08-25** | lo que hay que teclear, y las DOS que pueden impedir el arranque |
 | [`METAL_2026-09-07.md`](metal/METAL_2026-09-07.md) | **2026-09-07** | la purga: el fallo que ya tenia receta y veredicto |
 | [`METAL_2026-09-10.md`](metal/METAL_2026-09-10.md) | **2026-09-10** | seis preguntas y UN arranque. Contesto: `y callo` en microsegundos, y las 320 columnas de DOOM visitadas -- **el fallo del fondo no esta en las columnas** |
+| [`METAL_2026-09-11.md`](metal/METAL_2026-09-11.md) | **2026-09-11** | ★ **la vigente**: la semana de los vatios. Los TRES cortes de Ring 0 (arranca?), W0/W1, W4b y la primera medida de R-APP8 -- minimizar DOOM y ver si bajan los vatios |
 
 ### ⚠ Las dos cosas que esta tabla existe para decir
 
