@@ -214,6 +214,7 @@ mano, y mientras tanto la deuda tiene nombre.
 | documento | de que |
 |---|---|
 | [`PLAN_DOOM.md`](plan/PLAN_DOOM.md) | de "BMO C compila 69 de 81" a "DOOM se juega" |
+| [`PLAN_VATIOS.md`](plan/PLAN_VATIOS.md) | 58 W en reposo: quien mantiene despierto al CPU, con la linea, y las cinco palancas en orden |
 | [`PLAN_AUTOCURACION.md`](plan/PLAN_AUTOCURACION.md) | las casillas de su MAESTRO |
 | [`PLAN_DIRECTOR.md`](plan/PLAN_DIRECTOR.md) | de compositor a administrador |
 | [`PLAN_ALMACENAMIENTO.md`](plan/PLAN_ALMACENAMIENTO.md) | repartir la pila de disco |

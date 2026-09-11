@@ -1,13 +1,13 @@
 <!-- GENERADO por toolchain/tools/planes. No se edita a mano. -->
 
-# LO QUE FALTA -- las casillas abiertas de los 28 planes
+# LO QUE FALTA -- las casillas abiertas de los 29 planes
 
 > Generado por `toolchain/tools/planes`. **El build comprueba que
 > este fichero y los planes dicen lo mismo**, asi que no puede
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   175 casillas ABIERTAS en 24 planes
+   184 casillas ABIERTAS en 25 planes
    125 hechas
      4 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
@@ -87,6 +87,15 @@
 - [ ] S1 -- EL CONTRATO, EN PAPEL Y ANTES QUE EL CODIGO. Que entra y que
 - [ ] S2 -- LA TABLA DE REGISTROS COMO DATO, no como codigo. x86-64 nombra
 - [ ] S3 -- EL PRIMER CLIENTE: INTI. Porque puede declarar el alias. Y
+- ... y 6 mas
+
+## [`PLAN_VATIOS.md`](PLAN_VATIOS.md) -- 9 abiertas, 0 hechas
+
+*PLAN_VATIOS -- lo que gasta el CPU en reposo, y por que*
+
+- [ ] pendiente [~] a medias, y se dice cuanto [x] hecho, con fecha
+- [ ] W0a Windows en reposo, 2 minutos sin tocar nada: Package Power = ___ W
+- [ ] W0b BMO-X, shell de Ring 0, consumo dos veces seguidas: ___ W
 - ... y 6 mas
 
 ## [`PLAN_AUTOHOSPEDAJE.md`](PLAN_AUTOHOSPEDAJE.md) -- 7 abiertas, 1 hechas
