@@ -11,7 +11,7 @@ y la tapan sin tocarla. La regla y el porque estan en
 [`toolchain/lang/c/README.md`](../../../../lang/c/README.md).
 
 REX es lo que hay entre las **dos puertas congeladas** (`INVOKE` y `WAIT`) y un
-programa. Doce cabeceras publicas, 3.580 lineas en 20 ficheros, y dos
+programa. Trece cabeceras publicas, 4.090 lineas en 22 ficheros, y dos
 propiedades que conviene
 saber antes de usarlas:
 
@@ -47,22 +47,24 @@ un `mod.rs` que re-exporta. Incluir un carril suelto tambien vale.
 | Cabecera | Lineas | Color | Que resuelve | Ejemplo |
 |---|---|---|---|---|
 | [`bmo.h`](bmo.h) | 457 | ROJO | las dos puertas, en C. **Se empieza por aqui** | `examples/sonda_C.c` |
-| &nbsp;&nbsp;[`bmo/roja.h`](bmo/roja.h) | 137 | ROJO | `INVOKE`, `WAIT` y los numeros de operacion | -- |
+| &nbsp;&nbsp;[`bmo/roja.h`](bmo/roja.h) | 157 | ROJO | `INVOKE`, `WAIT` y los numeros de operacion | -- |
 | &nbsp;&nbsp;[`bmo/verde.h`](bmo/verde.h) | 229 | VERDE | la tabla `INFO_*`: crece por filas | -- |
 | [`archivo.h`](archivo.h) | 522 | ROJO | leer ficheros de verdad, contra `KIND_ARCHIVO` | `examples/leer_C.c` |
 | &nbsp;&nbsp;[`archivo/roja.h`](archivo/roja.h) | 340 | ROJO | abrir, `fread`, `fwrite`, `fclose` | -- |
 | &nbsp;&nbsp;[`archivo/amarilla.h`](archivo/amarilla.h) | 117 | AMARILLO | el cursor, que es un ESPEJO del del kernel | -- |
 | [`entrada.h`](entrada.h) | 372 | AMARILLO | teclado y raton, y **devolverlos** | `examples/pantalla_C.c` |
+| [`fuente.h`](fuente.h) | 324 | VERDE | **escribir texto DENTRO de tu superficie** | `examples/texto_C.c` |
+| &nbsp;&nbsp;[`fuente/datos.h`](fuente/datos.h) | 152 | VERDE | los glifos 8x16. AUTO-GENERADO por `tools/fontgen`, del MISMO arte que la tabla del kernel | -- |
 | [`monton.h`](monton.h) | 351 | ROJO | `malloc`/`free`/`realloc`. Llega por `<stdlib.h>` | `examples/memoria_C.c` |
 | &nbsp;&nbsp;[`monton/roja.h`](monton/roja.h) | 168 | ROJO | la arena y el reparto | -- |
 | &nbsp;&nbsp;[`monton/verde.h`](monton/verde.h) | 74 | VERDE | cuanto queda y cuanto cabe | -- |
 | [`musica.h`](musica.h) | 269 | VERDE | notas, figuras y compas, encima de `sonido.h` | `examples/vivaldi_C.c` |
-| [`pantalla.h`](pantalla.h) | 238 | ROJO | **la pantalla entera**: tomarla, medirla y devolverla | `examples/pantalla_C.c` |
+| [`pantalla.h`](pantalla.h) | 304 | ROJO | **la pantalla entera**: tomarla, medirla y devolverla | `examples/pantalla_C.c` |
 | [`paquete.h`](paquete.h) | 261 | AMARILLO | leer los datos que viajan **dentro** del `.bex` | `examples/caja_C.c` |
 | [`prestado.h`](prestado.h) | 284 | ROJO | **memoria que viaja sin copiarse**: prestar, tomar y soltar | `examples/prestado_C.c` |
-| [`superficie.h`](superficie.h) | 515 | ROJO | dibujar en TU memoria y ofrecerla al DIRECTOR | `examples/raycaster_C.c` |
+| [`superficie.h`](superficie.h) | 635 | ROJO | dibujar en TU memoria y ofrecerla al DIRECTOR | `examples/raycaster_C.c` |
 | &nbsp;&nbsp;[`superficie/roja.h`](superficie/roja.h) | 176 | ROJO | pedir el bloque y **ofrecerlo** | -- |
-| &nbsp;&nbsp;[`superficie/amarilla.h`](superficie/amarilla.h) | 167 | AMARILLO | decodificar eventos y puntero | -- |
+| &nbsp;&nbsp;[`superficie/amarilla.h`](superficie/amarilla.h) | 266 | AMARILLO | decodificar eventos, puntero, VISTA y **el caracter cocido** | -- |
 | [`scroll.h`](scroll.h) | 140 | VERDE | una ventana que se mueve sobre un historial | `examples/scroll_C.c` |
 | [`sonido.h`](sonido.h) | 118 | AMARILLO | el sonido | `examples/sonido_C.c` |
 | [`bloque.h`](bloque.h) | 53 | ROJO | que bloque del kernel es el del monton | -- |

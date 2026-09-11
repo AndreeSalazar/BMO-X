@@ -172,6 +172,27 @@ $cEjemplos = @(
     @{ src = 'toolchain\lang\c\examples\sonda_C.c';  out = 'sonda.bex'  ; dir = 'c' },
     # El ensayo general de DOOM: 2.5D en punto fijo sobre la pantalla real.
     @{ src = 'toolchain\lang\c\examples\raycaster_C.c'; out = 'ray.bex'    ; dir = 'c' },
+    # ** EL BLOC DE NOTAS, y lo que estrena: ESCRIBIR dentro de una ventana.
+    # Hasta el 11-09 una app recibia SCANCODES y nunca la LETRA que producian,
+    # asi que no se podia teclear en una superficie sin copiarle la
+    # distribucion espanola entera. Ahora el DIRECTOR reenvia el caracter ya
+    # cocido --bit 62 del evento-- y esto solo lo lee. Abre `datos\notas.txt`,
+    # se escribe encima y se guarda con el boton de su barra.
+    # ** Y SE QUEDA EN `c\`, AUNQUE NO SEA UN EJEMPLO QUE SE CIERRA.
+    #
+    # Primero fue a `apps\`, porque el lanzador del escritorio lista `apps\` y
+    # nada mas: ahi tendria icono, y un bloc de notas al que hay que llamar
+    # escribiendo su ruta es un bloc de notas que no se usa. Y se deshizo
+    # **porque `apps\` ya significa algo** y lo dice esta misma cabecera: lo
+    # que alguien trae de FUERA del repo. El criterio es la procedencia, no si
+    # el programa es util, y meter aqui una excepcion a la primera incomodidad
+    # es como se deshacen las carpetas que se ordenaron una vez.
+    #
+    # Asi que hoy se lanza escribiendo `run c/texto.bex` en la caja del
+    # escritorio, y lo que falta --que el lanzador mire algo mas que `apps\`--
+    # esta escrito como casilla en `docs/plan/PLAN_DIRECTOR.md`. El icono va
+    # dentro del `.bex` igual: es su cara, la lleve quien la lea o no.
+    @{ src = 'toolchain\lang\c\examples\texto_C.c';     out = 'texto.bex'  ; dir = 'c' },
     # La prueba de fopen/fread/fseek. Lee `datos\salida.txt` DOS veces y
     # compara: si las dos lecturas coinciden, la cadena de ficheros funciona.
     @{ src = 'toolchain\lang\c\examples\leer_C.c';      out = 'leer.bex'   ; dir = 'c' },
@@ -229,6 +250,31 @@ $cRecursos = @(
         @{ nombre = 'saludo.txt'; texto = 'hola desde dentro de la caja' },
         @{ nombre = 'cuenta.bin'; bytes  = @(1,2,3,4,5,6,7,8) }
     ) }
+    # ** LA CARA DEL BLOC DE NOTAS. Por el mismo camino que la de DOOM --un
+    # recurso del paquete-- asi que el escritorio no necesita ni un acceso
+    # directo ni una cache de iconos: el `.bex` va con su cara dentro.
+    #
+    # Una hoja con su barra azul arriba, que es lo que el programa ensena.
+    @{ bex = 'c\texto.bex'; recursos = @(
+        @{ nombre = 'icono'; icono = @(
+            '................',
+            '...oooooooooo...',
+            '...obbbbbbbbo...',
+            '...oWWWWWWWWo...',
+            '...oWggggggWo...',
+            '...oWWWWWWWWo...',
+            '...oWgggggWWo...',
+            '...oWWWWWWWWo...',
+            '...oWgggggggo...',
+            '...oWWWWWWWWo...',
+            '...oWggggWWWo...',
+            '...oWWWWWWWWo...',
+            '...oWgggggWWo...',
+            '...oWWWWWWWWo...',
+            '...oooooooooo...',
+            '................'
+        ) }
+    ) }
 )
 
 # * EL FORMATO `BICO`, escrito aqui porque aqui es donde nace un icono.
@@ -263,6 +309,9 @@ $BICO_PALETA = @{
     'R' = @(0x2A, 0x34, 0xB4, 0xFF)
     'd' = @(0x16, 0x1C, 0x6B, 0xFF)
     'W' = @(0xE0, 0xE6, 0xF0, 0xFF)
+    # Los dos del bloc de notas: el azul de su barra y el gris de sus renglones.
+    'b' = @(0xFF, 0xA6, 0x58, 0xFF)
+    'g' = @(0x90, 0x83, 0x76, 0xFF)
 }
 
 function Compilar-Ejemplos {
