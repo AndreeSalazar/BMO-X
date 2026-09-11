@@ -288,7 +288,9 @@ que `quietas` vuelve a 0 cada ~250 vueltas y no llega nunca a las 500 del
 reposo. Compila y no hace lo que dice.
 
 ```text
-   [ ] W4b  el cuarto de segundo pinta pero NO cuenta como actividad: `desktop/tick/roja.rs`
+   [x] W4b  el cuarto de segundo pinta pero NO cuenta como actividad: `desktop/tick/roja.rs`
+            CODIGO 2026-09-11 (`Tick::actividad`), metal pendiente: la barra
+            tiene que decir `reposo` con todo quieto
 ```
 
 **Hecho el REPOSO** (`desktop/tick/roja.rs::ceder`): tras 500 vueltas seguidas

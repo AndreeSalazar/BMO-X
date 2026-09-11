@@ -57,6 +57,15 @@ pub(crate) struct Tick {
     /// sesenta por segundo; tres sitios lo hicieron. Ver `loops_per_second`.
     pub loops: u32,
     pub will_paint: bool,
+    /// **Paso algo en esta vuelta**: una tecla, el raton, una superficie nueva
+    /// o repintada, un hijo que nacio o murio. NO el cuarto de segundo.
+    ///
+    /// ** Es una pregunta distinta de `will_paint`, y juntarlas fue W4b del
+    /// plan de vatios: el cuarto de segundo PINTA --el cursor parpadea, la
+    /// barra se pone al dia-- pero no es que pase nada, y metido aqui
+    /// reiniciaba el reposo cada 250 ms. El reposo escucha a esta; el pintor,
+    /// a la otra.
+    pub actividad: bool,
     pub repaint_field: bool,
     /// Where the mouse cursor was left. `u32::MAX` means "nowhere yet".
     pub ax: u32,
@@ -301,6 +310,7 @@ impl Tick {
         Self {
             loops: 0,
             will_paint: false,
+            actividad: false,
             repaint_field: false,
             ax: u32::MAX,
             ay: u32::MAX,

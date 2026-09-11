@@ -782,11 +782,18 @@ pub extern "C" fn _start() -> ! {
         // que un fotograma con el suelo puesto y nada sucio sale por su `return`
         // sin tocar el framebuffer. Lo que se compra es que el escritorio TENGA
         // pulso; lo que no se paga es pintar por pintar.
-        dsk.tick.will_paint = dsk.out.grid.dirty
-            || dsk.tick.quarter
+        // == *** W4b (2026-09-11): PINTAR NO ES LO MISMO QUE PASAR ALGO ======
+        //
+        // El cuarto de segundo pinta, pero NO es actividad. Metido en
+        // `will_paint`, el reposo de `tick/roja.rs::ceder` se reiniciaba cada
+        // 250 ms y no llegaba nunca a sus 500 vueltas quietas: compilaba y no
+        // hacia lo que decia. Ahora son dos preguntas, y el reposo solo
+        // escucha a la primera.
+        dsk.tick.actividad = dsk.out.grid.dirty
             || born
             || dead > 0
             || dsk.table.has_new();
+        dsk.tick.will_paint = dsk.tick.actividad || dsk.tick.quarter;
 
         // -- LA ENTRADA, en dos mitades que no se pueden mezclar --
         //
@@ -803,13 +810,15 @@ pub extern "C" fn _start() -> ! {
             // pulsado. Y sin los dos ultimos, soltar Alt no cuenta como motivo
             // para pintar -- que es justo el fotograma en el que hay que BORRAR
             // el conmutador de Alt+Tab.
-            dsk.tick.will_paint |= g.nt > 0
+            let tocaron = g.nt > 0
                 || g.wheel != 0
                 || g.pos.x != dsk.tick.ax
                 || g.pos.y != dsk.tick.ay
                 || (g.pos.botones != 0) != dsk.tick.button_before
                 || g.alt_alone != dsk.win.alt_before
                 || g.combo != dsk.tick.combo_before;
+            dsk.tick.will_paint |= tocaron;
+            dsk.tick.actividad |= tocaron;
             if dsk.tick.will_paint {
                 dsk.save_under.lift(&p);
             }
