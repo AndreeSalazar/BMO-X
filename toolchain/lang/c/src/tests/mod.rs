@@ -69,6 +69,7 @@ mod flotante_por_lugar;
 mod nunca_adivina;
 mod literales_y_sufijos;
 mod sonda_columnas_de_doom;
+mod sonda_planos_de_doom;
 mod sonda_layout_sha1;
 mod sonda_sha1;
 mod preprocesador;

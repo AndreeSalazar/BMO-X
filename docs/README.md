@@ -170,6 +170,7 @@ Los ocho declaran seguir el metodo de `SMP_MAESTRO.md`.
 | [`RING3_MAESTRO.md`](maestro/RING3_MAESTRO.md) | 08-26 | el censo de lo que corre con privilegio, y que baja |
 | [`GPU_NVIDIA_MAESTRO.md`](maestro/GPU_NVIDIA_MAESTRO.md) | 09-07 | **traducir el driver: imposible. Traducir el PERFIL: ya esta hecho.** Y la GPU no bloquea nada de lo que se esta construyendo |
 | [`DMA_MAESTRO.md`](maestro/DMA_MAESTRO.md) | 09-09 | el **CUANDO**: un bufer es del CPU o del aparato, nunca de los dos -- y de las 40 funciones de Linux sobreviven DOS ideas |
+| [`INTI_Y_LA_GPU.md`](maestro/INTI_Y_LA_GPU.md) | 09-10 | **la unidad no es el REGISTRO, es la PARTE**: con una GPU no se habla, se le deja un paquete y se toca un timbre -- o sea que es el cuarto aparato del NEUTRO |
 | [`IOMMU_MAESTRO.md`](maestro/IOMMU_MAESTRO.md) | 09-09 | el **DONDE**, y su letra pequena: identidad antes que aislamiento, y por que va el ULTIMO |
 
 ---
@@ -285,6 +286,8 @@ se deshace va al final.**
 | [`METAL_RED_PASO_1.md`](metal/METAL_RED_PASO_1.md) | **2026-08-24** | la unica que PREDICE por escrito antes de arrancar |
 | [`METAL_2026-08-24.md`](metal/METAL_2026-08-24.md) | **2026-08-24** | lo que el Ryzen CONTESTO |
 | [`METAL_2026-08-25.md`](metal/METAL_2026-08-25.md) | **2026-08-25** | ★ **la vigente**: lo que hay que teclear, y las DOS que pueden impedir el arranque |
+| [`METAL_2026-09-07.md`](metal/METAL_2026-09-07.md) | **2026-09-07** | la purga: el fallo que ya tenia receta y veredicto |
+| [`METAL_2026-09-10.md`](metal/METAL_2026-09-10.md) | **2026-09-10** | seis preguntas y UN arranque. Contesto: `y callo` en microsegundos, y las 320 columnas de DOOM visitadas -- **el fallo del fondo no esta en las columnas** |
 
 ### ⚠ Las dos cosas que esta tabla existe para decir
 

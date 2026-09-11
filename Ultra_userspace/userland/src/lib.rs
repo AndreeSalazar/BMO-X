@@ -264,6 +264,11 @@ pub const INFO_SMP_MS_APAGADOS: u64 = 0x5E;
 pub const INFO_SMP_CSTATE: u64 = 0x5F;
 /// Siestas que algo corto antes del plazo. Alta en reposo = alguien despierta.
 pub const INFO_SMP_SIESTAS_CORTAS: u64 = 0x60;
+/// Quien es el maestro ajeno `i`: `vendor<<48 | device<<32 | bdf`. Cero si no hay.
+pub const INFO_DMA_AJENO_0: u64 = 0x61;
+pub const INFO_DMA_AJENO_1: u64 = 0x62;
+pub const INFO_DMA_AJENO_2: u64 = 0x63;
+pub const INFO_DMA_AJENO_3: u64 = 0x64;
 /// La frecuencia efectiva del nucleo AHORA, en Hz. `0` = no se puede medir.
 /// Es una MEDIDA: dos lecturas seguidas dan la velocidad de ese intervalo.
 pub const INFO_CPU_HZ_REAL: u64 = 0x20;
