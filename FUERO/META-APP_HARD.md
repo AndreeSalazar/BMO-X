@@ -110,6 +110,30 @@ de 10 MB acaba pesando 400.
 
 *De donde sale*: `docs/componente/LA_MAQUETA_EXIGE.md`.
 
+### R-APP8 -- No pinta lo que no se ve
+
+Si su superficie tiene buzon, lee la VISTA (`bmo_superficie_se_ve`) antes de
+cada fotograma, y si el DIRECTOR dice que no se la ve --minimizada, fuera de la
+pantalla, o con la pantalla prestada a otro-- **no dibuja y no sube su
+`sequence`**. Sigue viva: su logica, su sonido y su entrada corren igual; lo
+unico que se para son los pixeles que nadie iba a mirar.
+
+**Sin esto**: una ventana minimizada dibuja a toda velocidad para nadie. Es lo
+que hacia DOOM hasta el 2026-09-11 -- 960x600 por fotograma, con la ventana en
+la barra.
+
+★ **El veredicto es del DIRECTOR, no de la app**: una app no puede declararse
+vista. La que desobedece no se castiga --su CPU es suya, y quitarle turno
+pararia tambien su logica-- **se acusa**, por su tid. Y el juez se equivoca
+hacia el lado seguro: ante la duda, se ve. Ahorrar menos es aceptable;
+congelar lo que se mira, no.
+
+[!] **El sacrificio (L3)**: al volver a verse, el primer fotograma puede ser el
+ultimo que se entrego -- lo que tarde la app en su siguiente vuelta.
+
+*De donde sale*: `docs/maestro/EFICIENCIA_MAESTRO.md`, 6.8. El juez es
+`bmo_golpe::vista`, con sus pruebas; el byte, el 2 del estado del buzon.
+
 ---
 
 ## 3. Y QUE LE DEVUELVE EL SISTEMA -- la otra mitad del trato
@@ -126,6 +150,7 @@ linea**:
 | decimal exacto en centavos | el COBOL de la casa |
 | una cara declarativa, con su tabla de golpeo | MAQUETA |
 | que un fallo suyo no mate el escritorio | R-APP5 y R-APP6 |
+| saber si se la ve, sin preguntar y sin cruzar una puerta | la VISTA del buzon (R-APP8) |
 | las diez cabeceras con las que se escribe todo lo de arriba | **REX**, [`META-SDK_HARD.md`](META-SDK_HARD.md) |
 
 ★★ **Eso ultimo es lo que ningun framework da**: aqui el aislamiento no es una

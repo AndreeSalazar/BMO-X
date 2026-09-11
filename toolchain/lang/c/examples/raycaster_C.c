@@ -393,6 +393,8 @@ int main() {
     unsigned int *fila;
     int i;
     int vivo;
+    /* R-APP8: el DIRECTOR dice si esta ventana se ve. 1 = pintar. */
+    int se_ve;
     /* La barra de ayuda. Declaradas arriba porque BMO C pide las
      * declaraciones al principio de la funcion, estilo C89. */
     int bx; int by; int bw; int bh;
@@ -536,139 +538,151 @@ int main() {
         col_suelo = 0x00202020;
         if (tema == 0) { col_techo = 0x00060A10; col_suelo = 0x00101010; }
         if (tema == 2) { col_techo = 0x00203040; col_suelo = 0x00384048; }
-        /* -- UNA COLUMNA, UN RAYO --------------------------------------- */
-        x = 0;
-        while (x < ancho) {
-            /* camx va de -1.0 a +1.0 de un borde al otro de la pantalla. */
-            camx = fdiv(2 * x, ancho) - UNO;
-            rayx = dirx + fmul(plax, camx);
-            rayy = diry + fmul(play, camx);
+        /* ** LO QUE NO SE VE, NO SE PINTA (R-APP8 de `META-APP_HARD.md`).
+         *
+         * Con la ventana minimizada, fuera de la pantalla o con la pantalla
+         * prestada a otro, el DIRECTOR lo deja escrito en el buzon y aqui se
+         * salta el dibujo entero: los 256.000 pixeles del mundo y las barras.
+         * La entrada se sigue leyendo y el bucle sigue vivo, asi que al
+         * volver el primer fotograma ya es el de ahora. A pantalla completa
+         * (`sup == 0`) siempre se ve. */
+        se_ve = 1;
+        if (sup != 0) se_ve = bmo_superficie_se_ve(sup);
+        if (se_ve == 1) {
+            /* -- UNA COLUMNA, UN RAYO --------------------------------------- */
+            x = 0;
+            while (x < ancho) {
+                /* camx va de -1.0 a +1.0 de un borde al otro de la pantalla. */
+                camx = fdiv(2 * x, ancho) - UNO;
+                rayx = dirx + fmul(plax, camx);
+                rayy = diry + fmul(play, camx);
 
-            /* Marchar el rayo. Un paso de 1/32 de casilla: suficiente para que
-             * no se cuele por una esquina, y barato. Se para a 20 casillas --
-             * mas lejos no hay nada que ensenar y si mucho que calcular. */
-            t = 0;
-            paso = 2048;
-            golpe = 0;
-            while (t < 20 * UNO) {
-                t = t + paso;
-                mx = (posx + fmul(rayx, t)) >> 16;
-                my = (posy + fmul(rayy, t)) >> 16;
-                if (pared(mx, my) == 1) {
-                    golpe = 1;
-                    /* * `break`, y NO `t = 20 * UNO`.
-                     *
-                     * Salir del bucle asignandole el tope al contador funciona
-                     * --la condicion deja de cumplirse-- pero **borra la unica
-                     * cosa que el bucle habia averiguado**: a que distancia
-                     * estaba la pared. Y como despues se le restaba ese mismo
-                     * tope, `t` valia CERO en todos los golpes. */
-                    break;
+                /* Marchar el rayo. Un paso de 1/32 de casilla: suficiente para que
+                 * no se cuele por una esquina, y barato. Se para a 20 casillas --
+                 * mas lejos no hay nada que ensenar y si mucho que calcular. */
+                t = 0;
+                paso = 2048;
+                golpe = 0;
+                while (t < 20 * UNO) {
+                    t = t + paso;
+                    mx = (posx + fmul(rayx, t)) >> 16;
+                    my = (posy + fmul(rayy, t)) >> 16;
+                    if (pared(mx, my) == 1) {
+                        golpe = 1;
+                        /* * `break`, y NO `t = 20 * UNO`.
+                         *
+                         * Salir del bucle asignandole el tope al contador funciona
+                         * --la condicion deja de cumplirse-- pero **borra la unica
+                         * cosa que el bucle habia averiguado**: a que distancia
+                         * estaba la pared. Y como despues se le restaba ese mismo
+                         * tope, `t` valia CERO en todos los golpes. */
+                        break;
+                    }
                 }
-            }
 
-            if (golpe == 1) {
-                /* `t` YA es la distancia perpendicular: ver la cabecera. */
-                if (t < 2048) t = 2048;
-                /* * SIN `>> 16`, y esto es una leccion de unidades.
+                if (golpe == 1) {
+                    /* `t` YA es la distancia perpendicular: ver la cabecera. */
+                    if (t < 2048) t = 2048;
+                    /* * SIN `>> 16`, y esto es una leccion de unidades.
+                     *
+                     * `fdiv` divide dos numeros en 16.16 y devuelve 16.16. Pero
+                     * aqui el dividendo `alto` son PIXELES --un entero pelado, 768--
+                     * y el divisor `t` si es 16.16, asi que lo que sale ya es un
+                     * entero: (alto<<16) / (d<<16) = alto/d. Desplazar otros 16
+                     * bits daba **cero siempre**, y cero de altura es cielo y suelo
+                     * sin una sola pared. */
+                    altura = fdiv(alto, t);
+                } else {
+                    altura = 0;
+                }
+                if (altura > alto) altura = alto;
+
+                mitad = alto / 2;
+                y0 = mitad - altura / 2;
+                y1 = mitad + altura / 2;
+                /* ** LOS CUATRO TOPES, Y ANTES SOLO HABIA DOS.
                  *
-                 * `fdiv` divide dos numeros en 16.16 y devuelve 16.16. Pero
-                 * aqui el dividendo `alto` son PIXELES --un entero pelado, 768--
-                 * y el divisor `t` si es 16.16, asi que lo que sale ya es un
-                 * entero: (alto<<16) / (d<<16) = alto/d. Desplazar otros 16
-                 * bits daba **cero siempre**, y cero de altura es cielo y suelo
-                 * sin una sola pared. */
-                altura = fdiv(alto, t);
-            } else {
-                altura = 0;
+                 * Estaban `y0 < 0` e `y1 > alto`, que son los que se le ocurren a
+                 * uno pensando en una pared muy alta. Faltaban los otros dos, y son
+                 * los que se recorren cuando `altura` sale NEGATIVA: entonces
+                 * `y0 = mitad - altura/2` se va hacia ARRIBA sin tope --el `y0 < 0`
+                 * no lo ve, porque es positivo y grande-- y el bucle del cielo
+                 * escribe pasado el final del framebuffer.
+                 *
+                 * [!] En el Ryzen eso no es un garabato: el kernel mapea
+                 * EXACTAMENTE `alto * stride * 4` redondeado a pagina
+                 * (`fb.rs::mapped_bytes`), asi que el primer pixel de mas es un
+                 * `#PF` y la tarea muere. Es lo que dejo dos entradas en
+                 * `datos/fallos.txt` el 2026-08-13, las dos `escribiendo`.
+                 *
+                 * Y es de la familia de los que se destapan al arreglar el de
+                 * delante: mientras `altura` valia siempre 0 --el `>>16` de mas del
+                 * 08-08-- este tope no podia hacer falta. */
+                if (y0 < 0) y0 = 0;
+                if (y0 > alto) y0 = alto;
+                if (y1 > alto) y1 = alto;
+                if (y1 < y0) y1 = y0;
+
+                /* El color por distancia: lo unico que da sensacion de profundidad
+                 * cuando no hay texturas. Cerca claro, lejos oscuro. */
+                color = 255 - (t >> 13);
+                if (color < 32) color = 32;
+                if (color > 255) color = 255;
+                color = (color << 16) | (color << 8) | color;
+
+                /* Cielo, pared, suelo. Tres tramos y ni un pixel sin escribir: el
+                 * fotograma anterior esta debajo y no se limpia aparte. */
+                y = 0;
+                while (y < y0) { fb[y * stride + x] = col_techo; y = y + 1; }
+                while (y < y1) { fb[y * stride + x] = color;      y = y + 1; }
+                while (y < alto) { fb[y * stride + x] = col_suelo; y = y + 1; }
+
+                x = x + 1;
             }
-            if (altura > alto) altura = alto;
 
-            mitad = alto / 2;
-            y0 = mitad - altura / 2;
-            y1 = mitad + altura / 2;
-            /* ** LOS CUATRO TOPES, Y ANTES SOLO HABIA DOS.
+            /* COMO SE SALE, DICHO EN LA PANTALLA.
              *
-             * Estaban `y0 < 0` e `y1 > alto`, que son los que se le ocurren a
-             * uno pensando en una pared muy alta. Faltaban los otros dos, y son
-             * los que se recorren cuando `altura` sale NEGATIVA: entonces
-             * `y0 = mitad - altura/2` se va hacia ARRIBA sin tope --el `y0 < 0`
-             * no lo ve, porque es positivo y grande-- y el bucle del cielo
-             * escribe pasado el final del framebuffer.
+             * Seis barras juntas para W A S D Q E y una aparte, en cian, para ESC.
+             * No es adorno: es el fallo de usabilidad que costo una sesion. Este
+             * programa toma la pantalla ENTERA, asi que el escritorio desaparece y
+             * con el el sitio donde uno leeria que hacer. El dueno busco la salida
+             * con Alt+Tab y con Ctrl+Alt, que son atajos del escritorio y aqui no
+             * existen.
              *
-             * [!] En el Ryzen eso no es un garabato: el kernel mapea
-             * EXACTAMENTE `alto * stride * 4` redondeado a pagina
-             * (`fb.rs::mapped_bytes`), asi que el primer pixel de mas es un
-             * `#PF` y la tarea muere. Es lo que dejo dos entradas en
-             * `datos/fallos.txt` el 2026-08-13, las dos `escribiendo`.
+             * El que SI existe pase lo que pase es `Ctrl+Alt+ESC`, y no lo pone
+             * aqui a proposito: lo mira el kernel en `poll_ascii`, antes de que
+             * este programa vea la tecla. Es la red de abajo, no la salida normal
+             * -- si hace falta usarla, este bucle tiene un fallo.
              *
-             * Y es de la familia de los que se destapan al arreglar el de
-             * delante: mientras `altura` valia siempre 0 --el `>>16` de mas del
-             * 08-08-- este tope no podia hacer falta. */
-            if (y0 < 0) y0 = 0;
-            if (y0 > alto) y0 = alto;
-            if (y1 > alto) y1 = alto;
-            if (y1 < y0) y1 = y0;
-
-            /* El color por distancia: lo unico que da sensacion de profundidad
-             * cuando no hay texturas. Cerca claro, lejos oscuro. */
-            color = 255 - (t >> 13);
-            if (color < 32) color = 32;
-            if (color > 255) color = 255;
-            color = (color << 16) | (color << 8) | color;
-
-            /* Cielo, pared, suelo. Tres tramos y ni un pixel sin escribir: el
-             * fotograma anterior esta debajo y no se limpia aparte. */
-            y = 0;
-            while (y < y0) { fb[y * stride + x] = col_techo; y = y + 1; }
-            while (y < y1) { fb[y * stride + x] = color;      y = y + 1; }
-            while (y < alto) { fb[y * stride + x] = col_suelo; y = y + 1; }
-
-            x = x + 1;
-        }
-
-        /* COMO SE SALE, DICHO EN LA PANTALLA.
-         *
-         * Seis barras juntas para W A S D Q E y una aparte, en cian, para ESC.
-         * No es adorno: es el fallo de usabilidad que costo una sesion. Este
-         * programa toma la pantalla ENTERA, asi que el escritorio desaparece y
-         * con el el sitio donde uno leeria que hacer. El dueno busco la salida
-         * con Alt+Tab y con Ctrl+Alt, que son atajos del escritorio y aqui no
-         * existen.
-         *
-         * El que SI existe pase lo que pase es `Ctrl+Alt+ESC`, y no lo pone
-         * aqui a proposito: lo mira el kernel en `poll_ascii`, antes de que
-         * este programa vea la tecla. Es la red de abajo, no la salida normal
-         * -- si hace falta usarla, este bucle tiene un fallo.
-         *
-         * No hay fuente de texto en este ejemplo, asi que se dibujan BARRAS.
-         * No es un manual, pero es mejor que una pantalla que no dice nada. */
-        bh = 6;
-        bw = 26;
-        by = alto - 22;
-        bx = 24;
-        i = 0;
-        /* Solo en pantalla exclusiva: en una ventana la salida es el boton de
-         * cerrar del marco, que ya esta ahi y lo pone el DIRECTOR. Dibujar
-         * ademas estas barras seria ensenar una salida que aqui no existe. */
-        if (sup != 0) i = 6;
-        while (i < 6) {
+             * No hay fuente de texto en este ejemplo, asi que se dibujan BARRAS.
+             * No es un manual, pero es mejor que una pantalla que no dice nada. */
+            bh = 6;
+            bw = 26;
+            by = alto - 22;
+            bx = 24;
+            i = 0;
+            /* Solo en pantalla exclusiva: en una ventana la salida es el boton de
+             * cerrar del marco, que ya esta ahi y lo pone el DIRECTOR. Dibujar
+             * ademas estas barras seria ensenar una salida que aqui no existe. */
+            if (sup != 0) i = 6;
+            while (i < 6) {
+                y = by;
+                while (y < by + bh) {
+                    x = bx;
+                    while (x < bx + bw) { fb[y * stride + x] = 0x00405060; x = x + 1; }
+                    y = y + 1;
+                }
+                bx = bx + bw + 8;
+                i = i + 1;
+            }
+            bx = bx + 22;
             y = by;
+            if (sup != 0) y = by + bh;
             while (y < by + bh) {
                 x = bx;
-                while (x < bx + bw) { fb[y * stride + x] = 0x00405060; x = x + 1; }
+                while (x < bx + bw + 14) { fb[y * stride + x] = 0x0000E5FF; x = x + 1; }
                 y = y + 1;
             }
-            bx = bx + bw + 8;
-            i = i + 1;
-        }
-        bx = bx + 22;
-        y = by;
-        if (sup != 0) y = by + bh;
-        while (y < by + bh) {
-            x = bx;
-            while (x < bx + bw + 14) { fb[y * stride + x] = 0x0000E5FF; x = x + 1; }
-            y = y + 1;
         }
 
         /* -- ENTRADA ------------------------------------------------------
@@ -862,7 +876,7 @@ int main() {
                 hov = menu_fila_en(alto, bmo_superficie_puntero_y(sup));
             }
         }
-        if (menu == 1) menu_pinta(fb, stride, ancho, alto, sel, fov, vel, tema, hov);
+        if (menu == 1 && se_ve == 1) menu_pinta(fb, stride, ancho, alto, sel, fov, vel, tema, hov);
 
         /* ** SEGUIMOS SIENDO LOS DUENOS DE LA PANTALLA?
          *
@@ -897,7 +911,8 @@ int main() {
          * secuencia al empezar seria prometer un dibujo que todavia se esta
          * haciendo, y el peor caso dejaria de ser "se ve el anterior una vuelta
          * mas" para pasar a ser "se ve medio dibujo". */
-        if (sup != 0) bmo_superficie_lista(sup);
+        /* ...y R-APP8: si no se ve, no hay dibujo entero que entregar. */
+        if (sup != 0 && se_ve == 1) bmo_superficie_lista(sup);
 
         /* ** EN VENTANA SE DUERME; CON LA PANTALLA ENTERA SE CEDE.
          *

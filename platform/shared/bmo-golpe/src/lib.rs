@@ -45,8 +45,18 @@
 //! Normalmente la visible ya es menor o igual, pero comprobar las dos cuesta
 //! una comparacion y quita la necesidad de confiar en que quien llama recorto
 //! bien. La frontera de confianza no se reparte entre dos modulos.
+//!
+//! ## Y la segunda pregunta, en su propio fichero: SE VE? (2026-09-11)
+//!
+//! [`vista`] usa la MISMA caja visible para decidir si una ventana se ve
+//! (R-APP8 de `FUERO/META-APP_HARD.md`: lo que no se ve, no se pinta). Vive
+//! aqui porque decidirlo con otra caja seria el ESPEJO que esta casa caza:
+//! una ventana que se puede pulsar y "no se ve", o al reves.
 
 #![no_std]
+
+mod vista;
+pub use vista::{vista, Vista};
 
 /// El interior visible de una ventana, en coordenadas de PANTALLA.
 ///

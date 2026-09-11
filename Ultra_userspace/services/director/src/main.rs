@@ -725,6 +725,20 @@ pub extern "C" fn _start() -> ! {
         // se sabe, no en el siguiente.
         let dead = dsk.table.reap_dead(&mut dsk.tick.dead_boxes);
 
+        // ** R-APP8: LO QUE NO SE VE, NO SE PINTA. Una vez por vuelta el
+        // DIRECTOR decide que se ve de cada caja y se lo deja a su app en el
+        // buzon; la que vuelve a verse se repega con lo ultimo que entrego. Y a
+        // la que sigue pintando oculta se la acusa, una vez por racha.
+        dsk.table.vistas(&p);
+        if dsk.table.acusar() {
+            paint_status(
+                &p,
+                &dsk.run_box,
+                "una ventana oculta sigue pintando (R-APP8): su tid, en la consola",
+                INK_BAD,
+            );
+        }
+
         // ** EL FOCO SE CONVIERTE EN TURNO, Y EN UN SOLO SITIO.
         //
         // Aqui y no en el clic: por el clic no pasa Alt+Tab, y tener la
@@ -845,10 +859,15 @@ pub extern "C" fn _start() -> ! {
                 // `presta` sigue existiendo para forzarlo a
                 // mano, pero ya no hace falta saberselo.
                 if wants_screen(target) {
+                    // R-APP8: con la pantalla prestada no se ve NINGUNA
+                    // ventana, y el DIRECTOR no dara vueltas para decirlo.
+                    // Se deja escrito antes de irse y se deshace al volver.
+                    dsk.table.prestar(&p, true);
                     match lend_screen(p, input.take(), target, cap) {
                         Some((new, ent)) => {
                             p = new;
                             input = ent;
+                            dsk.table.prestar(&p, false);
                             // ** EL ESCRITORIO ENTERO, NO UN RELLENO PLANO.
                             //
                             // Aqui habia un `p.clear(BG)` y nada mas. O
