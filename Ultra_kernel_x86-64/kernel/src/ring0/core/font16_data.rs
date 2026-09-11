@@ -1,4 +1,5 @@
 // [carril]  VERDE     una fuente de 8x16, en una tabla
+// [consumo] NADA      no corre: es una tabla
 // [!] `//` y no `//!` a proposito: esto NO es un modulo. `texto.rs` lo
 // mete con `include!` DENTRO de un `static`, o sea que su contenido es una
 // EXPRESION, y una expresion no admite documentacion de modulo.

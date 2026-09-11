@@ -1,6 +1,7 @@
 //! **EL PRESUPUESTO DE ESTE SILICIO** -- lo que una puerta tiene permitido
 //!
 //! [carril]  AMARILLO  lo que una puerta puede costar; es un numero que se afina
+//! [consumo] NADA      pregunta al silicio en el arranque, o es contrato
 //! costar EN UN RYZEN 5 5600X, y en ningun otro sitio.
 //!
 //! ```text

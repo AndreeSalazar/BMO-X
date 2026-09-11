@@ -1,6 +1,8 @@
 //! **Despertar los otros nucleos.** El bring-up de SMP, del lado bueno de la
 //!
 //! [carril]  ROJO      despertar los otros nucleos
+//! [consumo] APARATO   levanta los otros nucleos y los para; con ellos en pie,
+//!                     cada obrero late (ver crew.rs)
 //! frontera.
 //!
 //! === Por que esto esta aqui y no en `s1_cpu` ===
@@ -47,6 +49,8 @@ pub mod banda;
 /// sabe que dos hilos comparten un nucleo.
 pub mod ficha;
 pub mod crew;
+/// El bucle del obrero: lo que LATE mientras los nucleos estan en pie (L6h).
+pub mod obrero;
 
 // ** LO QUE LE FALTABA A AXION PARA PODER ENCENDER. `crew` dejo escrito el
 // precio --once nucleos girando al 100%-- antes de que existiera la salida;

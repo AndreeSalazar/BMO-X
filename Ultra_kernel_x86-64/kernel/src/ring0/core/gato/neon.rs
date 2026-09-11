@@ -1,6 +1,7 @@
 //! **EL BLOOM DEL GATO** -- lo que convierte un trazo en un tubo de neon.
 //!
 //! [carril]  VERDE     el bloom; equivocarse pinta un gato raro
+//! [consumo] NADA      solo corre en el arranque
 //!
 //! === El fallo, visto en video ===
 //!

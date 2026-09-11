@@ -1,6 +1,7 @@
 //! **CARRIL AMARILLO -- EL MARCADO: de quien es un marco.**
 //!
 //! [carril]  AMARILLO  el nibble BAJO: quien lo tiene, y quien puede soltarlo
+//! [consumo] NADA      corre cuando alguien pide o suelta memoria
 //!
 //! [cuesta]  TAREA -- una etiqueta equivocada rehusa una devolucion buena, y
 //!           un marco que no vuelve es un marco perdido. Uno no se nota; el

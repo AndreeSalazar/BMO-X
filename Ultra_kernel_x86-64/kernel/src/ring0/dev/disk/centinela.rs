@@ -1,6 +1,7 @@
 //! **EL CENTINELA: la prueba que viaja con el trabajo de verdad.**
 //!
 //! [carril]  AMARILLO  vigila UNA pagina que es suya, y avisa con nombre
+//! [consumo] NADA      `mirar` lo llama quien vigila; no arma nada
 //!
 //! [cuesta]  TAREA -- una falsa alarma no rompe nada, pero CABINA guarda 82
 //!           eventos: un centinela que grita sin motivo **vacia el anillo** y se

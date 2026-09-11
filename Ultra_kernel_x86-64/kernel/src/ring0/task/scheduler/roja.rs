@@ -1,6 +1,9 @@
 //! **CARRIL ROJO** -- lo que CAMBIA el estado del planificador.
 //!
 //! [carril]  ROJO      el nombre del fichero ya lo decia; la etiqueta lo hace comprobable
+//! [consumo] NADA      corre cuando alguien cambia de tarea o se duerme:
+//!                     `on_timer` lo llama el tick y `park_until` quien se
+//!                     duerme. La tarea idle vive en plat/smp/dormir.rs (L6h)
 //!
 //! [cuesta]  MAQUINA -- aqui vive el cambio de contexto y `reap`. Un fallo no
 //!           mata una tarea: deja la maquina sin nadie a quien darle el CPU, o
@@ -1140,6 +1143,22 @@ pub fn wait_current_checked(
 }
 
 
+/// **Arranca la tarea IDLE.** Una vez, y cuanto antes: desde este momento
+/// bloquearse bloquea de verdad. Ver la nota de `IDLE`.
+pub fn init_idle() -> Option<u32> {
+    let tid = spawn_kernel(crate::ring0::plat::smp::dormir::idle_thread as *const () as usize as u64, 0, 0)?;
+    let _g = SCHED_LOCK.lock();
+    let s = sched();
+    for i in 0..MAX_TASKS {
+        if s.tasks[i].tid == tid {
+            unsafe { IDLE = i };
+            break;
+        }
+    }
+    Some(tid)
+}
+
+
 /// Kernel-task parking: mark blocked, then `hlt` until scheduled again.
 ///
 /// ** POR QUE NO REPROGRAMA AQUI MISMO, y hay que decirlo: el cambio de
@@ -1154,39 +1173,6 @@ pub fn wait_current_checked(
 /// cada parada**, y hay dos parkers latiendo a 250 Hz. Ver la nota de
 /// `on_timer`: ahora un quantum es de quien CORRE, asi que esto suelta el CPU
 /// en el tick siguiente.
-/// **El cuerpo de la tarea IDLE**: parar el CPU hasta la interrupcion siguiente.
-///
-/// Hasta el 2026-09-11 era `sti; hlt`, o sea C1: el nucleo parado pero
-/// ENCENDIDO. Ahora es `dormir::reposo()`: el mismo `mwaitx` en el C-state mas
-/// profundo que ya usaban los once obreros, con la interrupcion de
-/// despertador -- y `sti; hlt` de reserva si el silicio no trae `MONITORX`.
-/// El BSP era el unico nucleo que trabajaba y el unico que no dormia. Ver
-/// `docs/plan/PLAN_VATIOS.md`, W1.
-///
-/// ** Y no cede ni mide nada: no tiene nada que ceder. Su unico trabajo es
-/// EXISTIR para que `choose_next` tenga siempre a quien darle el turno.
-pub extern "C" fn idle_thread(_arg: u64) -> ! {
-    loop {
-        crate::ring0::plat::smp::dormir::reposo();
-    }
-}
-
-/// **Arranca la tarea IDLE.** Una vez, y cuanto antes: desde este momento
-/// bloquearse bloquea de verdad. Ver la nota de `IDLE`.
-pub fn init_idle() -> Option<u32> {
-    let tid = spawn_kernel(idle_thread as *const () as usize as u64, 0, 0)?;
-    let _g = SCHED_LOCK.lock();
-    let s = sched();
-    for i in 0..MAX_TASKS {
-        if s.tasks[i].tid == tid {
-            unsafe { IDLE = i };
-            break;
-        }
-    }
-    Some(tid)
-}
-
-
 pub fn park_until(deadline_tsc: u64) {
     {
         let _g = SCHED_LOCK.lock();

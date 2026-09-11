@@ -1,6 +1,7 @@
 //! **Las ordenes que tocan el DISCO.** `ls`, `estratos`, `run` y `bex`.
 //!
 //! [carril]  AMARILLO  las ordenes que tocan disco; el trabajo lo hace `launch`
+//! [consumo] NADA      solo corre cuando el dueno teclea la orden
 //!
 //! # Por que estas cuatro van juntas, y por que van las SEGUNDAS
 //!

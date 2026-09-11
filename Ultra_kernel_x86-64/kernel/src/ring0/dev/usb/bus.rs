@@ -1,6 +1,9 @@
 //! **El hilo de kernel que mantiene vivo el bus USB.**
 //!
 //! [carril]  ROJO      el hilo que mantiene vivo el bus
+//! [consumo] LATE      el hilo del bus: 250 vueltas por segundo aunque nadie
+//!                     toque nada. Cada vuelta: el anillo del xHC, audio,
+//!                     salud, rescate, emergencia, purga y radar
 //!
 //! Salio de `dev/usb/mod.rs` el 2026-08-12 por la regla modular. Se puede sacar
 //! solo porque **no toca ni una tecla**: bombea el bus y mira el rescate. Todo

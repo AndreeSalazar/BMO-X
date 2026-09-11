@@ -1,6 +1,7 @@
 //! **EL PORTERO: el libro de quien LLEGO y que se le contesto.**
 //!
 //! [carril]  VERDE     solo apunta y cuenta. No decide nada ni toca el bus
+//! [consumo] NADA      corre cuando alguien lo pide
 //!
 //! [cuesta]  NADA -- doce fichas en RAM y una comparacion por llegada. No lee
 //!           MMIO, no pide memoria y no cambia ni un veredicto: los veredictos

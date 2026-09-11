@@ -1,6 +1,7 @@
 //! **LA PUERTA DE ESTRATOS PARA UN `Archivo`** -- tramo 1.1 del plan.
 //!
 //! [carril]  AMARILLO  la puerta de ESTRATOS para un Archivo
+//! [consumo] NADA      corre cuando una tarea usa el objeto
 //!
 //! generacion: nieto -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
 //! cuanto SABE esta pieza, no quien importa a quien, y por eso el

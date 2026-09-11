@@ -1,6 +1,7 @@
 //! **El LAPIC del BSP**: mandar IPIs y esperar.
 //!
 //! [carril]  ROJO      mandar IPIs y esperar
+//! [consumo] NADA      corre cuando se levantan o se reparten nucleos
 //!
 //! Solo lo usa el que despierta. El AP recien llegado no toca esto -- ver
 //! `tramp::apic_id`, que lo resuelve por CPUID justo por eso.

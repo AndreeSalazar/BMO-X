@@ -1,6 +1,7 @@
 //! **EL TABLERO** -- el panel persistente: la CABINA.
 //!
 //! [carril]  VERDE     el panel persistente, pintado
+//! [consumo] NADA      solo corre en el arranque
 //!
 //! Cuando el arranque termina, la pantalla no se apaga: se queda con un panel
 //! vivo que es el equivalente visual del shell serie. Muestra el estado del

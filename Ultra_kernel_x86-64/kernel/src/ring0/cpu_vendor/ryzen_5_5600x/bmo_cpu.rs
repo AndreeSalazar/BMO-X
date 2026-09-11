@@ -1,6 +1,7 @@
 //! Consolidated BMO CPU API for the Ryzen 5 5600X.
 //!
 //! [carril]  VERDE     la API consolidada de este silicio
+//! [consumo] NADA      pregunta al silicio en el arranque, o es contrato
 //!
 //! Recovers the legacy `bmo_cpu.rs` from the deleted
 //! `crates_Personal/ring0/cpu_vendor_profile/.../bmo_cpu.rs`,

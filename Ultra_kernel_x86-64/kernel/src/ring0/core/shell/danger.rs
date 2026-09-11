@@ -1,6 +1,7 @@
 //! **Lo que NO SE DESHACE.** `ktest`, `panic`, `reboot` y `halt`.
 //!
 //! [carril]  ROJO      `panic`, `reboot` y `halt`: lo que NO se deshace
+//! [consumo] NADA      panic, reboot, halt y ktest: solo si el dueno los teclea
 //!
 //! # Por que estas cuatro tienen fichero propio siendo veintiseis lineas
 //!

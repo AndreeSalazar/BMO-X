@@ -1,6 +1,7 @@
 //! **THE ROLLING LOG** -- the band of text the kernel writes on screen.
 //!
 //! [carril]  VERDE     la banda de texto; equivocarse pinta feo
+//! [consumo] NADA      pinta cuando alguien escribe
 //!
 //! === Why this is a file of its own ===
 //!

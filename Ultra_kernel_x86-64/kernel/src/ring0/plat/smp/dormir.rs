@@ -1,6 +1,8 @@
 //! **DORMIR EN VEZ DE GIRAR: lo que le faltaba a AXION para poder ENCENDER.**
 //!
 //! [carril]  ROJO      duerme un nucleo. Si no despierta, ese nucleo no vuelve
+//! [consumo] APAGA     en reposo ES lo que duerme: la tarea idle del BSP y el
+//!                     mwaitx de los obreros. W6 (C2 por puerto) entra aqui
 //!
 //! [cuesta]  MAQUINA -- un obrero que se duerme y no despierta deja a
 //!           `crew::reparte` esperando en su barrera **para siempre**, y eso no
@@ -395,6 +397,29 @@ pub fn reposo() {
         TICKS_REPOSO.fetch_add(super::ficha::ciclos().wrapping_sub(t0), Ordering::Relaxed);
     }
     REPOSOS.fetch_add(1, Ordering::Relaxed);
+}
+
+/// **El cuerpo de la tarea IDLE**: parar el CPU hasta la interrupcion siguiente.
+///
+/// Vive aqui y no en el planificador desde el 2026-09-11 (L6h): es LO que
+/// duerme la maquina en reposo, y su mecanismo --[`reposo`]-- esta justo
+/// encima. En `task/scheduler/roja.rs` era la unica pieza que APAGA dentro de
+/// un fichero que corre cuando alguien lo pide. El planificador la sigue
+/// arrancando (`init_idle`) y eligiendo (`choose_next`); lo que hace cuando le
+/// toca se decide aqui.
+///
+/// Hasta el 2026-09-11 era `sti; hlt`. Ahora es [`reposo`]: el mismo `mwaitx`
+/// que los obreros, con la interrupcion de despertador, y `sti; hlt` de
+/// reserva si el silicio no trae `MONITORX`. [!] En este Ryzen ese `mwaitx`
+/// llega a C1 y no mas (`CPUID 5 EDX = 0x11`): la misma profundidad que
+/// `hlt`. La profundidad de verdad es W6 de `docs/plan/PLAN_VATIOS.md`.
+///
+/// ** Y no cede ni mide nada: no tiene nada que ceder. Su unico trabajo es
+/// EXISTIR para que `choose_next` tenga siempre a quien darle el turno.
+pub extern "C" fn idle_thread(_arg: u64) -> ! {
+    loop {
+        reposo();
+    }
 }
 
 /// **Cuantas veces durmio hondo el BSP.** 0 = sin `MONITORX`, o nunca estuvo ocioso.

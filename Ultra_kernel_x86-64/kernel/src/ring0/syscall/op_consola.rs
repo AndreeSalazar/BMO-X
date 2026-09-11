@@ -1,6 +1,7 @@
 //! **LA CONSOLA**: escribir en ella y leer de ella.
 //!
 //! [carril]  VERDE     escribir en la consola y leer de ella
+//! [consumo] NADA      corre solo cuando una tarea cruza la puerta
 //!
 //! ## Por que sale del despachador (L6b)
 //!

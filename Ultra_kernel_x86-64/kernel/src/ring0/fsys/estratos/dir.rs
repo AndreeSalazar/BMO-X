@@ -1,6 +1,7 @@
 //! **DIRECTORIES** -- names, and what they point at.
 //!
 //! [carril]  VERDE     nombres, y a donde apuntan
+//! [consumo] NADA      corre cuando alguien lee o escribe un fichero
 //!
 //! === Why this is a file of its own ===
 //!

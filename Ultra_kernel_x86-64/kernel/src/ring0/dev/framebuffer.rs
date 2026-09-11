@@ -1,6 +1,8 @@
 //! Framebuffer driver ? UEFI GOP + static backbuffer.
 //!
 //! [carril]  AMARILLO  GOP y backbuffer; la geometria la pone el firmware
+//! [consumo] NADA      pinta cuando alguien pinta; la grafica la gobierna el
+//!                     firmware
 
 /// Local pixel format enum (replaces the legacy `bmo_boot_protocol::PixelFormat`).
 #[repr(u32)]

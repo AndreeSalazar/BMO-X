@@ -1,6 +1,7 @@
 //! **TOMAR Y SOLTAR UN APARATO EXCLUSIVO**: la entrada, la pantalla y el audio.
 //!
 //! [carril]  ROJO      tomar y soltar la pantalla, la entrada y el audio
+//! [consumo] NADA      corre solo cuando una tarea cruza la puerta
 //!
 //! ## Por que estas siete van juntas (L6b)
 //!

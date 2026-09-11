@@ -1,6 +1,8 @@
 //! **ENCENDER EL BUS USB**: esperar a que un puerto declare algo, y enumerar.
 //!
 //! [carril]  ROJO      encender el bus y enumerar: sin esto no hay teclado
+//! [consumo] APARATO   enciende el xHC (Run/Stop) y lo deja corriendo; hoy
+//!                     nadie lo para
 //!
 //! ## Por que soy un fichero (L6b)
 //!

@@ -2,6 +2,8 @@
 //!
 //! [carril]  ROJO      es la unica parte del reloj que ACTUA. Todo lo demas
 //!           mide, y medir mal no para nada
+//! [consumo] APAGA     `ceder` es donde el escritorio duerme: el latido, o en
+//!                     reposo 8 ms por vuelta (L6h)
 //!
 //! [cuesta]  MAQUINA -- y esta probado el mismo dia que se escribio. Las dos
 //!           averias de este fichero salieron de aqui: una se quedo el nucleo

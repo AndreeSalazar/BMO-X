@@ -1,6 +1,7 @@
 //! **LA FICHA DE CADA OBRERO: quien es, y que lleva hecho AHORA MISMO.**
 //!
 //! [carril]  AMARILLO  aqui escriben ONCE nucleos a la vez y lee el BSP
+//! [consumo] NADA      corre cuando se levantan o se reparten nucleos
 //!
 //! [cuesta]  NADA -- de aqui no sale ni un cambio de propiedad, ni un mapeo, ni
 //!           una decision. Solo se contesta quien es cada obrero y cuanto

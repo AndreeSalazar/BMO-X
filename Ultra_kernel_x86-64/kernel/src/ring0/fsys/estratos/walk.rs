@@ -1,6 +1,7 @@
 //! **FOLLOWING THE POINTERS** -- how ESTRATOS reads a chain of blocks.
 //!
 //! [carril]  AMARILLO  seguir punteros por una cadena de bloques
+//! [consumo] NADA      corre cuando alguien lee o escribe un fichero
 //!
 //! === Why this is a file of its own ===
 //!

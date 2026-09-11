@@ -1,6 +1,7 @@
 //! **WHO HOLDS THE DISK** -- one owner at a time, and a count of the thefts.
 //!
 //! [carril]  ROJO      un dueno cada vez, y la cuenta de los robos
+//! [consumo] NADA      corre cuando alguien lee o escribe el disco
 //!
 //! === Why this is a file of its own ===
 //!

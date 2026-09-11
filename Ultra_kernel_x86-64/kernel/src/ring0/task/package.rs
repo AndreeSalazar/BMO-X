@@ -1,6 +1,7 @@
 //! **De donde salio cada proceso** -- para que pueda leer su propia caja.
 //!
 //! [carril]  VERDE     de donde salio cada proceso
+//! [consumo] NADA      corre cuando alguien lanza o admite una tarea
 //!
 //! ## Que problema resuelve
 //!

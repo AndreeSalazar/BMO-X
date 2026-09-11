@@ -1,6 +1,7 @@
 //! **THE WATCHES** -- and yes, this is polling, with a reason.
 //!
 //! [carril]  AMARILLO  las vigilancias, y son sondeo con motivo escrito
+//! [consumo] NADA      vigila cuando CABINA se pinta; no arma ningun reloj
 //!
 //! === Why this is a file of its own ===
 //!

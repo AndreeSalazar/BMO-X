@@ -1,6 +1,7 @@
 //! El estado extendido del CPU: que hay, cuanto ocupa y si el perfil acerto.
 //!
 //! [carril]  ROJO      XSAVE/XRSTOR. El #GP del 25-08 salio de aqui
+//! [consumo] NADA      pregunta al silicio en el arranque, o es contrato
 //!
 //! ## Por que existe este modulo
 //!

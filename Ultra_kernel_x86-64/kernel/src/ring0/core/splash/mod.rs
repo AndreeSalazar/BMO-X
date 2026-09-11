@@ -1,6 +1,7 @@
 //! El SPLASH de Ring 0 -- lo que se ve cuando UEFI termina.
 //!
 //! [carril]  VERDE     el reparto del splash
+//! [consumo] NADA      solo corre en el arranque
 //!
 //! ## ** ESTE FICHERO TENIA 1.503 LINEAS, Y ESO ERA EL PROBLEMA
 //!

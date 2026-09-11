@@ -2,6 +2,7 @@
 //!
 //! [carril]  ROJO      publica direcciones FISICAS que doce nucleos van a
 //!                     escribir sin preguntar nada mas
+//! [consumo] NADA      corre cuando se levantan o se reparten nucleos
 //!
 //! [cuesta]  MAQUINA -- un encargo mal publicado no falla: **escribe**. Doce
 //!           obreros escribiendo por el espejo en una fisica equivocada no dan

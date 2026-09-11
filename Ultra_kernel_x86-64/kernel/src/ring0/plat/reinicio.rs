@@ -1,6 +1,7 @@
 //! Reiniciar la maquina. Tres intentos, del mas limpio al mas bruto.
 //!
 //! [carril]  ROJO      reiniciar la maquina, del mas limpio al mas bruto
+//! [consumo] NADA      solo cuando el dueno reinicia
 //!
 //! ## Por que tres y no uno
 //!

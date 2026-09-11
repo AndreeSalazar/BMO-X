@@ -1,6 +1,8 @@
 //! USB HID bridge: xHCI controller + boot-protocol keyboard/mouse en Ring 0.
 //!
 //! [carril]  ROJO      el xHCI y el puente HID: el teclado del dueno cuelga de aqui
+//! [consumo] NADA      el puente HID: corre cuando alguien pregunta por una
+//!                     tecla
 //!
 //! Motivo: la emulacion USB->PS/2 del firmware MSI muere tras ExitBootServices
 //! (el i8042 solo entrega ruido: 0xFE/0x6D), asi que el teclado y el mouse

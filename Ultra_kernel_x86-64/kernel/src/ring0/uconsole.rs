@@ -1,6 +1,7 @@
 //! Ring 3 bootstrap console.
 //!
 //! [carril]  AMARILLO  la consola de arranque de Ring 3
+//! [consumo] NADA      la consola de arranque de Ring 3: corre cuando escribe
 //!
 //! The frozen syscall surface exposes no "print" call -- text output is a
 //! capability operation. Until a real display-server estuary exists, the

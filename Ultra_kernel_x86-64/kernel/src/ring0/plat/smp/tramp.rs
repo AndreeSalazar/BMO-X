@@ -1,6 +1,7 @@
 //! **El trampolin**: de 16 bits a 64, y donde aterriza el AP.
 //!
 //! [carril]  ROJO      el trampolin de 16 bits a 64. Un byte mal y el AP no aterriza
+//! [consumo] NADA      corre cuando se levantan o se reparten nucleos
 //!
 //! === [!] El fallo que hundia a la version vieja ===
 //!
@@ -207,5 +208,5 @@ pub extern "C" fn smp_ap_entrada() -> ! {
     // el orden de llegada; el APIC dice DONDE VIVE. Sin el segundo, un
     // reparto no puede saber que dos obreros comparten nucleo -- que es
     // justo lo que hace que doce partes iguales sean una mentira.
-    super::crew::obrero(indice, id)
+    super::obrero::obrero(indice, id)
 }

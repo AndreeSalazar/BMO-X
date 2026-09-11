@@ -3,6 +3,7 @@
 //! [carril]  AMARILLO  es un instrumento: si miente no falla, CONVENCE. Un
 //!                     fichero de caida con las lineas equivocadas manda la
 //!                     investigacion al sitio que no es
+//! [consumo] NADA      apunta o pinta cuando alguien lo llama
 //! [cuesta]  NADA      un byte y un incremento por cada byte que sale a pantalla.
 //!                     Ni disco, ni bloqueo, ni interrupcion
 //! [riesgo]  AJENO     depende de que la PLACA conserve la DRAM en un reinicio

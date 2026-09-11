@@ -1,6 +1,7 @@
 //! Cache and TLB topology for the Ryzen 5 5600X.
 //!
 //! [carril]  VERDE     topologia de cache y TLB, en una tabla
+//! [consumo] NADA      pregunta al silicio en el arranque, o es contrato
 //!
 //! Recovers the legacy `cache_topology.rs` from the deleted
 //! `crates_Personal/ring0/cpu_vendor_profile/.../cache_topology.rs`,

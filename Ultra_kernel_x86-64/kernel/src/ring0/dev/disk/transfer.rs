@@ -1,6 +1,7 @@
 //! **MOVING THE BYTES** -- read, DMA, and the bounce buffer.
 //!
 //! [carril]  ROJO      mueve los bytes: DMA y bounce buffer
+//! [consumo] NADA      corre cuando alguien lee o escribe el disco
 //!
 //! === Why this is a file of its own ===
 //!

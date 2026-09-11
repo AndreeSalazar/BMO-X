@@ -3,6 +3,7 @@
 //! [carril]  ROJO      **ESCRIBE en la configuracion de PCI**: retira el bit
 //!                     de MAESTRO DEL BUS. Es el unico sitio de este kernel que
 //!                     le quita a un aparato el permiso de llegar a la memoria
+//! [consumo] NADA      censa el bus en el arranque
 //!
 //! [cuesta]  MAQUINA -- retirarselo a quien no debia no da un error: deja un
 //!           aparato mudo. Si ese aparato es un PUENTE, deja mudo TODO LO QUE

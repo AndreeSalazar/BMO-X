@@ -3,6 +3,7 @@
 //! generacion: nieto -- es POLITICA, no driver. No habla con ningun aparato:
 //!
 //! [carril]  ROJO      la patada. Si esto falla, no queda ningun rescate detras
+//! [consumo] NADA      la patada: solo cuando el dueno la pide
 //!
 //! [cuesta]  APARATO -- decide QUITARLE la pantalla a quien la tenga. Un
 //!           disparo de mas deja al dueno sin escritorio hasta que teclee

@@ -1,6 +1,7 @@
 //! `KIND_ARCHIVO` -- **leer y escribir lo que hay dentro**, como capability.
 //!
 //! [carril]  ROJO      leer y ESCRIBIR lo que hay dentro
+//! [consumo] NADA      corre cuando una tarea usa el objeto
 //!
 //! generacion: nieto -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
 //! cuanto SABE esta pieza, no quien importa a quien, y por eso el

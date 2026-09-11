@@ -1,5 +1,9 @@
 //! **El compositor de BMO.** El proceso Ring 3 que es dueno de la pantalla.
 //!
+//! [consumo] LATE      el bucle del escritorio: mil vueltas por segundo sobre el
+//!                     LATIDO, y en cada una sondea la entrada. Donde duerme lo
+//!                     decide `desktop/tick/roja.rs` (L6h)
+//!
 //! ## La caja
 //!
 //! No hay terminal. Habia uno planeado --`apps/terminal`, doce lineas de

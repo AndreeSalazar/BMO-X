@@ -1,6 +1,7 @@
 //! **`placa` -- lo que el firmware le cuenta a BMO-X.**
 //!
 //! [carril]  VERDE     cuenta lo que el firmware declara
+//! [consumo] NADA      solo corre cuando el dueno teclea la orden
 //!
 //! ## Por que es un fichero y no un trozo de `hardware.rs` (L6a, L6b)
 //!

@@ -1,6 +1,8 @@
 //! **LAS TRES OPERACIONES QUE MANDAN SOBRE LA MAQUINA**: los nucleos, el sello
 //!
 //! [carril]  ROJO      los nucleos, el reposo y la red: manda sobre la maquina
+//! [consumo] NADA      las puertas de AXION: corren cuando alguien las pide; el
+//!                     que enciende nucleos es plat/smp
 //! de ESTRATOS y la administracion del disco.
 //!
 //! ## Por que salen del despachador (L6a, L6b)

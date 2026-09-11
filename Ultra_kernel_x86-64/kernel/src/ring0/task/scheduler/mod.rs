@@ -1,6 +1,7 @@
 //! Fixed-capacity scheduler with real context switching at trap boundaries.
 //!
 //! [carril]  VERDE     el reparto de los dos carriles de al lado
+//! [consumo] NADA      corre cuando alguien cambia de tarea o se duerme
 //!
 //! Design rule: **a context switch only ever happens at a trap boundary**
 //! (timer IRQ or SYSCALL). Voluntary operations from kernel tasks just mark

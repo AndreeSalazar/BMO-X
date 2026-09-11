@@ -1,6 +1,7 @@
 //! El informe del sistema, servido a Ring 3.
 //!
 //! [carril]  AMARILLO  lo que el kernel le cuenta a Ring 3; crece cada semana
+//! [consumo] NADA      contesta cuando Ring 3 pregunta
 //!
 //! ## Por que esto baja de anillo
 //!

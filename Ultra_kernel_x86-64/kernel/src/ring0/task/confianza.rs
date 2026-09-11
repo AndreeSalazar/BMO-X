@@ -1,6 +1,7 @@
 //! **EN QUIEN CONFIA ESTA MAQUINA.** El ancla, y hoy esta vacia.
 //!
 //! [carril]  ROJO      el ancla de confianza de esta maquina
+//! [consumo] NADA      corre cuando alguien lanza o admite una tarea
 //!
 //! # Por que este fichero existe, y por que estaba a punto de no existir
 //!

@@ -1,6 +1,7 @@
 //! Ring 0 BEX admission gate.
 //!
 //! [carril]  ROJO      el gate de admision de una imagen BEX
+//! [consumo] NADA      corre cuando alguien lanza o admite una tarea
 //!
 //! This module performs the allocation-free part of loading a BEX image:
 //! validate the x86-64/ABI contract and create a fixed-size mapping plan.

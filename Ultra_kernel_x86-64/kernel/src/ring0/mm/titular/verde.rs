@@ -1,6 +1,7 @@
 //! **CARRIL VERDE -- LAS CUENTAS: lo que solo MIRA.**
 //!
 //! [carril]  VERDE     `cubiertos`, `vuelos` y `neutros`
+//! [consumo] NADA      corre cuando alguien pide o suelta memoria
 //!
 //! [cuesta]  NADA -- ni un `mut` sale de aqui. Equivocarse devuelve un numero
 //!           feo a quien pregunto, y decide ese quien (L6e)

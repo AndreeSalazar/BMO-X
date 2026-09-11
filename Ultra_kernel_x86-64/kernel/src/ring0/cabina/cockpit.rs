@@ -1,6 +1,8 @@
 //! **THE COCKPIT** -- what CABINA looks like on the screen.
 //!
 //! [carril]  AMARILLO  lo que CABINA ensena; se toca cada vez que falta un dato
+//! [consumo] NADA      pinta cuando lo llaman; en reposo lo llama la espera del
+//!                     shell en cada vuelta, y late ESA
 //!
 //! === Why this is a file of its own, and it is the biggest ===
 //!

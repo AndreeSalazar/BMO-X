@@ -1,6 +1,7 @@
 //! **LA ESCENA** -- la intro de arranque, pintada.
 //!
 //! [carril]  VERDE     la intro; se toca por gusto y no rompe nada
+//! [consumo] NADA      solo corre en el arranque
 //!
 //! ## El reparto con `bmo-ciudad`, que es lo que hace que esto se pueda ajustar
 //!

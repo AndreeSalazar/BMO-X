@@ -1,6 +1,8 @@
 //! Ring 0 ownership of the shared BMO Channel pages.
 //!
 //! [carril]  ROJO      las paginas compartidas del Channel
+//! [consumo] NADA      `service_all` lo llama el tick: late plat/timer.rs, no
+//!                     este
 //!
 //! generacion: nieto -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
 //! cuanto SABE esta pieza, no quien importa a quien, y por eso el

@@ -1,6 +1,7 @@
 //! **EL PORTERO DEL BUS: que hay enchufado, y quien puede alcanzar la RAM.**
 //!
 //! [carril]  VERDE     ni una linea de codigo: dos `mod` y sus reexportaciones
+//! [consumo] NADA      censa el bus en el arranque
 //!
 //! [cuesta]  NADA -- aqui no se ejecuta nada. Lo unico que puede estar mal es
 //!           un nombre, y un nombre mal escrito no llega a arrancar: lo para el

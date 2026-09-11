@@ -77,6 +77,9 @@ import argparse
 from contrato_ley import *  # noqa: F401,F403
 from contrato_rex import *  # noqa: F401,F403
 from contrato_drivers import *  # noqa: F401,F403
+# R21 (L6h, el consumo en reposo) nacio aqui dentro y L6a la echo el mismo dia:
+# `contrato.py` cruzo las 1.000 lineas, igual que con R20. Ver su cabecera.
+from contrato_consumo import *  # noqa: F401,F403
 import os
 import re
 import sys
@@ -568,21 +571,8 @@ def r10_el_semaforo(ficheros):
     return quejas
 
 
-def ficheros_de_ring0():
-    """`{ruta: texto}` de todo `.rs` de Ring 0. El semaforo los cubre TODOS."""
-    d = os.path.join(raiz(), RING0_DIR.replace("/", os.sep))
-    if not os.path.isdir(d):
-        return {}
-    fuera = {}
-    for dirpath, dirnames, filenames in os.walk(d):
-        dirnames[:] = [x for x in dirnames if x not in ("target", ".git")]
-        for n in sorted(filenames):
-            if not n.endswith(".rs"):
-                continue
-            ruta = os.path.join(dirpath, n)
-            with open(ruta, "r", encoding="utf-8", errors="replace") as f:
-                fuera[os.path.relpath(ruta, raiz()).replace(os.sep, "/")] = f.read()
-    return fuera
+# `ficheros_de_ring0()` vive en `contrato_ley.py` desde el 2026-09-11, al lado
+# de `RING0_DIR`: la leen R8, R10 y R21, y no es de ninguna de las tres.
 
 
 def r9_los_carriles_del_modulo(carpetas):
@@ -959,6 +949,11 @@ def comprobar():
                for q in r18_los_carriles_fuera_del_kernel(
                    vias_fuera, CARRILES_FUERA_DEL_KERNEL)]
     quejas += [("R10 L6g el semaforo de Ring 0", q) for q in r10_el_semaforo(r0)]
+    # ** R21: EL CONSUMO, y su nota -- la lista de lo que gasta en reposo, que
+    # sale en cada build para que crecer se vea sin que nadie pregunte.
+    q21, n21 = comprobar_consumo(r0)
+    quejas += q21
+    notas += n21
     rex = cabeceras_de_rex()
     quejas += [("R11 L6g el semaforo de REX", q) for q in r11_el_semaforo_de_rex(rex)]
     vias_rex = carpetas_de_carriles_rex()

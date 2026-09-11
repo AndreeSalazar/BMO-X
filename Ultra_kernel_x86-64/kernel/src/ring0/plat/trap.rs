@@ -1,6 +1,7 @@
 //! Unified trap frame -- the single context representation for every Ring 0
 //!
 //! [carril]  ROJO      el marco de contexto unico de todo Ring 0
+//! [consumo] NADA      el marco de cada trap: corre cuando entra uno
 //! entry (SYSCALL, IRQ, first switch into a task).
 //!
 //! Both trap entries push 15 GPRs in the same order, then hand control to a

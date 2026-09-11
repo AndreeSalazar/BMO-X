@@ -1,6 +1,7 @@
 //! `cpu_vendor::features` -- what this silicon offers, and what BMO takes.
 //!
 //! [carril]  VERDE     junta lo que ofrece con lo que se coge
+//! [consumo] NADA      pregunta al silicio en el arranque, o es contrato
 //!
 //! Sits **on top of the CPU profile that is already registered**: `profile.rs`
 //! declares what we expect, `xsave.rs` asks the silicon about the extended

@@ -1,6 +1,7 @@
 //! Per-CPU storage, addressed through GS after `swapgs`.
 //!
 //! [carril]  ROJO      el almacen por nucleo, direccionado por GS tras swapgs
+//! [consumo] NADA      corre cuando alguien lanza o admite una tarea
 //!
 //! Ring 0 runs with `GS_BASE = &PerCpu` and `KERNEL_GS_BASE = 0` (the user
 //! GS). Trap entries from Ring 3 execute `swapgs` first; entries that

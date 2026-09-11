@@ -1,6 +1,7 @@
 //! **LA SALUD DEL BUS, COMO ESTADO.** La sexta exigencia (E6) de
 //!
 //! [carril]  VERDE     la salud del bus, como estado que se consulta
+//! [consumo] NADA      `refrescar` lo llama el hilo del bus: late bus.rs
 //! `docs/componente/EL_TECLADO_EXIGE.md`.
 //!
 //! === Por que este fichero existe, dicho de una vez ===

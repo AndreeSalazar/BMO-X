@@ -1,6 +1,7 @@
 //! **QUIEN me lanzo** -- para poder ofrecerle mi superficie.
 //!
 //! [carril]  VERDE     quien me lanzo
+//! [consumo] NADA      corre cuando alguien lanza o admite una tarea
 //!
 //! ## Que problema resuelve
 //!

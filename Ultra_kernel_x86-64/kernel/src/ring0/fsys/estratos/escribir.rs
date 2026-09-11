@@ -1,6 +1,7 @@
 //! **CREAR UN FICHERO EN ESTRATOS.** La mitad que toca el disco.
 //!
 //! [carril]  ROJO      la mitad que toca el disco. Escribir ES commitear
+//! [consumo] NADA      corre cuando alguien lee o escribe un fichero
 //!
 //! [eje]     CORRECCION -- lo pide una persona y escribe en el almacen
 //! [exige]   la seccion 5 del diseno (el paso que falta para 1.0), L7 (el

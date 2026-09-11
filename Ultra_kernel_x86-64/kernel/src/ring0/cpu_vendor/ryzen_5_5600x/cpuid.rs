@@ -1,6 +1,7 @@
 //! CPUID detection for the Ryzen 5 5600X (Vermeer, Zen 3, Family 19h).
 //!
 //! [carril]  VERDE     deteccion por CPUID: leer y contestar
+//! [consumo] NADA      pregunta al silicio en el arranque, o es contrato
 //!
 //! Recovers the legacy `cpuid_detection.rs` from the deleted
 //! `crates_Personal/ring0/cpu_vendor_profile/...` tree, adapted to

@@ -1,6 +1,7 @@
 //! **`banda` -- cuanto ancho de banda tiene de verdad esta memoria.**
 //!
 //! [carril]  AMARILLO  la medida de ancho de banda, y una medida se afina
+//! [consumo] NADA      solo corre cuando el dueno teclea la orden
 //!
 //! ## Por que fichero propio (L6b)
 //!

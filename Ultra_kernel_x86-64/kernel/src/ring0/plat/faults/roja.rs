@@ -1,6 +1,7 @@
 //! **CARRIL ROJO** -- si esto falla no hay pantalla que contarlo.
 //!
 //! [carril]  ROJO      el nombre del fichero ya lo decia; la etiqueta lo hace comprobable
+//! [consumo] NADA      solo corre cuando algo falla
 //!
 //! [cuesta]  MAQUINA -- aqui viven la IDT, los stubs de excepcion y el
 //!           reparto. Un descriptor mal puesto no da un fallo: da un TRIPLE

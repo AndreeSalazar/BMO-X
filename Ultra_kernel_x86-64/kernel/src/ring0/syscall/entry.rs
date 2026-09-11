@@ -1,6 +1,7 @@
 //! **THE DOOR ITSELF** -- the naked entry stub and its installation.
 //!
 //! [carril]  ROJO      LA PUERTA: el stub desnudo y su instalacion
+//! [consumo] NADA      la puerta: corre cuando alguien la cruza, nunca sola
 //!
 //! generacion: abuelo -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
 //! cuanto SABE esta pieza, no quien importa a quien, y por eso el

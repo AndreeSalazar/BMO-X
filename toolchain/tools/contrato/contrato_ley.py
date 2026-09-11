@@ -118,6 +118,43 @@ SEMAFORO = ("ROJO", "AMARILLO", "VERDE")
 COLOR_DEL_NOMBRE = {"roja": "ROJO", "amarilla": "AMARILLO", "verde": "VERDE"}
 RING0_DIR = "Ultra_kernel_x86-64/kernel/src/ring0"
 
+# -- R21 / L6h: EL CONSUMO, 2026-09-11 ----------------------------------------
+#
+# El dueno: *"dividir en archivos que consumen y no, por motivos"*. El eje es
+# UNO: en reposo, este codigo corre?
+#
+#    NADA      no corre por su cuenta: se pide, es del arranque, o no corre
+#    APAGA     en reposo ES lo que duerme la maquina
+#    APARATO   enciende o para una pieza de hardware, y la deja asi
+#    LATE      arma un bucle o un reloj propio: corre aunque nadie pida nada
+#
+# ** Late el que ARMA, no el que es llamado -- la de L6e ("instrumentar no
+# contagia el coste") en el eje del consumo. Por eso la lista de lo que gasta en
+# reposo es corta y se puede leer.
+CONSUMO = ("NADA", "APAGA", "APARATO", "LATE")
+
+
+def ficheros_de_ring0():
+    """`{ruta: texto}` de todo `.rs` de Ring 0. El semaforo los cubre TODOS.
+
+    Vivia en `contrato.py` y se mudo aqui, al lado de `RING0_DIR`, el 11-09: la
+    leen R8, R10 y R21, y moverla fue lo que devolvio `contrato.py` por debajo
+    de las 1.000 lineas (L6a). Texto movido, no reescrito.
+    """
+    d = os.path.join(raiz(), RING0_DIR.replace("/", os.sep))
+    if not os.path.isdir(d):
+        return {}
+    fuera = {}
+    for dirpath, dirnames, filenames in os.walk(d):
+        dirnames[:] = [x for x in dirnames if x not in ("target", ".git")]
+        for n in sorted(filenames):
+            if not n.endswith(".rs"):
+                continue
+            ruta = os.path.join(dirpath, n)
+            with open(ruta, "r", encoding="utf-8", errors="replace") as f:
+                fuera[os.path.relpath(ruta, raiz()).replace(os.sep, "/")] = f.read()
+    return fuera
+
 # -- R18: los carriles TAMBIEN fuera del kernel, 2026-09-08 -------------------
 #
 # ** L6g nacio mirando a Ring 0 porque alli vive lo que puede parar la maquina.
