@@ -259,6 +259,10 @@ struct Codegen {
     /// * Este programa RECLAMA LA PANTALLA. Lo deduce el compilador; acaba en
     /// `BefFlags::WANTS_SCREEN` y lo lee el compositor antes de lanzarlo.
     quiere_pantalla: bool,
+    /// * Y este programa SABE COMPONERSE: pregunta por su padre
+    /// (`BMO_OP_MI_PADRE`), que es lo que hace `bmo_superficie_crear` para
+    /// ofrecerle la ventana. Con las dos, `WANTS_SCREEN` NO se pone: ver abajo.
+    sabe_componerse: bool,
     /// Las relocations ya resueltas que van en la seccion `Relocs` del BEF.
     relocs: Vec<bmo_abi::bef::relocations::Relocation>,
     instruction_end: usize,
@@ -312,6 +316,7 @@ impl Codegen {
             relocs_a_funcion: Vec::new(),
             relocs_a_global: Vec::new(),
             quiere_pantalla: false,
+            sabe_componerse: false,
             relocs: Vec::new(),
             instruction_end: 0, string_data_end: 0,
             stdlib_imports: std::collections::HashSet::new(),
@@ -837,6 +842,11 @@ impl Codegen {
                 if (name == "bmo_valor" || name == "bmo_codigo") && args.len() >= 2 {
                     if let Expr::Int(0x09) = args[1] {
                         self.quiere_pantalla = true;
+                    }
+                    // `0x26` es `BMO_OP_MI_PADRE`: solo lo pregunta quien va a
+                    // OFRECER una superficie a quien lo lanzo.
+                    if let Expr::Int(0x26) = args[1] {
+                        self.sabe_componerse = true;
                     }
                 }
                 for a in args { self.collect_expr_strings(a); }
@@ -1709,7 +1719,16 @@ impl Codegen {
         // * La bandera de la pantalla, deducida al recorrer el programa. Ver
         // `BefFlags::WANTS_SCREEN`: la pone el compilador y no el autor para que
         // diga lo que el programa HACE y no lo que promete.
-        if self.quiere_pantalla {
+        //
+        // ** Y NO SE PONE si el programa ademas sabe componerse (2026-09-11).
+        // Un programa con los DOS caminos --ventana si alguien compone,
+        // pantalla entera si no-- lanzado desde el escritorio pide la ventana
+        // y nunca la pantalla. Con la bandera puesta, el DIRECTOR se apartaba
+        // ANTES de lanzarlo y se quedaba treinta segundos esperando una
+        // reclamacion que no iba a llegar: pantalla negra, y luego la ventana.
+        // La bandera dice lo que el programa HACE, y lo que hace un programa
+        // con los dos caminos es preferir la ventana.
+        if self.quiere_pantalla && !self.sabe_componerse {
             b.header.flags |= bmo_abi::bef::header::BefFlags::WANTS_SCREEN.bits();
         }
 
