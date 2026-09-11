@@ -270,7 +270,7 @@ impl Parser {
     /// ejecutar.
     fn indice_constante(&mut self) -> Result<usize, CError> {
         match self.advance() {
-            Token::IntLit(n) if n >= 0 => Ok(n as usize),
+            Token::IntLit(n, _) if n >= 0 => Ok(n as usize),
             Token::Ident(name) => match self.enum_constants.get(&name) {
                 Some(&v) if v >= 0 => Ok(v as usize),
                 _ => Err(CError::new(

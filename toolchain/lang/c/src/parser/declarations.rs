@@ -543,7 +543,7 @@ impl Parser {
             if *self.peek() == Token::Colon {
                 self.advance();
                 match self.advance() {
-                    Token::IntLit(_) => {}
+                    Token::IntLit(_, _) => {}
                     t => return Err(CError::new(self.line(), format!(
                         "'{mname}:': la anchura de un campo de bits es un numero, no {t:?}"))),
                 }

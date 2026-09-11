@@ -172,6 +172,9 @@ impl Codegen {
             // ** `E1 op= E2` con la direccion de `E1` calculada UNA vez.
             Expr::AssignOp(lvalue, kind, rhs) => self.emit_assign_op(lvalue, *kind, rhs),
             Expr::AssignSubscript(name, index, val) => {
+                // La puerta SSE: si el elemento es flotante, se guarda por xmm0.
+                let lv = Expr::Subscript(name.clone(), index.clone());
+                if self.emit_guardar_flotante(&lv, val) { return; }
                 self.emit_expr(val);          // rax = valor
                 self.code.push(0x50);         // push valor
                 self.emit_subscript_addr(name, index); // rax = direccion
@@ -187,6 +190,9 @@ impl Codegen {
                 self.emit_load_elem(&elem.clone());
             }
             Expr::AssignIndexPtr(base, index, val) => {
+                // La puerta SSE: si el elemento es flotante, se guarda por xmm0.
+                let lv = Expr::IndexPtr(base.clone(), index.clone());
+                if self.emit_guardar_flotante(&lv, val) { return; }
                 let elem = &self.pointee_type(base).unwrap_or(TypeSpec::Long);
                 self.emit_expr(val);          // rax = valor
                 self.code.push(0x50);         // push valor
@@ -198,10 +204,21 @@ impl Codegen {
             Expr::Field(base, campo) => self.emit_leer_campo(base, campo, Por::Valor),
             Expr::Arrow(ptr, campo) => self.emit_leer_campo(ptr, campo, Por::Puntero),
             Expr::AssignField(base, campo, val) => {
+                // La puerta SSE: si el elemento es flotante, se guarda por xmm0.
+                let lv = Expr::Field(base.clone(), campo.clone());
+                if self.emit_guardar_flotante(&lv, val) { return; }
                 self.emit_guardar_campo(base, campo, Por::Valor, val)
             }
-            Expr::AssignDeref(addr, val) => self.emit_guardar_por_puntero(addr, val),
+            Expr::AssignDeref(addr, val) => {
+                // La puerta SSE: si el elemento es flotante, se guarda por xmm0.
+                let lv = Expr::Deref(addr.clone());
+                if self.emit_guardar_flotante(&lv, val) { return; }
+                self.emit_guardar_por_puntero(addr, val)
+            }
             Expr::AssignArrow(ptr, campo, val) => {
+                // La puerta SSE: si el elemento es flotante, se guarda por xmm0.
+                let lv = Expr::Arrow(ptr.clone(), campo.clone());
+                if self.emit_guardar_flotante(&lv, val) { return; }
                 self.emit_guardar_campo(ptr, campo, Por::Puntero, val)
             }
             _ => unreachable!("el despacho de emit_expr y este carril no dicen lo mismo"),

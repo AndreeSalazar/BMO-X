@@ -447,7 +447,28 @@ impl Parser {
         let tok_line = self.line(); // linea del token que vamos a consumir
         let tok = self.advance();
         match tok {
-            Token::IntLit(n) => Ok(Expr::Int(n)),
+            // *** UN SUFIJO ES UN TIPO, y aqui se convierte en uno.
+            //
+            // El estandar dice que `1UL` **tiene tipo** `unsigned long`, ni mas
+            // ni menos. Asi que el sufijo no se guarda en el nodo: se
+            // desazucara a `(unsigned long)1`, que es la misma frase escrita
+            // con una forma que este arbol ya entiende.
+            //
+            // ** Y por eso este arreglo no anade un caso a ningun juez.
+            // `tipo_de`, `expr_is_float` y `expr_is_unsigned` llevan un brazo
+            // para `Expr::Cast` desde el principio -- el dato faltaba, no la
+            // maquinaria.
+            //
+            //   > Cuando la forma que hace falta ya existe en el arbol, el
+            //   > arreglo no es escribir codigo: es dejar de tirar un dato.
+            Token::IntLit(n, suf) => Ok(match suf {
+                crate::lexer::Suf::Ninguno => Expr::Int(n),
+                crate::lexer::Suf::U => Expr::Cast(TypeSpec::UnsignedInt, Box::new(Expr::Int(n))),
+                crate::lexer::Suf::L => Expr::Cast(TypeSpec::Long, Box::new(Expr::Int(n))),
+                crate::lexer::Suf::UL => {
+                    Expr::Cast(TypeSpec::UnsignedLong, Box::new(Expr::Int(n)))
+                }
+            }),
             Token::FloatLit(f) => Ok(Expr::FloatLit(f)),
             Token::StringLit(s) => Ok(Expr::StringLit(s)),
             Token::CharLit(c) => Ok(Expr::CharLit(c)),
