@@ -140,7 +140,7 @@ imprime `42`, y la fila lo EJECUTA.
 
 ### [x] HECHO el 2026-08-09 -- se tomo el CAMINO A, y con un matiz
 
-El formateador vive en **`toolchain/forge/sem-asm/tables/stdio.h`**, escrito en
+El formateador vive en **`toolchain/forge/sem-asm/tables/standards/C/stdio.h`**, escrito en
 C, y el codegen desvia ahi el `printf` cuyo formato no es literal. De la tabla
 de sintetizadas solo hizo falta **una** entrada nueva, `bmo_escribir`, que saca
 a la consola un bufer que no existia al compilar -- su cuerpo es

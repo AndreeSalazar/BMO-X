@@ -17,8 +17,8 @@
                                         dice en que FASE aparece su fallo
    toolchain/lang/c/examples/           los 17 programas de la casa: sondas,
                                         medidas y muestras. Ejercen la fabrica
-   toolchain/forge/sem-asm/tables/      LO QUE C PROMETE: <stdio.h>, <stdlib.h>,
-                                        <string.h>, <stdint.h>... y REX (bmo/*.h)
+   toolchain/forge/sem-asm/tables/      LO QUE C PROMETE, en standards/C/: <stdio.h>,
+                                        <stdint.h>... y REX en bmo/. Ver su README
 
    LA EXPANSION -- lo que USA la fabrica y no es de la casa
    ------------------------------------------------------------------------
@@ -62,7 +62,7 @@ seria una segunda puerta.
 
 # 3. LO QUE SE HIZO EL 2026-09-11
 
-**Seis cabeceras ISO C se mudaron a la fabrica**: `stdint.h`, `limits.h`,
+**Seis cabeceras ISO C se mudaron a la fabrica** --a `tables/standards/C/`, junto a las otras siete y donde el resolutor ya miraba primero--: `stdint.h`, `limits.h`,
 `stdbool.h`, `assert.h`, `errno.h`, `inttypes.h`. Vivian en
 `doom-port/include/standards/C/` con la cabecera *"minimal, for probing BMO C
 against DOOM"* -- y no son de DOOM: son lo que BMO C promete. DOOM fue solo el
