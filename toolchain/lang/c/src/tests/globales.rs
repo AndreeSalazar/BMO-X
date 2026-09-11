@@ -280,3 +280,111 @@ fn una_tabla_de_structs_reserva_el_tamano_de_todos() {
                   printf(\"%d,%d,%d\", tabla[3].y, tabla[0].x, centinela); return 0; }";
     assert_eq!(run_c(fuente), "77,1,999");
 }
+
+// == *** UN PUNTERO A AGREGADO, EN EL NIVEL DE FICHERO (2026-09-10) ==========
+//
+// Estas seis filas nacieron **de un fallo al escribir otra sonda**, no de leer
+// el parser. Al escribir las casillas del recorte de DOOM con `struct c *e;`
+// suelto, el frontend contesto *"expected type, got Ident(e)"* -- y el tipo
+// estaba perfecto.
+//
+// ```text
+//    struct c *p;              NO compilaba      <- y es C de manual
+//    struct c *f(void) { }     NO compilaba
+//    struct c u;               si
+//    struct c a[4];            si
+//    typedef struct {} c; c *p;   si
+//    int *p;                   si
+// ```
+//
+// ** La rama de `struct` del nivel de fichero pedia un NOMBRE detras del tag,
+// se encontraba el asterisco, y el `if let` fallaba en silencio dejando el
+// nombre suelto para la vuelta siguiente. De ahi el mensaje, que apunta al
+// nombre cuando lo que sobraba era el `*`.
+//
+// *** Y DOOM NO LO PISA -- declara todo con `typedef` (`cliprange_t*`,
+// `seg_t*`), y esa rama si va por el camino general. O sea que el hueco llevaba
+// ahi desde el principio, **tapado por un estilo de escritura**.
+//
+//   > Una limitacion que solo aparece con un estilo no se descubre leyendo: se
+//   > descubre escribiendo distinto.
+//
+// El arreglo no anade un caso: QUITA el desvio. Esta rama existe por el
+// agregado POR VALOR, que es lo unico que el camino general no sabe hacer; un
+// puntero a agregado es una palabra de maquina y ese camino lleva sabiendo
+// declararlos desde siempre.
+
+/// El puntero a struct declarado FUERA de toda funcion, y usado dentro.
+#[test]
+fn un_puntero_a_struct_se_declara_en_el_nivel_de_fichero() {
+    let fuente = "struct c { int v; }; struct c *p; struct c u; \
+                  int main() { u.v = 7; p = &u; printf(\"%d\", p->v); return 0; }";
+    assert_eq!(run_c(fuente), "7");
+}
+
+/// Y una funcion que DEVUELVE uno. No es el agregado por valor --eso sigue
+/// diciendo que no con su nombre-- es una direccion.
+#[test]
+fn una_funcion_devuelve_un_puntero_a_struct() {
+    let fuente = "struct c { int v; }; struct c u; \
+                  struct c *f(void) { return &u; } \
+                  int main() { u.v = 9; printf(\"%d\", f()->v); return 0; }";
+    assert_eq!(run_c(fuente), "9");
+}
+
+/// `union` por el mismo camino: la rama es la misma y el fallo era el mismo.
+#[test]
+fn un_puntero_a_union_tambien() {
+    let fuente = "union c { int v; }; union c *p; union c u; \
+                  int main() { u.v = 3; p = &u; printf(\"%d\", p->v); return 0; }";
+    assert_eq!(run_c(fuente), "3");
+}
+
+/// Dos niveles, que es lo que hace falta para una lista de listas.
+#[test]
+fn un_puntero_a_puntero_a_struct_en_el_nivel_de_fichero() {
+    let fuente = "struct c { int v; }; struct c **q; struct c *p; struct c u; \
+                  int main() { u.v = 5; p = &u; q = &p; \
+                  printf(\"%d\", (*q)->v); return 0; }";
+    assert_eq!(run_c(fuente), "5");
+}
+
+/// Y la coma, que es donde el camino general gana: `struct c *a, *b;` reparte
+/// el asterisco por DECLARADOR, no por tipo base.
+#[test]
+fn dos_punteros_a_struct_separados_por_una_coma() {
+    let fuente = "struct c { int v; }; struct c *a, *b; struct c u; struct c w; \
+                  int main() { u.v = 1; w.v = 2; a = &u; b = &w; \
+                  printf(\"%d,%d\", a->v, b->v); return 0; }";
+    assert_eq!(run_c(fuente), "1,2");
+}
+
+/// ** Y LO QUE SIGUE DICIENDO QUE NO, que es la mitad que hace util a la otra.
+///
+/// Devolver un agregado POR VALOR pide un puntero oculto que no esta escrito, y
+/// se rechaza **con el nombre de la funcion delante**. Si esta fila se pone
+/// roja, el arreglo de arriba se llevo por delante una negativa que existia.
+#[test]
+fn devolver_un_struct_por_valor_sigue_diciendo_que_no() {
+    let fuente = "struct c { int v; }; struct c f(void) { struct c u; return u; } \
+                  int main() { return 0; }";
+    let e = compile_source_to_bef(fuente).expect_err("tiene que decir que no");
+    assert!(
+        e.message.contains("por valor"),
+        "el motivo tiene que nombrar el por valor, y dice: {}",
+        e.message
+    );
+}
+
+/// Y definir el cuerpo Y declarar un puntero en la misma frase se rechaza
+/// **diciendo que falta**, no apuntando al asterisco.
+#[test]
+fn el_cuerpo_y_el_asterisco_en_la_misma_frase_se_rechazan_con_motivo() {
+    let fuente = "struct c { int v; } *p; int main() { return 0; }";
+    let e = compile_source_to_bef(fuente).expect_err("tiene que decir que no");
+    assert!(
+        e.message.contains("en la misma frase"),
+        "el motivo tiene que decir QUE falta, y dice: {}",
+        e.message
+    );
+}

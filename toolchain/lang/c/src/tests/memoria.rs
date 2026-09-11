@@ -416,19 +416,25 @@ int main(){ struct par v[3]; struct par *tope;
  printf(\"%d %d\", v[2].a, v[2].b); return 0; }"), "41 42");
 }
 
-/// [!] LIMITE DECLARADO, no fallo silencioso: un PROTOTIPO que devuelve
-/// `struct X *` no parsea -- *"expected type, got Ident"*. Con `typedef` si.
+/// *** ERA UN LIMITE DECLARADO, Y EL 2026-09-10 DEJO DE SERLO.
 ///
-/// ** Se fija como casilla porque lo importante es que **rechaza diciendolo**,
-/// que es la diferencia entre un hueco y un bug. Y no bloquea a DOOM: sus
-/// cabeceras declaran `side_t *getSide(...)`, o sea por alias.
-#[test] fn s7_prototipo_que_devuelve_struct_crudo_se_rechaza_diciendolo() {
-    let e = crate::compile_source_to_bef(
-        "struct par { int a; int b; };
-         struct par *dame(int i);
-         int main() { return 0; }",
-    ).expect_err("hoy no se parsea");
-    assert!(e.message.contains("expected type"), "tiene que decir QUE no entiende: {}", e.message);
+/// Hasta hoy esta casilla exigia un **"no"**: un prototipo que devuelve
+/// `struct X *` sin alias no parseaba. Se fijaba asi para que el hueco no se
+/// volviera un cero callado, y no bloqueaba a DOOM --sus cabeceras declaran
+/// `side_t *getSide(...)`, o sea por alias--.
+///
+/// ** El hueco se cerro: la rama de `struct` del nivel de fichero mandaba al
+/// camino general todo menos el asterisco, y ahora manda tambien ese. Asi que
+/// la fila **cambia de lado**: de exigir un no a ejercer la capacidad.
+///
+///   > Una casilla que fija un limite tiene fecha de caducidad por diseno. El
+///   > dia que el limite cae, no se borra: se da la vuelta.
+#[test] fn s7_un_prototipo_devuelve_un_puntero_a_struct_crudo() {
+    assert_eq!(run_c("struct par { int a; int b; };
+struct par v[2];
+struct par *dame(int i);
+int main(){ v[1].a=8; v[1].b=9; printf(\"%d %d\", dame(1)->a, dame(1)->b); return 0; }
+struct par *dame(int i){ return &v[i]; }"), "8 9");
 }
 
 /// Y la misma forma CON alias, que es la que usa DOOM: compila.
@@ -500,16 +506,20 @@ int main(){
   return 0; }"), "7 8 9 3");
 }
 
-/// [!] LIMITE DECLARADO, gemelo del de `s7`: un puntero GLOBAL a `struct X`
-/// sin alias no parsea. Se fija para que siga siendo un "no" y no se convierta
-/// un dia en un cero callado.
-#[test] fn r3b_puntero_global_a_struct_crudo_se_rechaza_diciendolo() {
-    let e = crate::compile_source_to_bef(
-        "struct cr { int first; int last; };
-         struct cr *fin;
-         int main() { return 0; }",
-    ).expect_err("hoy no se parsea");
-    assert!(e.message.contains("expected type"), "tiene que decir QUE no entiende: {}", e.message);
+/// *** GEMELO DE `s7`, y cayo el mismo dia: un puntero GLOBAL a `struct X` sin
+/// alias ya parsea. La fila pasa de exigir un "no" a ejercer la forma **cruda**
+/// de `newend`, que es la unica que no se estaba probando.
+#[test] fn r3b_puntero_global_a_struct_crudo_que_avanza() {
+    assert_eq!(run_c("struct cr { int first; int last; };
+struct cr seg[8];
+struct cr *fin;
+int main(){
+  fin = seg + 2;
+  fin->first = 7; fin->last = 8;
+  fin++;
+  fin->first = 9;
+  printf(\"%d %d %d %d\", seg[2].first, seg[2].last, seg[3].first, (int)(fin - seg));
+  return 0; }"), "7 8 9 3");
 }
 
 #[test] fn r4_el_bucle_de_busqueda_del_recorte() {
@@ -544,6 +554,25 @@ int main(){
 /// [!] No compara contra un compilador de referencia --no hay ninguno a mano--
 /// sino contra una PROPIEDAD: un rango guardado nunca puede tener el principio
 /// despues del final. Eso no depende de quien compile.
+///
+/// # ** Y DECIA "PORTADO TAL CUAL" CON UNA LINEA QUE NO LO ERA (2026-09-10)
+///
+/// El crunch estaba escrito `start++[1] = next[0];` y DOOM escribe:
+///
+/// ```c
+///    while (next++ != newend)
+///        *++start = *next;
+/// ```
+///
+/// Las dos formas hacen lo mismo --se comprobo-- pero **esa no es la cuestion**.
+/// La gracia entera de esta casilla es que el codigo sea el de DOOM: si la
+/// forma que se prueba no es la forma que se compila, el verde de aqui no dice
+/// nada del binario que corre en el Ryzen.
+///
+///   > Una sonda que dice "tal cual" y no lo es no prueba de menos: prueba
+///   > otra cosa, y lo hace con la cara de estar probando esta.
+///
+/// Ahora es la linea de DOOM, letra por letra, y sigue en verde.
 #[test]
 fn el_recorte_del_bsp_de_doom_no_produce_rangos_invertidos() {
     let salida = run_c(
@@ -630,7 +659,7 @@ crunch:
     if (next == start)
         return;
     while (next++ != newend)
-        start++[1] = next[0];
+        *++start = *next;
     newend = start + 1;
 }
 
