@@ -43,6 +43,11 @@ pub(crate) use ring::*;
 /// THE ATTEMPT: the only thing in CABINA with a lifetime. Its `Drop` marks it
 /// "left OPEN" -- the absence of an ending IS the report.
 pub(crate) mod attempt;
+/// LA CAIDA: lo ultimo que dijo la maquina, en RAM que sobrevive al reinicio.
+/// Es la respuesta a *"que escriba en tiempo real"*: no cuesta nada mientras
+/// vive, y se lee cuando vuelve. Ver su cabecera -- es una hipotesis sobre la
+/// placa hasta que el Ryzen conteste.
+pub mod caida;
 pub use attempt::*;
 /// THE BLACK BOX: the ring, on the disk. The only part that survives a power
 /// cut, and the only one that can fail for reasons unrelated to logging.

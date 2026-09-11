@@ -193,6 +193,22 @@ pub fn init(ctx: &BootContext) {
         reserve_range(fb_start, fb_tail);
     }
     reserve_range(0xFEC0_0000, 0x140_0000); // LAPIC / I/O APIC / HPET window up to 4 GiB
+    // *** LA CAJA NEGRA EN RAM (2026-09-11). Se reserva ANTES de que nadie pida
+    // un marco, y se abre AQUI --no en CABINA-- porque abrirla es leer memoria
+    // fisica y este es el sitio que sabe si esa memoria existe. La region
+    // tiene que caer entera en un tramo de RAM usable del mapa: si no, se
+    // dice y no se abre, en vez de leer MMIO como si fuera texto.
+    reserve_range(crate::ring0::cabina::caida::BASE, crate::ring0::cabina::caida::BYTES);
+    let en_ram = {
+        let (b, e) = (
+            crate::ring0::cabina::caida::BASE,
+            crate::ring0::cabina::caida::BASE + crate::ring0::cabina::caida::BYTES,
+        );
+        ctx.memory_map[..ctx.memory_map_count as usize]
+            .iter()
+            .any(|m| m.kind == 1 && m.base <= b && e <= m.base + m.size)
+    };
+    crate::ring0::cabina::caida::abrir(en_ram);
     if ctx.ring3_payload_phys != 0 {
         reserve_range(ctx.ring3_payload_phys, ctx.ring3_payload_size);
     }

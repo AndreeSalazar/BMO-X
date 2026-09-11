@@ -269,6 +269,10 @@ pub const INFO_DMA_AJENO_0: u64 = 0x61;
 pub const INFO_DMA_AJENO_1: u64 = 0x62;
 pub const INFO_DMA_AJENO_2: u64 = 0x63;
 pub const INFO_DMA_AJENO_3: u64 = 0x64;
+/// Bytes que la RAM conservo del arranque anterior (ya en CAIDA.TXT). 0 = sin rastro.
+pub const INFO_CAIDA_RECUPERADO: u64 = 0x65;
+/// Arranques que ha visto la caja negra en RAM. Si sube, la RAM sobrevive.
+pub const INFO_CAIDA_GENERACION: u64 = 0x66;
 /// La frecuencia efectiva del nucleo AHORA, en Hz. `0` = no se puede medir.
 /// Es una MEDIDA: dos lecturas seguidas dan la velocidad de ese intervalo.
 pub const INFO_CPU_HZ_REAL: u64 = 0x20;
