@@ -1,6 +1,7 @@
 //! Cargar un `.bex` de disco y admitirlo como proceso. **Sin pintar nada.**
 //!
 //! [carril]  ROJO      cargar un .bex de disco y admitirlo
+//! [consumo] NADA      corre cuando alguien lanza o admite una tarea
 //!
 //! ## Por que esto es un modulo y no una funcion del shell
 //!

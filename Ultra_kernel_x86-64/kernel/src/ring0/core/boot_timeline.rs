@@ -1,6 +1,7 @@
 //! # BOOT TIMELINE -- where the boot time actually goes
 //!
 //! [carril]  VERDE     cuenta a donde se fue el tiempo de arranque
+//! [consumo] NADA      solo cuenta el arranque
 //!
 //! ## Why this exists
 //!

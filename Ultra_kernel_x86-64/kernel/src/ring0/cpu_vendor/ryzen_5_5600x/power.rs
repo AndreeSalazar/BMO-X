@@ -1,6 +1,7 @@
 //! **Los contadores de energia de este Zen 3, y solo de este.**
 //!
 //! [carril]  VERDE     los contadores de energia de este Zen 3
+//! [consumo] NADA      lee los MSR de energia cuando alguien pregunta
 //!
 //! Escalon 2 de la seccion 9 de `docs/maestro/AXION_MAESTRO.md`.
 //!

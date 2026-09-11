@@ -1,6 +1,7 @@
 //! **EL TEXTO** -- la fuente de 8x16 y las cadenas.
 //!
 //! [carril]  VERDE     la fuente y las cadenas
+//! [consumo] NADA      solo corre en el arranque
 //!
 //! ## Que hace aqui y no en el lienzo
 //!

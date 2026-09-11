@@ -1,7 +1,9 @@
 //! **El reparto de trabajo.** Lo unico que separa doce nucleos encendidos de
+//! doce nucleos que sirven para algo.
 //!
 //! [carril]  ROJO      el reparto de trabajo entre nucleos
-//! doce nucleos que sirven para algo.
+//! [consumo] NADA      reparte una faena cuando alguien la pide; el bucle del
+//!                     obrero, que es lo que late, vive en obrero.rs (L6h)
 //!
 //! === El hueco que tapa ===
 //!
@@ -40,6 +42,10 @@
 //!
 //! === [!] El precio, dicho antes de que se note ===
 //!
+//! [!] **Superado el 2026-09-10**: el obrero ya duerme con `MWAITX`
+//! (`dormir.rs`), y desde el 11-09 su bucle vive en `obrero.rs`. Lo de abajo
+//! se conserva porque es el precio que justifico el cambio.
+//!
 //! Un obrero en espera **gira** (`pause`), no duerme. Sacarlo de `hlt` pediria
 //! una IPI, y para atender una IPI un AP necesita GS por-CPU y su propia TSS --
 //! que es justo el trabajo que este modulo evita. Consecuencia real y medible:
@@ -55,11 +61,11 @@ use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 ///
 /// Se guarda como numero y no como `fn` porque un `AtomicPtr` a funcion no
 /// existe y aqui no hace falta mas: el BSP publica, los obreros leen.
-static TAREA: AtomicU64 = AtomicU64::new(0);
+pub(super) static TAREA: AtomicU64 = AtomicU64::new(0);
 /// En cuantas partes se ha cortado el trabajo (contando la del BSP).
-static PARTES: AtomicU32 = AtomicU32::new(0);
+pub(super) static PARTES: AtomicU32 = AtomicU32::new(0);
 /// Cuantos obreros han terminado su parte.
-static HECHOS: AtomicU32 = AtomicU32::new(0);
+pub(super) static HECHOS: AtomicU32 = AtomicU32::new(0);
 /// Una celda SOLA en su linea de cache de 64 bytes.
 ///
 /// == *** POR QUE HACE FALTA, y lo dijo el metal (2026-09-10) ============
@@ -81,7 +87,7 @@ static HECHOS: AtomicU32 = AtomicU32::new(0);
 ///   > Compartir una linea de cache no es compartir un dato. Es compartir
 ///   > una interrupcion que nadie escribio.
 #[repr(align(64))]
-struct Sola(AtomicU32);
+pub(super) struct Sola(pub(super) AtomicU32);
 
 /// Sube con cada encargo. Es lo que distingue *"hay trabajo nuevo"* de *"sigue
 /// el de antes"* sin tener que borrar nada entre medias.
@@ -89,9 +95,9 @@ struct Sola(AtomicU32);
 /// ** Va SOLA en su linea a proposito -- ver `Sola`. Es la unica celda que
 /// vigila el `monitor` de los obreros, asi que es la unica que tiene que
 /// estar limpia de vecinos.
-static RONDA: Sola = Sola(AtomicU32::new(0));
+pub(super) static RONDA: Sola = Sola(AtomicU32::new(0));
 /// Cuando se pone, los obreros vuelven a `hlt` y no salen mas.
-static PARAR: AtomicBool = AtomicBool::new(false);
+pub(super) static PARAR: AtomicBool = AtomicBool::new(false);
 
 // =============== LOS TESTIGOS ===============
 //
@@ -113,9 +119,9 @@ static PARAR: AtomicBool = AtomicBool::new(false);
 // Es el metodo de las cinco sondas de XSAVE: un instrumento que puede MATAR la
 // hipotesis vale mas que uno que la confirma.
 /// Cuantos obreros han llegado vivos al bucle de trabajo.
-static ENTRARON: AtomicU32 = AtomicU32::new(0);
+pub(super) static ENTRARON: AtomicU32 = AtomicU32::new(0);
 /// Cuantas veces un obrero ha visto una ronda nueva y se ha puesto a ella.
-static VIERON: AtomicU32 = AtomicU32::new(0);
+pub(super) static VIERON: AtomicU32 = AtomicU32::new(0);
 
 /// `(entraron, vieron, hechos)` -- los tres testigos del ultimo reparto.
 pub fn testigos() -> (u32, u32, u32) {
@@ -128,72 +134,6 @@ pub fn testigos() -> (u32, u32, u32) {
 
 /// La forma de una faena: `(mi parte, de cuantas)`.
 pub type Faena = fn(u32, u32);
-
-/// **El bucle del obrero.** No vuelve.
-///
-/// `indice` es 0..n-1 entre los APs; su parte es `indice + 1` porque la parte
-/// `0` se la queda el BSP, que tambien trabaja -- tener un nucleo mirando como
-/// trabajan los otros es desperdiciar justo el mas caliente de cache.
-pub fn obrero(indice: u32, apic: u32) -> ! {
-    // Lo primero que hace un obrero es decir que existe. Antes el unico
-    // testigo era `VIVOS`, y ese se incrementa en el trampolin -- o sea, dice
-    // que el nucleo arranco, no que llegara hasta aqui.
-    ENTRARON.fetch_add(1, Ordering::SeqCst);
-    // Y de paso deja dicho QUIEN es: el indice es orden de llegada, el
-    // APIC es domicilio. Ver `ficha`.
-    super::ficha::alta(indice, apic);
-    let mut vista = 0u32;
-    loop {
-        if PARAR.load(Ordering::SeqCst) {
-            // Punto de no retorno: sin IPI no hay quien lo despierte, y volver
-            // a llamarlo es un INIT+SIPI entero. Esta bien asi -- es la forma
-            // honesta de "desactivar" con lo que hay.
-            super::ficha::marcar(indice, super::ficha::PARADO);
-            loop {
-                unsafe { core::arch::asm!("cli; hlt", options(nomem, nostack)) };
-            }
-        }
-        let r = RONDA.0.load(Ordering::SeqCst);
-        if r != vista {
-            vista = r;
-            let f = TAREA.load(Ordering::SeqCst);
-            let partes = PARTES.load(Ordering::SeqCst);
-            let mia = indice + 1;
-            if f != 0 && mia < partes {
-                // Se apunta ANTES de la faena: si el obrero muere dentro, la
-                // diferencia entre `VIERON` y `HECHOS` es exactamente cuantos
-                // se quedaron por el camino.
-                VIERON.fetch_add(1, Ordering::SeqCst);
-                // ** El estado se pone ANTES y el reloj se lee ANTES: un
-                // obrero que se cuelga dentro de la faena se queda en
-                // TRABAJANDO, que en el panel se distingue de ESPERANDO.
-                // Apuntar solo al terminar haria que colgarse y no tener
-                // trabajo se vieran igual.
-                super::ficha::marcar(indice, super::ficha::TRABAJANDO);
-                let t0 = super::ficha::ciclos();
-                let faena: Faena = unsafe { core::mem::transmute(f) };
-                faena(mia, partes);
-                super::ficha::apuntar(indice, super::ficha::ciclos().wrapping_sub(t0));
-                HECHOS.fetch_add(1, Ordering::SeqCst);
-            }
-        }
-        // == *** AQUI SE DEJA DE QUEMAR UN NUCLEO (2026-09-10) ============
-        //
-        // Esta linea era `spin_loop()`, o sea `pause`, o sea **el nucleo al
-        // 100% sin hacer nada**. La cabecera de este fichero lo dejo escrito
-        // como precio antes de que existiera la salida.
-        //
-        // ** Y la salida no es `hlt`: lo que se espera aqui no es una
-        // interrupcion, es UNA ESCRITURA en `RONDA`. `MWAITX` despierta por
-        // escritura y no pide ni GS por-CPU ni TSS -- que era justo el trabajo
-        // que este modulo evita. Ver `dormir.rs`.
-        //
-        // [!] Se le pasa `vista`, que es la ronda que este obrero YA atendio.
-        // Si `RONDA` ya no vale eso, hay trabajo y no se duerme. Ese segundo
-        // vistazo va DENTRO de `esperar`, despues de armar el `monitor`.
-        super::dormir::esperar(&RONDA.0, vista);
-    }
-}
 
 /// **Reparte una faena y espera a que acabe.**
 ///

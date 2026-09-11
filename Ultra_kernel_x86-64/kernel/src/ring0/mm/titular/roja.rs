@@ -2,6 +2,7 @@
 //!
 //! [carril]  ROJO      el nibble ALTO del byte: ponerlo, quitarlo y saber de
 //!                     quien es
+//! [consumo] NADA      corre cuando alguien pide o suelta memoria
 //!
 //! [cuesta]  MAQUINA -- un bit mal puesto aqui deja un bufer reasignado
 //!           mientras un aparato escribe dentro. No es una tarea perdida: es

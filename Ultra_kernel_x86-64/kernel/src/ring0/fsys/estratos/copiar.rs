@@ -1,6 +1,7 @@
 //! **TRAER UN FICHERO DE FUERA** y dejarlo escrito en ESTRATOS.
 //!
 //! [carril]  ROJO      trae un fichero de fuera y lo ESCRIBE
+//! [consumo] NADA      corre cuando alguien lee o escribe un fichero
 //!
 //! === Por que esto existe, y no es "mandar mas bytes" ===
 //!

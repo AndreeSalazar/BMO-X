@@ -1,6 +1,7 @@
 //! Errata workarounds for the Ryzen 5 5600X (Zen 3).
 //!
 //! [carril]  ROJO      parches de errata: ESCRIBE MSRs de este Zen 3
+//! [consumo] NADA      escribe sus MSR una vez, en el arranque
 //!
 //! Recovers the legacy `errata_workarounds.rs` from the deleted
 //! `crates_Personal/ring0/cpu_vendor_profile/.../errata_workarounds.rs`,

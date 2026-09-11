@@ -1,6 +1,7 @@
 //! **CARRIL VERDE** -- se cambia solo: son un buffer y unos colores.
 //!
 //! [carril]  VERDE     el nombre del fichero ya lo decia; la etiqueta lo hace comprobable
+//! [consumo] NADA      solo corre cuando algo falla
 //!
 //! [cuesta]  NADA -- `Line` es un constructor de renglones de capacidad fija
 //!           y los demas son colores y un plazo. Equivocarse pinta feo.

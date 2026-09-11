@@ -1,6 +1,7 @@
 //! **EL ARRANQUE** -- el panel de bienvenida y la barra de progreso.
 //!
 //! [carril]  VERDE     el panel de bienvenida y su barra
+//! [consumo] NADA      solo corre en el arranque
 //!
 //! Es la pantalla de antes de la CABINA: el logo, el titulo, la barra y la
 //! linea de estado. La otra mitad del arranque --la ciudad y el gato-- vive en

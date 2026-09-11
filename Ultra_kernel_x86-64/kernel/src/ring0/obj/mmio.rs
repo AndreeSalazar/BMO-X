@@ -3,6 +3,7 @@
 //! generacion: nieto -- no sabe quien lo llamo ni por que.
 //!
 //! [carril]  ROJO      una ventana de registros de un aparato, cedida a Ring 3
+//! [consumo] NADA      corre cuando una tarea usa el objeto
 //!
 //! [cuesta]  MAQUINA -- mapea fisica en un espacio de usuario. Un rango de
 //!           mas es una ventana a la RAM del kernel, y eso no da un fault:

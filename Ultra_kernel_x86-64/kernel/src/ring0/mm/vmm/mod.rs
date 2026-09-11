@@ -1,6 +1,7 @@
 //! Virtual memory: address spaces built on the `s2_mem` physmap.
 //!
 //! [carril]  ROJO      el reparto, y hereda el color del carril que manda
+//! [consumo] NADA      corre cuando alguien pide o suelta memoria
 //!
 //! [cuesta]  MAQUINA -- calcula direcciones para el physmap y las
 //!           dereferencia. Ya ha parado la maquina DOS veces: el `#GP` del

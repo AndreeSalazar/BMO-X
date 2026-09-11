@@ -1,6 +1,7 @@
 //! CPU topology for the Ryzen 5 5600X (1 CCD, 1 CCX, 6C/12T).
 //!
 //! [carril]  VERDE     1 CCD, 1 CCX, 6C/12T: una tabla
+//! [consumo] NADA      pregunta al silicio en el arranque, o es contrato
 //!
 //! Recovers the legacy `topology.rs` from the deleted
 //! `crates_Personal/ring0/cpu_vendor_profile/.../topology.rs`,

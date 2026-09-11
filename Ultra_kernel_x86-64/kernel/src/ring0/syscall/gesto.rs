@@ -1,6 +1,7 @@
 //! **EL RENGLON DE LOS GESTOS SOBRE ESTRATOS** -- crear, borrar, renombrar.
 //!
 //! [carril]  AMARILLO  crear, borrar y renombrar sobre ESTRATOS
+//! [consumo] NADA      corre solo cuando una tarea cruza la puerta
 //!
 //! === Por que es un fichero, y por que se llama asi ===
 //!

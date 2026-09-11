@@ -352,6 +352,22 @@ def autoprueba():
           r10_el_semaforo({"obj/fb/roja.rs": CA}), False)
     exige("R10(sin ficheros)", r10_el_semaforo({}), False)
 
+    # -- R21: el consumo en reposo (L6h) ------------------------------------
+    CO = "//! [consumo] NADA      porque si" + chr(10)
+    exige("R21(con clase)", r21_el_consumo({"plat/spin.rs": CO}), False)
+    exige("R21(sin clase)", r21_el_consumo({"plat/spin.rs": CA}))
+    exige("R21(clase inventada)",
+          r21_el_consumo({"plat/spin.rs": "//! [consumo] MUCHO x" + chr(10)}))
+    # *** El que de verdad guarda algo: un fichero que late y se pide a la vez.
+    # Es la costura que L6h manda partir, y declararla dos veces es decirlo.
+    exige("R21(dos clases: mal cortado)",
+          r21_el_consumo({"plat/spin.rs": CO + "//! [consumo] LATE      y esto" + chr(10)}))
+    exige("R21(fuera, sin declarar, no se exige)",
+          r21_el_consumo({}, {"director/main.rs": "//! un fichero"}), False)
+    exige("R21(fuera, clase inventada)",
+          r21_el_consumo({}, {"director/main.rs": "//! [consumo] MUCHO x" + chr(10)}))
+    exige("R21(sin ficheros)", r21_el_consumo({}), False)
+
     if fallos:
         for f in fallos:
             print("  [X] " + f)

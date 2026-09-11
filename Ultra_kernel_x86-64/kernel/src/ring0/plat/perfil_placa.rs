@@ -2,6 +2,7 @@
 //!
 //! [carril]  VERDE     cuatro cadenas y un contador. No lee MMIO, no lee ACPI
 //!                     y no decide nada
+//! [consumo] NADA      compara el perfil en el arranque
 //!
 //! [cuesta]  NADA -- se dice una vez al arrancar. Lo que cuesta de verdad son
 //!           las manas que este fichero NOMBRA, y cada una lleva su precio

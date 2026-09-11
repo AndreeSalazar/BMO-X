@@ -1,6 +1,7 @@
 //! El sistema de ficheros montado: de sectores a ARCHIVOS.
 //!
 //! [carril]  ROJO      de sectores a ARCHIVOS
+//! [consumo] NADA      corre cuando alguien lee o escribe un fichero
 //!
 //! Un sector es 512 bytes en una posicion. Un archivo es un nombre, un tamano
 //! y una lista de bloques desperdigados. Entre las dos cosas esta esta capa.

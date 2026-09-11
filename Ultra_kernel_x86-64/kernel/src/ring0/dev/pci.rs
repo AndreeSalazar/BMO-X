@@ -1,6 +1,7 @@
 //! PCI config-space: acceso directo por puertos 0xCF8/0xCFC + scan completo.
 //!
 //! [carril]  ROJO      configuracion por 0xCF8/0xCFC: escribe registros de aparatos
+//! [consumo] NADA      lee y escribe configuracion cuando alguien se lo pide
 //!
 //! Motivo: el `pci_devices` del BootContext (scan de s2) no ve los
 //! controladores que cuelgan detras de bridges -- y en los Ryzen los xHC USB

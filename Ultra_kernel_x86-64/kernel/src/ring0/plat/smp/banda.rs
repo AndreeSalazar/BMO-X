@@ -1,6 +1,7 @@
 //! **El ancho de banda de la memoria.** La casilla vacia del tablero, y la que
 //!
 //! [carril]  AMARILLO  la medida de ancho de banda de la memoria
+//! [consumo] NADA      corre cuando se levantan o se reparten nucleos
 //! decide el tamano del modelo que esta maquina puede correr.
 //!
 //! # Por que este numero y no otro

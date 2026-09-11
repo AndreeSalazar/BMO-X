@@ -1,6 +1,7 @@
 //! **Las ordenes del shell de Ring 0**, repartidas por lo que hacen.
 //!
 //! [carril]  VERDE     reparto de las ordenes por lo que hacen
+//! [consumo] NADA      solo corre cuando el dueno teclea la orden
 //!
 //! # Por que existe esta carpeta
 //!
@@ -67,6 +68,9 @@ pub mod danger;
 /// commands moved here -- so the thing that READS a command line lived four
 /// hundred lines from every command it feeds.
 pub mod ui;
+/// What the shell does WHILE no key arrives. Separate from the editor because it
+/// is the only part of the shell that runs all the time: it LATES (L6h).
+pub mod espera;
 /// The loop that never returns. Separate from the editor and from the commands
 /// because it is the only part with a lifetime: `run_shell` is `-> !` and owns
 /// the keyboard for the rest of the machine's life.

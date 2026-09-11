@@ -3,6 +3,8 @@
 //! generacion: nieto -- no sabe quien lo llamo ni por que.
 //!
 //! [carril]  AMARILLO  una interrupcion que despierta a Ring 3
+//! [consumo] NADA      `tic` lo llama el tick; late quien lo ESPERA, que es el
+//!                     DIRECTOR
 //!
 //! [cuesta]  TAREA -- si el testigo se compara mal, alguien duerme de mas o
 //!           se despierta de menos. No concede nada que no se tuviera: un

@@ -1,6 +1,8 @@
 //! **THE RECORDER** -- the event ring CABINA writes into.
 //!
 //! [carril]  AMARILLO  el anillo se escribe desde dentro de una interrupcion
+//! [consumo] NADA      se escribe desde una interrupcion: corre si la
+//!                     interrupcion corre
 //!
 //! === Why this is the first file of the folder ===
 //!

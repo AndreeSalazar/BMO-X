@@ -1,6 +1,7 @@
 //! **EL CENSO DEL BUS: que hay en la placa, y para que hay codigo.**
 //!
 //! [carril]  VERDE     lee configuracion de PCI y cuenta. No escribe ni un bit
+//! [consumo] NADA      censa el bus en el arranque
 //!
 //! [cuesta]  NADA -- un recorrido de configuracion en el arranque, una vez. No
 //!           habilita nada, no reclama ningun aparato y no cambia que se

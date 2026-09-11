@@ -1,6 +1,7 @@
 //! ESTRATOS montado: el kernel leyendo su propio sistema de ficheros.
 //!
 //! [carril]  ROJO      el volumen montado: el kernel leyendo su propio FS
+//! [consumo] NADA      corre cuando alguien lee o escribe un fichero
 //!
 //! Paso 4d del orden de construccion. **Solo lectura, y es estructural**: este
 //! modulo no llama a `write` en ningun sitio. Escribir es el paso 5 y necesita

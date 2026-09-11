@@ -1,6 +1,7 @@
 //! Ring 0 -- el suelo sobre el que se apoya todo lo demas.
 //!
 //! [carril]  VERDE     el reparto de Ring 0 entero
+//! [consumo] NADA      el reparto de Ring 0: no corre
 //!
 //! ## Como esta repartido, y por que asi
 //!

@@ -1,6 +1,7 @@
 //! Bitmap physical frame allocator (4 KiB frames, physical < PHYSMAP_SIZE).
 //!
 //! [carril]  ROJO      el reparto, y hereda el color del carril que manda
+//! [consumo] NADA      corre cuando alguien pide o suelta memoria
 //!
 //!
 //! [cuesta]  MAQUINA -- entregar dos veces el mismo marco no da un fallo: da

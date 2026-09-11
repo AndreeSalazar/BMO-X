@@ -1,6 +1,7 @@
 //! **THE ATTEMPT** -- what turns four unrelated lines into one story.
 //!
 //! [carril]  AMARILLO  cose cuatro lineas en una historia; si cose mal, cuenta otra
+//! [consumo] NADA      apunta o pinta cuando alguien lo llama
 //!
 //! === Why this is a file of its own ===
 //!

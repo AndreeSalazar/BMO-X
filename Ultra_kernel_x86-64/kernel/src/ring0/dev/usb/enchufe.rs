@@ -1,6 +1,7 @@
 //! **QUE PASA CUANDO ALGO SE ENCHUFA O SE DESENCHUFA**, con la maquina ya
 //!
 //! [carril]  AMARILLO  que pasa al enchufar en caliente
+//! [consumo] NADA      el barrido lo llama el hilo del bus: late bus.rs
 //! encendida. Y el barrido que lo descubre.
 //!
 //! ## Por que soy un fichero (L6b)

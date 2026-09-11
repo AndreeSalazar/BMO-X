@@ -1,6 +1,8 @@
 //! Disco: el puente entre Ring 0 y el driver AHCI/SATA.
 //!
 //! [carril]  ROJO      el puente con el AHCI: DMA sobre el disco del dueno
+//! [consumo] APARATO   enciende el HBA y sus puertos y los deja activos; hoy
+//!                     ningun enlace SATA duerme
 //!
 //! El kernel no sabe de puertos SATA ni de FIS: eso vive en `bmo-ahci`. Aqui
 //! solo se le prestan al driver los tres servicios que no puede tener por su

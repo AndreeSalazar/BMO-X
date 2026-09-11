@@ -1,6 +1,7 @@
 //! **El aviso del disco.** Que llegue, que se limpie, y que se cuente.
 //!
 //! [carril]  ROJO      el aviso del disco: que llegue y que se limpie
+//! [consumo] NADA      corre cuando alguien lee o escribe el disco
 //!
 //! Paso 3 de `docs/plan/PLAN_ALMACENAMIENTO.md`. La septima pregunta de las que
 //! respondia `dev/disk/mod.rs`:

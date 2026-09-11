@@ -1,6 +1,7 @@
 //! **CARRIL VERDE** -- se cambia solo: nadie depende de su forma.
 //!
 //! [carril]  VERDE     el nombre del fichero ya lo decia; la etiqueta lo hace comprobable
+//! [consumo] NADA      corre cuando alguien pide o suelta memoria
 //!
 //! [cuesta]  NADA -- son numeros que los define el manual de Intel y una
 //!           disposicion de direcciones que solo mira este modulo. Cambiar un

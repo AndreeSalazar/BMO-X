@@ -1,6 +1,7 @@
 //! **LA PURGA: devolver Ring 3 a como estaba al arrancar, y DEMOSTRARLO.**
 //!
 //! [carril]  ROJO      cierra todo Ring 3 y fuerza la recogida; si se equivoca, no queda a quien volver
+//! [consumo] NADA      solo cuando se purga Ring 3
 //!
 //! [cuesta]  MAQUINA -- marca muertas a todas las tareas de usuario y cede el
 //!           CPU para que se recojan. Equivocarse en quien entra en la lista

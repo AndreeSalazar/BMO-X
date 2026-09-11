@@ -1,6 +1,8 @@
 //! Ring 0 capability services transported over BMO Channel.
 //!
 //! [carril]  VERDE     el reparto de los servicios
+//! [consumo] NADA      sirve cuando alguien llama; lo despierta el tick via
+//!                     channel
 //!
 //! Each service binds to one estuary via `channel::register_service` and
 //! speaks its own opcode space. Services never interpret user pointers --

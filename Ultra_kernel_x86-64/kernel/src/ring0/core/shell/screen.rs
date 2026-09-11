@@ -1,6 +1,7 @@
 //! **Las ordenes que PINTAN.** `cabina`, `fb` y `splash`.
 //!
 //! [carril]  VERDE     las ordenes que solo pintan
+//! [consumo] NADA      solo corre cuando el dueno teclea la orden
 //!
 //! # Por que no estan con las de hardware, si el framebuffer es hardware
 //!

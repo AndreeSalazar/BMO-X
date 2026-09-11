@@ -1,6 +1,7 @@
 //! **UN NIVEL de la ruta**: donde esta, como se llama, y QUE HAY DENTRO.
 //!
 //! [carril]  VERDE     un nivel de la ruta y que hay dentro
+//! [consumo] NADA      corre cuando alguien lee o escribe un fichero
 //!
 //! === Por que existe este fichero ===
 //!

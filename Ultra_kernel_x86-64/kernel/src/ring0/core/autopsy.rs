@@ -2,6 +2,7 @@
 //! una tarea, para que se pueda leer despues y mandar.
 //!
 //! [carril]  AMARILLO  no es peligroso de EJECUTAR: es peligroso de CREER
+//! [consumo] NADA      corre cuando algo muere
 //!
 //! [cuesta]  NADA -- **esto no mata a nadie: lo cuenta**. Corre despues de que
 //!           la tarea ya este muerta, y equivocarse aqui no cambia lo que paso.

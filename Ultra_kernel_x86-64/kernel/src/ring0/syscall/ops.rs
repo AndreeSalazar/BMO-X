@@ -1,6 +1,7 @@
 //! **THE OPERATION TABLE** -- the numbers, and nothing that runs.
 //!
 //! [carril]  VERDE     la tabla de numeros, y nada que se ejecute
+//! [consumo] NADA      no corre: es la tabla de numeros
 //!
 //! ```text
 //!    [eje]     NINGUNO -- nothing in this file executes. Constants cost no

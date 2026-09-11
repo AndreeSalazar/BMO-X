@@ -1,6 +1,7 @@
 //! **EL BARRIDO: lo que NO se puede escapar de ningun filtro.**
 //!
 //! [carril]  AMARILLO  los filtros; uno de mas y el evento que importaba no sale
+//! [consumo] NADA      su ventana la cierra el hilo del bus: late bus.rs
 //!
 //! # Los dos agujeros de un anillo con filtro, y ninguno se ve
 //!

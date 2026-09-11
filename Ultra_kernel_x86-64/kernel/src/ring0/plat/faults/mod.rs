@@ -1,6 +1,7 @@
 //! On-screen CPU fault reporter.
 //!
 //! [carril]  VERDE     el reparto de los tres carriles de al lado
+//! [consumo] NADA      solo corre cuando algo falla
 //!
 //! The faggin `s1_cpu` stage installs exception handlers that print to COM1
 //! serial and halt. On a headless machine (no serial cable) a Ring 3 fault

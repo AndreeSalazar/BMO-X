@@ -1,6 +1,7 @@
 //! **EL ARCHIVO QUE SE ESTA TRAYENDO** -- la carga por trozos de una ranura.
 //!
 //! [carril]  AMARILLO  la carga por trozos de una ranura
+//! [consumo] NADA      corre cuando una tarea usa el objeto
 //!
 //! generacion: nieto -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
 //! cuanto SABE esta pieza, no quien importa a quien, y por eso el

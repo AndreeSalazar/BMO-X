@@ -446,6 +446,67 @@ imposible de no ver.
 
   [!] Solo Ring 0. Un fallo de Ring 3 mata la tarea y hay autopsia; aqui no.
 
+- **L6h. EL CONSUMO -- que hace cada fichero cuando la maquina NO hace nada
+  (2026-09-11).** L6g dice que arrastras si lo tocas; esta dice **que gasta
+  cuando nadie lo pide**, y la cabecera lo declara debajo del carril:
+
+  ```text
+     //! [carril]  ROJO      el tick del LAPIC: sin el no hay planificador
+     //! [consumo] LATE      el tick: mil veces por segundo, haya o no haya nadie
+  ```
+
+  Peticion del dueno, con sus palabras: *"poner con carril y dividir en
+  archivos que consumen y no, por motivos: eso es necesario para alcanzar el
+  objetivo, que CONSUMEN nada mas"*. Es la regla de
+  [`EFICIENCIA_MAESTRO.md`](../docs/maestro/EFICIENCIA_MAESTRO.md) --*lo que no
+  hace nada, no gasta*-- convertida en letrero.
+
+  El eje es UNO y concreto: **en reposo, este codigo corre?** El vocabulario es
+  cerrado:
+
+  | clase | que dice |
+  |---|---|
+  | `NADA` | en reposo no corre por su cuenta: solo cuando alguien lo pide, en el arranque, o nunca |
+  | `APAGA` | en reposo ES lo que duerme la maquina |
+  | `APARATO` | enciende o para una pieza de hardware, y la deja asi |
+  | `LATE` | arma un bucle o un reloj propio: corre aunque nadie pida nada |
+
+  ★★ **La regla que hace corta la lista: late el que ARMA, no el que es
+  llamado.** Es la de L6e -- *instrumentar no contagia el coste* -- en el eje
+  del consumo. `channel::service_all` corre mil veces por segundo, pero lo llama
+  el tick: el que late es `plat/timer.rs`, y **su letrero nombra lo que corre en
+  cada vuelta**. Sin esta regla medio Ring 0 saldria LATE por ser llamado desde
+  un bucle, y una lista de cien no se lee.
+
+  ★ **La regla de corte: un fichero declara UNA clase. Si lleva dentro dos --un
+  bucle que late y codigo que se pide--, se parte.** Hasta que se parte, declara
+  la PEOR y lo dice con `[!] MEZCLA`: la costura queda a la vista. Asi salieron
+  los tres cortes del primer dia:
+
+  ```text
+     core/shell/ui.rs        el editor de linea   | la espera que gira  -> espera.rs
+     plat/smp/crew.rs        repartir una faena   | el bucle del obrero -> obrero.rs
+     task/scheduler/roja.rs  el planificador      | la tarea idle       -> dormir.rs
+  ```
+
+  *** **Y eso es el objetivo entero.** De los 180 ficheros de Ring 0, **nueve**
+  deciden lo que gasta la maquina quieta: cuatro LATE, cuatro APARATO y uno que
+  APAGA. La eficiencia empieza por esos nueve, no por los otros 171.
+
+  Lo cobra `contrato.py` **R21**: todo `.rs` de Ring 0 declara `[consumo]`, con
+  una clase del vocabulario y UNA sola; fuera del kernel, quien lo declare usa el
+  vocabulario. Sin trinquete, como R10: se empieza en 180 de 180. **Y en cada
+  build dice cuales no son NADA**, que es la lista de lo que gasta en reposo
+  saliendo sola.
+
+  [!] **Lo que NINGUNA maquina comprueba: que la clase sea la correcta.** Un
+  guardian que la dedujera de los `loop` adivinaria -- `plat/spin.rs` gira y es
+  NADA, porque solo gira mientras alguien espera el cerrojo; `obj/latido.rs`
+  despierta a Ring 3 mil veces por segundo y es NADA, porque lo llama el tick.
+  Las clases salieron de una medida: los tres `spawn_kernel` del arbol, el
+  vector del tick y el bucle de los obreros son **todos** los sitios de Ring 0
+  que corren sin que nadie pida.
+
 ****** Y desde el 2026-08-18, L6a tiene las cinco piezas.** Le faltaban las tres
 ultimas y por eso se incumplia sin ruido: `gui/main.rs` crecio 1.244 lineas
 entre el 08-04 y el 08-12 **teniendo ya un plan escrito para partirlo**.
@@ -1235,6 +1296,11 @@ controla el voltaje" seria falso, y este documento no puede permitirselo.
   electricos, NO.** No es una regla de estilo: un error de ciclos se diagnostica
   con una foto y se revierte con un commit; un error de voltaje se diagnostica
   con un chip muerto.
+- **R-PWR6.** ** **Lo que corre en reposo tiene nombre y fichero propio.** Todo
+  `.rs` de Ring 0 declara `[consumo]` (L6h), y lo que late no comparte fichero
+  con lo que se pide. En esta maquina son nueve de 180. Lo cobra `contrato.py`
+  R21, y la regla de por que existe esta en
+  [`EFICIENCIA_MAESTRO.md`](../docs/maestro/EFICIENCIA_MAESTRO.md).
 
 **EL PRECIO.** Ninguno todavia, y por una razon buena: el lector de energia se
 escribio **antes** de que hiciera falta discutir. Lo que si estuvo tres dias sin
@@ -1367,7 +1433,7 @@ vigila*. Y se prueba diciendo que no (L4).
 | C7 USB | R-USB1..5 | contadores de aparcadero | no | CABINA | contadores puestos |
 | C8 RELOJES | R-TIME1..5 | el metro mismo | `bmo-juicio` | 16 pruebas | **COMPLETO** |
 | C9 IRQ | R-IRQ1..3 | no | no | sellos de un solo uso | defensa puesta |
-| C10 ENERGIA | R-PWR1..5 | RAPL | no | no | falta antes/despues de `smp stop` |
+| C10 ENERGIA | R-PWR1..6 | RAPL | no | R21 `[consumo]` | falta el juez del reposo (`EFICIENCIA_MAESTRO.md` 6) y el antes/despues |
 | C11 FIRMWARE | R-FW1..3 | no | no | drift guard | **el guardian ES el metro** |
 | C12 SMP | R-SMP1..3 | no | no | no | sin trabajo que repartir |
 

@@ -1,6 +1,7 @@
 //! **LA HISTORIA DEL VOLUMEN**: la cadena de versiones, hacia atras.
 //!
 //! [carril]  VERDE     la cadena de versiones, hacia atras
+//! [consumo] NADA      corre cuando alguien lee o escribe un fichero
 //!
 //! === Que hay que leer, y por que no hacia falta formato nuevo ===
 //!

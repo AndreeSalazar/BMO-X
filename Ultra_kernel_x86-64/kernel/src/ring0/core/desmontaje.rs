@@ -2,6 +2,7 @@
 //!
 //! [carril]  AMARILLO  no ejecuta nada del desmontaje: lo APUNTA. Es peligroso
 //!                     de creer, no de correr
+//! [consumo] NADA      corre cuando algo se desmonta
 //!
 //! [cuesta]  NADA -- dos escrituras atomicas por estacion. No mata a nadie, no
 //!           libera nada y no decide nada; si se equivoca, lo unico que sale

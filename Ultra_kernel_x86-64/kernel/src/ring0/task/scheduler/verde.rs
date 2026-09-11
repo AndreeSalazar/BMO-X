@@ -1,6 +1,7 @@
 //! **CARRIL VERDE** -- lo que solo MIRA, y los numeros.
 //!
 //! [carril]  VERDE     el nombre del fichero ya lo decia; la etiqueta lo hace comprobable
+//! [consumo] NADA      corre cuando alguien cambia de tarea o se duerme
 //!
 //! [cuesta]  NADA -- ni un `mut` que salga de aqui. Estas funciones leen la
 //!           tabla y contestan; equivocarse devuelve un numero feo a quien

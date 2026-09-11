@@ -1,6 +1,7 @@
 //! **FORMATTING WITHOUT `std`** -- a line built in a byte buffer.
 //!
 //! [carril]  VERDE     construir una linea en un buffer de bytes
+//! [consumo] NADA      apunta o pinta cuando alguien lo llama
 //!
 //! === Why this is a file of its own ===
 //!

@@ -1,6 +1,7 @@
 //! **THE BLACK BOX** -- the ring, on the disk.
 //!
 //! [carril]  AMARILLO  que se guarda del anillo, y eso cambia con lo que hace falta saber
+//! [consumo] NADA      apunta o pinta cuando alguien lo llama
 //!
 //! === Why this is a file of its own ===
 //!

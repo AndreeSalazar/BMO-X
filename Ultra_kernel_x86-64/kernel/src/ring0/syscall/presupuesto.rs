@@ -1,6 +1,7 @@
 //! `syscall::presupuesto` -- **lo que una puerta TIENE PERMITIDO costar.**
 //!
 //! [carril]  AMARILLO  lo que una puerta tiene permitido costar
+//! [consumo] NADA      corre solo cuando una tarea cruza la puerta
 //!
 //! ```text
 //!    [eje]     NINGUNO -- una tabla de constantes; no corre en la puerta

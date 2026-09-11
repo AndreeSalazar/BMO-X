@@ -1,6 +1,7 @@
 //! **La MADT: el censo de nucleos que da el firmware.**
 //!
 //! [carril]  ROJO      el censo de nucleos: el bring-up de SMP cuelga de esta tabla
+//! [consumo] NADA      lee la MADT en el arranque
 //!
 //! === Por que existe este modulo ===
 //!

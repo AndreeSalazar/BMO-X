@@ -1,6 +1,7 @@
 //! Ryzen 5 5600X (Vermeer, Zen 3, Family 19h Model 01h) profile.
 //!
 //! [carril]  VERDE     el perfil del Ryzen, reunido
+//! [consumo] NADA      pregunta al silicio en el arranque, o es contrato
 //!
 //! This module is the canonical "CPU profile" for the FastOS test
 //! bench. It bundles:

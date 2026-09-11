@@ -1,6 +1,7 @@
 //! CABINA -- el registrador omnisciente del sistema (lado Ring 0).
 //!
 //! [carril]  AMARILLO  la fachada del registrador
+//! [consumo] NADA      apunta o pinta cuando alguien lo llama
 //!
 //! Le da VIDA a `cabina-core`: mantiene el ANILLO DE EVENTOS del kernel y lo
 //! pinta como un cockpit permanente en el framebuffer. La vision del usuario:

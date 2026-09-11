@@ -1,6 +1,7 @@
 //! x86-64 SYSCALL entry and BMO ABI v2 dispatcher (**2** frozen syscalls).
 //!
 //! [carril]  ROJO      el despachador de los DOS syscalls congelados
+//! [consumo] NADA      corre solo cuando una tarea cruza la puerta
 //!
 //! generacion: padre -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
 //! cuanto SABE esta pieza, no quien importa a quien, y por eso el

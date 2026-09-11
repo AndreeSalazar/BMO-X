@@ -1,6 +1,7 @@
 //! **CONTAR LO QUE EL KERNEL SABE**: CABINA, `info`, el registro de arranque y
 //!
 //! [carril]  VERDE     contar lo que el kernel ya sabe
+//! [consumo] NADA      corre solo cuando una tarea cruza la puerta
 //! la autopsia de la ultima tarea que murio.
 //!
 //! ## Por que estas ocho van juntas (L6b)

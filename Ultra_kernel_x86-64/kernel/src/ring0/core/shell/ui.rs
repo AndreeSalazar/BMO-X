@@ -1,6 +1,8 @@
 //! **THE RING 0 SHELL: screen, line editor and built-ins.**
 //!
 //! [carril]  AMARILLO  pantalla, editor de linea y built-ins
+//! [consumo] NADA      el editor de linea y los colores: corre cuando llega una
+//!                     tecla. La ESPERA, que es lo que late, vive en espera.rs
 //!
 //! === Why this is here and not in `phase.rs` ===
 //!
@@ -18,7 +20,9 @@
 //! 2. **The line editor**: `shell_read_line` plus the history ring. This is the
 //!    only place in Ring 0 that owns a cursor, and the invariant it has to keep
 //!    is that the cursor never runs past the text -- the same invariant whose
-//!    absence in the Ring 3 field once took the compositor down.
+//!    absence in the Ring 3 field once took the compositor down. What the loop
+//!    does WHILE no key arrives lives in `espera.rs` since 2026-09-11 (L6h):
+//!    that half runs all the time, this one only when a key comes in.
 //! 3. **The built-ins that are about the shell itself**: `help`, `hist`,
 //!    `layout`. The ones about the machine are the sibling files.
 //!
@@ -27,7 +31,7 @@
 use super::super::splash;
 use super::super::dashboard::dashboard_log_color;
 use super::super::phase::s_log;
-use super::super::dashboard::{dash_log, DASH_LOG_ROW};
+use super::super::dashboard::DASH_LOG_ROW;
 
 /// Colores de los informes del shell. Etiqueta apagada, valor claro, titulo
 /// ambar: la misma jerarquia en todos los comandos, para que `info` y `disk`
@@ -180,10 +184,6 @@ pub(crate) fn clear_screen() {
 // aquellos no tenian. Ya nadie los llamaba -- codigo muerto pintando filas que
 // el log rodante volvia a borrar. Se eliminan: CABINA es el unico observador.
 
-/// Ultimo total de tareas visto por el shell, para detectar cuando un proceso
-/// TERMINO (el total baja) y limpiar la pantalla automaticamente.
-static mut LAST_TASK_TOTAL: usize = 0;
-
 // -- Historial de comandos ---------------------------------------------------
 //
 // Un anillo de las ultimas lineas ejecutadas, recorrible con las flechas
@@ -222,66 +222,6 @@ pub(crate) fn hist_get(back: usize) -> Option<&'static [u8]> {
     }
 }
 
-/// Cuanto duerme el shell cuando NO tiene nada que leer.
-///
-/// Cuatro milisegundos, el mismo numero que el latido del bus USB y por la
-/// misma razon: es la distancia a la que un humano no nota la espera y la
-/// maquina deja de girar en vacio.
-const DESCANSO_MS: u64 = 4;
-
-/// **El turno se devuelve cuando no hay nada que leer.**
-///
-/// == *** POR QUE EXISTE, y lo pidio el dueno (2026-09-08) =================
-///
-/// > *"me gustaria que el kernel no pierda tiempo chequeando si el guardian
-/// > esta alli"*
-///
-/// Y tenia razon, con un numero detras. El pulso del escritorio salio en **50
-/// vueltas por segundo** -- 20 ms por vuelta en un bucle que no tiene freno
-/// ninguno. El escritorio no estaba lento: **estaba esperando turno**.
-///
-/// ** Y el turno se lo quedaba ESTE bucle. `shell_read_line` giraba a CPU
-/// completa: recogia una decena de estadisticas, preguntaba por el serial, por
-/// el USB, por el PS/2, y hacia `continue`. Sin `hlt`, sin ceder. Solo lo
-/// echaba de ahi el reloj, al agotar su quantum de 4 ms.
-///
-/// *** Y lo peor es lo que giraba comprobando: cuando Ring 3 tiene la entrada,
-/// este bucle **no puede leer el teclado ni aunque quiera** --lo dice tres
-/// lineas mas arriba, `cedido es cedido`-- asi que gastaba su turno entero
-/// preguntando por una tecla que tenia prohibido coger.
-///
-/// ```text
-///    antes    gira 4 ms preguntando por un teclado que no es suyo
-///    ahora    se duerme 4 ms y el turno se lo queda quien SI trabaja
-/// ```
-///
-/// # El sacrificio (L3)
-///
-/// El cable del serial y la vuelta del teclado se ven con hasta 4 ms de
-/// retraso. Es la misma apuesta que ya hace el hilo del bus con el teclado
-/// USB, y por eso el numero es el mismo.
-///
-/// # Solo cuando la entrada es de Ring 3, y eso no es prudencia
-///
-/// Es la condicion que hace la afirmacion CIERTA. Mientras el shell es el dueno
-/// del teclado, girar no es girar en vacio: cada vuelta puede traer una letra.
-/// En cuanto la cede, no puede traer ninguna -- y solo entonces dormir es
-/// gratis. Sin ese `if`, esto seria una espera puesta a ojo.
-fn descansar() {
-    use crate::ring0::task::scheduler;
-    if !crate::ring0::obj::input::yielded() {
-        return;
-    }
-    let hz = scheduler::tsc_freq();
-    // ** SIN TSC NO SE DUERME. Un plazo que no se puede medir es un plazo
-    // inventado, y quedarse Blocked con una hora falsa es no despertar. Se gira
-    // como se giraba: peor, y vivo.
-    if hz == 0 {
-        return;
-    }
-    scheduler::park_until(scheduler::rdtsc() + (hz / 1_000) * DESCANSO_MS);
-}
-
 /// Lee una linea del teclado con edicion completa: cursor, historial y los
 /// atajos de Ctrl de toda la vida.
 ///
@@ -311,49 +251,9 @@ pub(crate) fn shell_read_line(buf: &mut [u8]) -> usize {
     }
 
     loop {
-        // Auto-limpieza: si un proceso termino (el total de tareas bajo) y NO
-        // estas escribiendo (linea vacia), limpia la pantalla -- como una
-        // terminal que se refresca al acabar el programa. Nunca borra a media
-        // escritura (solo con n==0).
-        let (total, _) = crate::ring0::task::scheduler::counts();
-        unsafe {
-            if n == 0 && total < LAST_TASK_TOTAL {
-                clear_screen();
-                dash_log("== proceso terminado : pantalla limpia ==");
-            }
-            LAST_TASK_TOTAL = total;
-        }
-        dash_prompt(core::str::from_utf8(&buf[..n]).unwrap_or(""), cur);
-        // CABINA -- cockpit omnisciente en la banda inferior.
-        crate::ring0::cabina::render_hud();
-
-        // Entrada: serial (COM1), teclado USB o PS/2, lo que tenga un byte.
-        //
-        // * El SERIAL nunca se cede. Es el cable del que depura, y sigue
-        // hablando aunque Ring 3 sea dueno de la pantalla y del teclado -- que
-        // es justo cuando mas falta hace.
-        let mut byte = crate::ring0::dev::console::serial_read_byte();
-        // * El teclado FISICO si. Si un proceso reclamo `KIND_INPUT`, las
-        // teclas son suyas y este shell no las toca: los dos drenan la MISMA
-        // cola, asi que leer aqui no seria "leer tambien", seria robarle letras
-        // sueltas a la caja. Cedido es cedido, tambien para el que la cedio.
-        if byte.is_none() && !crate::ring0::obj::input::yielded() {
-            byte = crate::ring0::dev::usb::poll_ascii();
-            if byte.is_none() {
-                // PS/2 i8042 (mudo post-EBS en esta placa). Se conserva por si
-                // algun dia reviviera (adaptador PS/2, otra placa).
-                if let Some((_raw, ascii)) = kb::poll_event() {
-                    byte = ascii;
-                }
-            }
-        }
-        let c = match byte {
-            Some(c) => c,
-            None => {
-                descansar();
-                continue;
-            }
-        };
+        // ** LA ESPERA vive en `espera.rs` (L6h): es lo que LATE mientras no
+        // llega una tecla. Aqui solo se decide que hacer con la que llega.
+        let c = super::espera::siguiente_byte(&buf[..n], cur);
 
         match c {
             b'\r' | b'\n' => {

@@ -1,6 +1,7 @@
 //! **EL CENSO DE LA PLACA: que tablas ofrece el firmware, y cual se cree.**
 //!
 //! [carril]  AMARILLO  que tablas ofrece el firmware y cual se cree
+//! [consumo] NADA      lee las tablas del firmware en el arranque
 //!
 //! ## Por que esto existe, y por que es LEER y nada mas
 //!

@@ -1,6 +1,8 @@
 //! **THE SHELL SESSION** -- the loop that never returns.
 //!
 //! [carril]  AMARILLO  el bucle que no retorna y el despacho de ordenes
+//! [consumo] NADA      despacha una orden por linea; la espera entre lineas es
+//!                     de espera.rs
 //!
 //! === Why this is separate from the editor and from the commands ===
 //!

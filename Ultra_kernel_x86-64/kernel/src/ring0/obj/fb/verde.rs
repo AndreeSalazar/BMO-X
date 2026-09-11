@@ -1,6 +1,7 @@
 //! **CARRIL VERDE** -- la geometria y los numeros del contrato.
 //!
 //! [carril]  VERDE     el nombre del fichero ya lo decia; la etiqueta lo hace comprobable
+//! [consumo] NADA      corre cuando una tarea usa el objeto
 //!
 //! [cuesta]  NADA -- de aqui no sale ni un cambio de propiedad ni un mapeo. Se
 //!           contesta donde quedo, cuanto mide y quien la tiene. Equivocarse

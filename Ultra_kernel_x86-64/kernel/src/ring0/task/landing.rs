@@ -1,6 +1,7 @@
 //! **EL CIERRE DE UNA SECCION AL ATERRIZAR.**
 //!
 //! [carril]  ROJO      el cierre de permisos de una seccion al aterrizar
+//! [consumo] NADA      corre cuando alguien lanza o admite una tarea
 //!
 //! Cada `.bex` trae un BLAKE3 por seccion. Hasta hoy se comprobaban todos de una
 //! pasada, dentro de `bex::inspect`, sobre el bufer entero de la imagen. Esto lo

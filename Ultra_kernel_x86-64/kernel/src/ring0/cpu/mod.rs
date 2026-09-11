@@ -1,6 +1,7 @@
 //! El CPU: lo que se le pregunta y lo que se le mide.
 //!
 //! [carril]  VERDE     lo que se le pregunta al CPU
+//! [consumo] NADA      contesta cuando alguien pregunta
 //!
 //! `cpuid` y compania contestan lo que la maquina ES. [`frecuencia`] mide lo que
 //! esta HACIENDO, que es otra pregunta y por eso es otro fichero -- ver la

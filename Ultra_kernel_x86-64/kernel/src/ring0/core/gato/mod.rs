@@ -1,6 +1,7 @@
 //! **EL GATO** -- el logo de BMO-X, en dos mascaras de 1 bit.
 //!
 //! [carril]  VERDE     el reparto del logo
+//! [consumo] NADA      solo corre en el arranque
 //!
 //! * GENERADO. No se edita a mano: sale de `docs/arte/gato_a_mascara.py`, que
 //! lee `docs/arte/bmo-x-gato.jpg`. Si el logo cambia, se vuelve a correr.

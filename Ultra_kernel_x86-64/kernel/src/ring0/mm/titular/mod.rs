@@ -2,6 +2,7 @@
 //!
 //! [carril]  ROJO      el VOCABULARIO de los tres: el byte por marco,
 //!                     `indice`, `de_byte` y las cinco cuentas
+//! [consumo] NADA      corre cuando alguien pide o suelta memoria
 //!
 //! [cuesta]  MAQUINA -- `indice` decide QUE marco se toca. Errarlo por uno no
 //!           equivoca una respuesta: marca al vecino, y entonces las tres

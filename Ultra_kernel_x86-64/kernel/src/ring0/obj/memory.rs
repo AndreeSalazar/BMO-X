@@ -1,6 +1,7 @@
 //! **`KIND_MEMORIA`** -- pedirle memoria al kernel, y que sea tuya.
 //!
 //! [carril]  ROJO      pedirle memoria al kernel, y que sea tuya
+//! [consumo] NADA      corre cuando una tarea usa el objeto
 //!
 //! generacion: nieto -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
 //! cuanto SABE esta pieza, no quien importa a quien, y por eso el

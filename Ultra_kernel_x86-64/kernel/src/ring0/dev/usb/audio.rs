@@ -1,6 +1,8 @@
 //! **Asking the USB audio device how it wants its samples.** Nothing else.
 //!
 //! [carril]  AMARILLO  el audio isocrono, EN OBRAS: el IOC por trama se arreglo el 31-08
+//! [consumo] APARATO   `abrir` arranca el tubo isocrono del auricular y
+//!                     `soltar` lo para; su `latido` lo llama el hilo del bus
 //!
 //! Step 0 of `docs/maestro/AUDIO_MAESTRO.md`, kernel side. The decision --reading the
 //! descriptor-- lives in `bmo_uaudio::stream`, where it is tested; here there is

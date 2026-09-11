@@ -1,6 +1,8 @@
 //! **THE DESKTOP SUPERVISOR** -- launch it, notice when it dies, decide about
 //!
 //! [carril]  AMARILLO  supervisa Ring 3; si se equivoca no hay escritorio, pero queda shell
+//! [consumo] NADA      arranca y relanza el escritorio; su espera de demos es
+//!                     del arranque
 //! trying again.
 //!
 //! === Why this is a file of its own, and it is the clearest case in `core/` ===

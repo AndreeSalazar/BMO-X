@@ -1,6 +1,7 @@
 //! **CARRIL ROJO** -- un fallo aqui para la maquina y no deja autopsia.
 //!
 //! [carril]  ROJO      el nombre del fichero ya lo decia; la etiqueta lo hace comprobable
+//! [consumo] NADA      corre cuando alguien pide o suelta memoria
 //!
 //! [cuesta]  MAQUINA -- aqui vive el CR3 del kernel y el desmontaje de un
 //!           espacio muerto. Ya paro la maquina DOS veces: el `#GP` del 25-08

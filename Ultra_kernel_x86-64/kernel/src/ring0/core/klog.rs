@@ -1,6 +1,7 @@
 //! **El log del kernel, GUARDADO** -- para que Ring 3 pueda leerlo.
 //!
 //! [carril]  VERDE     guardar el log para que Ring 3 pueda leerlo
+//! [consumo] NADA      guarda el log cuando alguien escribe
 //!
 //! === El hueco que tapa ===
 //!

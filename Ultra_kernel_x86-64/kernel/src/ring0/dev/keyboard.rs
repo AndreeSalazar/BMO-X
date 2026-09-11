@@ -1,6 +1,7 @@
 //! Teclado: scancodes Set 1 -> caracteres, con distribucion ESPANOLA.
 //!
 //! [carril]  AMARILLO  scancodes a caracteres, con distribucion espanola
+//! [consumo] NADA      PS/2: lo pregunta la espera del shell; late ESA
 //!
 //! Dos productores entran por aqui: el i8042 (PS/2, muerto post-EBS en esta
 //! placa) y el puente USB HID (`dev::usb`), que traduce sus reportes a los

@@ -1,6 +1,7 @@
 //! **CARRIL ROJO** -- EL BITMAP: quien es dueno de cada marco.
 //!
 //! [carril]  ROJO      dar dos veces el mismo marco es dos duenos de un byte
+//! [consumo] NADA      corre cuando alguien pide o suelta memoria
 //!
 //! [cuesta]  MAQUINA -- entregar dos veces el mismo marco no da un fallo: da
 //!           dos duenos del mismo byte, y el sintoma tres arranques despues.

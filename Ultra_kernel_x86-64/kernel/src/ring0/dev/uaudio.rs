@@ -1,6 +1,7 @@
 //! **El VOLUMEN del audifono USB**, por control transfer.
 //!
 //! [carril]  AMARILLO  el volumen del audifono por control transfer
+//! [consumo] NADA      el volumen: una transferencia cuando alguien la pide
 //!
 //! ## Por que esto llega antes que oir nada
 //!

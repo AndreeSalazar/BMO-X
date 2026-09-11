@@ -1,6 +1,7 @@
 //! **THE CURSOR** -- ESTRATOS walked from Ring 3.
 //!
 //! [carril]  AMARILLO  ESTRATOS caminado desde Ring 3
+//! [consumo] NADA      corre cuando alguien lee o escribe un fichero
 //!
 //! === Why this is a file of its own ===
 //!

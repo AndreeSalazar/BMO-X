@@ -1,6 +1,7 @@
 //! **CARRIL AMARILLO** -- la unica de `phys` que ESCRIBE en la memoria.
 //!
 //! [carril]  AMARILLO  su techo es ESPEJO del de `vmm::caminable`: se tocan las dos o ninguna
+//! [consumo] NADA      corre cuando alguien pide o suelta memoria
 //!
 //! [cuesta]  MAQUINA -- escribe 4 KiB por el physmap. Fuera del espejo es una
 //!           pantalla azul; dentro y del vecino son 4 KiB de memoria viva a
