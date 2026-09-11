@@ -32,6 +32,13 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
     // Aqui y no antes: `will_paint` no es definitivo hasta que la recogida de
     // entrada termina, y ella lo puede subir. Ver `Tick::pintados_por_segundo`.
     dsk.tick.anota_pintado();
+    // ** LO QUE NO SE VE, NO SE PINTA -- y el DIRECTOR se lo aplica a SI
+    // MISMO (2026-09-11). Con una ventana a pantalla completa, su mobiliario
+    // --la barra, la terminal, la salida-- esta debajo. Pintarlo no solo
+    // gasta: ASOMA encima del juego en el primer fotograma en que la app no
+    // entregue uno nuevo, porque una superficie solo se repega cuando su
+    // secuencia cambia.
+    let fs = dsk.table.alguna_a_pantalla_completa();
     // -- Drenar la salida de los hijos --
     //
     // Con tope por fotograma. Un programa que escupe sin parar podria
@@ -141,7 +148,7 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
     // enterrado bajo la rejilla y, al quitarlo, devolveria pixeles viejos
     // encima de lo recien escrito. `dirty` se queda puesto y la vuelta
     // siguiente ya empieza sabiendo que hay que pintar.
-    if dsk.out.grid.dirty && dsk.tick.will_paint {
+    if dsk.out.grid.dirty && dsk.tick.will_paint && !fs {
         // Se pinta solo si se ve; el contenido sigue acumulandose oculto,
         // asi que al invocar la ventana esta todo lo que paso mientras.
         //
@@ -182,7 +189,7 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         dsk.win.taskbar_state_before = taskbar_state;
         dsk.win.taskbar_dirty = true;
     }
-    if dsk.win.taskbar_dirty && dsk.tick.will_paint {
+    if dsk.win.taskbar_dirty && dsk.tick.will_paint && !fs {
         scene::paint_chip(&p, 0, "Ejecutar", ACCENT, dsk.win.visible && dsk.win.top_before == Ventana::Run, !dsk.win.visible);
         if dsk.win.data_open {
             scene::paint_chip(
@@ -252,6 +259,7 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
     }
     if dsk.tick.repaint_field
         && dsk.tick.will_paint
+        && !fs
         && dsk.win.visible
         && dsk.win.top_before != Ventana::Data
         && !dsk.win.switcher_painted

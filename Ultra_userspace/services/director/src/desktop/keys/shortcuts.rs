@@ -58,6 +58,44 @@ if alt_alone && (c == b'm' || c == b'M') {
     }
     return Key::Taken;
 }
+// -- ** ALT+ENTER: PANTALLA COMPLETA, Y EN TIEMPO REAL --
+//
+// No es maximizar. Maximizar deja la barra a la vista a proposito --lo dice
+// `toggle_maximized`-- y esto se la come: sin marco, sin botones, el panel
+// entero y la superficie centrada. Es la configuracion de *pantalla
+// completa* de un juego, puesta y quitada sin relanzar nada.
+//
+// ** Y SOLO PARA LAS APPS. Una ventana del sistema a pantalla completa
+// taparia la barra y dejaria al dueno sin sitio donde volver, que es el
+// mismo motivo por el que el maximizado la respeta. Aqui la salida es la
+// MISMA tecla con la que se entro, y eso hace el gesto simetrico.
+//
+// Va con `Alt` por lo mismo que el Tab y la M, y por una razon mas: es el
+// atajo que ya esta en los dedos de cualquiera que haya jugado a algo.
+if alt_alone && (c == 0x0D || c == 0x0A) {
+    if let Some(Ventana::App(i)) = dsk.win.focus.pointed_at() {
+        if let Some((_viejo, completa)) = dsk.table.pantalla_completa(i as usize, p) {
+            if completa {
+                // ** EL NEGRO ES DEL DIRECTOR, no de la app. Lo que sobra
+                // alrededor de una superficie de 960x600 en un panel de 1920
+                // no es de nadie, y dejarlo con lo que hubiera debajo seria
+                // ensenar trozos del escritorio alrededor del juego.
+                p.rect(0, 0, p.ancho, p.alto, 0);
+                p.vaciar();
+            } else {
+                // Al salir se devuelve el escritorio ENTERO: la ventana
+                // tapaba la barra y los iconos, asi que repintar solo su
+                // hueco dejaria media pantalla en negro. Es el mismo camino
+                // que al devolver una pantalla prestada.
+                crate::repintar_escritorio(p, dsk, "pantalla completa: fuera");
+            }
+            return Key::Taken;
+        }
+    }
+    // Sin app senalada la tecla NO se come: un Enter a secas es lo que
+    // entrega la linea de ordenes, y comerselo seria romper la terminal.
+    return Key::Pass;
+}
 // -- ** ALT+FLECHAS: MOVER Y ENCAJAR SIN SOLTAR EL TECLADO --
 //
 // Alt+Tab ya elegia ventana y no podia hacer nada con ella. Esto

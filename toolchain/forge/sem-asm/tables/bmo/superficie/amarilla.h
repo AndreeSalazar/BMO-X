@@ -177,6 +177,7 @@ int bmo_superficie_puntero_y(BMO_SUPERFICIE *s) {
  *    1  MINIMIZADA   esta en la barra
  *    2  FUERA        arrastrada fuera del lienzo, o sin interior
  *    3  PRESTADA     el DIRECTOR presto la pantalla entera a otro programa
+ *    4  TAPADA       otra ventana esta a PANTALLA COMPLETA y te tapa entera
  *
  * ** Que hacer con el: si no se ve, **no dibujar y no llamar a
  * `bmo_superficie_lista`**. Todo lo demas sigue -- la logica, el sonido, la
@@ -188,13 +189,15 @@ int bmo_superficie_puntero_y(BMO_SUPERFICIE *s) {
  *         bmo_superficie_lista(s);
  *     }
  *
- * [!] Lo que el DIRECTOR todavia NO sabe decir es "tapada por otra ventana":
- * ante la duda contesta que se ve. Ahorra menos, y nunca congela lo que se
- * mira. */
+ * [!] De "tapada por otra ventana" el DIRECTOR solo sabe UN caso, y es el que
+ * importa: que OTRA este a pantalla completa. El solape corriente --una ventana
+ * encima de otra-- todavia contesta que se ve: ante la duda se pinta, porque
+ * ahorrar menos es mejor que congelar lo que se mira. */
 #define BMO_SUP_VISTA_SE_VE 0
 #define BMO_SUP_VISTA_MINIMIZADA 1
 #define BMO_SUP_VISTA_FUERA 2
 #define BMO_SUP_VISTA_PRESTADA 3
+#define BMO_SUP_VISTA_TAPADA 4
 
 /* El motivo, tal cual. 0 si se ve o si no hay buzon donde leerlo. */
 int bmo_superficie_vista(BMO_SUPERFICIE *s) {

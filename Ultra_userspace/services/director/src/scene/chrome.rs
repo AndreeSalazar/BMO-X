@@ -87,6 +87,19 @@ pub(crate) struct Chrome {
     resizing: bool,
     /// La geometria de antes de maximizar, para poder volver.
     saved: Option<(u32, u32, u32, u32)>,
+    /// == ** PANTALLA COMPLETA NO ES MAXIMIZAR (2026-09-11) ===========
+    ///
+    /// Y por eso es OTRO estado y no un `bool` mas en `saved`. Maximizar
+    /// deja la barra del sistema a la vista **a proposito** --lo dice
+    /// `toggle_maximized`: una ventana que tapa la barra esconde las fichas
+    /// de las demas--. Pantalla completa hace justo lo contrario: se la
+    /// come, quita el marco entero y se queda con el panel. Es la
+    /// configuracion de *pantalla completa* de un juego, y se pone y se
+    /// quita con Alt+Enter sin relanzar nada.
+    ///
+    /// Guarda la geometria de antes, igual que `saved`, y pueden coexistir:
+    /// de pantalla completa se vuelve a lo que hubiera, maximizado incluido.
+    fs: Option<(u32, u32, u32, u32)>,
     /// Abierta pero escondida. **No es lo mismo que cerrada**: una minimizada
     /// conserva su sitio, su tamano y lo que estuviera mirando.
     pub(crate) minimized: bool,
@@ -145,6 +158,7 @@ impl Chrome {
             drag: None,
             resizing: false,
             saved: None,
+            fs: None,
             minimized: false,
             hover: None,
             closable: true,
@@ -179,6 +193,7 @@ impl Chrome {
             drag: None,
             resizing: false,
             saved: None,
+            fs: None,
             minimized: false,
             hover: None,
             closable: true,
@@ -203,6 +218,38 @@ impl Chrome {
         self.saved.is_some()
     }
 
+    /// **Esta a pantalla completa?** Sin marco, sin barra, y el panel entero.
+    pub(crate) fn is_fullscreen(&self) -> bool {
+        self.fs.is_some()
+    }
+
+    /// **Pantalla completa, o volver.** Devuelve la geometria VIEJA, para que
+    /// quien llama sepa que trozo hay que repintar.
+    ///
+    /// ** Se come la barra, y eso aqui SI es correcto: una app a pantalla
+    /// completa es la que el dueno esta mirando entera, y la salida no es una
+    /// ficha de la barra sino la misma tecla con la que entro. Lo que no se
+    /// puede es dejar al dueno sin salida, y Alt+Enter es simetrico.
+    pub(crate) fn toggle_fullscreen(&mut self, p: &bmo::Pantalla) -> (u32, u32, u32, u32) {
+        let old = (self.x, self.y, self.width, self.height);
+        match self.fs.take() {
+            Some((x, y, a, l)) => {
+                self.x = x;
+                self.y = y;
+                self.width = a;
+                self.height = l;
+            }
+            None => {
+                self.fs = Some(old);
+                self.x = 0;
+                self.y = 0;
+                self.width = p.ancho;
+                self.height = p.alto;
+            }
+        }
+        old
+    }
+
     // -- Los botones -----------------------------------------------------
 
     /// La `x` donde empieza el boton `i` contando desde la derecha.
@@ -212,7 +259,7 @@ impl Chrome {
 
     /// Que boton hay bajo el puntero, si hay alguno.
     pub(crate) fn button_at(&self, px: u32, py: u32) -> Option<Button> {
-        if self.minimized || py < self.y + 2 || py >= self.y + TITLE_H {
+        if self.minimized || self.is_fullscreen() || py < self.y + 2 || py >= self.y + TITLE_H {
             return None;
         }
         for (i, b) in [Button::Minimize, Button::Maximize, Button::Close].into_iter().enumerate() {
@@ -236,11 +283,19 @@ impl Chrome {
     /// empezaria ademas un arrastre, y soltar en otro sitio moveria la ventana
     /// justo cuando querias cerrarla.
     pub(crate) fn on_the_grip(&self, px: u32, py: u32) -> bool {
+        // A pantalla completa no hay barra de titulo que agarrar.
+        if self.is_fullscreen() {
+            return false;
+        }
         self.contains(px, py) && py < self.y + TITLE_H && self.button_at(px, py).is_none()
     }
 
     /// Cae en la esquina de estirar, la de abajo a la derecha?
     pub(crate) fn on_the_corner(&self, px: u32, py: u32) -> bool {
+        // Ni esquina que estirar: el tamano lo pone el panel.
+        if self.is_fullscreen() {
+            return false;
+        }
         !self.minimized
             && !self.is_maximized()
             && px + GRIP_CORNER >= self.x + self.width
@@ -474,6 +529,11 @@ impl Chrome {
         title_bg: u32,
         acento: u32,
     ) {
+        // ** A PANTALLA COMPLETA NO HAY CROMO: ni sombra, ni borde, ni barra
+        // de titulo, ni botones. Es la definicion del estado, no un ahorro.
+        if self.is_fullscreen() {
+            return;
+        }
         shadow(p, self.x, self.y, self.width, self.height);
         rounded_rect(p, self.x, self.y, self.width, self.height, edge);
         rounded_rect(p, self.x + 1, self.y + 1, self.width - 2, self.height - 2, cuerpo);

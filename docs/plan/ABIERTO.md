@@ -7,9 +7,9 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   184 casillas ABIERTAS en 25 planes
+   187 casillas ABIERTAS en 26 planes
    129 hechas
-     4 planes CUMPLIDOS (ni una casilla pendiente)
+     3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
 
@@ -89,14 +89,14 @@
 - [ ] S3 -- EL PRIMER CLIENTE: INTI. Porque puede declarar el alias. Y
 - ... y 6 mas
 
-## [`PLAN_VATIOS.md`](PLAN_VATIOS.md) -- 9 abiertas, 4 hechas
+## [`PLAN_VATIOS.md`](PLAN_VATIOS.md) -- 8 abiertas, 4 hechas
 
 *PLAN_VATIOS -- lo que gasta el CPU en reposo, y por que*
 
 - [ ] pendiente [~] a medias, y se dice cuanto [x] hecho, con fecha
 - [ ] W0a REFERENCIA, no suelo: Windows quieto 2 minutos, Package Power = ___ W
 - [ ] W0b BMO-X, shell de Ring 0, consumo dos veces seguidas: ___ W
-- ... y 6 mas
+- ... y 5 mas
 
 ## [`PLAN_AUTOHOSPEDAJE.md`](PLAN_AUTOHOSPEDAJE.md) -- 7 abiertas, 1 hechas
 
@@ -188,6 +188,15 @@
 - [ ] 3. reap PREGUNTA AL JUEZ en vez de mirar solo su rsp. El cambio
 - ... y 2 mas
 
+## [`PLAN_DIRECTOR.md`](PLAN_DIRECTOR.md) -- 4 abiertas, 7 hechas
+
+*DIRECTOR -- de compositor a administrador*
+
+- [ ] el DIRECTOR le dice el hueco: una ranura de buzon con bit propio
+- [ ] la app puede REEMPLAZAR su superficie: hoy una segunda oferta del
+- [ ] DOOM elige escala con el hueco, como ya hace al tomar la pantalla
+- ... y 1 mas
+
 ## [`PLAN_LA_RAM_SALE_DEL_KERNEL.md`](PLAN_LA_RAM_SALE_DEL_KERNEL.md) -- 4 abiertas, 3 hechas
 
 *LA RAM SALE DEL KERNEL -- que parte es agnostica, medido*
@@ -240,7 +249,6 @@
 que algo se hizo asi, y eso se consulta mas que la casilla.
 
 - [`PLAN_ALMACENAMIENTO.md`](PLAN_ALMACENAMIENTO.md) -- 5 hechas, 205 lineas
-- [`PLAN_DIRECTOR.md`](PLAN_DIRECTOR.md) -- 7 hechas, 1005 lineas
 - [`PLAN_EL_PERFIL_TOTAL.md`](PLAN_EL_PERFIL_TOTAL.md) -- 8 hechas, 611 lineas
 - [`PLAN_SUELO_RING3.md`](PLAN_SUELO_RING3.md) -- 4 hechas, 316 lineas
 

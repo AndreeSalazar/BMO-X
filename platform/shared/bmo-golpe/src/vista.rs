@@ -49,16 +49,30 @@ pub enum Vista {
     FueraDePantalla = 2,
     /// El DIRECTOR presto la pantalla entera a otro programa.
     PantallaPrestada = 3,
+    /// Otra ventana esta a PANTALLA COMPLETA y la tapa entera (2026-09-11).
+    ///
+    /// ** Es el unico solape que el DIRECTOR sabe calcular sin geometria, y
+    /// es el que importa: un juego llenando el panel con tres ventanas
+    /// detras dibujando para nadie. El solape general --una ventana encima
+    /// de otra-- sigue contestando `SeVe`.
+    Tapada = 4,
 }
 
 /// **El veredicto.** El orden de las preguntas va de la causa mas ancha a la
-/// mas estrecha, y solo importa para el MOTIVO: las tres dicen que no se ve.
-pub fn vista(v: Visible, minimizada: bool, prestada: bool) -> Vista {
+/// mas estrecha, y solo importa para el MOTIVO: las cuatro dicen que no se ve.
+///
+/// ** `minimizada` gana a `tapada` a proposito: las dos son ciertas a la vez
+/// cuando hay un juego a pantalla completa y una ventana en la barra, y la que
+/// explica lo que pasa es la que hizo el dueno.
+pub fn vista(v: Visible, minimizada: bool, prestada: bool, tapada: bool) -> Vista {
     if prestada {
         return Vista::PantallaPrestada;
     }
     if minimizada {
         return Vista::Minimizada;
+    }
+    if tapada {
+        return Vista::Tapada;
     }
     if v.ancho == 0 || v.alto == 0 {
         return Vista::FueraDePantalla;
@@ -76,22 +90,22 @@ mod pruebas {
 
     #[test]
     fn una_ventana_normal_se_ve() {
-        assert_eq!(vista(caja(), false, false), Vista::SeVe);
+        assert_eq!(vista(caja(), false, false, false), Vista::SeVe);
     }
 
     #[test]
     fn minimizada_no_se_ve() {
-        assert_eq!(vista(caja(), true, false), Vista::Minimizada);
+        assert_eq!(vista(caja(), true, false, false), Vista::Minimizada);
     }
 
     #[test]
     fn sin_ancho_o_sin_alto_no_se_ve() {
         let mut v = caja();
         v.ancho = 0;
-        assert_eq!(vista(v, false, false), Vista::FueraDePantalla);
+        assert_eq!(vista(v, false, false, false), Vista::FueraDePantalla);
         let mut v = caja();
         v.alto = 0;
-        assert_eq!(vista(v, false, false), Vista::FueraDePantalla);
+        assert_eq!(vista(v, false, false, false), Vista::FueraDePantalla);
     }
 
     /// *** La que hace seguro al juez: casi fuera NO es fuera. Un pixel a la
@@ -100,14 +114,29 @@ mod pruebas {
     #[test]
     fn un_solo_pixel_a_la_vista_es_verse() {
         let v = Visible { x: 1919, y: 1079, ancho: 1, alto: 1 };
-        assert_eq!(vista(v, false, false), Vista::SeVe);
+        assert_eq!(vista(v, false, false, false), Vista::SeVe);
     }
 
     /// Con la pantalla prestada no se ve NINGUNA, ni las que estaban delante.
     #[test]
     fn la_pantalla_prestada_gana_a_todo() {
-        assert_eq!(vista(caja(), false, true), Vista::PantallaPrestada);
-        assert_eq!(vista(caja(), true, true), Vista::PantallaPrestada);
+        assert_eq!(vista(caja(), false, true, false), Vista::PantallaPrestada);
+        assert_eq!(vista(caja(), true, true, false), Vista::PantallaPrestada);
+    }
+
+    /// Otra ventana a pantalla completa tapa a esta, aunque su caja este
+    /// entera dentro del panel: la geometria no lo dice, el estado si.
+    #[test]
+    fn tapada_por_una_a_pantalla_completa() {
+        assert_eq!(vista(caja(), false, false, true), Vista::Tapada);
+    }
+
+    /// Y el orden de los motivos: lo que hizo el dueno gana a lo que hizo
+    /// otra ventana, y la pantalla prestada gana a todo.
+    #[test]
+    fn minimizada_gana_a_tapada_y_prestada_gana_a_las_dos() {
+        assert_eq!(vista(caja(), true, false, true), Vista::Minimizada);
+        assert_eq!(vista(caja(), true, true, true), Vista::PantallaPrestada);
     }
 
     /// El cero es lo que ya escribia el DIRECTOR en ese byte antes de que
@@ -134,5 +163,6 @@ mod pruebas {
         assert_eq!(valor("BMO_SUP_VISTA_MINIMIZADA"), Vista::Minimizada as u8);
         assert_eq!(valor("BMO_SUP_VISTA_FUERA"), Vista::FueraDePantalla as u8);
         assert_eq!(valor("BMO_SUP_VISTA_PRESTADA"), Vista::PantallaPrestada as u8);
+        assert_eq!(valor("BMO_SUP_VISTA_TAPADA"), Vista::Tapada as u8);
     }
 }
