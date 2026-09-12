@@ -1,13 +1,13 @@
 <!-- GENERADO por toolchain/tools/planes. No se edita a mano. -->
 
-# LO QUE FALTA -- las casillas abiertas de los 29 planes
+# LO QUE FALTA -- las casillas abiertas de los 30 planes
 
 > Generado por `toolchain/tools/planes`. **El build comprueba que
 > este fichero y los planes dicen lo mismo**, asi que no puede
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   192 casillas ABIERTAS en 26 planes
+   201 casillas ABIERTAS en 27 planes
    129 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
@@ -78,6 +78,15 @@
 - [ ] el DIRECTOR le dice el hueco: una ranura de buzon con bit propio
 - [ ] la app puede REEMPLAZAR su superficie: hoy una segunda oferta del
 - [ ] DOOM elige escala con el hueco, como ya hace al tomar la pantalla
+- ... y 6 mas
+
+## [`PLAN_DOCUMENTOS.md`](PLAN_DOCUMENTOS.md) -- 9 abiertas, 0 hechas
+
+*PLAN DE LOS DOCUMENTOS -- el escritorio deja de listar PROGRAMAS y lista lo que abres*
+
+- [ ] un programa recibe QUE abrir: MI_DOCUMENTO, hermano de MI_PAQUETE
+- [ ] y decidir si viaja como DERECHO (capability) o como NOMBRE, sabiendo
+- [ ] o que el kernel sepa reabrir un fichero para reescribirlo sin
 - ... y 6 mas
 
 ## [`PLAN_EL_CODEGEN.md`](PLAN_EL_CODEGEN.md) -- 9 abiertas, 0 hechas
