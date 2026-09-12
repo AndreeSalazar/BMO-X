@@ -72,6 +72,7 @@ mod sonda_columnas_de_doom;
 mod sonda_planos_de_doom;
 mod sonda_visplanes_de_doom;
 mod sonda_abs_de_doom;
+mod sonda_planos_altos_de_doom;
 mod bandera_de_pantalla;
 mod sonda_layout_sha1;
 mod sonda_sha1;
