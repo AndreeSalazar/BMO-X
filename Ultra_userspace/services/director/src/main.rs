@@ -520,6 +520,63 @@ fn dormir_un_rato() {
 /// secas, y por eso el escritorio volvia **sin degradado, sin barra y sin
 /// iconos** -- la foto del 2026-08-11 que se leyo como *el escritorio se
 /// bugeo*. No estaba bugeado: estaba a medio pintar.
+/// Un numero decimal al final de `dst`. Devuelve la nueva posicion.
+///
+/// Aqui no hay `format!`: el compositor es `no_std` y no hay monton que gastar
+/// en una linea de diagnostico. Es la misma cuenta que `tid_text` hace en
+/// `scene::surface`, y vive suelta porque la usan tres mensajes distintos.
+fn num(mut v: u32, dst: &mut [u8], mut n: usize) -> usize {
+    let mut d = [0u8; 10];
+    let mut k = 0;
+    loop {
+        d[k] = b'0' + (v % 10) as u8;
+        k += 1;
+        v /= 10;
+        if v == 0 {
+            break;
+        }
+    }
+    while k > 0 {
+        k -= 1;
+        if n < dst.len() {
+            dst[n] = d[k];
+            n += 1;
+        }
+    }
+    n
+}
+
+fn pega(s: &[u8], dst: &mut [u8], mut n: usize) -> usize {
+    for &b in s {
+        if n < dst.len() {
+            dst[n] = b;
+            n += 1;
+        }
+    }
+    n
+}
+
+/// `  [ventana] tid 4  960x600`
+fn nacio_text(tid: u32, ancho: u32, alto: u32, dst: &mut [u8; 48]) -> usize {
+    let mut n = pega(b"  [ventana] tid ", dst, 0);
+    n = num(tid, dst, n);
+    n = pega(b"  ", dst, n);
+    n = num(ancho, dst, n);
+    n = pega(b"x", dst, n);
+    n = num(alto, dst, n);
+    pega(b"\n", dst, n)
+}
+
+/// `  [ventana] tid 4 ofrecio 1234 B y NO es una superficie`
+fn no_es_text(tid: u32, bytes: u64, dst: &mut [u8; 48]) -> usize {
+    let mut n = pega(b"  [ventana] tid ", dst, 0);
+    n = num(tid, dst, n);
+    n = pega(b" ofrecio ", dst, n);
+    n = num(bytes.min(u32::MAX as u64) as u32, dst, n);
+    n = pega(b" B: NO es BSUP", dst, n);
+    pega(b"\n", dst, n)
+}
+
 pub(crate) fn repintar_escritorio(
     p: &bmo::Pantalla,
     dsk: &mut desktop::Desktop,
@@ -744,14 +801,48 @@ pub extern "C" fn _start() -> ! {
         // bien --puede ser en su primer fotograma o en el mil-- y el DIRECTOR se
         // entera **mirando**, no porque nadie le mande un mensaje. Una operacion
         // que ya existia y ninguna cola nueva.
+        // *** Y LO QUE PASE SE DICE EN LA CAJA, no en el panel del kernel.
+        //
+        // El 12-09 el dueno tuvo DOOM corriendo a 68 fps, publicando sus
+        // fotogramas, y **sin ventana**. El escritorio no tenia una sola linea
+        // que decir, y el instrumento que yo habia puesto --el veredicto de la
+        // VISTA-- escribia por `bmo::consola`, o sea al PANEL DEL KERNEL (F11).
+        // Estaba mirando la ventana correcta para DOOM y la equivocada para mi
+        // instrumento.
+        //
+        // ** Un instrumento que no sale donde mira el dueno no es un
+        // instrumento: es una nota para mi. Estas tres lineas salen en la caja
+        // de Ejecutar, que es donde ya estaba mirando.
         let mut born = false;
-        if let Some(hueco) = dsk.table.collect(&p) {
+        match dsk.table.collect(&p) {
+            scene::surface::Adopcion::Nacio { hueco, tid, ancho, alto } => {
             born = true;
+            let mut l = [0u8; 48];
+            let n = nacio_text(tid, ancho, alto, &mut l);
+            dsk.out.grid.text(&l[..n]);
+            dsk.tick.repaint_field = true;
             // ** Y SE LE DICE AL FOCO QUE EXISTE. Hasta hoy una app tenia
             // caja pero no nombre: `bmo_input::foco` habla en ids y ninguno
             // era suyo, asi que Alt+Tab pasaba de largo por encima de una
             // ventana que se estaba viendo.
             dsk.win.focus.open(desktop::Ventana::App(hueco as u8));
+            }
+            // ** LAS CUATRO RANURAS LLENAS. La app se queda ofrecida para
+            // siempre y hasta hoy nadie lo decia -- el sintoma es "abri una
+            // quinta ventana y no salio".
+            scene::surface::Adopcion::SinSitio => {
+                dsk.out.grid.text(b"  [ventana] NO HAY SITIO: cierra una y vuelve a intentarlo\n");
+                dsk.tick.repaint_field = true;
+            }
+            // ** Lo ofrecido no tenia cabecera `BSUP` valida. Se le devolvio el
+            // bloque, y esa app va a dibujar donde nadie mira.
+            scene::surface::Adopcion::NoEsSuperficie { tid, bytes } => {
+                let mut l = [0u8; 48];
+                let n = no_es_text(tid, bytes, &mut l);
+                dsk.out.grid.text(&l[..n]);
+                dsk.tick.repaint_field = true;
+            }
+            scene::surface::Adopcion::NadieOfrece => {}
         }
         // Y las que se quedaron sin dueno. Va ANTES de pintar nada: la ventana
         // de una app muerta tiene que desaparecer en el mismo fotograma en que
@@ -762,7 +853,18 @@ pub extern "C" fn _start() -> ! {
         // DIRECTOR decide que se ve de cada caja y se lo deja a su app en el
         // buzon; la que vuelve a verse se repega con lo ultimo que entrego. Y a
         // la que sigue pintando oculta se la acusa, una vez por racha.
-        dsk.table.vistas(&p);
+        // ** Y EL VEREDICTO SALE EN LA CAJA, que es donde mira el dueno.
+        let (_, cambio) = dsk.table.vistas(&p);
+        if let Some((tid, nombre)) = cambio {
+            let mut l = [0u8; 48];
+            let mut n = pega(b"  [vista] tid ", &mut l, 0);
+            n = num(tid, &mut l, n);
+            n = pega(b" -> ", &mut l, n);
+            n = pega(nombre.as_bytes(), &mut l, n);
+            n = pega(b"\n", &mut l, n);
+            dsk.out.grid.text(&l[..n]);
+            dsk.tick.repaint_field = true;
+        }
         if dsk.table.acusar() {
             paint_status(
                 &p,
