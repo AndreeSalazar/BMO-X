@@ -43,7 +43,7 @@
 //!
 //! - Se piden marcos **contiguos**, porque el buffer se recorre como un `&[u8]`
 //!   lineal. Si la RAM esta fragmentada y no hay hueco seguido, se rechaza con
-//!   `ERROR_TOO_LARGE` -- entregar un archivo a trozos sin que el
+//!   `ERROR_ARCH_GRANDE` -- entregar un archivo a trozos sin que el
 //!   llamante lo sepa seria peor.
 //! - Lo escrito no llega al disco hasta `close`, y ahi `bmo_fat32` lo guarda de
 //!   una vez.
@@ -130,20 +130,34 @@ const PAGE: usize = 4096;
 pub const NO_OWNER: u32 = u32::MAX;
 
 /// No quedan ranuras de archivo abierto.
-pub const ERROR_NO_FREE_SLOT: u32 = 27;
+// == *** LOS NOMBRES SON LOS DE RING 3, Y NO AL REVES (2026-09-12) ==========
+//
+// Estos siete numeros ya eran los mismos que `userland::proceso`, y los nombres
+// NO: aqui se llamaban `ERROR_NOT_THERE`, `ERROR_NAME`, `ERROR_DIRECTORY`...
+// Dos vocabularios para una sola cosa, y con un agravante -- `ERROR_NOT_THERE`
+// existia TRES veces en el kernel con TRES valores (20 en `launch`, 26 en
+// `directory`, 28 aqui), asi que buscar ese nombre daba tres respuestas y
+// ninguna pista de cual era la tuya.
+//
+// ** El numero no se toca: se toca el nombre, y se elige el de Ring 3 porque es
+// **el que se lee cuando algo falla**. El kernel puede llamarse como quiera; el
+// que mira la pantalla, no. Es la misma razon por la que el semaforo de REX
+// empareja 98 constantes con el ABI: un numero con dos nombres es un numero que
+// nadie puede comprobar.
+pub const ERROR_ARCH_SIN_HUECO: u32 = 27;
 /// La ruta no existe, o no es un archivo.
-pub const ERROR_NOT_THERE: u32 = 28;
+pub const ERROR_ARCH_NO_ESTA: u32 = 28;
 /// El archivo no cabe en el buffer. Se dice en vez de entregar un trozo.
-pub const ERROR_TOO_LARGE: u32 = 29;
+pub const ERROR_ARCH_GRANDE: u32 = 29;
 /// El nombre no cabe en 8.3 (ocho de nombre, tres de extension).
-pub const ERROR_NAME: u32 = 30;
+pub const ERROR_ARCH_NOMBRE: u32 = 30;
 /// No hay volumen de datos montado con escritor.
-pub const ERROR_READ_ONLY: u32 = 31;
+pub const ERROR_ARCH_SOLO_LECTURA: u32 = 31;
 /// La CARPETA de la ruta no existe. Distinto de que falte el archivo: manda a
 /// mirar otra cosa, y un mensaje que no los separa manda a buscar donde no es.
-pub const ERROR_DIRECTORY: u32 = 32;
+pub const ERROR_ARCH_CARPETA: u32 = 32;
 /// La ruta no nombra un archivo -- acaba en barra, o es un directorio.
-pub const ERROR_IS_DIRECTORY: u32 = 33;
+pub const ERROR_ARCH_ES_CARPETA: u32 = 33;
 
 /// Saca hasta 7 bytes: `(n << 56) | bytes_LE`. `n == 0` = se acabo.
 ///
@@ -480,7 +494,7 @@ unsafe fn byte_en(i: usize, pos: usize) -> Option<u8> {
 pub fn open(pid: u32, ruta: &str) -> Result<u64, u32> {
     let i = match free_slot() {
         Some(i) => i,
-        None => return Err(ERROR_NO_FREE_SLOT),
+        None => return Err(ERROR_ARCH_SIN_HUECO),
     };
     // Cada motivo manda a hacer algo distinto, y por eso no se aplanan todos a
     // "no esta": quien escribe `lee apps/` tiene que enterarse de que eso es
@@ -500,7 +514,7 @@ pub fn open(pid: u32, ruta: &str) -> Result<u64, u32> {
         unsafe {
             if !reserve(i, mide.max(1)) {
                 crate::ring0::cabina::warn("arch", "sin RAM para el fichero de ESTRATOS", mide as u64);
-                return Err(ERROR_TOO_LARGE);
+                return Err(ERROR_ARCH_GRANDE);
             }
             let leidos = super::estratos::leer(&nodo, buf(i));
             REFLEJO[i] = false;
@@ -527,10 +541,10 @@ pub fn open(pid: u32, ruta: &str) -> Result<u64, u32> {
     // que hay que hacer una sola vez; todo lo demas se hace cuando hace falta.
     let (cursor, mide) = match crate::ring0::fsys::fs::abrir_rangos(ruta) {
         Ok(v) => v,
-        Err(LoadError::BadPath) => return Err(ERROR_IS_DIRECTORY),
-        Err(LoadError::NameTooLong) => return Err(ERROR_NAME),
-        Err(LoadError::DirNotFound) => return Err(ERROR_DIRECTORY),
-        Err(_) => return Err(ERROR_NOT_THERE),
+        Err(LoadError::BadPath) => return Err(ERROR_ARCH_ES_CARPETA),
+        Err(LoadError::NameTooLong) => return Err(ERROR_ARCH_NOMBRE),
+        Err(LoadError::DirNotFound) => return Err(ERROR_ARCH_CARPETA),
+        Err(_) => return Err(ERROR_ARCH_NO_ESTA),
     };
     let mide = mide as usize;
     unsafe {
@@ -541,7 +555,7 @@ pub fn open(pid: u32, ruta: &str) -> Result<u64, u32> {
             // marcos como mucho. Si pasa, es que no queda RAM contigua ni para
             // eso, y entonces el sistema tiene un problema mas grande.
             crate::ring0::cabina::warn("arch", "sin RAM para la ventana del archivo", mide as u64);
-            return Err(ERROR_TOO_LARGE);
+            return Err(ERROR_ARCH_GRANDE);
         }
         REFLEJO[i] = true;
         CUR[i] = cursor;
@@ -591,21 +605,21 @@ pub fn open(pid: u32, ruta: &str) -> Result<u64, u32> {
 pub fn abrir_asinc(pid: u32, ruta: &str) -> Result<u64, u32> {
     let i = match free_slot() {
         Some(i) => i,
-        None => return Err(ERROR_NO_FREE_SLOT),
+        None => return Err(ERROR_ARCH_SIN_HUECO),
     };
     use crate::ring0::fsys::fs::LoadError;
     let (cluster, mide) = match crate::ring0::fsys::fs::abrir_trozos(ruta) {
         Ok(v) => v,
-        Err(LoadError::BadPath) => return Err(ERROR_IS_DIRECTORY),
-        Err(LoadError::NameTooLong) => return Err(ERROR_NAME),
-        Err(LoadError::DirNotFound) => return Err(ERROR_DIRECTORY),
-        Err(_) => return Err(ERROR_NOT_THERE),
+        Err(LoadError::BadPath) => return Err(ERROR_ARCH_ES_CARPETA),
+        Err(LoadError::NameTooLong) => return Err(ERROR_ARCH_NOMBRE),
+        Err(LoadError::DirNotFound) => return Err(ERROR_ARCH_CARPETA),
+        Err(_) => return Err(ERROR_ARCH_NO_ESTA),
     };
     let mide = mide as usize;
     unsafe {
         if !reserve(i, mide) {
             crate::ring0::cabina::warn("arch", "sin RAM contigua para el archivo", mide as u64);
-            return Err(ERROR_TOO_LARGE);
+            return Err(ERROR_ARCH_GRANDE);
         }
         LARGO[i] = 0;
         CURSOR[i] = 0;
@@ -638,7 +652,7 @@ pub fn abrir_asinc(pid: u32, ruta: &str) -> Result<u64, u32> {
 /// significaria haber dejado a un programa acumulando bytes para nada.
 pub fn create(pid: u32, ruta: &str) -> Result<u64, u32> {
     if !crate::ring0::fsys::fs::data_mounted() {
-        return Err(ERROR_READ_ONLY);
+        return Err(ERROR_ARCH_SOLO_LECTURA);
     }
     // Partir la ruta en carpeta + nombre por la ULTIMA barra.
     let limpia = {
@@ -653,29 +667,29 @@ pub fn create(pid: u32, ruta: &str) -> Result<u64, u32> {
         None => ("", limpia),
     };
     if nombre_txt.is_empty() {
-        return Err(ERROR_NAME);
+        return Err(ERROR_ARCH_NOMBRE);
     }
     let name = match crate::ring0::fsys::fs::nombre_8_3_pub(nombre_txt) {
         Some(n) => n,
-        None => return Err(ERROR_NAME),
+        None => return Err(ERROR_ARCH_NOMBRE),
     };
     let dir = match crate::ring0::fsys::fs::dir_datos(carpeta) {
         Some(c) => c,
         // La carpeta, no el archivo. `escribe datos/x.txt` cuando no hay
         // `datos/` tiene que decir que falta la CARPETA: el archivo es
         // justamente lo que se venia a crear.
-        None => return Err(ERROR_DIRECTORY),
+        None => return Err(ERROR_ARCH_CARPETA),
     };
 
     let i = match free_slot() {
         Some(i) => i,
-        None => return Err(ERROR_NO_FREE_SLOT),
+        None => return Err(ERROR_ARCH_SIN_HUECO),
     };
     unsafe {
         // La primera reserva. No es un techo: `write` dobla cuando se llena.
         if !reserve(i, INITIAL) {
             crate::ring0::cabina::warn("arch", "sin RAM para el buffer de escritura", 0);
-            return Err(ERROR_TOO_LARGE);
+            return Err(ERROR_ARCH_GRANDE);
         }
         LARGO[i] = 0;
         CURSOR[i] = 0;

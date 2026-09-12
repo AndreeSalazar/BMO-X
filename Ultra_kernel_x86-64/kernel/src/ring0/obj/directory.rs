@@ -50,9 +50,13 @@ pub const MAX_ABIERTOS: usize = 8;
 pub const NO_OWNER: u32 = u32::MAX;
 
 /// No quedan ranuras de directorio abierto.
-pub const ERROR_NO_FREE_SLOT: u32 = 25;
+// ** EL NOMBRE DICE DE QUE PUERTA ES (2026-09-12). Se llamaban
+// `ERROR_NOT_THERE` y `ERROR_NO_FREE_SLOT` -- los mismos nombres que usaban
+// `launch`, `file` y `console` con OTROS numeros. El numero no cambia: cambia
+// que ahora se sabe cual es cual sin abrir tres ficheros. Ver L6j.
+pub const ERROR_DIR_SIN_HUECO: u32 = 25;
 /// La ruta no existe, o no es un directorio.
-pub const ERROR_NOT_THERE: u32 = 26;
+pub const ERROR_DIR_NO_ESTA: u32 = 26;
 
 /// Avanza a la siguiente entrada y devuelve lo que se sabe de ella:
 /// `(hay << 63) | (es_dir << 62) | tamano`. `hay == 0` = se acabo el
@@ -98,13 +102,13 @@ static mut OWNER: [u32; MAX_ABIERTOS] = [NO_OWNER; MAX_ABIERTOS];
 pub fn open(pid: u32, ruta: &str) -> Result<u64, u32> {
     let cluster = match crate::ring0::fsys::fs::dir_datos(ruta) {
         Some(c) => c,
-        None => return Err(ERROR_NOT_THERE),
+        None => return Err(ERROR_DIR_NO_ESTA),
     };
     unsafe {
         let libre = (0..MAX_ABIERTOS).find(|&i| OWNER[i] == NO_OWNER);
         let i = match libre {
             Some(i) => i,
-            None => return Err(ERROR_NO_FREE_SLOT),
+            None => return Err(ERROR_DIR_SIN_HUECO),
         };
         CLUSTER[i] = cluster;
         // * Empieza en usize::MAX para que el PRIMER `SIGUIENTE` caiga en la

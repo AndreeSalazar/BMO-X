@@ -256,7 +256,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
         TASK_OP_ENDPOINT_CREATE => {
             match endpoint::create(scheduler::current_pid(), arg0 as usize) {
                 Some(handle) => BmoStatus::ok_value(handle),
-                None => BmoStatus::err(endpoint::ERROR_BUSY),
+                None => BmoStatus::err(endpoint::ERROR_ENDPOINT_OCUPADO),
             }
         }
         TASK_OP_ENDPOINT_CONNECT => {

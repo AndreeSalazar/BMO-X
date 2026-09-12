@@ -52,7 +52,9 @@ const RING: usize = 2048;
 pub const NO_OWNER: u32 = u32::MAX;
 
 /// No quedan consolas libres.
-pub const ERROR_NO_FREE_SLOT: u32 = 24;
+// ** El nombre dice de que puerta es: era `ERROR_NO_FREE_SLOT`, que en
+// `directory` vale 25 y en `file` 27. Mismo numero, nombre propio. Ver L6j.
+pub const ERROR_CONSOLA_SIN_HUECO: u32 = 24;
 
 /// Leer hasta **7** bytes: `(n << 56) | bytes_LE`, con `n` = cuantos son
 /// validos. `n == 0` = no hay nada.
@@ -108,7 +110,7 @@ pub fn create(pid: u32) -> Result<u64, u32> {
         let libre = (0..MAX_CONSOLAS).find(|&i| LECTOR[i] == NO_OWNER);
         let i = match libre {
             Some(i) => i,
-            None => return Err(ERROR_NO_FREE_SLOT),
+            None => return Err(ERROR_CONSOLA_SIN_HUECO),
         };
         LEE[i] = 0;
         WRITES[i] = 0;

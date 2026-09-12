@@ -64,6 +64,17 @@ COSTES = ("NADA", "TAREA", "APARATO", "DATO", "MAQUINA", "PUERTA")
 # proyecto YA PAGO. Ver `META-KERNEL_HARD.md`, L6f.
 RIESGOS = ("AJENO", "ESPEJO", "SILENCIO", "RELOJ", "UNICO")
 
+def como_numero(t):
+    """`0x1F`, `31` o `1_000` -> un entero. Lo usan `contrato` y `contrato_base`.
+
+    ** Vivia en `contrato.py` y se mudo aqui el 12-09, con el corte de la linea
+    base: los dos lo necesitan y duplicarlo es como dos parsers acaban leyendo
+    distinto el mismo numero. Texto movido, no reescrito.
+    """
+    t = t.replace("_", "")
+    return int(t, 16) if t.lower().startswith("0x") else int(t)
+
+
 BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "LINEA_BASE.txt")
 CUESTAS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "CUESTAS.txt")
 RIESGOS_TXT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "RIESGOS.txt")

@@ -46,7 +46,9 @@ static OWNER: AtomicU32 = AtomicU32::new(NO_OWNER);
 static HANDLE: AtomicU64 = AtomicU64::new(0);
 
 /// Ya la tiene otro proceso.
-pub const ERROR_BUSY: u32 = 16;
+/// Reexportado: la definicion vive en `syscall::ops` desde el 12-09,
+/// porque la entrada no es el unico aparato exclusivo. Ver L6j.
+pub(crate) use crate::ring0::syscall::ops::ERROR_APARATO_OCUPADO as ERROR_BUSY;
 
 /// Estado del puntero, empaquetado: `(x << 32) | (y << 16) | botones`.
 ///

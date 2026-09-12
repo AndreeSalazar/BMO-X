@@ -565,6 +565,22 @@ pub(crate) const ERROR_UNSUPPORTED: u32 = 10;
 /// tanto, este numero nace **fuera de la zona en disputa** y al lado de los
 /// otros dos codigos del despachador, que son los unicos que no se repiten.
 pub(crate) const ERROR_NEGADO: u32 = 11;
+/// **El aparato lo tiene OTRO proceso.** Pantalla, entrada y sonido.
+///
+/// == *** ESTABA DEFINIDO TRES VECES, CON EL MISMO VALOR (2026-09-12) ========
+///
+/// `obj/audio.rs`, `obj/fb/verde.rs` y `obj/input.rs` declaraban cada uno su
+/// `ERROR_BUSY: u32 = 16`. Tres definiciones que hoy coinciden **y que nada
+/// obligaba a coincidir**: el dia que alguien tocara una, las otras dos se
+/// quedaban atras y el sintoma seria un numero que significa dos cosas segun
+/// que aparato lo dijo.
+///
+/// ** Y ademas el nombre estaba pillado: `ERROR_BUSY` valia 21 en `endpoint` y
+/// 22 en `launch`. Tres aparatos, dos puertas y un nombre para cinco cosas.
+///
+/// Aqui hay UNA, y el nombre dice de que habla: no es "ocupado" en abstracto,
+/// es **un aparato exclusivo que ya tiene dueno**. Ver L6j.
+pub(crate) const ERROR_APARATO_OCUPADO: u32 = 16;
 
 #[repr(C)]
 pub(crate) struct BmoStatus {

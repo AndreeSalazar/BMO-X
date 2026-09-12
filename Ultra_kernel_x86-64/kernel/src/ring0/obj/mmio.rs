@@ -85,7 +85,13 @@ pub const ERROR_NO_LISTO: u32 = 5;
 pub const ERROR_OCUPADO: u32 = 6;
 /// El juez dijo que no. **El motivo va a CABINA con su nombre**, porque en un
 /// codigo de error de 32 bits no cabe *"pisa la RAM que empieza en 0x100000"*.
-pub const ERROR_NO_CEDIBLE: u32 = 7;
+// *** ROTO A PROPOSITO: VALIA 7, QUE YA ERA `ERROR_INVALID_ARGUMENT` (12-09).
+//
+// Y el 7 del despachador es GENERICO --puede salir por cualquier puerta-- asi
+// que un 7 no se podia leer: o era "lo que me pasaste no vale" o era "este MMIO
+// no se cede". Se mueve este y no aquel porque **nadie de Ring 3 lo lee**: se
+// midio antes de romperlo. Ver L6j.
+pub const ERROR_NO_CEDIBLE: u32 = 12;
 
 /// La fisica del aparato pedido, si esta en pie.
 ///
