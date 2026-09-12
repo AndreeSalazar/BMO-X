@@ -1,5 +1,9 @@
 //! **CUANTO FIARSE de los nucleos que ensena esta terminal.**
 //!
+//! [consumo] NADA      no corre en reposo: lo pide el dueno escribiendo una
+//!                     orden en la caja de Ejecutar o pulsando su tecla de
+//!                     funcion (L6h)
+//!
 //! # Por que existe este fichero, y por que es un fichero
 //!
 //! El 2026-08-25 el panel del escritorio pinto, en un Ryzen 5 5600X que es 6/12:

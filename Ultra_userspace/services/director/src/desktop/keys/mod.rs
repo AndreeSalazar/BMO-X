@@ -1,5 +1,9 @@
 //! **The keyboard**, and the shape it turned out to already have.
 //!
+//! [consumo] NADA      no corre en reposo: lo llama el bucle SOLO si hubo una
+//!                     tecla o el raton se movio. Sin entrada, no se entra
+//!                     aqui (L6h)
+//!
 //! ## The ninety free names were a mirage
 //!
 //! This block was measured at **90 names it used but did not declare**, which

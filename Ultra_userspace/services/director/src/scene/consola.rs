@@ -1,5 +1,9 @@
 //! **LA CONSOLA DE ESTRATOS**: el terminal del pie de la ventana, `Ctrl+n`.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! === Por que un terminal PROPIO, habiendo uno ===
 //!
 //! No es un atajo ni una comodidad. Es un DESAMBIGUADOR, y la frase que lo

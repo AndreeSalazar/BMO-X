@@ -1,5 +1,9 @@
 //! **Lo que se INTERPRETA.**
 //!
+//! [consumo] NADA      no corre en reposo: lo pide el dueno escribiendo una
+//!                     orden en la caja de Ejecutar o pulsando su tecla de
+//!                     funcion (L6h)
+//!
 //! De una linea de texto a una intencion. Aqui no se pinta nada: un modulo de
 //! esta carpeta no sabe de que color es la ventana.
 
@@ -22,6 +26,10 @@ pub(crate) mod history;
 pub(crate) mod cabina;
 pub(crate) mod red;
 pub(crate) mod reports;
+/// La TIPOGRAFIA de los informes: filas, barras y unidades. Salio de `reports`
+/// el 12-09 porque alli convivian dos clases de coste -- lo que pregunta a la
+/// maquina (DATO) y lo que solo coloca un numero (NADA). Ver su cabecera.
+pub(crate) mod tabla;
 /// Cuanto fiarse de los nucleos que ensena `reports`. Ver su cabecera.
 pub(crate) mod topologia;
 

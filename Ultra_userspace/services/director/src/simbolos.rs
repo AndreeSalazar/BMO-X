@@ -1,5 +1,8 @@
 //! **Traducir un desplazamiento a `funcion+N`, leyendo el `.bex` del muerto.**
 //!
+//! [consumo] NADA      no corre en reposo: solo cuando alguien lo pide, o en
+//!                     el arranque (L6h)
+//!
 //! # Por que esto vive en Ring 3 y no en el kernel
 //!
 //! La autopsia del kernel da un `rip` y su desplazamiento en la imagen

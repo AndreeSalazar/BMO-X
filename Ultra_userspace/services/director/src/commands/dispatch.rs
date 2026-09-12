@@ -1,5 +1,9 @@
 //! **Which command goes where.** A router and nothing else.
 //!
+//! [consumo] NADA      no corre en reposo: lo pide el dueno escribiendo una
+//!                     orden en la caja de Ejecutar o pulsando su tecla de
+//!                     funcion (L6h)
+//!
 //! The bodies live in three files, and the boundary is not size -- it is WHO
 //! THE COMMAND TALKS TO:
 //!

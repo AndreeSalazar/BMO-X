@@ -1,5 +1,9 @@
 //! **La consola de DATOS** -- F12, el centro de control de ESTRATOS.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! === Por que una ventana aparte y no otro comando ===
 //!
 //! La caja de `Ejecutar` es de una linea: escribes una ruta y algo corre. Eso

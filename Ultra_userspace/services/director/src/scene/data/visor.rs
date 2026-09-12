@@ -1,5 +1,9 @@
 //! **EL VISOR** -- ver lo que hay DENTRO de un fichero de ESTRATOS.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! === Por que esto es solo interfaz ===
 //!
 //! Porque leer ya funcionaba y nadie lo estaba usando. `Archivo::leer_de`

@@ -1,5 +1,9 @@
 //! **ESTRUCTURA** -- F1, el taller. Escalon 1: la ventana, y nada mas.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! === Que es esto, y que NO es todavia ===
 //!
 //! `docs/plan/PLAN_ESTRUCTURA.md` describe un terminal que ademas compila. Esto

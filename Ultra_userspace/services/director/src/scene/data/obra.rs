@@ -1,5 +1,9 @@
 //! **EL EXPLORADOR DE ESTRATOS** -- los tres paneles a la vez.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! === De donde salio ===
 //!
 //! De `data.rs`, que cruzo las 1.000 lineas el 2026-08-19 al ganar

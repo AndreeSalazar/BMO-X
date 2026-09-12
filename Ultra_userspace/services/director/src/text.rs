@@ -1,5 +1,8 @@
 //! Numeros a texto. Lo mas pequeno que hace falta y nada mas: una ventana que
 //! no sabe escribir un numero no sirve para mirar un disco.
+//!
+//! [consumo] NADA      no corre en reposo: solo cuando alguien lo pide, o en
+//!                     el arranque (L6h)
 
 /// Un `u64` a decimal en `dst`. Sin `alloc` no hay `format!`, y un terminal
 /// que no sabe escribir un numero no sirve para mirar un disco.

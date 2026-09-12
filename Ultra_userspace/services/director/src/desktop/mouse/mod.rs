@@ -1,5 +1,9 @@
 //! **El puntero**: que significa un clic, un arrastre y una vuelta de rueda.
 //!
+//! [consumo] NADA      no corre en reposo: lo llama el bucle SOLO si hubo una
+//!                     tecla o el raton se movio. Sin entrada, no se entra
+//!                     aqui (L6h)
+//!
 //! Empezo siendo 556 lineas dentro de `_start`, salio entero a un fichero
 //! porque necesitaba **cinco nombres** --el escritorio, la pantalla, donde esta
 //! el puntero, cuanto giro la rueda y si Ctrl esta pulsado-- y desde entonces

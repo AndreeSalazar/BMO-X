@@ -1,5 +1,9 @@
 //! GENERADO POR MAQUETA DESDE `toolchain/tools/maqueta/pruebas/calc.maqueta` -- NO EDITAR A MANO.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! Lo que se edita es el `.maqueta`. Cambiar esto es escribir una verdad
 //! que la siguiente compilacion borra.
 //!

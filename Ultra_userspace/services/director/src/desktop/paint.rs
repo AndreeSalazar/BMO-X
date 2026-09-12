@@ -1,6 +1,9 @@
 //! **Closing the frame**: drain the child, the taskbar chips, the caret, the
 //! apps, the vitals, and the mouse cursor on top of everything.
 //!
+//! [consumo] NADA      no corre en reposo: solo cuando alguien lo pide, o en
+//!                     el arranque (L6h)
+//!
 //! 245 lines, and they need **three names**: the desktop, the screen and how
 //! many app windows died this turn. That is the smallest signature of any
 //! block in the loop, and the reason is the order itself -- everything in here

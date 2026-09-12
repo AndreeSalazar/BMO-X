@@ -1,5 +1,9 @@
 //! **La entrada a Ring 3** -- lo que se ve cuando el userspace toma la maquina.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! === Por que existe ===
 //!
 //! Hasta ahora el paso de Ring 0 a Ring 3 era **invisible**: el kernel dejaba

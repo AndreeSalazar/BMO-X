@@ -1,5 +1,9 @@
 //! **EL LANZADOR: dar clic y ya.**
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! Una rejilla de iconos en el escritorio, uno por cada `.bex` que haya en
 //! `apps\`. Se pulsa y el programa arranca.
 //!

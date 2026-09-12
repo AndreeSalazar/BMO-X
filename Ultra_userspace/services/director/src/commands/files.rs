@@ -1,5 +1,9 @@
 //! **Commands that talk to the DISK**: `ls`, `lee`, `escribe`, `guarda`.
 //!
+//! [consumo] NADA      no corre en reposo: lo pide el dueno escribiendo una
+//!                     orden en la caja de Ejecutar o pulsando su tecla de
+//!                     funcion (L6h)
+//!
 //! They are together because they share the failure they can hit -- a
 //! capability that is not granted, a FAT32 name that does not fit in 8.3, a
 //! close that fails after every write succeeded. `file_error_reason` says
@@ -227,7 +231,7 @@ pub(crate) fn save(dsk: &mut Desktop, p: &bmo::Pantalla, arg: &[u8]) -> After {
         match cual {
             0 => super::reports::report_cpu(&mut dsk.out.grid),
             1 => super::reports::report_memory(&mut dsk.out.grid),
-            2 => super::reports::report_consumo(&mut dsk.out.grid),
+            2 => super::reports::report_consumo(&mut dsk.out.grid, &dsk.tick),
             _ => super::reports::report_apps(&mut dsk.out.grid),
         }
         let (from, to) = dsk.out.grid.rows_since(marca);
@@ -274,7 +278,7 @@ pub(crate) fn save(dsk: &mut Desktop, p: &bmo::Pantalla, arg: &[u8]) -> After {
     // historial de la PANTALLA, asi que para que algo salga en el fichero tiene
     // que estar antes en la pantalla. Escribirlo solo al fichero seria tener dos
     // caminos de salida que pueden decir cosas distintas.
-    super::reports::report_consumo(&mut dsk.out.grid);
+    super::reports::report_consumo(&mut dsk.out.grid, &dsk.tick);
     // El rango se toma ANTES de escribir nada:
     // los mensajes de abajo son de esta orden, no
     // de lo que se estaba guardando, y colarlos

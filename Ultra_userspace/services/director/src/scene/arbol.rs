@@ -1,5 +1,9 @@
 //! **EL PANEL DE ARBOL**: la rama por la que has bajado, con sus hermanas.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! === Que contesta, que la miga de pan no ===
 //!
 //! La miga dice DONDE estas: `/ > datos > notas`. Lo que no dice es **que mas

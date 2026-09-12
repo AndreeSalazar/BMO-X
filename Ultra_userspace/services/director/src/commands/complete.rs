@@ -1,4 +1,8 @@
 //! El TAB: completar una ruta con lo que hay en el disco.
+//!
+//! [consumo] NADA      no corre en reposo: lo pide el dueno escribiendo una
+//!                     orden en la caja de Ejecutar o pulsando su tecla de
+//!                     funcion (L6h)
 
 use bmo_userland as bmo;
 

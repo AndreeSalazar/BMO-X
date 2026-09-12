@@ -46,6 +46,10 @@ fn cabecera(s: &mut String, origen: &str, l: &Laid) {
         s,
         "//! GENERADO POR MAQUETA DESDE `{origen}` -- NO EDITAR A MANO.\n\
          //!\n\
+         //! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el\n\
+         //!                     compositor se lo pide, y el compositor solo pinta si\n\
+         //!                     algo cambio (L6h)\n\
+         //!\n\
          //! Lo que se edita es el `.maqueta`. Cambiar esto es escribir una verdad\n\
          //! que la siguiente compilacion borra.\n\
          //!\n\

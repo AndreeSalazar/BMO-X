@@ -1,5 +1,9 @@
 //! **El raton sobre la BARRA DE TAREAS**: las fichas que traen una ventana al
 //! frente.
+//!
+//! [consumo] NADA      no corre en reposo: lo llama el bucle SOLO si hubo una
+//!                     tecla o el raton se movio. Sin entrada, no se entra
+//!                     aqui (L6h)
 
 use bmo_userland as bmo;
 

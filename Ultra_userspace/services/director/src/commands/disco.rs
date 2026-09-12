@@ -1,5 +1,13 @@
 //! **`disco`: la terminal de administracion del almacen.**
 //!
+//! [consumo] APARATO   `trim_libre` le MANDA al SSD que borre bloques. El
+//!                     disco se queda distinto, y eso es lo que distingue un
+//!                     informe de una orden (L6h)
+//!           [!] MEZCLA -- declara la PEOR (L6h). Casi todo es el informe del
+//!                         disco, que solo LEE; lo que gasta es UNA orden,
+//!                         `trim`, que le manda al SSD borrar bloques. Leer y
+//!                         mandar no cuestan lo mismo, y aqui van juntos.
+//!
 //! === Por que esto existe, y por que aqui ===
 //!
 //! Porque BMO-X no es Linux, no es Windows y no es un Mac: no hay `fstrim`, no
@@ -31,7 +39,8 @@
 
 use bmo_userland as bmo;
 
-use super::reports::{campo, report_disco, section};
+use super::reports::report_disco;
+use super::tabla::{campo, section};
 use super::After;
 use crate::desktop::Desktop;
 use crate::scene::output::{Output, INK_ECHO, INK_ERR, INK_GOOD, INK_PLAIN};

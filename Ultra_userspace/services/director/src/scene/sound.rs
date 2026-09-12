@@ -1,5 +1,11 @@
 //! **La ventana del SONIDO** -- F10, el aparato y quien lo tiene.
 //!
+//! [consumo] APARATO   reclama `KIND_AUDIO` --que es EXCLUSIVO-- al abrir la
+//!                     ventana y lo suelta al cerrarla. Mientras este abierta,
+//!                     ningun programa lanzado puede sonar, y eso esta
+//!                     explicado abajo: es huesped del aparato, no su dueno
+//!                     (L6h)
+//!
 //! === Lo que ensena, y por que ese orden ===
 //!
 //! Arriba el APARATO, porque es la pregunta que decide todo lo demas: si no hay

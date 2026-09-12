@@ -1,5 +1,9 @@
 //! **Lo que se PINTA.**
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! Colores, geometria y las primitivas de dibujo de la ventana. Aqui no se
 //! interpreta nada: un modulo de esta carpeta no sabe que es un comando.
 

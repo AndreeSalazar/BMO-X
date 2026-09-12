@@ -1,5 +1,9 @@
 //! **EL MENU DEL CLIC DERECHO** -- lo que se puede hacer con lo que senalas.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! === Por que existe, y por que no es una lista de botones ===
 //!
 //! El explorador ya sabia mirar y navegar. Lo que no habia era **como se pide

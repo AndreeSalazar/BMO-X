@@ -1,6 +1,10 @@
 //! **EL PULSO DEL ESCRITORIO: cuantas vueltas da por segundo, siempre a la
 //! vista.** Y en que se le va el segundo.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! [carril]  AMARILLO  el reparto, y hereda el color del carril que manda
 //!
 //! [cuesta]  NADA -- ninguno de los dos carriles rompe nada al fallar. Lo que

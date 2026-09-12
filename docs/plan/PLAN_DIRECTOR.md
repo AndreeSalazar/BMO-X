@@ -7,6 +7,12 @@
 > El nombre es el de la orquesta. No toca ningun instrumento: **decide quien
 > suena, cuando y cuanto.** Reparte la pantalla, da el marco, decide el foco y
 > --con el paso 3-- decide quien corre antes.
+>
+> ** Y el CENSO de sus 72 ficheros --que gasta cada uno, con que razon, y los
+> cortes que quedan-- vive aparte, en
+> [`PLAN_DIRECTOR_CENSO.md`](PLAN_DIRECTOR_CENSO.md) (2026-09-12). Este
+> documento dice QUE tiene que hacer el DIRECTOR; ese otro dice COMO esta
+> repartido y lo que cuesta tenerlo quieto.
 
 ## Lo que YA es verdad, para no reconstruirlo
 

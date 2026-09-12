@@ -1,5 +1,8 @@
 //! **Que ventana es cual** -- el id que maneja el foco, con tipo y con nombre.
 //!
+//! [consumo] NADA      no corre en reposo: solo cuando alguien lo pide, o en
+//!                     el arranque (L6h)
+//!
 //! === Por que esto es un TIPO y no seis constantes ===
 //!
 //! Hasta el 2026-08-18 esto eran seis `const W_*: u8` en `desktop/mod.rs`, y

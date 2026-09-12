@@ -1,6 +1,9 @@
 //! **El vigilante de la corrida**: saber que el programa lanzado termino, y
 //! guardar lo que dijo.
 //!
+//! [consumo] NADA      no corre en reposo: solo cuando alguien lo pide, o en
+//!                     el arranque (L6h)
+//!
 //! ## Por que esto sale de `_start`
 //!
 //! El `_start` del compositor son **1960 lineas en una sola funcion**, y no es

@@ -1,5 +1,9 @@
 //! **EL REPARTO DE LA VENTANA**: donde cae cada panel, decidido en un sitio.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! === Por que existe ===
 //!
 //! Hasta hoy cada vista de la ventana de ESTRATOS se creia duena del interior
