@@ -2,6 +2,7 @@
 //!
 //! [carril]  ROJO      un proceso cede memoria SUYA a otro
 //! [consumo] NADA      corre cuando una tarea usa el objeto
+//! [prueba]  bmo-prestamo-juicio
 //!
 //! generacion: nieto -- CADENA DE LLAMADAS, no tuberia: esta etiqueta dice
 //! cuanto SABE esta pieza, no quien importa a quien, y por eso el
@@ -89,6 +90,16 @@ const PRESTAMO_VA_BASE: u64 = 0x0000_0001_0000_0000;
 const PRESTAMO_VENTANA: u64 = 64 * 1024 * 1024;
 
 /// Donde le toca a la ranura `i`.
+/// Las paginas que ocupa un prestamo YA TOMADO, con la misma cuenta que al
+/// mapearlo. Soltar y morir contaban `bytes.div_ceil(PAGE)`, que con
+/// desplazamiento es una pagina de menos: se quedaba mapeada para siempre.
+fn mapeado_de(o: &Offer) -> u64 {
+    bmo_prestamo_juicio::tramo(o.dentro, o.bytes).map_or(0, |t| t.mapeado)
+}
+
+// Dos constantes que tienen que valer lo mismo, y ahora algo lo obliga.
+const _: () = assert!(bmo_prestamo_juicio::PAGINA == mm::PAGE);
+
 fn va_de_ranura(i: usize) -> u64 {
     PRESTAMO_VA_BASE + i as u64 * PRESTAMO_VENTANA
 }
@@ -108,6 +119,11 @@ struct Offer {
     /// Ya tomada: donde quedo en el espacio del destino, para desmapear.
     tomada: bool,
     va_destino: u64,
+    /// **Cuanto anda lo prestado DENTRO de su primera pagina.** Se perdia:
+    /// `OP_BASE` devolvia `va` y el DIRECTOR leia la cabecera unos bytes
+    /// antes de donde la app la escribio -- "NO es BSUP". Ver
+    /// `bmo_prestamo_juicio`.
+    dentro: u64,
     /// **El dueno murio y esto sigue mapeado.** Ver [`process_died`]: las
     /// paginas se quedan, y lo unico que cambia es que [`OP_DUENO`] contesta 0.
     huerfana: bool,
@@ -115,7 +131,7 @@ struct Offer {
 
 const NOTHING: Offer = Offer {
     viva: false, owner: 0, aspace_dueno: 0, origen: 0, bytes: 0,
-    destino: 0, tomada: false, va_destino: 0, huerfana: false,
+    destino: 0, tomada: false, va_destino: 0, dentro: 0, huerfana: false,
 };
 static mut OFERTAS: [Offer; MAX] = [NOTHING; MAX];
 
@@ -178,7 +194,12 @@ pub fn offer(owner: u32, aspace: u64, base: u64, entregado: u64, desde: u64, byt
     // Y que quepa en SU WINDOW, que es lo que decide donde se mapea. Se
     // comprueba al ofrecer y no al tomar porque el que ofrece es quien puede
     // hacer algo al respecto: pedir una superficie mas pequena.
-    if bytes > PRESTAMO_VENTANA {
+    // ** Con lo MAPEADO y no con lo pedido (12-09): una superficie que empieza
+    // unos bytes dentro de su pagina necesita una pagina mas, y esa pagina
+    // caeria en la ventana del prestamo de al lado.
+    let cabe = bmo_prestamo_juicio::tramo(base + desde, bytes)
+        .is_some_and(|t| t.cabe_en(PRESTAMO_VENTANA));
+    if !cabe {
         crate::ring0::cabina::warn("prestamo", "no cabe en una ventana de prestamo", bytes);
         return NO_CABE_EN_LA_VENTANA;
     }
@@ -200,7 +221,7 @@ pub fn offer(owner: u32, aspace: u64, base: u64, entregado: u64, desde: u64, byt
         if !o.viva {
             *o = Offer {
                 viva: true, owner, aspace_dueno: aspace, origen: base + desde,
-                bytes, destino, tomada: false, va_destino: 0, huerfana: false,
+                bytes, destino, tomada: false, va_destino: 0, dentro: 0, huerfana: false,
             };
             crate::ring0::cabina::info("prestamo", "ofrecido al pid", destino as u64);
             return OFRECIDO;
@@ -223,10 +244,21 @@ pub fn take(pid: u32, aspace: u64) -> Option<u64> {
     // La direccion la decide LA RANURA, no un contador: ver `PRESTAMO_VENTANA`.
     let va = va_de_ranura(i);
 
-    let paginas = bytes.div_ceil(mm::PAGE) * mm::PAGE;
+    // *** AQUI SE PERDIA EL DESPLAZAMIENTO (arreglado el 2026-09-12).
+    //
+    // Se traducia `origen + off` y se mapeaba en `va + off`: como `translate`
+    // devuelve el MARCO, la pagina entera quedaba en `va`, y `OP_BASE` contestaba
+    // `va`. Pero `origen` sale de un `malloc` y no esta alineado, asi que el
+    // primer byte prestado estaba `origen & 0xFFF` bytes mas adentro. Y las
+    // paginas se contaban sin ese trozo, o sea que el final se quedaba sin
+    // mapear. La cuenta vive ahora en un juez con banco.
+    let Some(t) = bmo_prestamo_juicio::tramo(origen, bytes) else {
+        return None;
+    };
+    let paginas = t.mapeado;
     let mut off = 0u64;
     while off < paginas {
-        let Some(fisica) = vmm::translate(aspace_dueno, origen + off) else {
+        let Some(fisica) = vmm::translate(aspace_dueno, t.pagina + off) else {
             undo(aspace, va, off);
             crate::ring0::cabina::warn("prestamo", "lo ofrecido no esta mapeado en el dueno", off);
             return None;
@@ -250,6 +282,7 @@ pub fn take(pid: u32, aspace: u64) -> Option<u64> {
         Some(h) => {
             ofertas[i].tomada = true;
             ofertas[i].va_destino = va;
+            ofertas[i].dentro = t.dentro;
             crate::ring0::cabina::info("prestamo", "tomado, bytes", bytes);
             Some(h)
         }
@@ -280,7 +313,9 @@ pub fn operation(base: u64, op: u64, pid: u32) -> Option<u64> {
         .iter()
         .position(|o| o.viva && o.tomada && o.destino == pid && o.va_destino == base)?;
     match op {
-        OP_BASE => Some(ofertas[i].va_destino),
+        // `va` es la PAGINA; lo prestado empieza `dentro` bytes despues.
+        // El handle sigue siendo `va`, que es lo que se busca arriba.
+        OP_BASE => Some(ofertas[i].va_destino + ofertas[i].dentro),
         OP_BYTES => Some(ofertas[i].bytes),
         OP_DUENO => {
             if ofertas[i].huerfana {
@@ -291,7 +326,7 @@ pub fn operation(base: u64, op: u64, pid: u32) -> Option<u64> {
             Some(crate::ring0::task::scheduler::tid_de(ofertas[i].owner).unwrap_or(0) as u64)
         }
         OP_SOLTAR => {
-            let paginas = ofertas[i].bytes.div_ceil(mm::PAGE) * mm::PAGE;
+            let paginas = mapeado_de(&ofertas[i]);
             undo(vmm::read_cr3(), ofertas[i].va_destino, paginas);
             crate::ring0::cabina::info("prestamo", "devuelto por el pid", pid as u64);
             ofertas[i] = NOTHING;
@@ -382,7 +417,7 @@ pub fn process_died(pid: u32, aspace: u64) {
             continue;
         }
         if o.destino == pid && o.tomada {
-            let paginas = o.bytes.div_ceil(mm::PAGE) * mm::PAGE;
+            let paginas = mapeado_de(o);
             undo(aspace, o.va_destino, paginas);
             crate::ring0::cabina::info("prestamo", "devuelto por el pid", pid as u64);
             *o = NOTHING;

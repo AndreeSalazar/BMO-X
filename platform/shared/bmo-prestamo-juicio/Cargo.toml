@@ -1,0 +1,15 @@
+[package]
+name = "bmo-prestamo-juicio"
+version = "0.1.0"
+edition = "2021"
+description = "El juez del prestamo: que paginas hay que mapear para prestar N bytes que no empiezan en una pagina"
+license = "Apache-2.0"
+
+[lib]
+
+# ** CERO DEPENDENCIAS, por el mismo motivo que `bmo-mmio-juicio`.
+#
+# Lo consume Ring 0 --sin asignador, en el metal-- y `cargo test` en el
+# anfitrion. Una sola dependencia que arrastrara `alloc` lo dejaria fuera del
+# kernel, que es el consumidor por el que existe.
+[dependencies]

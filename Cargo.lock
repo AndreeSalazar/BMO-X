@@ -256,6 +256,7 @@ dependencies = [
  "bmo-net",
  "bmo-orquesta",
  "bmo-particiones",
+ "bmo-prestamo-juicio",
  "bmo-rtc",
  "bmo-trim",
  "bmo-uaudio",
@@ -372,6 +373,10 @@ dependencies = [
 
 [[package]]
 name = "bmo-particiones"
+version = "0.1.0"
+
+[[package]]
+name = "bmo-prestamo-juicio"
 version = "0.1.0"
 
 [[package]]

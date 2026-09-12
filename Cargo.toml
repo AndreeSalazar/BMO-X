@@ -28,6 +28,11 @@ members = [
     # veredicto comprobado -- y este es de los que no avisan al equivocarse,
     # porque ceder una pagina de mas no da un fault: da una ventana.
     "platform/shared/bmo-mmio-juicio",
+    # El juez del PRESTAMO, 2026-09-12. Nacio de "NO es BSUP": el prestamo
+    # mapeaba paginas y se perdia el desplazamiento dentro de la primera, asi
+    # que el DIRECTOR leia la cabecera en el sitio equivocado. La cuenta
+    # estaba escrita TRES veces --tomar, soltar, morir-- y mal las tres.
+    "platform/shared/bmo-prestamo-juicio",
     # LA PARTITURA: que partes existen y como se reparte una entre n atriles.
     # Vive aqui por la MISMA frase que `bmo-mmio-juicio` un poco mas arriba:
     # levantar doce nucleos es del kernel, pero decidir QUE LE TOCA A CADA UNO

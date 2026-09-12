@@ -147,18 +147,26 @@ pub(crate) fn report_consumo(s: &mut Output, t: &crate::desktop::Tick) {
     // ahi salen el 0,06 % del CPU a 250 vueltas y el 14 % a 60.000. Esas
     // nueve eran una cuenta a mano; el contador del kernel existe desde el
     // 16-08 y este bucle nunca pregunto. Ver `Tick::trafico_x10`.
-    fila_mili(s, b"trafico", (t.trafico_x10 as u64) * 100, b"puertas/vuelta",
+    fila_mili(s, b"trafico", (t.trafico_x10 as u64) * 100, b"p/vuelta",
               b"[!] de TODA la maquina, no solo de aqui: con una app corriendo");
     // El precio de una puerta esta MEDIDO --969 ciclos, no ticks-- y con el
     // trafico se convierte en lo unico que se puede comparar con un vatio:
     // que parte del CPU se va en cruzarla.
     let ciclos_vuelta = (t.trafico_x10 as u64) * 969 / 10;
-    fila(s, b"en puertas", ciclos_vuelta, b"ciclos/vuelta",
+    fila(s, b"en puertas", ciclos_vuelta, b"c/vuelta",
          b"trafico x 969, que es lo que cuesta una puerta MEDIDA");
     let hz_t = bmo::info(bmo::INFO_TSC_HZ);
+    // [!] AQUI HABIA UNA BARRA, Y EN EL METAL SALIO "del cpu 2169076 ... 0%".
+    //
+    // Ese numero eran CICLOS POR SEGUNDO sin unidad, y la barra redondeaba a
+    // cero porque lo que gasta el escritorio son centesimas de un por ciento.
+    // Una barra que siempre sale vacia no ensena nada; un numero sin unidad
+    // ensena algo falso. Partes por millon de UN nucleo se leen enteras.
     if hz_t > 0 && t.loops_per_second > 0 {
-        fila_barra(s, b"del cpu", ciclos_vuelta * t.loops_per_second as u64,
-                   hz_t, b"");
+        let ppm = (ciclos_vuelta * t.loops_per_second as u64)
+            .saturating_mul(1_000_000) / hz_t;
+        fila(s, b"de un nucleo", ppm, b"ppm",
+             b"partes por millon: 10.000 ppm son un 1 %");
     }
 
     subregla(s, b"cpu");
