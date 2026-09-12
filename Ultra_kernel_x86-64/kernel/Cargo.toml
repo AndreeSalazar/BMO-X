@@ -84,6 +84,10 @@ bmo-firmware = { path = "../../platform/shared/bmo-firmware" }
 # en el anfitrion, no con una camara delante de una pantalla azul.
 bmo-orquesta = { path = "../../platform/shared/bmo-orquesta" }
 bmo-mmio-juicio = { path = "../../platform/shared/bmo-mmio-juicio" }
+# El juez del PRESTAMO: que paginas mapear cuando lo prestado no empieza en
+# una pagina. Sin el, la ventana de una app se leia unos bytes antes de su
+# cabecera y el DIRECTOR contestaba "NO es BSUP".
+bmo-prestamo-juicio = { path = "../../platform/shared/bmo-prestamo-juicio" }
 # El juez del physmap. Ver `ring0/critic/amarilla.rs`: nacio de dos pantallas
 # azules seguidas por el mismo techo escrito a mano en el sitio equivocado.
 bmo-carga-juicio = { path = "../../platform/shared/bmo-carga-juicio" }
