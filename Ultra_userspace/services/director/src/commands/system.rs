@@ -687,7 +687,18 @@ pub(crate) fn smp(dsk: &mut Desktop, p: &bmo::Pantalla, arg: &[u8]) -> After {
         dsk.out.grid.text(b"  midiendo reparto (esto tarda)...\n");
         paint_output(&p, &dsk.run_box, &dsk.out.grid);
         p.volcar();
-        let x100 = bmo::smp_prueba();
+        // *** "aceleracion: 0.00" NO ERA UNA MEDIDA (12-09).
+        //
+        // Cuando el barrido no completaba, la puerta contestaba 0 con codigo de
+        // exito y esto lo pintaba en rojo como si fuera el resultado. Un cero en
+        // esta fila se lee como *"este reparto es inutil"*, que es una
+        // conclusion -- y era una medida que no salio. Ver L6j.
+        let Some(x100) = bmo::smp_prueba_juzgada() else {
+            dsk.out.grid.with_ink(INK_ERR);
+            dsk.out.grid.text(b"  la prueba NO se pudo juzgar: el barrido no completo\n");
+            dsk.out.grid.with_ink(INK_PLAIN);
+            return After::Settle;
+        };
         let mut b = [0u8; 10];
         dsk.out.grid.with_ink(if x100 >= 150 { INK_GOOD } else { INK_ERR });
         dsk.out.grid.text(b"  aceleracion: ");
@@ -821,10 +832,25 @@ pub(crate) fn reboot(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
 /// pasan su suma de comprobacion**. En una placa sana es cero, y si no lo es lo
 /// que falla no es la placa -- es el mapeo de esas direcciones fisicas.
 pub(crate) fn placa(dsk: &mut Desktop, _p: &bmo::Pantalla) -> After {
-    let n = bmo::placa_cuantas();
+    // *** ESTA LINEA AFIRMABA EL PRIMERO DE CINCO MOTIVOS (12-09).
+    //
+    // `placa_cuantas()` devolvia 0 y aqui se daba por hecho que el firmware no
+    // habia dado el RSDP. Es uno de los cinco, y **el unico que acusa al
+    // firmware**: los otros cuatro mandan a mirar el XSDT o el mapeo de su
+    // direccion fisica. Es el defecto que `red.rs` ya tiene nombrado -- *"un
+    // cero presentado como un hecho"*, igual que la azul del 26-08.
+    //
+    // ** Y ahora hay una sexta respuesta que antes no se podia dar: un censo que
+    // salio bien y trae CERO tablas. Eso no es un fallo. Ver L6j.
+    let (n, motivo) = bmo::placa_cuantas_motivo();
+    if motivo != 0 {
+        dsk.out.grid.text(b"  sin censo de la placa: ");
+        dsk.out.grid.text(bmo::placa_por_que(motivo).as_bytes());
+        dsk.out.grid.byte(b'\n');
+        return After::Settle;
+    }
     if n == 0 {
-        dsk.out.grid.text(b"  sin XSDT que leer: el firmware no dio un RSDP de ACPI 2.0+
-");
+        dsk.out.grid.text(b"  el censo salio y esta VACIO: el firmware no ofrece ni una tabla\n");
         return After::Settle;
     }
     let mut aml = 0u64;

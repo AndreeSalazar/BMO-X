@@ -112,7 +112,39 @@ fn patron(i: u64) -> u64 {
 /// testigo de un obrero que lee ceros vale cero: **igual que el de un obrero
 /// que no llego a ejecutarse**. Un instrumento que no distingue "leyo" de "no
 /// corrio" no sirve para nada.
-pub fn preparar() -> Result<(u64, u64), &'static str> {
+// == *** EL MOTIVO YA ESTABA EN TEXTO, Y NO CABIA POR LA PUERTA (L6j, 12-09) ==
+//
+// `preparar` distingue TRES fallos y los cuenta con una frase cada uno -- que es
+// perfecto para CABINA y no cruza un syscall. `op_maquina` hacia
+// `Err(_) => ok_value(0)`, o sea que los tres llegaban a Ring 3 como "preparo
+// cero bytes", con codigo de exito.
+//
+// ** El numero y la frase salen del MISMO sitio a proposito: separarlos es como
+// una acaba diciendo algo distinto de la otra.
+
+/// El perfil no dice cuanto L3 hay.
+pub const SIN_L3: u32 = 1;
+/// No hay un hueco contiguo de 4x el L3.
+pub const SIN_HUECO: u32 = 2;
+/// El banco no se lee como se escribio: marcos solapados.
+pub const BANCO_SUCIO: u32 = 3;
+/// **La medida no se puede juzgar**: el barrido no completo sus partes. Es de
+/// la prueba de reparto, no de preparar el banco, y esta aqui por lo mismo que
+/// los otros tres -- el que la recibe no distingue de donde salio.
+pub const SIN_JUICIO: u32 = 4;
+
+/// El motivo en palabras, para CABINA y para el shell.
+pub fn por_que(motivo: u32) -> &'static str {
+    match motivo {
+        SIN_L3 => "el perfil no dice cuanto L3 hay: no se puede saber si el banco es honesto",
+        SIN_HUECO => "no hay un hueco contiguo de 4x el L3: la medida seria de cache",
+        BANCO_SUCIO => "el banco no se lee como se escribio: marcos solapados",
+        SIN_JUICIO => "el barrido no completo: la medida no se puede juzgar",
+        _ => "motivo que este kernel no conoce",
+    }
+}
+
+pub fn preparar() -> Result<(u64, u64), u32> {
     if BANCO.load(Ordering::SeqCst) != 0 {
         let b = BYTES.load(Ordering::SeqCst);
         return Ok((b, b / l3_bytes().max(1)));
@@ -120,7 +152,7 @@ pub fn preparar() -> Result<(u64, u64), &'static str> {
 
     let l3 = l3_bytes();
     if l3 == 0 {
-        return Err("el perfil no dice cuanto L3 hay: no se puede saber si el banco es honesto");
+        return Err(SIN_L3);
     }
     let minimo = l3 * VECES_EL_L3;
 
@@ -129,7 +161,7 @@ pub fn preparar() -> Result<(u64, u64), &'static str> {
     let mut quiero = BANCO_PEDIDO;
     let fisica = loop {
         if quiero < minimo {
-            return Err("no hay un hueco contiguo de 4x el L3: la medida seria de cache");
+            return Err(SIN_HUECO);
         }
         if let Some(p) = phys::alloc_frames_contig(quiero / crate::ring0::mm::PAGE) {
             break p;
@@ -153,7 +185,7 @@ pub fn preparar() -> Result<(u64, u64), &'static str> {
     let mut i = 0usize;
     while i < n {
         if unsafe { core::ptr::read_volatile(p.add(i)) } != patron(i as u64) {
-            return Err("el banco no se lee como se escribio: marcos solapados");
+            return Err(BANCO_SUCIO);
         }
         i += 4096; // una muestra por pagina
     }

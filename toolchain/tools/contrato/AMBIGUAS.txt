@@ -14,10 +14,17 @@
 # (`DISCO_TRIM_SIN_VOLUMEN`, `RED_SIN_TARJETA`). O sea que el canal del
 # valor SI puede decir que no: lo que no puede es callarse.
 #
-# *** DOS SALIERON DE AQUI EL MISMO DIA QUE NACIO LA LISTA (2026-09-12):
+# *** CINCO SALIERON DE AQUI EL MISMO DIA QUE NACIO LA LISTA (2026-09-12):
 #
 #    mod.rs MEM_OP_OFRECER        niega con codigo y motivo en las banderas
 #    op_maquina.rs estratos_sellar  los ONCE motivos de WriteError ya viajan
+#    op_contar.rs PLACA_OP_CUANTAS  cinco motivos, y uno SEXTO que antes no se
+#    op_contar.rs PLACA_OP_TABLA    podia decir: un censo que salio y esta VACIO
+#    op_maquina.rs smp_despertar    "aceleracion 0.00" era una medida que no salio
+#
+# *** Y LO QUE QUEDA ES LA LISTA COMPLETA DE LAS CORRECTAS: cero DEUDA. Las
+# cuatro de abajo ensenan las dos formas buenas de decir que no por el canal del
+# valor -- contestar cero porque cero ES la respuesta, o empaquetar un motivo.
 #
 # ** Y ninguna de las dos ABOLIO nada: el `value` sigue valiendo lo que valia
 # --1/0 en la oferta, la generacion en el sellado-- asi que `sys.rs::offer`,
@@ -30,8 +37,5 @@
 # Se regenera con `contrato.py --sellar`; el motivo, no.
 mod.rs TASK_OP_TOMAR CORRECTA -- "nadie ofrece" es la respuesta NORMAL, mil veces por segundo. Un error aqui seria ruido en el camino mas caliente del compositor
 op_consola.rs console_read CORRECTA -- lo dice su propio comentario: "cero = nada, no error: un programa que sondea no debe morir por preguntar"
-op_contar.rs PLACA_OP_CUANTAS DEUDA -- cero significa "hay cero tablas ACPI" y "no se censar la placa" a la vez. Es el mismo defecto que esta casa ya arreglo dos veces
-op_contar.rs PLACA_OP_TABLA DEUDA -- misma forma que la de arriba, y dos veces: sin censo y sin esa fila contestan igual que una fila vacia
 op_maquina.rs DISCO_OP_TRIM_LIBRE CORRECTA -- no se calla: empaqueta `DISCO_TRIM_SIN_VOLUMEN` en el campo de motivo. El valor DICE por que, que es lo que pide L6i
 op_maquina.rs RED_OP_ARMAR CORRECTA -- devuelve `RED_SIN_TARJETA`, un motivo propio, y ademas lo apunta en CABINA
-op_maquina.rs smp_despertar DEUDA -- `banda::preparar` fallando contesta lo mismo que preparar cero bytes. Es una sonda, asi que duele poco, pero es la misma mentira

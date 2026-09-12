@@ -107,16 +107,34 @@ pub(super) fn placa(arg0: u64, arg1: u64) -> BmoStatus {
     use crate::ring0::plat::placa as p;
     let rsdp = crate::ring0::plat::madt::rsdp_guardado();
     match arg0 {
+        // *** UN CERO PRESENTADO COMO UN HECHO (arreglado el 2026-09-12).
+        //
+        // Las tres salidas de abajo contestaban `ok_value(0)`, y el DIRECTOR lo
+        // pintaba como *"el firmware no dio un RSDP de ACPI 2.0+"* -- que es
+        // solo el PRIMERO de los cuatro motivos que `censar` distingue. Un cero
+        // con codigo de exito no se puede distinguir de un censo vacio hecho
+        // bien, asi que la frase mandaba a echarle la culpa a la placa cuando lo
+        // roto podia ser el mapeo de una direccion fisica.
+        //
+        // ** El `value` sigue siendo 0 -- `placa_cuantas()` y `placa_tabla()`
+        // contestan lo mismo que ayer-- y lo que cambia es que el codigo dice
+        // que NO y las banderas dicen cual. Ver L6j.
         PLACA_OP_CUANTAS => match p::censar(rsdp) {
-            Some(c) => BmoStatus::ok_value(c.cuantas() as u64),
-            None => BmoStatus::ok_value(0),
+            // [!] Y un `Ok` con cero tablas SIGUE siendo exito: un censo vacio
+            // es una respuesta, no un fallo. Esa es la diferencia que el
+            // `Option` borraba.
+            Ok(c) => BmoStatus::ok_value(c.cuantas() as u64),
+            Err(motivo) => BmoStatus::negado(motivo, 0),
         },
         PLACA_OP_TABLA => {
-            let Some(c) = p::censar(rsdp) else {
-                return BmoStatus::ok_value(0);
+            let c = match p::censar(rsdp) {
+                Ok(c) => c,
+                Err(motivo) => return BmoStatus::negado(motivo, 0),
             };
             let Some(f) = c.filas().nth(arg1 as usize) else {
-                return BmoStatus::ok_value(0);
+                // Pedir la fila 9 de un censo de 5 no es que el censo falle: es
+                // que esa fila no existe, y son dos conversaciones distintas.
+                return BmoStatus::negado(p::SIN_ESA_FILA, 0);
             };
             let firma = u32::from_le_bytes(f.firma) as u64;
             let mut v = firma;

@@ -618,6 +618,21 @@ pub fn smp_prueba() -> u64 {
     invoke(CURRENT_TASK, OP_SMP_DESPERTAR, 0, 2, 0).value
 }
 
+/// **La prueba, y si de verdad se pudo juzgar.** `None` si el barrido no
+/// completo (L6j, 2026-09-12).
+///
+/// == *** POR QUE HACE FALTA: "0.00" NO ERA UNA MEDIDA ====================
+///
+/// Cuando el barrido no completaba sus partes, la puerta contestaba `0` con
+/// codigo de EXITO y el DIRECTOR pintaba **"aceleracion: 0.00"** en rojo. Una
+/// medida que no salio, presentada como un cero medido -- y un cero en esa fila
+/// significaria algo tan raro que nadie lo dudaria: se leeria como "este reparto
+/// es inutil".
+pub fn smp_prueba_juzgada() -> Option<u64> {
+    let st = invoke(CURRENT_TASK, OP_SMP_DESPERTAR, 0, 2, 0);
+    if st.code == 0 { Some(st.value) } else { None }
+}
+
 /// **Reserva y llena el banco del ancho de banda.** Devuelve sus bytes, o `0`.
 ///
 /// Un `0` no es "no hay memoria": es que el banco no llegaba a cuatro veces el
