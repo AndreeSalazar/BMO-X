@@ -935,7 +935,7 @@ pub extern "C" fn _start() -> ! {
                     dsk.field.n = 0;
                 } else {
                 match bmo::ejecutar_en(target, cap) {
-                    Ok(_) => {
+                    Ok(tid_hijo) => {
                         paint_status(&p, &dsk.run_box, "lanzado", INK_OK);
                         // * Se apunta DONDE empieza esta
                         // corrida. El volcado no puede hacerse
@@ -956,6 +956,8 @@ pub extern "C" fn _start() -> ! {
                         let dest_n = dump_name(target, &mut dest);
                         dsk.out.run = Some(Run {
                             mark: dsk.out.grid.mark().saturating_sub(1),
+                            // El tid, para que `Ctrl+C` tenga a quien frenar.
+                            tid: tid_hijo as u32,
                             waits: 0,
                             dest,
                             dest_n,

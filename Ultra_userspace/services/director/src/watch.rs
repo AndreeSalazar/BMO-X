@@ -26,6 +26,17 @@ use bmo_userland as bmo;
 /// Un programa lanzado del que todavia se espera el final.
 pub(crate) struct Run {
     pub mark: usize,
+    /// **A QUIEN se lanzo**, para poder FRENARLO. (2026-09-12)
+    ///
+    /// `ejecutar_en` siempre devolvio el tid y este sitio lo tiraba: el
+    /// vigilante no lo necesita --le basta con `has_child()` para saber que ya
+    /// no hay nadie-- y nadie mas lo pedia.
+    ///
+    /// Lo pidio `Ctrl+C`. Un terminal no interrumpe *la ventana de delante*:
+    /// interrumpe **el comando que lanzo**, y para eso hay que saber cual es.
+    /// Sin este campo, Ctrl+C sobre un programa de consola que se cuelga no
+    /// tendria a quien apuntar -- y ese es justo el caso en el que hace falta.
+    pub tid: u32,
     /// Cuantos fotogramas han pasado desde que se lanzo.
     ///
     /// ** Esto era una bandera `visto` que exigia **haber visto al hijo

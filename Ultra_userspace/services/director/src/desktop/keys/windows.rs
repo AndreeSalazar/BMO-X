@@ -83,6 +83,41 @@ pub(crate) fn on_key(dsk: &mut Desktop, p: &bmo::Pantalla, c: u8, alt_alone: boo
 // **ninguna app lo ve**, y eso es a proposito: un rescate que la app pudiera
 // interceptar no seria un rescate.
 let ctrl_c = c == 0x03;
+
+// *** Y LO PRIMERO QUE MIRA CTRL+C ES LA CORRIDA EN VUELO. (2026-09-12)
+//
+// El dueno lo corrigio y tenia razon: *"el control + C es para frenar en
+// comando como terminal de Windows"*. Un terminal no interrumpe *la ventana de
+// delante*: interrumpe **el comando que tu lanzaste**, tenga ventana o no.
+//
+// La diferencia no es de matiz y se ve en el caso que importa: un programa de
+// CONSOLA que se cuelga --`leer.bex`, uno de COBOL-- no tiene ventana, asi que
+// el foco sigue en Ejecutar. Mirando el foco, Ctrl+C le habria limpiado la
+// linea y **habria dejado el programa colgado**, que es exactamente lo que el
+// dueno estaba sufriendo.
+//
+// ** `Out::run` ya existia y ya sabia que hay una corrida esperando final: lo
+// unico que le faltaba era a QUIEN. `ejecutar_en` devolvia el tid desde
+// siempre y este sitio lo tiraba.
+//
+// Y despues de frenarlo no hay que hacer nada mas: el vigilante de `watch.rs`
+// ve que ya no hay hijo, DRENA lo que dejo dicho y lo guarda en su `.txt`. O
+// sea que un programa frenado deja su volcado igual que uno que acaba solo --
+// que es lo que uno espera de un terminal.
+if ctrl_c {
+    if let Some(r) = dsk.out.run.as_ref() {
+        if let Some(h) = bmo::Hijo::por_tid(r.tid) {
+            if h.vive() {
+                h.cerrar();
+                dsk.out.grid.text(b"  ^C  frenado
+");
+                dsk.tick.repaint_field = true;
+                return Key::Taken;
+            }
+        }
+    }
+}
+
 if (c == 0x8C && alt_alone) || ctrl_c {
     match dsk.win.focus.actual() {
         // Una app: se cierra de verdad, por el MISMO camino que la X.
