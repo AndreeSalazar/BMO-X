@@ -206,6 +206,12 @@ $cEjemplos = @(
     # soporta -- para cambiar la guia se edita `guia.txt` y se reempaca, y el
     # programa no se toca ni se recompila.
     @{ src = 'toolchain\lang\c\examples\guia_C.c';      out = 'guia.bex'   ; dir = 'c' },
+    # ** EL CUBO, Y SIN UN SOLO TRIANGULO. Lo pidio el dueno: *\"el triangulo
+    # esta muy quemado\"*. Aqui el elemento que se dibuja es LA CAJA entera,
+    # trazada por el metodo de las laminas: exacta a cualquier zoom, sin
+    # vertices, sin recorte y con la normal saliendo de la interseccion.
+    # Trae su propio metro (`[cubo] ... us`) porque cuesta por PIXEL.
+    @{ src = 'toolchain\lang\c\examples\cubo_C.c';      out = 'cubo.bex'   ; dir = 'c' },
     # La prueba de fopen/fread/fseek. Lee `datos\salida.txt` DOS veces y
     # compara: si las dos lecturas coinciden, la cadena de ficheros funciona.
     @{ src = 'toolchain\lang\c\examples\leer_C.c';      out = 'leer.bex'   ; dir = 'c' },
@@ -273,6 +279,29 @@ $cRecursos = @(
     # del alfa sea una prueba: sobre el tablero de cuadros, las esquinas
     # tienen que dejar ver los cuadros.
     # ** LA GUIA: su TEXTO y su CARA, los dos dentro del mismo fichero.
+    # ** Y LA TEXTURA DEL CUBO ES SU PROPIO ICONO. El mismo recurso que el
+    # escritorio pintaria en la rejilla se ve pegado en sus caras: el dato es
+    # uno, y un cubo con un cubo dibujado encima es exactamente lo que es.
+    @{ bex = 'c\cubo.bex'; recursos = @(
+        @{ nombre = 'icono'; icono = @(
+            '................',
+            '....oooooooo....',
+            '...oWWWWWWWWo...',
+            '..oWWWWWWWWWWo..',
+            '.oooooooooooooo.',
+            '.obbbbbboggggggo',
+            '.obbbbbboggggggo',
+            '.obbbbbboggggggo',
+            '.obbbbbboggggggo',
+            '.obbbbbboggggggo',
+            '.obbbbbboggggggo',
+            '.obbbbbboggggggo',
+            '.obbbbbboggggggo',
+            '.oooooooooooooo.',
+            '................',
+            '................'
+        ) }
+    ) }
     @{ bex = 'c\guia.bex'; recursos = @(
         @{ nombre = 'guia.txt'; desde = 'toolchain\lang\c\examples\guia.txt' },
         @{ nombre = 'icono'; icono = @(

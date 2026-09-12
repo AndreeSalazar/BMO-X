@@ -12,6 +12,8 @@ Se escribe la ruta de un .bex y Enter.
 
   run c/texto.bex      el bloc de notas
   run c/imagen.bex     una app pintando su propia imagen
+  run c/cubo.bex       un cubo girando, SIN un solo triangulo
+  run c/guia.bex       esto que estas leyendo
   run c/ray.bex        el raycaster, con menu
   run apps/doom.bex    DOOM (o clic en su icono)
 
