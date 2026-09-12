@@ -15,7 +15,6 @@ use crate::{erase_window, uncover, TASKBAR_H};
 pub(crate) fn on_pointer(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Golpe) {
     let pos = g.pos;
     let button = g.button;
-    let derecho = g.derecho;
 
     // -- Clic en una FICHA de la barra: traer esa ventana --
     //
@@ -86,9 +85,7 @@ pub(crate) fn on_pointer(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Golpe) {
             }
         }
     }
-    dsk.tick.button_before = button;
-    // El flanco del derecho, aparte: sin el, mantenerlo pulsado reabriria el
-    // menu en cada fotograma -- el mismo fallo que ya se evito con el arbol.
-    dsk.tick.derecho_before = derecho;
-
+    // Los flancos (`button_before`, `derecho_before`) ya no se apuntan aqui:
+    // esta es la ULTIMA parada del reparto, y cualquier `return` de antes se
+    // la saltaba. Los apunta `mouse::on_pointer`, pase lo que pase.
 }

@@ -85,7 +85,53 @@ pub(crate) struct Golpe {
     pub ctrl: bool,
 }
 
+/// **Una vuelta del puntero**: repartirla, y DESPUES apuntar lo que fue.
+///
+/// ** LO QUE SE APUNTA VA AQUI, FUERA DEL REPARTO, y el porque se vio en el
+/// Ryzen el 2026-09-12: *"si presiono el click en juego mi puntero
+/// desaparece"*. La posicion (`ax`, `ay`) y los flancos (`button_before`,
+/// `derecho_before`) se apuntaban al FINAL de la funcion grande -- y `apps`
+/// devolvia `true` en cuanto existia UNA caja de app sin agarrar. O sea que
+/// **con cualquier app en ventana**:
+///
+/// ```text
+///    ax, ay           no se movian   -> el cursor se pinta donde estaba al
+///                                       abrirse la app, no donde esta
+///    button_before    no se movia    -> cada vuelta con el boton abajo era
+///                                       un clic NUEVO, y el soltar no llegaba
+///    la barra         no se miraba   -> sus fichas no respondian
+/// ```
+///
+/// `datos.rs` ya lo tenia escrito --*"salir de `on_pointer` aqui se saltaria
+/// `button_before` del final"*-- y por eso apuntaba a mano antes de su
+/// `return`. Una regla que cada salida tiene que acordarse de cumplir es una
+/// que la salida siguiente olvida: ahora la cumple quien llama, una vez.
 pub(crate) fn on_pointer(
+    dsk: &mut Desktop,
+    p: &bmo::Pantalla,
+    pos: bmo::Punto,
+    wheel: i32,
+    ctrl: bool,
+) {
+    repartir(dsk, p, pos, wheel, ctrl);
+    dsk.tick.button_before = pos.botones & IZQUIERDO != 0;
+    // El flanco del derecho, aparte: sin el, mantenerlo pulsado reabriria el
+    // menu en cada fotograma -- el mismo fallo que ya se evito con el arbol.
+    dsk.tick.derecho_before = pos.botones & DERECHO != 0;
+    // Aqui solo se apunta donde esta: el cursor se pone al final del
+    // fotograma y se quita al principio del siguiente (`SaveUnder`).
+    dsk.tick.ax = pos.x;
+    dsk.tick.ay = pos.y;
+}
+
+/// La mascara viene del informe HID tal cual (`uhid::raton`): bit 0 el
+/// izquierdo, bit 1 el DERECHO. Hay prueba que lo fija --
+/// `mover_y_pulsar_a_la_vez_son_dos_eventos` espera un `2`-- asi que el
+/// numero no es una suposicion de este lado.
+const IZQUIERDO: u8 = 0b001;
+const DERECHO: u8 = 0b010;
+
+fn repartir(
     dsk: &mut Desktop,
     p: &bmo::Pantalla,
     pos: bmo::Punto,
@@ -113,9 +159,8 @@ pub(crate) fn on_pointer(
     // La mascara viene del informe HID tal cual (`uhid::raton`): bit 0 el
     // izquierdo, bit 1 el DERECHO. Hay prueba que lo fija --
     // `mover_y_pulsar_a_la_vez_son_dos_eventos` espera un `2`-- asi que el
-    // numero no es una suposicion de este lado.
-    const IZQUIERDO: u8 = 0b001;
-    const DERECHO: u8 = 0b010;
+    // numero no es una suposicion de este lado. Las dos mascaras viven fuera,
+    // junto a `on_pointer`, que tambien las usa para apuntar los flancos.
     let button = pos.botones & IZQUIERDO != 0;
     let derecho = pos.botones & DERECHO != 0;
 
@@ -311,12 +356,6 @@ pub(crate) fn on_pointer(
         }
         dsk.win.top_before = top;
     }
-
-    // El cursor ya no se borra aqui: se pone al final del fotograma y
-    // se quita al principio del siguiente, con lo que habia debajo
-    // guardado. Aqui solo se apunta donde esta.
-    dsk.tick.ax = pos.x;
-    dsk.tick.ay = pos.y;
 
     // * Aqui se pintaban el PULSOMETRO y el testigo de botones. Fuera
     // el 2026-08-04, con los seis parches de medida: contestaban
