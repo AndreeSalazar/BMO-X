@@ -927,10 +927,26 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                 // devuelve un tid, que es lo unico que Ring 3 conoce de un hijo.
                 // Traducirlo aqui evita que el userland aprenda un concepto que
                 // no usa para nada mas.
+                // *** AQUI SE NEGABA DICIENDO QUE SI (arreglado el 2026-09-12).
+                //
+                // Las dos salidas de abajo contestaban `ok_value(0)`: codigo de
+                // EXITO con un cero de valor. `prestado.h` --la API publica de
+                // REX para prestar-- lee el CODIGO y documenta *"`0` =
+                // ofrecido"*, asi que **decia que si siempre**. Y el que lo
+                // descubrio fue el dueno mirando una ventana que no salia.
+                //
+                // ** No se abole nada: el `value` sigue valiendo 1 y 0 como
+                // ayer, asi que `sys.rs::offer` (`!= 0`) y `superficie/roja.h`
+                // (`== 0`) contestan exactamente lo mismo. Lo que cambia es que
+                // el CODIGO deja de mentir y las BANDERAS traen el motivo. Ver
+                // `BmoStatus::negado` y L6i.
                 let Some(destino) = scheduler::pid_de(frame.r8 as u32) else {
-                    return BmoStatus::ok_value(0);
+                    // El tid del padre ya no resuelve: se murio entre que lo
+                    // preguntaron y lo usaron. No es culpa de quien ofrece.
+                    return BmoStatus::negado(
+                        crate::ring0::obj::loan::PADRE_NO_VIVE, 0);
                 };
-                let ok = crate::ring0::obj::loan::offer(
+                let motivo = crate::ring0::obj::loan::offer(
                     pid,
                     crate::ring0::mm::vmm::read_cr3(),
                     resolved.object,
@@ -939,7 +955,11 @@ fn invoke(frame: &TrapFrame) -> BmoStatus {
                     frame.r10,
                     destino,
                 );
-                BmoStatus::ok_value(ok as u64)
+                if motivo == crate::ring0::obj::loan::OFRECIDO {
+                    BmoStatus::ok_value(1)
+                } else {
+                    BmoStatus::negado(motivo, 0)
+                }
             }
             cap::KIND_MEMORIA => {
                 match crate::ring0::obj::memory::operation(

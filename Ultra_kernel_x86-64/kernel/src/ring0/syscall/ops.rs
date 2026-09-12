@@ -547,6 +547,24 @@ pub(crate) const CHANNEL_OP_GET_INDEX: u64 = 0x02;
 pub(crate) const CHANNEL_OP_KICK: u64 = 0x03;
 pub(crate) const ERROR_INVALID_ARGUMENT: u32 = 7;
 pub(crate) const ERROR_UNSUPPORTED: u32 = 10;
+/// **NEGADO: la puerta pudo y no quiso.** El motivo va en las banderas.
+///
+/// == *** POR QUE HACE FALTA UN CODIGO PARA ESTO (L6i, 2026-09-12) =========
+///
+/// `ERROR_INVALID_ARGUMENT` dice *"lo que me pasaste no vale"* y
+/// `ERROR_UNSUPPORTED` dice *"yo no se hacer eso"*. Faltaba el tercero, que es
+/// el mas comun: **te entendi, puedo, y digo que NO** -- no hay sitio, el
+/// destino ya no vive, el disco no confirmo la barrera. Sin el, esas tres
+/// acababan contestando `ok_value(0)`, o sea que si.
+///
+/// [!] **11 y no 20-23, y eso NO es un capricho.** El 2026-09-12 se midio la
+/// tabla de errores del arbol y no hay tal tabla: `ERROR_BUSY` esta definido
+/// CUATRO veces con TRES valores (16 en audio/fb/input, 21 en endpoint, 22 en
+/// launch) y `ERROR_NOT_THERE` con tres (20, 26, 28). Es la misma enfermedad
+/// que L6i, un piso mas arriba, y arreglarla es una tanda propia. Mientras
+/// tanto, este numero nace **fuera de la zona en disputa** y al lado de los
+/// otros dos codigos del despachador, que son los unicos que no se repiten.
+pub(crate) const ERROR_NEGADO: u32 = 11;
 
 #[repr(C)]
 pub(crate) struct BmoStatus {
@@ -559,6 +577,28 @@ impl BmoStatus {
     pub(crate) const fn ok_value(value: u64) -> Self { Self { code: 0, flags: 0, value } }
     pub(crate) const fn err(code: u32) -> Self { Self { code, flags: 0, value: 0 } }
     pub(crate) const fn err_with_flags(code: u32, flags: u32) -> Self { Self { code, flags, value: 0 } }
+    /// **Decir que NO sin cambiarle el valor a nadie.** L6i.
+    ///
+    /// Los otros tres constructores fuerzan `value: 0`, y por eso una puerta que
+    /// quisiera negar CONSERVANDO lo que ya devolvia no tenia como -- acababa en
+    /// `ok_value(0)`, que es decir que si.
+    ///
+    /// *** ESTE ES EL CONSTRUCTOR DE "NO ABOLIR, SINO CUMPLIR", y el `value` es
+    /// justo la parte que no se abole:
+    ///
+    /// ```text
+    ///    code   deja de ser 0 -> `bmo_codigo` por fin dice que no. La promesa
+    ///           de `prestado.h` --"0 = ofrecido"-- se vuelve VERDAD sin tocar
+    ///           una linea de ese fichero
+    ///    flags  el motivo, que es el sitio que `bmo_codigo` YA documenta para
+    ///           el matiz del no y que en estas puertas estaba vacio
+    ///    value  LO QUE VALIA HOY. `offer` lee `value != 0`, `roja.h` lee
+    ///           `== 0` y el sellado lee la generacion: los tres siguen
+    ///           contestando exactamente lo mismo que ayer
+    /// ```
+    pub(crate) const fn negado(motivo: u32, value: u64) -> Self {
+        Self { code: ERROR_NEGADO, flags: motivo, value }
+    }
 }
 
 const _: () = assert!(core::mem::size_of::<BmoStatus>() == 16);

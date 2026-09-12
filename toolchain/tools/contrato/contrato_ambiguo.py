@@ -104,6 +104,28 @@ def _sangria(linea):
     return len(linea) - len(linea.lstrip())
 
 
+#: Un comentario. Se salta ENTERO, y no es un detalle de implementacion.
+RE_COMENTARIO = re.compile(r"^\s*(//|/\*|\*)")
+
+
+def _es_comentario(linea):
+    """Esta linea es prosa?
+
+    == [!] ESTO LO APRENDIO L6a EL 2026-08-24 Y LO VOLVI A APRENDER AQUI ======
+
+    Al arreglar `estratos_sellar` escribi un comentario que EXPLICA el fallo, y
+    dentro decia `ok_value(0)`. El guardian lo conto como una puerta ambigua --o
+    sea que **acuso al comentario que documentaba el arreglo**.
+
+    *** Es la misma leccion, palabra por palabra, que hizo que L6a pasara a
+    contar lineas DE CODIGO: *"un guardian que cuenta el por que como si fuera
+    riesgo le pone precio a escribirlo, y el dia que alguien tenga prisa, lo
+    barato sera borrar el comentario"*. En un arbol que es 36% documentacion
+    medida, eso no es un falso positivo mas: es el peor incentivo posible.
+    """
+    return bool(RE_COMENTARIO.match(linea))
+
+
 def _dentro_de_una_negativa(lineas, i):
     """El exito de la linea `i`, esta DENTRO de una rama de negativa?
 
@@ -133,7 +155,7 @@ def _dentro_de_una_negativa(lineas, i):
     if RE_NEGATIVA.search(lineas[i]):
         return True
     for j in range(max(0, i - 3), i):
-        if not RE_NEGATIVA.search(lineas[j]):
+        if _es_comentario(lineas[j]) or not RE_NEGATIVA.search(lineas[j]):
             continue
         # Solo cuenta si aquella linea ABRIO un bloque y este exito va dentro.
         if lineas[j].rstrip().endswith("{"):
@@ -158,6 +180,10 @@ def puertas_ambiguas(ficheros):
                  or RE_FUNCION.match(linea))
             if m:
                 quien = m.group(1)
+            # La prosa NO se juzga: ver `_es_comentario`. Va antes que nada
+            # para que un comentario tampoco pueda mover el nombre de `quien`.
+            if _es_comentario(linea):
+                continue
             if not RE_EXITO.search(linea):
                 continue
             if not _dentro_de_una_negativa(lineas, i):

@@ -443,8 +443,19 @@ pub(super) fn estratos_sellar(_arg0: u64, _arg1: u64) -> BmoStatus {
         match crate::ring0::fsys::estratos::seal() {
             Ok(g) => BmoStatus::ok_value(g),
             Err(e) => {
+                // *** SELLAR ES GUARDAR UN FICHERO, y esto contestaba EXITO.
+                //
+                // `ok_value(0)` es codigo de exito con generacion cero -- y una
+                // generacion cero se lee como una generacion buena. Los once
+                // motivos que `WriteError` distingue existian desde el primer
+                // dia y **ninguno cruzaba la puerta**: solo CABINA se enteraba,
+                // y CABINA es el panel del kernel, no donde mira quien guarda.
+                //
+                // ** El `value` sigue siendo 0, asi que quien leia la generacion
+                // lee lo mismo que ayer. Lo que cambia es que el codigo dice que
+                // NO y las banderas dicen cual de los once. L6i.
                 crate::ring0::cabina::warn("estratos", e.name(), 0);
-                BmoStatus::ok_value(0)
+                BmoStatus::negado(e.codigo(), 0)
             }
         }
 }

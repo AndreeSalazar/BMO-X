@@ -442,6 +442,36 @@ pub fn offer(bloque: u64, desde: u64, bytes: u64, tid: u32) -> bool {
     invoke(bloque, MEM_OP_OFRECER, desde, bytes, tid as u64).value != 0
 }
 
+/// **Lo mismo, pero contando POR QUE no.** `OFRECIDO` (0) si quedo apuntada.
+///
+/// == *** NO SUSTITUYE A [`offer`], Y ESO ES EL PUNTO (L6i, 2026-09-12) =====
+///
+/// `offer` sigue leyendo el VALOR y contestando lo mismo que ayer, byte por
+/// byte. Lo que se anade es la otra mitad de la respuesta, que el kernel ya
+/// mandaba y nadie recogia: las banderas traen cual de las cinco.
+///
+/// Quien solo quiera saber si pudo, sigue usando `offer` y no cambia nada.
+/// Quien quiera DECIRLO --una app que no ve su ventana-- usa esto.
+pub fn offer_motivo(bloque: u64, desde: u64, bytes: u64, tid: u32) -> u32 {
+    let st = invoke(bloque, MEM_OP_OFRECER, desde, bytes, tid as u64);
+    if st.code == 0 { OFRECIDO } else { st.flags }
+}
+
+/// El motivo, en palabras. Para que una app pueda ENSENARLO sin inventarse el
+/// texto -- que es como dos sitios acaban diciendo cosas distintas del mismo
+/// numero.
+pub fn offer_nombre(motivo: u32) -> &'static str {
+    match motivo {
+        OFRECIDO => "ofrecida",
+        OFRECER_NO_CABE_EN_EL_BLOQUE => "el trozo se sale del bloque propio",
+        OFRECER_NO_CABE_EN_LA_VENTANA => "mas grande que una ventana de prestamo",
+        OFRECER_A_MI_MISMO => "ofrecida a uno mismo",
+        OFRECER_SIN_RANURAS => "no quedan ofertas libres: se puede reintentar",
+        OFRECER_PADRE_NO_VIVE => "el que la iba a componer ya no vive",
+        _ => "motivo que este userland no conoce",
+    }
+}
+
 /// **Toma lo que otro me haya ofrecido.** Devuelve `(base, bytes)`, o `None`.
 ///
 /// El mapeo ocurre dentro de esta llamada, en el espacio de direcciones de
