@@ -140,10 +140,18 @@ pub(crate) fn on_pointer(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Golpe) -> boo
                 s.chrome.release();
                 return true;
             }
-            let (vx, vy, va, vl) = (s.chrome.x, s.chrome.y, s.chrome.width, s.chrome.height);
+            let viejo = (s.chrome.x, s.chrome.y, s.chrome.width, s.chrome.height);
             if s.chrome.follow_pointer(&p, pos.x, pos.y) {
                 s.repaint_all();
-                erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
+                let nuevo = (s.chrome.x, s.chrome.y, s.chrome.width, s.chrome.height);
+                // ** LA RESTA Y NO EL RECTANGULO ENTERO (2026-09-12). Aqui ponia
+                // `erase_window` del sitio viejo: con DOOM (962x629) son 605.000
+                // pixeles devueltos al fondo POR CADA EVENTO DEL RATON --hasta
+                // 250 por segundo-- para que la ventana los vuelva a tapar en la
+                // misma vuelta. Mover un pixel deja al descubierto una tira de un
+                // pixel. Es el mismo arreglo que ya tenian la terminal y Datos
+                // (`scene::erase_moved`); a las apps no les llego.
+                scene::erase_moved(&p, &dsk.run_box, viejo, nuevo, dsk.win.visible);
                 uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
             }
             return true;
