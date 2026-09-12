@@ -1,16 +1,16 @@
 /* fuente/datos.h -- los glifos de BMO-X, en C. AUTO-GENERADO.
-*
-* NO editar a mano. Regenerar: `cargo run -p bmo-fontgen`, que emite
-* este fichero Y la tabla del kernel DEL MISMO ARTE: dos tablas de
-* glifos mantenidas a mano son dos fuentes que se separan el dia que
-* alguien corrija una letra en una de las dos.
-*
-* [carril]  VERDE        una tabla. Aqui no corre nada
-* [cuesta]  NADA         un glifo mal sale feo, y se ve
-* [riesgo]  ESPEJO       el kernel tiene la MISMA tabla en
-*                        `font16_data.rs`, y las dos salen de
-*                        `toolchain/tools/fontgen`
-*/
+ *
+ * NO editar a mano. Regenerar: `cargo run -p bmo-fontgen`, que emite
+ * este fichero Y la tabla del kernel DEL MISMO ARTE: dos tablas de
+ * glifos mantenidas a mano son dos fuentes que se separan el dia que
+ * alguien corrija una letra en una de las dos.
+ *
+ * [carril]  VERDE        una tabla. Aqui no corre nada
+ * [cuesta]  NADA         un glifo mal sale feo, y se ve
+ * [riesgo]  ESPEJO       el kernel tiene la MISMA tabla en
+ *                        `font16_data.rs`, y las dos salen de
+ *                        `toolchain/tools/fontgen`
+ */
 #ifndef BMO_FUENTE_DATOS_H
 #define BMO_FUENTE_DATOS_H
 

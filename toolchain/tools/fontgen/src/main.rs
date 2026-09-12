@@ -410,23 +410,44 @@ fn main() {
     std::fs::write(&out_extra, &e).expect("escribir font16_extra.rs");
 
     // -- 3. la misma tabla, en C, para REX -------------------------------
-    let mut c = String::from(
-        "/* fuente/datos.h -- los glifos de BMO-X, en C. AUTO-GENERADO.\n\
-         *\n\
-         * NO editar a mano. Regenerar: `cargo run -p bmo-fontgen`, que emite\n\
-         * este fichero Y la tabla del kernel DEL MISMO ARTE: dos tablas de\n\
-         * glifos mantenidas a mano son dos fuentes que se separan el dia que\n\
-         * alguien corrija una letra en una de las dos.\n\
-         *\n\
-         * [carril]  VERDE        una tabla. Aqui no corre nada\n\
-         * [cuesta]  NADA         un glifo mal sale feo, y se ve\n\
-         * [riesgo]  ESPEJO       el kernel tiene la MISMA tabla en\n\
-         *                        `font16_data.rs`, y las dos salen de\n\
-         *                        `toolchain/tools/fontgen`\n\
-         */\n\
-         #ifndef BMO_FUENTE_DATOS_H\n\
-         #define BMO_FUENTE_DATOS_H\n\n",
-    );
+    //
+    // *** EL " * " DE CADA LINEA LO PONE ESTE CODIGO, NO LA SANGRIA DEL LITERAL.
+    //
+    // La continuacion `\` de Rust se come el salto Y el espacio del principio de
+    // la linea siguiente, asi que un literal bonito y alineado emitia
+    // `* [carril]` pegado al margen. Y `RE_SELLO_H` de `contrato_rex.py` exige
+    // `" * [carril]"` **con su espacio delante**: R11 rechazo este fichero por
+    // tres etiquetas que SI estaban escritas.
+    //
+    // [!] Y lo caro fue donde se vio: `build.ps1 -BuildOnly` pasa en verde --su
+    // paso de contrato es mas corto-- y el que lo caza es el DESPLIEGUE, o sea
+    // el ultimo sitio antes del disco. Por eso el prefijo deja de ser cosa del
+    // que escribe el literal.
+    let cabecera = [
+        "fuente/datos.h -- los glifos de BMO-X, en C. AUTO-GENERADO.",
+        "",
+        "NO editar a mano. Regenerar: `cargo run -p bmo-fontgen`, que emite",
+        "este fichero Y la tabla del kernel DEL MISMO ARTE: dos tablas de",
+        "glifos mantenidas a mano son dos fuentes que se separan el dia que",
+        "alguien corrija una letra en una de las dos.",
+        "",
+        "[carril]  VERDE        una tabla. Aqui no corre nada",
+        "[cuesta]  NADA         un glifo mal sale feo, y se ve",
+        "[riesgo]  ESPEJO       el kernel tiene la MISMA tabla en",
+        "                       `font16_data.rs`, y las dos salen de",
+        "                       `toolchain/tools/fontgen`",
+    ];
+    let mut c = String::new();
+    for (i, linea) in cabecera.iter().enumerate() {
+        if i == 0 {
+            c += &format!("/* {linea}\n");
+        } else if linea.is_empty() {
+            c += " *\n";
+        } else {
+            c += &format!(" * {linea}\n");
+        }
+    }
+    c += " */\n#ifndef BMO_FUENTE_DATOS_H\n#define BMO_FUENTE_DATOS_H\n\n";
     c += &format!("#define BMO_FUENTE_GLIFOS {}\n", glifos);
     c += "#define BMO_FUENTE_ASCII 95\n";
     c += &format!("#define BMO_FUENTE_EXTRAS {}\n\n", EXTRA.len());
