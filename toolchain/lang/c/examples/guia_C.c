@@ -50,6 +50,18 @@
  * dibuja Latin-1 y el fichero se escribe en UTF-8).
  */
 
+/* *** EL MONTON, DECLARADO -- y sin esto no hay ventana. (2026-09-12)
+ *
+ * La superficie sale del MONTON, y el monton de serie es **1 MiB**. Esta imagen
+ * pide 720x520x4 = 1.497.600 bytes, asi que con el de serie `malloc` devuelve 0,
+ * `bmo_superficie_crear_con_buzon` contesta 0 y el programa se va diciendo
+ * "hace falta el escritorio" -- **culpando al compositor de un fallo suyo**.
+ *
+ * Se declara ANTES del `#include`, que es como `<stdlib.h>` lo lee.
+ * `raycaster_C.c` lo lleva escrito desde siempre con este mismo motivo; yo no
+ * lo copie, y por eso `guia.bex` no abrio ni una vez.
+ */
+#define BMO_MONTON_BYTES (4 * 1024 * 1024)
 #include <stdlib.h>
 #include <bmo/bmo.h>
 #include <bmo/paquete.h>

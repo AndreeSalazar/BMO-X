@@ -40,6 +40,16 @@
  * lleva los numeros de lo que cuesta un acento en un literal.
  */
 
+/* *** EL MONTON, DECLARADO -- y sin esto no habria ventana. (2026-09-12)
+ *
+ * La superficie sale del MONTON, y el monton de serie es **1 MiB**. Esta imagen
+ * pide 520x300x4 = 624.000 bytes, que CABEN en el de serie -- pero se declara igual, porque
+ * el margen aqui no cuesta nada y quedarse justo si: la textura y los buffers
+ * salen del mismo sitio.
+ *
+ * Se declara ANTES del `#include`, que es como `<stdlib.h>` lo lee.
+ */
+#define BMO_MONTON_BYTES (2 * 1024 * 1024)
 #include <stdlib.h>
 #include <bmo/bmo.h>
 #include <bmo/paquete.h>
