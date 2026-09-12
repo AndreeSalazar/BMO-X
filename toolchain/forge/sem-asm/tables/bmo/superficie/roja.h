@@ -87,10 +87,17 @@ void bmo_superficie_lista(BMO_SUPERFICIE *s) {
 
 /* Pide la memoria, escribe la cabecera y **se la ofrece a quien nos lanzo**.
  *
- * Devuelve 0 si no hay memoria o si no hay a quien ofrecersela -- lo segundo
- * pasa cuando el programa se lanza desde el shell de Ring 0, que no compone
- * nada. Un programa que quiera funcionar en los dos sitios comprueba el 0 y se
- * cae al camino de la pantalla exclusiva. */
+ * Devuelve 0 en TRES casos, y hasta el 2026-09-12 solo miraba los dos
+ * primeros:
+ *
+ *    no hay memoria              el monton no da para la imagen
+ *    no hay a quien ofrecer      lanzado desde el shell de Ring 0, que no
+ *                                compone nada
+ *    la oferta fue RECHAZADA     habia a quien ofrecer y el kernel dijo que
+ *                                no. El motivo esta en CABINA (F11)
+ *
+ * Un programa que quiera funcionar en los dos sitios comprueba el 0 y se cae al
+ * camino de la pantalla exclusiva. */
 BMO_SUPERFICIE *bmo_superficie_crear_con_buzon(int ancho, int alto, int ranuras) {
     BMO_SUPERFICIE *s;
     unsigned long long bytes;
@@ -159,7 +166,29 @@ BMO_SUPERFICIE *bmo_superficie_crear_con_buzon(int ancho, int alto, int ranuras)
     }
     /* El desplazamiento va contra la base del BLOQUE del monton, que es lo que
      * el kernel conoce -- la misma resta que hace `fread`. */
-    bmo_valor(s->bloque, BMO_MEM_OFRECER, s->base - __bmo_bloque_base, bytes, padre);
+    if (bmo_valor(s->bloque, BMO_MEM_OFRECER, s->base - __bmo_bloque_base,
+                  bytes, padre) == 0) {
+        /* *** LA OFERTA FUE RECHAZADA, Y HASTA HOY ESTE VALOR SE TIRABA.
+         *
+         * `MEM_OFRECER` contesta 1 o 0, y la linea de arriba no miraba cual.
+         * Asi que una superficie que NADIE iba a componer volvia viva: la app
+         * se quedaba dibujando a 60 fps dentro de memoria que no lee nadie, y
+         * el sintoma era *"no me sale la ventana"* sin una sola linea en
+         * ningun sitio que dijera por que. Es el fallo mudo en su forma pura --
+         * compila, corre, y hace otra cosa.
+         *
+         * El kernel tiene CINCO motivos para decir que no, y los cinco los
+         * escribe en CABINA (F11): el trozo no cabe en el bloque, no cabe en
+         * una ventana de prestamo, el destino es uno mismo, no quedan ofertas
+         * libres, o el tid del padre ya no resuelve a un pid vivo.
+         *
+         * ** Devolver 0 NO es una politica nueva: es lo que la cabecera de
+         * esta funcion ya prometia --*"devuelve 0 si no hay a quien
+         * ofrecersela"*-- y lo que el codigo no comprobaba. Quien la llama ya
+         * sabe tratar el 0: se cae al camino de la pantalla exclusiva, o lo
+         * dice y se va. Las dos cosas son mejores que pintar para nadie. */
+        return 0;
+    }
     return s;
 }
 
