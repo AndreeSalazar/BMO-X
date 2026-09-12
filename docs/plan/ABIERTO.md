@@ -7,7 +7,7 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   201 casillas ABIERTAS en 27 planes
+   204 casillas ABIERTAS en 27 planes
    129 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
@@ -53,6 +53,15 @@
 - [ ] 1c -- el motor de inferencia en INTI (semanas). El cargador de GGUF,
 - ... y 10 mas
 
+## [`PLAN_DOCUMENTOS.md`](PLAN_DOCUMENTOS.md) -- 12 abiertas, 0 hechas
+
+*PLAN DE LOS DOCUMENTOS -- el escritorio deja de listar PROGRAMAS y lista lo que abres*
+
+- [ ] un programa recibe QUE abrir: MI_DOCUMENTO, hermano de MI_PAQUETE
+- [ ] y decidir si viaja como DERECHO (capability) o como NOMBRE, sabiendo
+- [ ] o que el kernel sepa reabrir un fichero para reescribirlo sin
+- ... y 9 mas
+
 ## [`PLAN_EL_COMPAS.md`](PLAN_EL_COMPAS.md) -- 12 abiertas, 0 hechas
 
 *PLAN EL COMPAS -- el quantum se retira, y el turno se CONCEDE*
@@ -78,15 +87,6 @@
 - [ ] el DIRECTOR le dice el hueco: una ranura de buzon con bit propio
 - [ ] la app puede REEMPLAZAR su superficie: hoy una segunda oferta del
 - [ ] DOOM elige escala con el hueco, como ya hace al tomar la pantalla
-- ... y 6 mas
-
-## [`PLAN_DOCUMENTOS.md`](PLAN_DOCUMENTOS.md) -- 9 abiertas, 0 hechas
-
-*PLAN DE LOS DOCUMENTOS -- el escritorio deja de listar PROGRAMAS y lista lo que abres*
-
-- [ ] un programa recibe QUE abrir: MI_DOCUMENTO, hermano de MI_PAQUETE
-- [ ] y decidir si viaja como DERECHO (capability) o como NOMBRE, sabiendo
-- [ ] o que el kernel sepa reabrir un fichero para reescribirlo sin
 - ... y 6 mas
 
 ## [`PLAN_EL_CODEGEN.md`](PLAN_EL_CODEGEN.md) -- 9 abiertas, 0 hechas

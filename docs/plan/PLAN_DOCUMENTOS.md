@@ -4,6 +4,12 @@
 > terreno medido -- que existe ya, que falta de verdad, y que cuesta cada
 > camino. La eleccion no esta tomada porque el dueno pidio pensarla mas, y un
 > plan que decide por el es un plan que le quita la decision.
+>
+> ★★ **Y la seccion 3b cambio el plan el mismo dia.** El dueno corrigio su idea
+> --`.window` para lo que muestra pantalla, `.data` para los datos-- y al ir a
+> medirla salio que **eso ya existe dentro del `.bex`**: cuatro secciones del
+> BEF, con `CLASE_PANTALLA` escrita en cada binario desde el 10-08. Asi que la
+> pregunta deja de ser *que extension* y pasa a ser *por que nadie lo ENSENA*.
 
 ## 0. De donde sale
 
@@ -182,6 +188,140 @@ Asi que las dos cosas, y en este orden:
 
 Y cuando no coincidan, se dice -- no se adivina. Un fichero en la carpeta
 equivocada es un fichero en la carpeta equivocada, no un fichero de otro tipo.
+
+---
+
+## 3b. ** LA CORRECCION DEL DUENO: `.window`, `.data` -- Y YA EXISTE
+
+El 2026-09-11, mas tarde, el dueno corrigio su propia idea. Y el motivo es el
+mejor de esta pagina:
+
+> *"en Windows tienes carpetas pero son desordenadas y eso es molesto... una app
+> en Windows tiene OpenGL y todas esas cosas que no me sirven **ni para leer**,
+> que me dan flojera. Entonces la estrategia ya no seria `.datex` sino otro
+> enfoque: si es para mostrar pantalla ese seria `.window`, otro si es para que
+> sean datos `.data`. Para aplicar asi en TODAS las APP."*
+
+O sea: **que el artefacto diga PARA QUE ES y QUE NECESITA**, y que no traiga
+nada escondido. Y la pregunta que hizo fue la correcta: *"eso cumple las reglas
+o redefinimos"*.
+
+### 3b.1 ★★ Su `.window` ya tiene NUMERO, y es `CLASE_PANTALLA = 0x0003`
+
+La seccion `Requisitos = 0x15` del BEF. **Cada `.bex` que sale del escritor la
+trae escrita desde el 2026-08-10**, y el kernel la lee en `task/admitir.rs`
+antes del pase 2 -- *"el no barato es el que se da antes de la primera reserva"*.
+Ocho clases, cada una con su MOTIVO, que viaja con el rechazo:
+
+```text
+   0x0001 MEMORIA    bytes que tienen que existir antes de la 1a instruccion
+   0x0002 RECURSOS   lo que quiere RESIDENTE en RAM (lo que se lee a demanda,
+                     NO se declara: no le cuesta RAM a nadie)
+   0x0003 PANTALLA   <- el `.window` del dueno, y ya esta
+   0x0004 AUDIO      el aparato de audio
+   0x0005 ENTRADA    teclado y raton
+   0x0006 CPU        extensiones cuyo estado hay que preservar
+   0x0007 PROCESOS   huecos de proceso, si lanza hijos
+   0x0008 MONTON     lo que va a repartir DESPUES de arrancar
+```
+
+Y no esta sola. En el mismo fichero hay **cuatro secciones** que hacen lo que la
+idea pide:
+
+```text
+   Manifest   0x09   TOML: metadatos + capabilities -- `fs_read`, `fs_write`,
+                     `net_raw`, **`gpu_direct`**, `audio_output`, `ipc_send`
+   Resources  0x0B   el icono y los datos que viajan dentro
+   Requisitos 0x15   las ocho clases de arriba, para que Ring 0 no DEDUZCA
+   Katanas    0x16   por cada regla, DONDE esta su bloque de trampa dentro de
+                     `Code`, para que un tercero lo compruebe sin el compilador
+```
+
+### 3b.2 ⚠⚠ Y por que la EXTENSION seria un paso atras -- la frase ya estaba escrita
+
+`bef/katanas.rs`, sobre este problema exacto:
+
+> *"Un binario puede decir 'no tengo comportamiento indefinido' en su manifiesto
+> y no traer ni una comprobacion dentro. **Hoy no hay forma de desmentirlo**."*
+>
+> *"**Declarar sin comprobar es propaganda. Comprobar sin declarar es adivinar.
+> Las dos juntas son un contrato.**"*
+
+Un nombre de fichero es una promesa que **nadie puede desmentir**: renombras
+`doom.bex` a `doom.window` y no has cambiado un byte. Una seccion declarada SI
+se puede contrastar con los bytes -- eso es literalmente para lo que nacieron las
+katanas. Poner el papel en el nombre seria cambiar un contrato por una etiqueta.
+
+### 3b.3 Tres problemas medibles de partir la app en FICHEROS
+
+```text
+   1. no hay compilacion separada ni enlazado dinamico. Un `.window` que sea
+      CODIGO no se puede cargar y unir a otro fichero -- REX *"no es un
+      runtime: lo que incluyes compila hacia dentro de tu `.bex`"*.
+      ** Y el reparto por papeles YA EXISTE en BMO-X, y no son ficheros: son
+      PROCESOS. La superficie ES "la parte que muestra pantalla", y la frontera
+      del proceso es mas fuerte que cualquier extension
+   2. rompe *"una app es UN fichero"*, que es lo que mata el `.lnk`
+   3. una extension lleva UN papel y una app tiene VARIOS: `texto.bex` muestra
+      ventana Y guarda datos. `texto.window` o `texto.data`? La LISTA de
+      papeles no cabe en un nombre; cabe en una declaracion
+```
+
+### 3b.4 El dolor del OpenGL ya esta resuelto, y se mide
+
+REX no es un runtime, asi que una app **no lleva un byte de lo que no incluye**.
+Los tamanos del build del 11-09 lo dicen enteros:
+
+```text
+   holac.bex     2.791 B     un hola mundo
+   blit.bex      7.260 B
+   ray.bex      33.972 B     2.5D en punto fijo, con su menu
+   texto.bex    37.594 B     fuente + ficheros + superficie + buzon
+   doom.bex    874.896 B     DOOM entero
+```
+
+Un hola mundo son **2,7 KB**. Eso es lo que Windows no puede decir, y es la
+mitad del problema del dueno ya pagada. **La otra mitad es la que falta**: nadie
+le ENSENA lo que un `.bex` declara. Las secciones estan, el kernel usa una parte
+--hoy solo juzga las clases que se miden en BYTES; PANTALLA, AUDIO y ENTRADA se
+declaran y todavia no se juzgan-- y ni el escritorio ni una herramienta se lo
+cuentan a nadie. Ninguna herramienta de `toolchain/tools/` lee `Requisitos` ni
+`Manifest`.
+
+### 3b.5 ★ La redefinicion, y no hace falta abolir nada
+
+L6g dice: **un fichero declara su carril, su coste y su riesgo.** Vale para el
+codigo fuente, dentro del repo.
+
+> Redefinido hacia fuera: **un `.bex` tambien declara lo que necesita, y el
+> dueno lo VE.**
+
+No es una ley nueva; es la misma cruzando la frontera del artefacto. Y el
+precedente de como se hace ya existe: **`.ibex`**. Ese nombre no dice lo que el
+programa hace -- dice que **se comprometio**, y lo declara dentro (su perfil, sus
+piezas, su mesa de katanas), de forma que un guardian puede desmentirlo. *"El
+MISMO formato, con un nombre que dice a que se ha comprometido."*
+
+O sea que si una extension nueva tiene que significar algo, lo que puede
+significar es **"este se comprometio y se puede comprobar"**, no "este dibuja".
+
+### 3b.6 Y que queda de `.data`
+
+Esa mitad sobrevive tal cual, y es la de la seccion 3: **para los DATOS, la
+extension que dice el formato es lo correcto** -- es lo que hacen PNG y JPG, y el
+tipo viaja con el fichero. Lo que no funciona es para los PROGRAMAS, donde el
+papel no es uno y la declaracion se puede comprobar.
+
+```text
+   [ ] ENSENAR lo que un `.bex` declara: una herramienta que vuelque
+       `Manifest` + `Requisitos` + `Katanas` + `Resources`. Hoy NINGUNA de
+       `toolchain/tools/` lee las dos primeras -- y es la queja literal del
+       dueno: *"ni para leer"*
+   [ ] y que el escritorio lo ensene al senalar un icono: que pide esta app
+       -- `scene/launcher.rs`
+   [ ] juzgar las clases que no se miden en bytes: PANTALLA, AUDIO y ENTRADA se
+       declaran y no se juzgan -- `task/admitir.rs`
+```
 
 ---
 
