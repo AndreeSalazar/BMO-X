@@ -102,6 +102,9 @@ impl Parser {
         typ: TypeSpec,
         name: String,
     ) -> Result<Stmt, CError> {
+        // Una local con el nombre de una constante de enum la tapa. Ver
+        // `Parser::tapar_enum`.
+        self.tapar_enum(&name);
         self.var_types.insert(name.clone(), typ.clone());
         if *self.peek() != Token::Assign {
             self.skip_semicolon();

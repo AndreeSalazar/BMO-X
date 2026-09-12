@@ -78,6 +78,10 @@ pub(crate) struct Parser {
     /// definir. El aviso `value assigned to val is never read` del propio
     /// compilador estaba senalando justo este bug.
     enum_constants: HashMap<String, i64>,
+    /// ** Las constantes de `enum` que una local o un parametro TAPA en la
+    /// funcion que se esta leyendo, con su valor, para devolverlas al salir.
+    /// Ver `Parser::tapar_enum`.
+    enum_tapadas: Vec<(String, i64)>,
     /// * Locales `static`: nombre visible -> nombre real de la global.
     ///
     /// Una `static` dentro de una funcion **no es una local**: sobrevive entre
@@ -123,6 +127,7 @@ impl Parser {
             usings: Vec::new(),
             typedefs: HashMap::new(),
             enum_constants: HashMap::new(),
+            enum_tapadas: Vec::new(),
             static_alias: HashMap::new(),
             base_del_declarador: TypeSpec::Int,
             globales_pendientes: Vec::new(),
