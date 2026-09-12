@@ -140,23 +140,51 @@ impl Censo {
     }
 }
 
+// == *** LOS CUATRO MOTIVOS DE UN CENSO QUE NO SE PUEDE HACER (L6j, 12-09) ===
+//
+// `censar` devolvia `Option`, asi que sus cuatro fallos llegaban como el mismo
+// `None` -- y de ahi a la puerta como `ok_value(0)`, o sea como un censo de cero
+// tablas hecho con exito. El DIRECTOR lo pintaba como **un hecho sobre el
+// firmware**: *"el firmware no dio un RSDP de ACPI 2.0+"*, que es SOLO el
+// primero de los cuatro.
+//
+// ** Es el defecto que esta casa ya nombro en `red.rs`: *"un cero presentado
+// como un hecho"*. Aqui el cero mandaba a echarle la culpa a la placa cuando lo
+// que podia estar roto era el mapeo de una direccion fisica.
+
+/// El firmware no dejo un RSDP de ACPI 2.0+ donde mirar.
+pub const SIN_RSDP: u32 = 1;
+/// Hay RSDP y no lleva a un XSDT: firmware de ACPI 1.0, o el puntero no vale.
+pub const SIN_XSDT: u32 = 2;
+/// El XSDT esta donde dice y **su cabecera no se lee**. Aqui ya no se acusa al
+/// firmware: lo mas probable es el mapeo de esa direccion fisica.
+pub const CABECERA_MALA: u32 = 3;
+/// El XSDT declara un largo MENOR que su propia cabecera. Se para antes de
+/// restar, porque esa resta en `usize` da la vuelta y sale un censo enorme.
+pub const LARGO_IMPOSIBLE: u32 = 4;
+/// **Esa fila no existe.** El censo salio bien y se pidio un indice que no hay.
+/// No es un fallo del censo, asi que no lo devuelve `censar`: lo pone la puerta,
+/// que es la unica que ve el indice que le pidieron.
+pub const SIN_ESA_FILA: u32 = 5;
+
 /// **Censa las tablas que ofrece el firmware.** Cero escrituras.
 ///
-/// `None` si no hay XSDT que leer -- que es distinto de un censo vacio, igual
-/// que en `madt::enumerar`.
-pub fn censar(rsdp: u64) -> Option<Censo> {
+/// `Err(motivo)` si no hay XSDT que leer -- que es distinto de un censo vacio,
+/// igual que en `madt::enumerar`. Un `Ok` con `cuantas() == 0` **si** es un
+/// censo vacio, y esa es justo la diferencia que el `Option` borraba.
+pub fn censar(rsdp: u64) -> Result<Censo, u32> {
     if rsdp == 0 {
-        return None;
+        return Err(SIN_RSDP);
     }
     unsafe {
-        let x = xsdt(rsdp)?;
+        let x = xsdt(rsdp).ok_or(SIN_XSDT)?;
 
         // La cabecera del propio XSDT: de ahi salen el OEM y el largo que dice
         // cuantas entries trae.
         let cab_bytes = core::slice::from_raw_parts(x as *const u8, CABECERA_LEN);
-        let cab = Cabecera::leer(cab_bytes)?;
+        let cab = Cabecera::leer(cab_bytes).ok_or(CABECERA_MALA)?;
         if (cab.largo as usize) < CABECERA_LEN {
-            return None;
+            return Err(LARGO_IMPOSIBLE);
         }
 
         let mut censo = Censo {
@@ -194,7 +222,7 @@ pub fn censar(rsdp: u64) -> Option<Censo> {
             });
             censo.cuantas += 1;
         }
-        Some(censo)
+        Ok(censo)
     }
 }
 
@@ -289,11 +317,31 @@ pub fn ivinfo(rsdp: u64) -> Option<u32> {
     unsafe { tabla_de(rsdp, b"IVRS").and_then(bmo_firmware::ivinfo) }
 }
 
+/// El motivo, en palabras. UNA sola version del texto: la que va a CABINA y la
+/// que pinta el DIRECTOR salen de aqui, porque dos textos del mismo numero
+/// acaban diciendo cosas distintas.
+pub fn por_que(motivo: u32) -> &'static str {
+    match motivo {
+        SIN_RSDP => "el firmware no dio un RSDP de ACPI 2.0+",
+        SIN_XSDT => "hay RSDP y no lleva a un XSDT (ACPI 1.0, o el puntero no vale)",
+        CABECERA_MALA => "el XSDT esta donde dice y su cabecera no se lee",
+        LARGO_IMPOSIBLE => "el XSDT declara un largo menor que su propia cabecera",
+        SIN_ESA_FILA => "esa fila no existe: el censo trae menos tablas",
+        _ => "motivo que este kernel no conoce",
+    }
+}
+
 /// **Cuenta a CABINA lo que dijo la placa.** Se llama una vez, al arrancar.
 pub fn confesar(rsdp: u64) {
-    let Some(c) = censar(rsdp) else {
-        crate::ring0::cabina::warn("placa", "sin XSDT que leer -- el firmware no lo dio", rsdp);
-        return;
+    // ** Y AHORA DICE CUAL DE LOS CUATRO. El aviso de antes acusaba al firmware
+    // siempre, incluso cuando el firmware habia hecho su parte y lo que fallaba
+    // era leer la cabecera. Ver L6j.
+    let c = match censar(rsdp) {
+        Ok(c) => c,
+        Err(motivo) => {
+            crate::ring0::cabina::warn("placa", por_que(motivo), rsdp);
+            return;
+        }
     };
 
     crate::ring0::cabina::count("placa", "tablas que ofrece el firmware", c.cuantas() as u64);

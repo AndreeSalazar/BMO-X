@@ -97,9 +97,15 @@ pub(super) fn smp_despertar(arg0: u64, arg1: u64) -> BmoStatus {
             // punto saldria lento -- justo el que sirve de referencia para todos
             // los demas. Separarlas es lo que mantiene la columna `x1` honesta.
             4 => {
+                // *** `Err(_)` -- el guion bajo delataba el fallo (12-09).
+                //
+                // `preparar` distingue TRES motivos y los tres llegaban aqui
+                // como "preparo cero bytes", con codigo de exito. El `value`
+                // sigue siendo 0, asi que `banda_preparar()` contesta lo mismo
+                // que ayer; lo que cambia es que ahora se sabe cual. Ver L6j.
                 match crate::ring0::plat::smp::banda::preparar() {
                     Ok((bytes, _veces)) => BmoStatus::ok_value(bytes),
-                    Err(_) => BmoStatus::ok_value(0),
+                    Err(motivo) => BmoStatus::negado(motivo, 0),
                 }
             }
             5 => {
@@ -349,10 +355,20 @@ pub(super) fn smp_despertar(arg0: u64, arg1: u64) -> BmoStatus {
                     );
                 }
                 crate::ring0::core::dashboard::dashboard_log("[smp] prueba de reparto hecha (latencia + ancho)");
+                // *** UNA MEDIDA QUE NO SALIO, CONTESTANDO CERO (12-09).
+                //
+                // El `else` es "el barrido no completo, no se puede juzgar" -- y
+                // el aviso de CABINA de cuatro lineas mas arriba lo dice con
+                // esas palabras. Por la puerta salia un `0` con codigo de exito,
+                // y el DIRECTOR lo pintaba como **"aceleracion: 0.00"** en rojo:
+                // una medida FALLIDA presentada como un cero MEDIDO.
+                //
+                // El `value` sigue siendo 0 -- `smp_prueba()` contesta lo mismo
+                // que ayer-- y el codigo dice que no. Ver L6j.
                 if todos > 0 && partes > 0 {
                     BmoStatus::ok_value(uno.saturating_mul(100) / todos)
                 } else {
-                    BmoStatus::ok_value(0)
+                    BmoStatus::negado(crate::ring0::plat::smp::banda::SIN_JUICIO, 0)
                 }
             }
             _ => {

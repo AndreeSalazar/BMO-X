@@ -93,9 +93,45 @@ pub const PLACA_OP_TABLA: u64 = 0x02;
 pub const PLACA_OP_ECAM: u64 = 0x03;
 pub const PLACA_OP_IOMMU: u64 = 0x04;
 
-/// Cuantas tablas ofrece el firmware. Cero = no hay XSDT que leer.
+/// **Los cinco motivos por los que no hay censo** (L6j, 2026-09-12).
+///
+/// Espejo de `ring0::plat::placa`. Hasta hoy los cinco llegaban como el mismo
+/// cero con codigo de exito, y el DIRECTOR pintaba el PRIMERO como si fuera el
+/// unico: *"el firmware no dio un RSDP"*. Los otros cuatro mandan a mirar a otro
+/// sitio -- y `PLACA_CABECERA_MALA` ni siquiera acusa al firmware.
+pub const PLACA_SIN_RSDP: u32 = 1;
+pub const PLACA_SIN_XSDT: u32 = 2;
+pub const PLACA_CABECERA_MALA: u32 = 3;
+pub const PLACA_LARGO_IMPOSIBLE: u32 = 4;
+pub const PLACA_SIN_ESA_FILA: u32 = 5;
+
+/// El motivo en palabras. Una sola version del texto en todo Ring 3.
+pub fn placa_por_que(motivo: u32) -> &'static str {
+    match motivo {
+        PLACA_SIN_RSDP => "el firmware no dio un RSDP de ACPI 2.0+",
+        PLACA_SIN_XSDT => "hay RSDP y no lleva a un XSDT (ACPI 1.0?)",
+        PLACA_CABECERA_MALA => "el XSDT esta donde dice y su cabecera no se lee",
+        PLACA_LARGO_IMPOSIBLE => "el XSDT declara un largo menor que su cabecera",
+        PLACA_SIN_ESA_FILA => "esa fila no existe: el censo trae menos tablas",
+        _ => "motivo que este userland no conoce",
+    }
+}
+
+/// Cuantas tablas ofrece el firmware. Cero = **cero tablas**, que desde el
+/// 12-09 ya no significa tambien "no se pudo censar": para eso esta
+/// [`placa_cuantas_motivo`].
 pub fn placa_cuantas() -> u64 {
     invoke(CURRENT_TASK, crate::OP_PLACA, PLACA_OP_CUANTAS, 0, 0).value
+}
+
+/// **Cuantas tablas, y POR QUE no si no las hay.** `(cuantas, motivo)`, con
+/// `motivo == 0` cuando el censo salio.
+///
+/// No sustituye a [`placa_cuantas`]: quien solo quiera el numero sigue igual.
+/// Esto es para quien tenga que DECIRLO, que es el que pinta la pantalla.
+pub fn placa_cuantas_motivo() -> (u64, u32) {
+    let st = invoke(CURRENT_TASK, crate::OP_PLACA, PLACA_OP_CUANTAS, 0, 0);
+    (st.value, if st.code == 0 { 0 } else { st.flags })
 }
 
 /// La tabla `i`: la firma en los cuatro bytes bajos, bit 32 = paso su suma,

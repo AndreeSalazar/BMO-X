@@ -39,9 +39,15 @@ pub(crate) fn shell_placa() {
     use crate::ring0::plat::placa;
 
     let rsdp = crate::ring0::plat::madt::rsdp_guardado();
-    let Some(c) = placa::censar(rsdp) else {
-        s_log("[placa] sin XSDT que leer: el firmware no dio un RSDP de ACPI 2.0+");
-        return;
+    // ** El texto sale de `placa::por_que` y no de aqui: antes esta linea
+    // afirmaba el PRIMER motivo de los cuatro como si fuera el unico. Ver L6j.
+    let c = match placa::censar(rsdp) {
+        Ok(c) => c,
+        Err(motivo) => {
+            s_log("[placa] sin XSDT que leer:");
+            s_log(placa::por_que(motivo));
+            return;
+        }
     };
 
     fn txt(b: &mut [u8; 80], o: &mut usize, t: &str) {

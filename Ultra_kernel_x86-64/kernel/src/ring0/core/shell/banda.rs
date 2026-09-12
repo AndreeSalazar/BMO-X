@@ -114,7 +114,10 @@ pub(crate) fn shell_banda() {
         Err(e) => {
             let mut o = 0;
             txt(&mut b, &mut o, "[banda] no se puede medir: ");
-            txt(&mut b, &mut o, e);
+            // El texto ya no viene en el `Err`: viene de `banda::por_que`, que
+            // es el mismo sitio del que sale el numero que cruza la puerta. Ver
+            // L6j -- dos textos del mismo motivo acaban diciendo cosas distintas.
+            txt(&mut b, &mut o, banda::por_que(e));
             linea(&b, o);
             return;
         }

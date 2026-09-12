@@ -870,7 +870,11 @@ pub mod estratos;
 pub mod paquete;
 
 pub use sys::smp_hilo;
-pub use red::{placa_cuantas, placa_ecam, placa_iommu, placa_tabla};
+pub use red::{
+    placa_cuantas, placa_cuantas_motivo, placa_ecam, placa_iommu, placa_por_que,
+    placa_tabla, PLACA_CABECERA_MALA, PLACA_LARGO_IMPOSIBLE, PLACA_SIN_ESA_FILA,
+    PLACA_SIN_RSDP, PLACA_SIN_XSDT,
+};
 pub use archivo::*;
 pub use dibujo::*;
 pub use disco::*;
