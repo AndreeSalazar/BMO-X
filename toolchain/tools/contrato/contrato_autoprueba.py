@@ -387,6 +387,42 @@ def autoprueba():
           [x for x in notas if "gato.rs" in x], False)
     exige("R21(sin ficheros)", r21_el_consumo({}), False)
 
+
+    # -- R22: si es si y no es no (L6i) --------------------------------------
+    #
+    # *** LA FILA QUE DE VERDAD GUARDA ALGO es la del FALSO POSITIVO. La
+    # primera version de esta regla miraba tres lineas hacia atras y acuso a
+    # `console_read`, que era inocente: su `ok_value` es el final de la funcion,
+    # no de la rama. Un guardian con un falso positivo se desactiva en una
+    # semana -- asi que ese caso tiene fila propia y no se puede volver a
+    # colar sin que el banco grite.
+    SI = "        None => BmoStatus::ok_value(0)," + chr(10)
+    FUERA = ("        None => otra_cosa(arg0)," + chr(10)
+             + "    }" + chr(10)
+             + "    BmoStatus::ok_value(0)" + chr(10))
+    ELSE = ("        let Some(x) = y() else {" + chr(10)
+            + "            return BmoStatus::ok_value(0);" + chr(10)
+            + "        };" + chr(10))
+    exige("R22(None en la misma linea, lo ve)",
+          puertas_ambiguas({"a/op.rs": SI}))
+    exige("R22(el exito de la FUNCION no es de la rama)",
+          puertas_ambiguas({"a/op.rs": FUERA}), False)
+    exige("R22(`let..else` que devuelve exito, lo ve)",
+          puertas_ambiguas({"a/op.rs": ELSE}))
+    # Y el trinquete: lo que esta en la lista calla, lo que no, habla.
+    exige("R22(apuntada en AMBIGUAS.txt, calla)",
+          r22_si_es_si({"a/op.rs": SI}, {("op.rs", "(sin nombre)"): "CORRECTA"}),
+          False)
+    exige("R22(sin apuntar, se queja)", r22_si_es_si({"a/op.rs": SI}, {}))
+    # El nombre tiene que salir del GUARDA, o el hallazgo no se puede apuntar.
+    GUARDA = ("    cap::KIND_MEMORIA if frame.rsi == MEM_OP_OFRECER => {" + chr(10)
+              + "        let Some(d) = pid_de(x) else {" + chr(10)
+              + "            return BmoStatus::ok_value(0);" + chr(10)
+              + "        };" + chr(10))
+    exige("R22(el nombre sale del guarda del match)",
+          [k for k in puertas_ambiguas({"a/mod.rs": GUARDA})
+           if k[1] == "MEM_OP_OFRECER"])
+
     if fallos:
         for f in fallos:
             print("  [X] " + f)
