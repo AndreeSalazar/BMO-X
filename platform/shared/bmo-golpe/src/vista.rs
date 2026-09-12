@@ -64,6 +64,23 @@ pub enum Vista {
 /// ** `minimizada` gana a `tapada` a proposito: las dos son ciertas a la vez
 /// cuando hay un juego a pantalla completa y una ventana en la barra, y la que
 /// explica lo que pasa es la que hizo el dueno.
+impl Vista {
+    /// **El nombre del veredicto**, para que una consola pueda decirlo.
+    ///
+    /// ** Vive AQUI y no en el DIRECTOR por la razon de siempre (L7b): aqui se
+    /// puede probar en el anfitrion, y ahi no. Y ademas es donde estan los
+    /// numeros: un nombre lejos de su numero es la pareja que se separa.
+    pub fn nombre(&self) -> &'static str {
+        match self {
+            Vista::SeVe => "se ve",
+            Vista::Minimizada => "minimizada",
+            Vista::FueraDePantalla => "fuera de pantalla",
+            Vista::PantallaPrestada => "pantalla prestada",
+            Vista::Tapada => "tapada por una a pantalla completa",
+        }
+    }
+}
+
 pub fn vista(v: Visible, minimizada: bool, prestada: bool, tapada: bool) -> Vista {
     if prestada {
         return Vista::PantallaPrestada;
@@ -82,6 +99,27 @@ pub fn vista(v: Visible, minimizada: bool, prestada: bool, tapada: bool) -> Vist
 
 #[cfg(test)]
 mod pruebas {
+    use super::*;
+
+    /// Las cinco tienen nombre, y ninguno se repite: un veredicto que se
+    /// llama igual que otro no dice nada en una consola.
+    #[test]
+    fn las_cinco_tienen_nombre_distinto() {
+        let todas = [
+            Vista::SeVe,
+            Vista::Minimizada,
+            Vista::FueraDePantalla,
+            Vista::PantallaPrestada,
+            Vista::Tapada,
+        ];
+        for (i, a) in todas.iter().enumerate() {
+            assert!(!a.nombre().is_empty());
+            for b in todas.iter().skip(i + 1) {
+                assert_ne!(a.nombre(), b.nombre());
+            }
+        }
+    }
+
     use super::*;
 
     fn caja() -> Visible {

@@ -439,6 +439,31 @@ impl Surface {
             }
             return false;
         }
+        // ** Y SE DICE EN VOZ ALTA CADA VEZ QUE CAMBIA. (2026-09-12)
+        //
+        // R-APP8 tiene una forma de fallo propia y silenciosa: si el veredicto
+        // sale mal UNA vez, la app obediente deja de dibujar, deja de subir su
+        // secuencia, y el DIRECTOR --que solo repega cuando esa secuencia
+        // cambia-- deja de pegarla. **Nadie se queja: la app esta obedeciendo.**
+        // El sintoma es una ventana que no aparece, y la acusacion `[vista]` no
+        // salta porque esa acusa a quien DESOBEDECE.
+        //
+        // El 12-09 eso fue exactamente lo que se vio --DOOM arranca, escribe en
+        // la consola y no sale su ventana-- y no habia forma de saber que
+        // veredicto estaba recibiendo. Ahora se dice, solo en el CAMBIO: un
+        // renglon por transicion no es ruido, y un veredicto que nadie ve es un
+        // juez sin sentencia escrita.
+        let mut n = [0u8; 12];
+        let largo = tid_text(self.tid, &mut n);
+        bmo::consola("[vista] ");
+        if let Ok(s) = core::str::from_utf8(&n[..largo]) {
+            bmo::consola(s);
+        }
+        bmo::consola(" -> ");
+        bmo::consola(nueva.nombre());
+        bmo::consola("
+");
+
         let vuelve = nueva == bmo_golpe::Vista::SeVe;
         self.vista = nueva;
         self.seq_oculta = cab.sequence;
