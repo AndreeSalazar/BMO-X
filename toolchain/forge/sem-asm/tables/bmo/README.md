@@ -117,13 +117,73 @@ no encuentra `tables/`.
 
 ---
 
+## Con que viaja tu app: imagenes, tablas, y lo que no cabe dentro
+
+La pregunta del dueno el 2026-09-11: *"si los programadores quieren poner
+imagenes, sintaxis y eso... aunque en `.bex` se lleva todo, como DOOM"*.
+
+**La regla no es "todo dentro".** Son tres sitios, y el criterio no es el gusto:
+es **cuanta RAM cuesta**.
+
+```text
+   DENTRO del .bex     un recurso de la seccion `Resources` (0x0B). Lo escribe
+   `paquete.h`         `bmo-pack` y lo lee `paquete_leer` EN EJECUCION. Y esto
+                       es lo que no se ve: **el cargador SALTA esa seccion**, asi
+                       que una imagen dentro de tu `.bex` cuesta CERO RAM hasta
+                       que la pides. El icono de tu app ya viaja asi
+
+   AL LADO             lo grande. `doom.bex` son 874 KB y `doom1.wad` 4,2 MB
+                       FUERA, y el motivo es un numero, no una preferencia:
+                       `lanzar.rs::con_buffer` trae el fichero ENTERO a un bufer
+                       de 4 MiB, asi que un paquete de 5,5 MB no cargaria
+
+   UN SERVICIO         lo que usarian muchas apps. Es como ya funciona el
+                       DIRECTOR: un proceso, y los demas le hablan por su
+                       superficie o por un endpoint. Sin enlazado dinamico es la
+                       UNICA forma de no pagar diez copias de lo mismo
+```
+
+** Y el formato ya distingue los dos primeros. `CLASE_RECURSOS` de la seccion
+`Requisitos` declara **lo que quieres RESIDENTE en RAM**, y dice de si misma:
+*"lo que se lee a demanda por su puerta no se declara aqui: eso vive en el disco
+y no le cuesta RAM a nadie"*.
+
+### La sintaxis --y casi todo lo que se parece-- es una TABLA
+
+Un resaltado de sintaxis son palabras y colores, no codigo: va como recurso y se
+lee con `paquete_leer`, igual que `saludo.txt` dentro de `caja.bex`. Es la regla
+de la casa --**tablas y no plugins**-- y la misma por la que los intrinsecos del
+ensamblador son un TOML y la cara del escritorio es MAQUETA.
+
+### ⚠ Lo que falta de verdad no es el sitio: es el DECODIFICADOR
+
+El contenedor esta. **Lo que no hay es quien descifre una imagen**: no existe un
+decodificador de PNG, de JPEG ni de zlib en todo el repo. El unico formato que
+BMO-X sabe leer es `BICO` --ocho bytes de cabecera y pixeles BGRA en crudo--, que
+es precisamente **una imagen sin decodificador**.
+
+Asi que hoy, un tercero que quiera una imagen tiene dos salidas honestas: llevarla
+en crudo (como el icono) o traerse su propio decodificador dentro del `.bex`.
+
+** Y ahi esta el precio de no tener enlazado dinamico, dicho entero: **si diez
+apps quieren PNG, son diez copias del decodificador.** A cambio no hay una sola
+libreria compartida que pueda romper las diez a la vez -- es el intercambio que
+esta casa eligio a proposito, y el mismo que hace que un hola mundo pese 2.791
+bytes. El dia que ese numero moleste, la salida ya tiene forma y esta tres
+parrafos arriba: un SERVICIO.
+
 ## Lo que REX NO tiene, hoy
 
 No para desanimar: para que nadie lo descubra a mitad de un proyecto.
 
 - **Enlace de COBOL y de Ada.** REX es C y Rust (`toolchain/lang/base/bmo-rt`).
-- **Entrada dentro de una ventana.** `entrada.h` habla por relevo de pantalla
-  entera; una app en un marco todavia no recibe el clic.
+- **Un `Ctrl+algo` propio.** Una app con buzon ya recibe el clic (23-08) y **la
+  LETRA ya cocida, con tildes y ene** (11-09, bit 62 del evento), pero el
+  escritorio se queda TODA tecla con modificador: es su forma de no entregar el
+  aparato. Un atajo propio se hace con una tecla desnuda o con un boton de tu
+  superficie. Ver `superficie/amarilla.h`.
+- **Descifrar una imagen.** No hay PNG, JPEG ni zlib. El unico formato es `BICO`,
+  pixeles en crudo -- ver la seccion de arriba.
 - **Sonido de verdad.** `sonido.h` y `musica.h` existen y debajo hay un contrato
   y el altavoz del PC. No hay driver HDA ni transferencias isocronas por USB.
 - **Hilos.** No hay hilos de Ring 3.
