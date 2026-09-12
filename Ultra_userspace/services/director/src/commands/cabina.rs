@@ -1,5 +1,9 @@
 //! **`cabina` -- la caja negra del kernel, LEIDA DESDE EL ESCRITORIO.**
 //!
+//! [consumo] NADA      no corre en reposo: lo pide el dueno escribiendo una
+//!                     orden en la caja de Ejecutar o pulsando su tecla de
+//!                     funcion (L6h)
+//!
 //! # Por que esto no existia, y es la tercera vez que pasa lo mismo
 //!
 //! CABINA lleva meses viendolo todo, con severidad y capa, y **desde el
@@ -46,7 +50,7 @@ use bmo_userland as bmo;
 
 use crate::scene::output::{Output, INK_ECHO, INK_ERR, INK_GOOD, INK_PLAIN};
 
-use super::reports::section;
+use super::tabla::section;
 
 /// Cuantos eventos se pintan si no se pide otra cosa.
 ///

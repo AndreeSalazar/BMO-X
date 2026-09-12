@@ -1,6 +1,10 @@
 //! **El raton sobre las tres ventanas con marco que no son una app**: CABINA,
 //! la TERMINAL y la de SONIDO.
 //!
+//! [consumo] NADA      no corre en reposo: lo llama el bucle SOLO si hubo una
+//!                     tecla o el raton se movio. Sin entrada, no se entra
+//!                     aqui (L6h)
+//!
 //! Van juntas porque comparten la unica cosa que las hace ventanas --el marco
 //! de `scene::chrome`: arrastrar, estirar y los tres botones-- y se diferencian
 //! solo en que hay dentro. Separarlas en tres ficheros seria escribir el mismo

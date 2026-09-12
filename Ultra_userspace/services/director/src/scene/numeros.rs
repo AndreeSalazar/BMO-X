@@ -1,5 +1,9 @@
 //! **LA PESTANA `numeros`**: como esta el almacen, de un vistazo.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! === Por que es un fichero y no un trozo de `data.rs` ===
 //!
 //! Por L6a: `data.rs` paso de las mil lineas y el censo dijo que no. Pero el

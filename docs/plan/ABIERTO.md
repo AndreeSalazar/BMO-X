@@ -1,14 +1,14 @@
 <!-- GENERADO por toolchain/tools/planes. No se edita a mano. -->
 
-# LO QUE FALTA -- las casillas abiertas de los 31 planes
+# LO QUE FALTA -- las casillas abiertas de los 32 planes
 
 > Generado por `toolchain/tools/planes`. **El build comprueba que
 > este fichero y los planes dicen lo mismo**, asi que no puede
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   209 casillas ABIERTAS en 28 planes
-   133 hechas
+   213 casillas ABIERTAS en 29 planes
+   144 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -214,6 +214,15 @@
 - [ ] 2. EL JUEZ, en su crate. platform/shared/bmo-pila-juicio: *"se
 - [ ] 3. reap PREGUNTA AL JUEZ en vez de mirar solo su rsp. El cambio
 - ... y 2 mas
+
+## [`PLAN_DIRECTOR_CENSO.md`](PLAN_DIRECTOR_CENSO.md) -- 4 abiertas, 11 hechas
+
+*PLAN DEL DIRECTOR -- el censo, lo que gasta, y por que*
+
+- [ ] commands/system.rs, 604 lineas de codigo y [!] MEZCLA. Los informes
+- [ ] commands/disco.rs y commands/red.rs, la misma forma y mas pequena:
+- [ ] scene/consola.rs, 600 lineas de codigo y 39% de documentacion. Es el
+- ... y 1 mas
 
 ## [`PLAN_LA_RAM_SALE_DEL_KERNEL.md`](PLAN_LA_RAM_SALE_DEL_KERNEL.md) -- 4 abiertas, 3 hechas
 

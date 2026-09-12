@@ -1,5 +1,9 @@
 //! **DONDE EMPIEZA LA LATENCIA**: el ritmo del bus de entrada, a la vista.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! # Por que existe, y es la SEPTIMA vez que se escribe esta frase
 //!
 //! El camino de la mano al pixel empieza en el hilo del bus USB, y ese hilo late

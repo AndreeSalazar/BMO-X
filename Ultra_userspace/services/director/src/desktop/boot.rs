@@ -1,6 +1,9 @@
 //! **Getting the machine**: claim the screen, say what happened, paint the
 //! first frame, and hand back a [`Desktop`] that the loop can drive.
 //!
+//! [consumo] NADA      no corre en reposo: solo cuando alguien lo pide, o en
+//!                     el arranque (L6h)
+//!
 //! Everything in here runs exactly once. That is the whole reason it is its
 //! own file: it used to be the first 310 lines of `_start`, sharing a scope
 //! with the 52 locals of a loop that never ends, so reading "what happens at

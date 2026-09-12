@@ -1,5 +1,9 @@
 //! **F7 y F8: lo que la maquina esta haciendo AHORA.** Su propia ventana.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! Pedido por el dueno el 2026-08-12: *"el F7 y F8, pero al presionar no veo mi
 //! terminal la caja para ver -- no es por terminal sino SU PROPIO terminal para
 //! facilitar las vistas... y falta el mem, que estan comiendo, inspirado en

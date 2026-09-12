@@ -1,5 +1,9 @@
 //! **El conmutador de ventanas** -- la ventanita de Alt+Tab.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! La politica vive en `bmo_input::focus` y **se prueba alli**; aqui solo se
 //! pinta lo que esa politica ya decidio. Es el mismo reparto de siempre: quien
 //! decide no dibuja, y quien dibuja no decide.

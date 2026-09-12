@@ -135,6 +135,10 @@ fn alloc_cabecera(origen: &str) -> String {
     s.push_str(origen);
     s.push_str("` -- NO EDITAR A MANO.\n");
     s.push_str("//!\n");
+    s.push_str("//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el\n");
+    s.push_str("//!                     compositor se lo pide, y el compositor solo pinta\n");
+    s.push_str("//!                     si algo cambio (L6h)\n");
+    s.push_str("//!\n");
     s.push_str("//! Lo que se edita es el `.maqueta`. Cambiar esto es escribir una verdad\n");
     s.push_str("//! que la siguiente compilacion borra.\n");
     s.push_str("//!\n");

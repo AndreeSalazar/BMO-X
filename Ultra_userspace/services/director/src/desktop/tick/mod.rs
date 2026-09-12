@@ -1,5 +1,9 @@
 //! **EL RELOJ DEL ESCRITORIO**, repartido en sus dos mitades.
 //!
+//! [consumo] NADA      mide, y solo cuando el bucle le pasa por encima. El que
+//!                     late es `main.rs` y el que duerme es `tick/roja.rs`
+//!                     (L6h)
+//!
 //! [carril]  AMARILLO  el reparto, y hereda el color de lo que mas hace: MEDIR
 //!
 //! [cuesta]  TAREA -- medir mal no rompe nada; `roja.rs` SI, y por eso son dos
@@ -170,6 +174,48 @@ pub(crate) struct Tick {
     /// De cada segundo, cuantos ms se fueron en `yield_screen`. Ver
     /// [`Tick::cuerpo_ms`].
     pub puerta_ms: u32,
+    /// **PUERTAS POR VUELTA, por DIEZ.** `92` son 9,2 puertas por vuelta.
+    ///
+    /// == *** EL NUMERO QUE SOSTENIA TODO EL ARGUMENTO DE VATIOS, Y NADIE
+    /// ==     LO HABIA MEDIDO (2026-09-12) ===============================
+    ///
+    /// El presupuesto de este bucle esta escrito en `main.rs` y se apoya en una
+    /// sola cifra: *"una vuelta en vacio cruza NUEVE puertas"*, de ahi 8.721
+    /// ciclos, de ahi el 0,06 % del CPU a 250 vueltas y el 14 % a 60.000.
+    ///
+    /// ** Esas nueve eran una cuenta A MANO, hecha leyendo el bucle. Y el
+    /// instrumento para medirlas **ya existia y ya llegaba a Ring 3**:
+    /// `INFO_SYSCALL_CUENTA`, que `meter.rs` sirve desde el 16-08 y
+    /// `medida/coste` lee desde entonces. El unico bucle cuyo gasto decide los
+    /// vatios del escritorio nunca pregunto.
+    ///
+    /// Es el mismo patron que la seccion `Resources` del BEF: estaba en el
+    /// formato y nadie la escribia.
+    ///
+    /// # [!] QUE CUENTA DE VERDAD: LA MAQUINA, NO ESTE PROCESO
+    ///
+    /// `meter::doors()` es un contador **global del kernel**. Asi que esto es
+    /// el trafico de TODA la maquina repartido entre las vueltas de ESTE bucle:
+    ///
+    /// ```text
+    ///    escritorio solo    es suyo, y entonces se compara con las 9 a mano
+    ///    con una app        son las suyas TAMBIEN, y el numero sube sin que
+    ///                       el compositor haya cambiado nada
+    /// ```
+    ///
+    /// ** Por eso se llama TRAFICO y no "mis puertas" -- el vocabulario lo puso
+    /// `medida/coste`, que a lo mismo le dice `trafico_total`. Un nombre que
+    /// promete menos de lo que mide es como se lee mal un instrumento bueno.
+    ///
+    /// # Lo que cuesta medirlo: UNA puerta por segundo
+    ///
+    /// No por vuelta. Leerlo en cada vuelta seria subir un 11 % las puertas
+    /// para poder contar puertas -- medir el termometro, que es justo lo que la
+    /// cabecera de `meter.rs` avisa. Una vez por segundo, sobre ~9.000 puertas,
+    /// es el 0,01 %.
+    pub trafico_x10: u32,
+    /// La lectura anterior de `INFO_SYSCALL_CUENTA`. Se lee como DELTA.
+    trafico_visto: u64,
     /// **De cada segundo, cuantas vueltas PINTARON algo.**
     ///
     /// == *** LA OTRA MITAD DE `loops_per_second` (2026-09-08) ============
@@ -323,6 +369,8 @@ impl Tick {
             loops_per_second: 0,
             cuerpo_ms: 0,
             puerta_ms: 0,
+            trafico_x10: 0,
+            trafico_visto: 0,
             pintados_por_segundo: 0,
             pintados: 0,
             suma_cuerpo: 0,

@@ -1,5 +1,9 @@
 //! **CARRIL AMARILLO** -- medir. Si esto se equivoca no falla: convence.
 //!
+//! [consumo] NADA      mide, y solo cuando el bucle le pasa por encima. El que
+//!                     late es `main.rs` y el que duerme es `tick/roja.rs`
+//!                     (L6h)
+//!
 //! [carril]  AMARILLO  un instrumento. Su modo de fallo no es romperse, es
 //!           seguir andando y decir algo que no es
 //!
@@ -26,6 +30,8 @@
 //!                       contando vueltas -- ese fue el primer fallo
 //!    cuerpo / puerta    en que se va el segundo: trabajar o esperar turno
 //!    pintados           cuantas de esas vueltas SIRVIERON
+//!    trafico            puertas por vuelta, x10. La cifra que sostenia el
+//!                       presupuesto del bucle y que nadie habia medido
 //! ```
 
 use bmo_userland as bmo;
@@ -81,6 +87,24 @@ impl Tick {
                 self.cuerpo_ms = (self.suma_cuerpo / por_ms) as u32;
                 self.puerta_ms = (self.suma_puerta / por_ms) as u32;
             }
+            // == *** EL TRAFICO DE PUERTAS, Y SE MIDE AQUI PORQUE AQUI ES
+            // ==     CASI GRATIS (2026-09-12) ===========================
+            //
+            // UNA puerta por segundo para contar las ~9.000 de ese segundo:
+            // el 0,01 %. En cada vuelta serian 9 -> 10, un 11 % mas de puertas
+            // para poder contarlas. Ver `Tick::trafico_x10`, que lleva lo que
+            // este numero NO es: es el trafico de la maquina, no el de este
+            // proceso.
+            // Las vueltas del segundo son `loops_per_second`, calculado ocho
+            // lineas arriba. No se vuelve a restar: dos restas que tienen que
+            // dar lo mismo son dos restas que un dia no lo daran.
+            let t = bmo::info(bmo::INFO_SYSCALL_CUENTA);
+            if self.trafico_visto != 0 && self.loops_per_second > 0 {
+                let d = t.wrapping_sub(self.trafico_visto);
+                self.trafico_x10 =
+                    (d.saturating_mul(10) / self.loops_per_second as u64) as u32;
+            }
+            self.trafico_visto = t;
             self.pintados_por_segundo = self.pintados;
             self.pintados = 0;
             self.dormidas_por_segundo = self.dormidas;

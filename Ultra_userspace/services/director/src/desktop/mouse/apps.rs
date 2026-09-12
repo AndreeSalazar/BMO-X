@@ -1,5 +1,9 @@
 //! **El raton sobre la caja de una APP.**
 //!
+//! [consumo] NADA      no corre en reposo: lo llama el bucle SOLO si hubo una
+//!                     tecla o el raton se movio. Sin entrada, no se entra
+//!                     aqui (L6h)
+//!
 //! Va DESPUES de las ventanas del sistema y antes de las fichas: una app en su
 //! caja esta por delante de ellas, asi que su clic manda.
 //!

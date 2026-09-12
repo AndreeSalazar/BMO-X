@@ -1,5 +1,9 @@
 //! **CARRIL VERDE** -- donde caen los pixeles. Se puede tocar sin miedo.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! [carril]  VERDE     no decide nada: recibe el `Dictamen` ya resuelto y lo
 //!           pone en pantalla. Equivocarse aqui se VE
 //!

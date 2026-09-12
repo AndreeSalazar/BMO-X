@@ -1,5 +1,9 @@
 //! **El MARCO**: lo que toda ventana tiene y ninguna deberia escribir dos veces.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! === Por que existe ===
 //!
 //! Habia tres ventanas --Ejecutar, Datos y el log del kernel-- y **tres copias

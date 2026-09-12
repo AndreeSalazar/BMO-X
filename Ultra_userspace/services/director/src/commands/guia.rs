@@ -1,6 +1,10 @@
 //! **`guia` -- por donde empezar.** La orden que faltaba, y la pidio quien lo
 //! escribio todo.
 //!
+//! [consumo] NADA      no corre en reposo: lo pide el dueno escribiendo una
+//!                     orden en la caja de Ejecutar o pulsando su tecla de
+//!                     funcion (L6h)
+//!
 //! === Por que existe, dicho con las palabras del dueno ===
 //!
 //! *"la verdad no hay archivos y eso es algo que me puse a pensar... eso tendria
@@ -30,7 +34,7 @@
 
 use bmo_userland as bmo;
 
-use super::reports::section;
+use super::tabla::section;
 use super::After;
 use crate::desktop::Desktop;
 use crate::scene::output::{INK_ECHO, INK_GOOD, INK_PLAIN};

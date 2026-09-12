@@ -1,5 +1,9 @@
 //! **CABINA** -- F11, lo que el kernel ve, con su gravedad.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! === Que cambia respecto al klog ===
 //!
 //! El klog es la transcripcion del kernel en texto plano: 96 bytes por linea y

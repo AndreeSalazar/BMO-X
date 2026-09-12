@@ -1,6 +1,10 @@
 //! **Commands about the desktop itself**: what it says, what it shows, and
 //! what it does when it does not understand you.
 //!
+//! [consumo] NADA      no corre en reposo: lo pide el dueno escribiendo una
+//!                     orden en la caja de Ejecutar o pulsando su tecla de
+//!                     funcion (L6h)
+//!
 //! Nothing in here touches the disk or asks the kernel anything. That is the
 //! whole boundary -- if a command needs a file it lives in `files.rs`, if it
 //! needs an `OP_INFO` it lives in `system.rs`.

@@ -1,5 +1,9 @@
 //! **LA PESTANA `historial`**: la cadena de versiones, dibujada.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! === Que ensena, y por que no se podia antes ===
 //!
 //! Cada estrato guarda un puntero a su padre, asi que la historia estaba en el

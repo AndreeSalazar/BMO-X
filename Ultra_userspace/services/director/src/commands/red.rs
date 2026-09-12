@@ -1,5 +1,13 @@
 //! **EL INFORME DE LA RED**, y los dos ayudantes que solo el usa.
 //!
+//! [consumo] APARATO   `red::armar` deja el ANILLO DE RECEPCION armado en la
+//!                     tarjeta: a partir de ahi el aparato recibe por su
+//!                     cuenta, sin que nadie vuelva a pedirlo (L6h)
+//!           [!] MEZCLA -- declara la PEOR (L6h). El informe de la red solo
+//!                         lee contadores; `red rx` ARMA el anillo de
+//!                         recepcion y lo deja armado. Misma costura que
+//!                         `disco.rs`.
+//!
 //! ## Por que esto ya no vive en `reports.rs` (2026-08-28)
 //!
 //! Porque `reports.rs` cruzo las mil lineas de codigo y L6a lo paro. Y de los
@@ -22,7 +30,7 @@
 
 use bmo_userland as bmo;
 
-use crate::commands::reports::{label, section};
+use crate::commands::tabla::{label, section};
 use crate::scene::output::Output;
 
 /// **EL INFORME DE LA RED.** `red` entero, o una sola pregunta con argumento.

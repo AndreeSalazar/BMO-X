@@ -1,6 +1,10 @@
 //! **The one line of the Run box**: type, move, cut, paste, complete, recall,
 //! and Enter.
 //!
+//! [consumo] NADA      no corre en reposo: lo llama el bucle SOLO si hubo una
+//!                     tecla o el raton se movio. Sin entrada, no se entra
+//!                     aqui (L6h)
+//!
 //! ## Why this returns a value for `run`
 //!
 //! Every key is handled here except one outcome: `run` hands the machine to

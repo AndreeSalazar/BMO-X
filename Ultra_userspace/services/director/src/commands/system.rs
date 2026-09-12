@@ -1,6 +1,16 @@
 //! **Commands that ask the KERNEL**: `info`, `cpu`, `mem`, `autopsia`, `smp`,
 //! `red`, `audio`, `reboot`.
 //!
+//! [consumo] APARATO   abre el tubo del audio (`audio_tubo(1)`), PARA nucleos
+//!                     (`smp_parar`) y reinicia la maquina. Tres cosas que
+//!                     dejan el hardware de otra forma de como estaba, y no se
+//!                     deshacen al volver del comando (L6h)
+//!           [!] MEZCLA -- declara la PEOR (L6h). Dentro conviven los informes
+//!                         --`cpu`, `mem`, `info`, la autopsia: se piden y
+//!                         contestan-- y las TRES ordenes que cambian la
+//!                         maquina: `audio_tubo`, `smp_parar` y `reiniciar`.
+//!                         La costura va por ahi.
+//!
 //! None of them exercises a privilege -- counting RAM is not power. They come
 //! down through `OP_INFO` and its siblings and are painted here, which is
 //! where the screen is. Several of these used to exist ONLY in the Ring 0
@@ -341,7 +351,7 @@ pub(crate) fn apps(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
 }
 
 pub(crate) fn consumo(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
-    super::reports::report_consumo(&mut dsk.out.grid);
+    super::reports::report_consumo(&mut dsk.out.grid, &dsk.tick);
     paint_status(&p, &dsk.run_box, "consumo", INK_DIM);
     dsk.field.n = 0;
     After::Settle

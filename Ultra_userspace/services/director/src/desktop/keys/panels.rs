@@ -1,5 +1,9 @@
 //! **Keys that belong to a panel that is already open** -- sound, CABINA, data.
 //!
+//! [consumo] NADA      no corre en reposo: lo llama el bucle SOLO si hubo una
+//!                     tecla o el raton se movio. Sin entrada, no se entra
+//!                     aqui (L6h)
+//!
 //! Every one of them is guarded by the focus, and that guard is the whole
 //! rule: with the focus on Run, a `z` is a letter the owner is typing, and
 //! stealing it for a shortcut would be the worst possible trade.

@@ -1,5 +1,8 @@
 //! **What a calculator key does** -- and it is written ONCE.
 //!
+//! [consumo] NADA      no corre en reposo: solo cuando alguien lo pide, o en
+//!                     el arranque (L6h)
+//!
 //! ## Por que existe este fichero
 //!
 //! Hasta hoy la calculadora era una app **de raton y nada mas**: el unico

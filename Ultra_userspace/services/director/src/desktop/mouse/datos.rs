@@ -1,5 +1,9 @@
 //! **El raton sobre la ventana de DATOS** (ESTRATOS), y su menu contextual.
 //!
+//! [consumo] NADA      no corre en reposo: lo llama el bucle SOLO si hubo una
+//!                     tecla o el raton se movio. Sin entrada, no se entra
+//!                     aqui (L6h)
+//!
 //! Es el bloque mas grande de los que reparte `super::on_pointer`, y por eso
 //! sale el primero: dentro hay cuatro cosas que no se parecen --las pestanas,
 //! la rejilla, el menu del clic derecho y la consola del pie-- y todas quieren

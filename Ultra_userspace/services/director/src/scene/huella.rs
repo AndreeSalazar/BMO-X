@@ -1,5 +1,9 @@
 //! **LA HUELLA: lo que ya esta pintado no se vuelve a pintar.**
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! # La regla, y por que necesitaba una PIEZA
 //!
 //! `scene::testigo` lleva desde agosto haciendo exactamente esto: guarda su

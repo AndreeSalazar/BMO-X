@@ -1,5 +1,8 @@
 //! **The desktop's state**, and nothing that paints.
 //!
+//! [consumo] NADA      no corre en reposo: solo cuando alguien lo pide, o en
+//!                     el arranque (L6h)
+//!
 //! ## Why this file exists before any of the splitting does
 //!
 //! `_start` had **fifty-two live locals** and 3.076 lines around them. That is

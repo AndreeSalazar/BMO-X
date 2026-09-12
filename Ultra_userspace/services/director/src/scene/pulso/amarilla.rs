@@ -1,6 +1,10 @@
 //! **CARRIL AMARILLO** -- lo que el pulso AFIRMA. Si se equivoca no falla:
 //! convence, y eso es peor.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! [carril]  AMARILLO  es un instrumento. Su modo de fallo no es romperse: es
 //!           seguir funcionando y decir algo que no es
 //!

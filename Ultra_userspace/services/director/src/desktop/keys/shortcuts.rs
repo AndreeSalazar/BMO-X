@@ -1,6 +1,10 @@
 //! **Window management without letting go of the keyboard**: Alt+Tab, Alt+M,
 //! Alt+arrows.
 //!
+//! [consumo] NADA      no corre en reposo: lo llama el bucle SOLO si hubo una
+//!                     tecla o el raton se movio. Sin entrada, no se entra
+//!                     aqui (L6h)
+//!
 //! These are served BEFORE anything asks about focus, and that is the point --
 //! a shortcut that only works once you are already in the window you want is
 //! not a shortcut.

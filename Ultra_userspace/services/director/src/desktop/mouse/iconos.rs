@@ -1,5 +1,9 @@
 //! **El raton sobre la REJILLA DE ICONOS del escritorio.**
 //!
+//! [consumo] NADA      no corre en reposo: lo llama el bucle SOLO si hubo una
+//!                     tecla o el raton se movio. Sin entrada, no se entra
+//!                     aqui (L6h)
+//!
 //! Un clic senala, dos abren. La regla entera --y por que ese gesto se mide en
 //! ciclos y no en vueltas del bucle-- vive en `scene::double_click`; aqui solo
 //! esta quien la llama y que hace con la respuesta.

@@ -1,5 +1,9 @@
 //! El puntero del raton, dibujado en Ring 3.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! Su forma, su color y su contorno son decisiones de ASPECTO, y ninguna tiene
 //! nada que hacer en Ring 0 -- por eso el kernel entrega coordenadas y se aparta.
 

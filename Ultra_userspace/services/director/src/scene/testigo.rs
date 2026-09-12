@@ -1,6 +1,10 @@
 //! **EL TESTIGO DEL BUS**: la luz que dice si el teclado esta vivo, encendida
 //! en la barra y sin abrir nada.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! Es la mitad de Ring 3 de la sexta exigencia (E6) de
 //! `docs/componente/EL_TECLADO_EXIGE.md`. La otra mitad la contesta el kernel en
 //! `dev/usb/salud.rs`.

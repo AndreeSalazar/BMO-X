@@ -1,5 +1,9 @@
 //! La calculadora: su estado. **Su cara la compila MAQUETA.**
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! Vive aparte porque no es del compositor: es una aplicacion que el compositor
 //! aloja. Mezclada con el bucle de fotograma parecia parte del sistema.
 //!

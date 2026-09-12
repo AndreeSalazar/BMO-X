@@ -1,5 +1,9 @@
 //! **LO QUE CUESTA EMPUJAR UN FOTOGRAMA A LA PANTALLA**, siempre a la vista.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! # *** POR QUE EXISTE, y es la MISMA leccion por cuarta vez (2026-09-09)
 //!
 //! El 08-09, con el reloj de CPU por fin midiendo trabajo y no reloj de pared,

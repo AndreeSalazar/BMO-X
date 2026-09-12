@@ -1,5 +1,23 @@
 //! `info`, `cpu`, `mem` -- los datos del sistema, escritos a la rejilla.
 //!
+//! [carril]  AMARILLO  nueve informes que CONVENCEN. No rompen nada: dicen un
+//!           numero, y alguien decide con el
+//! [consumo] NADA      ninguno corre en reposo. Cada uno se pide por su nombre
+//!                     --`cpu`, `mem`, `consumo`-- o por su tecla de funcion
+//!                     (L6h)
+//!
+//! [cuesta]  DATO -- cruza 91 puertas para preguntarle a la maquina por si
+//!           misma, y el que lee toma decisiones con lo que salga. Un campo
+//!           leido del sitio equivocado no da error: da una cifra creible.
+//!
+//! [riesgo]  AJENO SILENCIO
+//!           AJENO    -- los numeros los escribe el KERNEL. Aqui solo se les
+//!                       pone unidad y color, y un campo que el kernel deje de
+//!                       servir contesta `0` sin avisar.
+//!           SILENCIO -- un cero puede ser "vale cero" o "no se sabe", y se
+//!                       pintan igual. Por eso `fila_cero` y `cero` existen:
+//!                       para que un cero diga de que clase es.
+//!
 //! Leer un contador no ejerce ningun poder, asi que esto vive en Ring 3 y pide
 //! los datos por `OP_INFO` como cualquier otro proceso.
 
@@ -8,220 +26,20 @@ use bmo_userland as bmo;
 use crate::scene::output::{Output, INK_GOOD, INK_ECHO, INK_ERR, INK_PLAIN};
 use crate::scene::OUT_COLS;
 
+// ** LA TIPOGRAFIA SE FUE A `tabla.rs` EL 12-09, y no por tamano: porque aqui
+// dentro habia dos clases de coste. Lo que queda PREGUNTA A LA MAQUINA --91
+// puertas-- y lo que se fue solo coloca un numero en una rejilla. Ver L6e y la
+// cabecera de `tabla.rs`.
+use super::tabla::{
+    campo, envolver, fila, fila_barra, fila_cero, fila_de, fila_mili, label, section,
+    subregla,
+};
+
 // -- Los informes del sistema --------------------------------------------
 //
 // Se pintan aqui, en Ring 3, con datos que el kernel contesta por `OP_INFO`.
 // El kernel da enteros; las unidades, los porcentajes, las barras y el color
 // son de este lado.
-
-/// Un rotulo de seccion, para que el informe no sea un muro de renglones.
-pub(crate) fn section(s: &mut Output, title: &[u8]) {
-    s.with_ink(INK_ECHO);
-    s.text(b"  ");
-    s.text(title);
-    s.byte(b' ');
-    // Una regla hasta el margen: cuesta nada y separa de verdad.
-    let used_one = 3 + title.len();
-    for _ in used_one..OUT_COLS.saturating_sub(2) {
-        s.byte(b'-');
-    }
-    s.byte(b'\n');
-    s.with_ink(INK_PLAIN);
-}
-
-/// Un renglon `label ....... value`, con la etiqueta a ancho fijo.
-pub(crate) fn label(s: &mut Output, name: &[u8]) {
-    s.text(b"    ");
-    s.text(name);
-    for _ in name.len()..14 {
-        s.byte(b' ');
-    }
-}
-
-/// Igual, pero a **10** y para los informes de una palabra.
-///
-/// ** Los catorce de arriba son de los informes en prosa, donde la etiqueta es
-/// una frase corta (`marcos libres`, `a Ring 3`). Cuando las etiquetas son de
-/// UNA palabra --`medium`, `link`, `queue`-- catorce dejan cuatro espacios en
-/// blanco en cada renglon y la tabla se lee como una lista suelta. Una tabla
-/// junta se lee de un vistazo; esa es toda la diferencia.
-pub(crate) fn campo(s: &mut Output, name: &[u8]) {
-    s.text(b"    ");
-    s.text(name);
-    for _ in name.len()..10 {
-        s.byte(b' ');
-    }
-}
-
-/// Una fila de la tabla de consumo: `que`, el valor a la DERECHA, y la unidad.
-///
-/// Las tres columnas van a ancho fijo porque una tabla en la que los numeros no
-/// estan alineados no es una tabla: es una lista con guiones. El valor va a la
-/// derecha (`dec_right`) para que las unidades y las decenas caigan una debajo
-/// de otra y se puedan comparar dos volcados de un vistazo.
-fn fila(s: &mut Output, que: &[u8], valor: u64, unidad: &[u8], nota: &[u8]) {
-    s.text(b"    ");
-    s.text(que);
-    for _ in que.len()..16 {
-        s.byte(b' ');
-    }
-    s.dec_right(valor, 9);
-    s.byte(b' ');
-    s.text(unidad);
-    if !nota.is_empty() {
-        for _ in unidad.len()..8 {
-            s.byte(b' ');
-        }
-        s.with_ink(INK_ECHO);
-        s.text(nota);
-        s.with_ink(INK_PLAIN);
-    }
-    s.byte(b'\n');
-}
-
-/// **Una fila de `X de Y`**, que es otra cosa que una fila con unidad.
-///
-/// ** Existe por un renglon roto que trajo el Ryzen el 2026-08-17:
-///
-/// ```text
-///    en pie                  1 de              <- de QUE?
-///    marcos libres     3878260 de
-/// ```
-///
-/// Las dos llamaban a [`fila`] poniendo `"de"` en la columna de la UNIDAD, y el
-/// segundo numero no existia en ninguna parte. No es un fallo de formato: es
-/// una frase a medias, y una frase a medias en un informe **se lee como un dato
-/// que falta**. El total va por su propio parametro para que no se pueda
-/// escribir la primera mitad sin la segunda.
-fn fila_de(s: &mut Output, que: &[u8], valor: u64, total: u64, nota: &[u8]) {
-    s.text(b"    ");
-    s.text(que);
-    for _ in que.len()..16 {
-        s.byte(b' ');
-    }
-    s.dec_right(valor, 9);
-    s.text(b" de ");
-    s.dec(total);
-    if !nota.is_empty() {
-        s.text(b"   ");
-        s.with_ink(INK_ECHO);
-        s.text(nota);
-        s.with_ink(INK_PLAIN);
-    }
-    s.byte(b'\n');
-}
-
-/// Igual, pero para un numero con UN decimal guardado en milesimas: los vatios
-/// llegan en milivatios y `57432` se lee como `57.4`.
-fn fila_mili(s: &mut Output, que: &[u8], milis: u64, unidad: &[u8], nota: &[u8]) {
-    s.text(b"    ");
-    s.text(que);
-    for _ in que.len()..16 {
-        s.byte(b' ');
-    }
-    s.dec_right(milis / 1000, 7);
-    s.byte(b'.');
-    s.dec((milis % 1000) / 100);
-    s.byte(b' ');
-    s.text(unidad);
-    if !nota.is_empty() {
-        for _ in unidad.len()..8 {
-            s.byte(b' ');
-        }
-        s.with_ink(INK_ECHO);
-        s.text(nota);
-        s.with_ink(INK_PLAIN);
-    }
-    s.byte(b'\n');
-}
-
-/// **Una fila con BARRA**: el numero a la derecha y la proporcion dibujada.
-///
-/// == *** POR QUE UNA BARRA Y NO SOLO EL NUMERO (2026-09-10) =============
-///
-/// `15096 MiB libres de 15118` y `1096 MiB libres de 15118` se leen igual de
-/// rapido --o sea, mal-- porque el ojo compara **longitudes**, no digitos. Una
-/// barra convierte una resta mental en una ojeada.
-///
-/// ** Y va con caracteres, no con pixeles, porque la salida ES una rejilla de
-/// caracteres: `Output::bar` ya existia y no lo usaba nadie. Lo que faltaba no
-/// era la herramienta, era llamarla.
-///
-/// [!] Solo para lo que TIENE denominador. Una barra sobre un contador sin
-/// techo --ticks, siestas-- seria dibujar una proporcion inventada.
-fn fila_barra(s: &mut Output, que: &[u8], parte: u64, total: u64, unidad: &[u8]) {
-    s.text(b"    ");
-    s.text(que);
-    for _ in que.len()..16 {
-        s.byte(b' ');
-    }
-    s.dec_right(parte, 9);
-    s.byte(b' ');
-    s.text(unidad);
-    for _ in unidad.len()..8 {
-        s.byte(b' ');
-    }
-    // ** El color sale de la PROPORCION, no de una opinion: lleno es malo
-    // para lo que se gasta, y por eso quien llama pasa `parte` como *lo
-    // usado*. Un umbral fijo en 90 se elige porque por debajo no hay nada que
-    // hacer y por encima ya no da tiempo a hacerlo.
-    let lleno = if total == 0 { 0 } else { parte.saturating_mul(100) / total };
-    s.with_ink(if lleno >= 90 {
-        INK_ERR
-    } else if lleno >= 70 {
-        INK_ECHO
-    } else {
-        INK_GOOD
-    });
-    s.bar(parte, total, 20);
-    s.byte(b' ');
-    s.pct(parte, total);
-    s.with_ink(INK_PLAIN);
-    s.byte(b'\n');
-}
-
-/// **Una fila que TIENE QUE SER CERO**, y lo dice con el color.
-///
-/// *** Es el ayudante que mas trabaja de los tres, y por un motivo que no es
-/// estetico: en el informe del DMA hay CUATRO filas cuyo unico valor bueno es
-/// el cero --pisados, choques, caducados, rotos-- y **mezcladas con las demas
-/// se leen como numeros cualesquiera**. En verde o en rojo se leen como lo que
-/// son: una regla que se cumplio, o una que no.
-///
-///   > Un panel donde todo se ve igual obliga a leerlo entero. El color no es
-///   > adorno: es lo que permite NO leer las filas que estan bien.
-fn fila_cero(s: &mut Output, que: &[u8], valor: u64, nota: &[u8]) {
-    s.text(b"    ");
-    s.text(que);
-    for _ in que.len()..16 {
-        s.byte(b' ');
-    }
-    s.with_ink(if valor == 0 { INK_GOOD } else { INK_ERR });
-    s.dec_right(valor, 9);
-    s.with_ink(INK_PLAIN);
-    s.text(b"          ");
-    s.with_ink(if valor == 0 { INK_GOOD } else { INK_ERR });
-    s.text(if valor == 0 { b"OK" } else { b"[!]" });
-    s.with_ink(INK_ECHO);
-    s.byte(b' ');
-    s.text(nota);
-    s.with_ink(INK_PLAIN);
-    s.byte(b'\n');
-}
-
-/// Un renglon de separacion DENTRO de una seccion. Ver `report_consumo`.
-fn subregla(s: &mut Output, titulo: &[u8]) {
-    s.with_ink(INK_ECHO);
-    s.text(b"    ");
-    s.text(titulo);
-    s.byte(b' ');
-    let usado = 5 + titulo.len();
-    for _ in usado..OUT_COLS.saturating_sub(4) {
-        s.byte(b'.');
-    }
-    s.byte(b'\n');
-    s.with_ink(INK_PLAIN);
-}
 
 /// **QUE PROGRAMA SE ESTA COMIENDO LA RAM, uno por fila.**
 ///
@@ -311,8 +129,37 @@ pub(crate) fn report_apps(s: &mut Output) {
 /// blanco: una tabla de veinte filas seguidas no se lee, y las lineas en blanco
 /// se pierden al volcar a texto.
 #[inline(never)]
-pub(crate) fn report_consumo(s: &mut Output) {
+pub(crate) fn report_consumo(s: &mut Output, t: &crate::desktop::Tick) {
     section(s, b"consumo");
+
+    // == *** LO QUE GASTA EL PROPIO ESCRITORIO, Y VA PRIMERO ==========
+    //
+    // Las otras tres secciones dicen lo que gasta LA MAQUINA. Esta dice lo
+    // que gasta EL QUE PREGUNTA, y va arriba porque es la unica sobre la
+    // que el dueno puede hacer algo desde aqui.
+    subregla(s, b"escritorio");
+    fila(s, b"vueltas", t.loops_per_second as u64, b"/s",
+         b"el techo UTIL son 250: lo pone el bus USB, que late cada 4 ms");
+    fila(s, b"pintan", t.pintados_por_segundo as u64, b"/s",
+         b"de esas vueltas, las que SIRVIERON. El resto es el desperdicio");
+    // ** LA CIFRA QUE SOSTENIA EL PRESUPUESTO DEL BUCLE Y QUE NADIE HABIA
+    // MEDIDO. `main.rs` dice "una vuelta en vacio cruza NUEVE puertas", y de
+    // ahi salen el 0,06 % del CPU a 250 vueltas y el 14 % a 60.000. Esas
+    // nueve eran una cuenta a mano; el contador del kernel existe desde el
+    // 16-08 y este bucle nunca pregunto. Ver `Tick::trafico_x10`.
+    fila_mili(s, b"trafico", (t.trafico_x10 as u64) * 100, b"puertas/vuelta",
+              b"[!] de TODA la maquina, no solo de aqui: con una app corriendo");
+    // El precio de una puerta esta MEDIDO --969 ciclos, no ticks-- y con el
+    // trafico se convierte en lo unico que se puede comparar con un vatio:
+    // que parte del CPU se va en cruzarla.
+    let ciclos_vuelta = (t.trafico_x10 as u64) * 969 / 10;
+    fila(s, b"en puertas", ciclos_vuelta, b"ciclos/vuelta",
+         b"trafico x 969, que es lo que cuesta una puerta MEDIDA");
+    let hz_t = bmo::info(bmo::INFO_TSC_HZ);
+    if hz_t > 0 && t.loops_per_second > 0 {
+        fila_barra(s, b"del cpu", ciclos_vuelta * t.loops_per_second as u64,
+                   hz_t, b"");
+    }
 
     subregla(s, b"cpu");
     let hilos = bmo::info(bmo::INFO_CPU_HILOS);
@@ -1290,45 +1137,6 @@ fn ext_grupo(s: &mut Output, titulo: &[u8], tinta: u8, n: u64, mascara: u64, not
     }
     s.with_ink(INK_PLAIN);
     cuantos
-}
-
-/// Escribe `texto` cortando por ESPACIOS, con las continuaciones sangradas.
-///
-/// Cortar por palabras y no por caracteres es la diferencia entre una frase que
-/// sigue debajo y una frase partida a mitad de palabra. `ancho` es lo que cabe
-/// contando desde `sangria`.
-fn envolver(s: &mut Output, texto: &[u8], sangria: usize, ancho: usize) {
-    let mut i = 0usize;
-    let mut primera = true;
-    while i < texto.len() {
-        if !primera {
-            for _ in 0..sangria {
-                s.byte(b' ');
-            }
-        }
-        if texto.len() - i <= ancho {
-            s.text(&texto[i..]);
-            s.byte(b'\n');
-            return;
-        }
-        // El ultimo espacio que cabe. Si no hay ninguno --una palabra mas larga
-        // que el renglon-- se corta en seco: es lo unico que se puede hacer, y
-        // es mejor que un bucle que no avanza.
-        let mut corte = ancho;
-        while corte > 0 && texto[i + corte] != b' ' {
-            corte -= 1;
-        }
-        if corte == 0 {
-            corte = ancho;
-        }
-        s.text(&texto[i..i + corte]);
-        s.byte(b'\n');
-        i += corte;
-        while i < texto.len() && texto[i] == b' ' {
-            i += 1;
-        }
-        primera = false;
-    }
 }
 
 /// `ext` -- que ofrece este silicio y que coge BMO.

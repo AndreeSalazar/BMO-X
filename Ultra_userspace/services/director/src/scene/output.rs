@@ -1,5 +1,9 @@
 //! La rejilla de salida y su historial con scroll.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! 200 filas guardadas, ventana de 16. Lo que sale por arriba **no se pierde**:
 //! se mira con la rueda o con RePag/AvPag.
 

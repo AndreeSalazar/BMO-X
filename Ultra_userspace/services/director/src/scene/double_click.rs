@@ -1,5 +1,9 @@
 //! **The double click, and it is measured in CYCLES.**
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! Two grids on this desktop open things with a double click -- the icon grid
 //! (`scene::launcher`) and the ESTRATOS file grid (`scene::data`) -- and until
 //! today each one carried its own copy of the rule and its own constant. Same

@@ -362,10 +362,29 @@ def autoprueba():
     # Es la costura que L6h manda partir, y declararla dos veces es decirlo.
     exige("R21(dos clases: mal cortado)",
           r21_el_consumo({"plat/spin.rs": CO + "//! [consumo] LATE      y esto" + chr(10)}))
-    exige("R21(fuera, sin declarar, no se exige)",
-          r21_el_consumo({}, {"director/main.rs": "//! un fichero"}), False)
+    exige("R21(fuera, sin declarar y sin exigir, calla)",
+          r21_el_consumo({}, {"userland/src/sys.rs": "//! un fichero"}), False)
     exige("R21(fuera, clase inventada)",
           r21_el_consumo({}, {"director/main.rs": "//! [consumo] MUCHO x" + chr(10)}))
+    # *** LA FILA DE LA EXCEPCION QUE SE CERRO EL 12-09. El DIRECTOR paso a 72
+    # de 72 ficheros sellados, asi que "exigirlo seria un muro" dejo de ser
+    # verdad -- y sin esta fila, el fichero 73 nace sin letrero y nadie se
+    # entera. Es la unica que prueba que la excepcion esta CERRADA y no solo
+    # documentada.
+    DIR = "Ultra_userspace/services/director/src/"
+    exige("R21(DIRECTOR, sin declarar, SE EXIGE)",
+          r21_el_consumo({}, {DIR + "scene/mod.rs": "//! un fichero"}))
+    exige("R21(DIRECTOR, declarado, pasa)",
+          r21_el_consumo({}, {DIR + "scene/mod.rs": CO}), False)
+    # Y que la nota del build cuente lo que gasta, no cuantos hay.
+    notas = lo_que_gasta_fuera({
+        DIR + "main.rs": "//! [consumo] LATE      el bucle" + chr(10),
+        DIR + "scene/gato.rs": CO,
+    })
+    exige("R21(la nota nombra al que gasta)",
+          [x for x in notas if "main.rs" in x])
+    exige("R21(la nota NO nombra al que no gasta)",
+          [x for x in notas if "gato.rs" in x], False)
     exige("R21(sin ficheros)", r21_el_consumo({}), False)
 
     if fallos:

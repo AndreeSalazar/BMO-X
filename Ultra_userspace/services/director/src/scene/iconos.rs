@@ -1,5 +1,9 @@
 //! **LOS ICONOS DEL SISTEMA**: los de las cosas que no traen el suyo.
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! === Por que hacen falta, teniendo iconos ya ===
 //!
 //! El escritorio sabe pintar iconos desde hace dias, pero los saca **de dentro

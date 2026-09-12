@@ -1,5 +1,9 @@
 //! **La SUPERFICIE de una app, pegada dentro de un marco.**
 //!
+//! [consumo] NADA      no corre en reposo por su cuenta: pinta cuando el
+//!                     compositor se lo pide, y el compositor solo pinta si
+//!                     algo cambio (L6h)
+//!
 //! === El cambio de modelo, dicho desde este lado ===
 //!
 //! Hasta ahora, lanzar un programa que pinta era `lend_screen`: el

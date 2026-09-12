@@ -1,6 +1,10 @@
 //! **The six window toggles**: F1 ESTRUCTURA, F7 cpu, F8 memory, F10 sound,
 //! F11 CABINA, F12 data -- and the ESC that closes each one.
 //!
+//! [consumo] NADA      no corre en reposo: lo llama el bucle SOLO si hubo una
+//!                     tecla o el raton se movio. Sin entrada, no se entra
+//!                     aqui (L6h)
+//!
 //! F1 is first in the list and last in the file, and both are on purpose: it is
 //! the workshop, which is where you start, while F7..F12 are instruments you go
 //! to. In the file it sits after F12 because that block is the one it was
