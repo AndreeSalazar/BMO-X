@@ -557,6 +557,17 @@ fn pega(s: &[u8], dst: &mut [u8], mut n: usize) -> usize {
 }
 
 /// `  [ventana] tid 4  960x600`
+/// `  [ventana] tid 4  1920x1080 reconfigurada`
+fn reconfigurada_text(tid: u32, ancho: u32, alto: u32, dst: &mut [u8; 64]) -> usize {
+    let mut n = pega(b"  [ventana] tid ", dst, 0);
+    n = num(tid, dst, n);
+    n = pega(b"  ", dst, n);
+    n = num(ancho, dst, n);
+    n = pega(b"x", dst, n);
+    n = num(alto, dst, n);
+    pega(b" reconfigurada\n", dst, n)
+}
+
 fn nacio_text(tid: u32, ancho: u32, alto: u32, dst: &mut [u8; 48]) -> usize {
     let mut n = pega(b"  [ventana] tid ", dst, 0);
     n = num(tid, dst, n);
@@ -830,6 +841,16 @@ pub extern "C" fn _start() -> ! {
             // ** LAS CUATRO RANURAS LLENAS. La app se queda ofrecida para
             // siempre y hasta hoy nadie lo decia -- el sintoma es "abri una
             // quinta ventana y no salio".
+            // ** LA APP CONTESTO A UN CONFIGURE: cambio de tamano en su misma
+            // ventana. No se le da el foco otra vez -- ya lo tenia o no, y un
+            // cambio de tamano no es motivo para robarselo a nadie.
+            scene::surface::Adopcion::Reconfigurada { tid, ancho, alto } => {
+                born = true;
+                let mut l = [0u8; 64];
+                let n = reconfigurada_text(tid, ancho, alto, &mut l);
+                dsk.out.grid.text(&l[..n]);
+                dsk.tick.repaint_field = true;
+            }
             scene::surface::Adopcion::SinSitio => {
                 dsk.out.grid.text(b"  [ventana] NO HAY SITIO: cierra una y vuelve a intentarlo\n");
                 dsk.tick.repaint_field = true;

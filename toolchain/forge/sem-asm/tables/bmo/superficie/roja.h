@@ -10,10 +10,12 @@
  *                        leer
  * [cuesta]  DATO         un ancho o un alto mal puestos hacen que el
  *                        compositor lea fuera de lo que se le presto
- * [riesgo]  AJENO UNICO
+ * [riesgo]  AJENO UNICO SILENCIO
  *                        AJENO: la cabecera la lee OTRO proceso, que no puede
  *                        comprobarla. UNICO: ofrecer se hace una vez y no se
- *                        deshace
+ *                        deshace. SILENCIO: liberar la vieja antes de
+ *                        que el DIRECTOR tome la nueva no da error -- le
+ *                        da a componer memoria que ya es de otro malloc
  */
 #ifndef BMO_SUPERFICIE_ROJA_H
 #define BMO_SUPERFICIE_ROJA_H
@@ -200,6 +202,36 @@ BMO_SUPERFICIE *bmo_superficie_crear_con_buzon(int ancho, int alto, int ranuras)
  */
 BMO_SUPERFICIE *bmo_superficie_crear(int ancho, int alto) {
     return bmo_superficie_crear_con_buzon(ancho, alto, 0);
+}
+
+/* **Contestar a un CONFIGURE**: una superficie nueva del tamano pedido, con el
+ * mismo buzon que la vieja, YA OFRECIDA. Devuelve 0 si no hay monton.
+ *
+ * ** La vieja NO se toca: sigues pintando en ella hasta que
+ * `bmo_superficie_tomada(nueva)` diga 1, y entonces la liberas. El DIRECTOR
+ * reconoce la nueva porque viene del MISMO tid, la pone en la misma ranura y
+ * conserva el marco -- no nace una segunda ventana.
+ *
+ * [!] Durante ese rato conviven las dos en el monton. A pantalla completa en un
+ * panel de 1920x1080 la nueva son 8,3 MB: declara `BMO_MONTON_BYTES` para las
+ * dos, o esto devolvera 0 y la app se quedara como estaba. */
+BMO_SUPERFICIE *bmo_superficie_reconfigurar(BMO_SUPERFICIE *vieja, int ancho, int alto) {
+    int ranuras;
+    if (vieja == 0) {
+        return 0;
+    }
+    ranuras = (int)bmo_sup_leer(vieja->base, 7);
+    return bmo_superficie_crear_con_buzon(ancho, alto, ranuras);
+}
+
+/* **Devolver una superficie al monton.** Solo la VIEJA de un CONFIGURE, y solo
+ * cuando la nueva ya este tomada. Ver `bmo_superficie_reconfigurar`. */
+void bmo_superficie_liberar(BMO_SUPERFICIE *s) {
+    if (s == 0) {
+        return;
+    }
+    free((void *)s->base);
+    free(s);
 }
 
 #endif /* BMO_SUPERFICIE_ROJA_H */

@@ -74,7 +74,12 @@
  *
  * Se declara ANTES del `#include`, que es como `<stdlib.h>` lo lee.
  */
-#define BMO_MONTON_BYTES (2 * 1024 * 1024)
+/* ** Y DESDE EL CONFIGURE (2026-09-12) el monton tiene que caber DOS
+ * superficies a la vez: la vieja se sigue pintando hasta que el DIRECTOR toma la
+ * nueva. A pantalla completa en 1920x1080 la nueva son 8,3 MB, mas la vieja,
+ * mas los 518 KB del lienzo propio. 32 MiB lo cubren con margen; si el panel es
+ * mayor, `bmo_superficie_reconfigurar` devuelve 0 y el cubo se queda como esta. */
+#define BMO_MONTON_BYTES (32 * 1024 * 1024)
 #include <stdlib.h>
 #include <bmo/bmo.h>
 #include <bmo/paquete.h>
@@ -92,8 +97,21 @@
 #define C_CIELO 0x001B2129
 #define C_TEXTO 0x00E6EDF7
 #define C_FLOJO 0x00768390
+#define C_NEGRO 0x00000000
 
+/* ** `g_px` ES EL LIENZO PROPIO, de VEN x VEN, y NO la superficie (12-09).
+ *
+ * El cubo cuesta ~0,7 us por pixel en el metal (91.711 us un fotograma de
+ * 360x360). Pintado a lo bruto a 1920x1080 serian ~1,5 s por fotograma. Asi que
+ * se calcula siempre a 360 y `presenta` lo escala a enteros y lo centra en la
+ * superficie que toque -- lo mismo que hace DOOM con sus 320x200. */
 static unsigned int *g_px;
+static BMO_SUPERFICIE *g_sup;
+/* La nueva, mientras el DIRECTOR no la tome. Ver `bmo_superficie_tomada`. */
+static BMO_SUPERFICIE *g_pend;
+/* El ultimo CONFIGURE sin atender. 0 = nada pendiente. */
+static int g_quiere_w;
+static int g_quiere_h;
 static unsigned char *g_tex;
 static int g_tex_n;
 static int g_tex_lado;
@@ -418,8 +436,59 @@ static void pinta(int ang)
     }
 }
 
+/* **Llevar el lienzo de 360 a la superficie**: escala entera y centrado.
+ *
+ * Lo que sobra alrededor va a negro -- es de la app, no del DIRECTOR, porque
+ * esta superficie mide lo que el DIRECTOR pidio. Si la ventana es mas pequena
+ * que 360 se recorta, sin escalar hacia abajo. */
+static void presenta(void) {
+    unsigned int *dst;
+    int w;
+    int h;
+    int s;
+    int lado;
+    int ox;
+    int oy;
+    int x;
+    int y;
+    int sx;
+    int sy;
+    int fila;
+    int fuente;
+    unsigned int c;
+
+    dst = bmo_superficie_pixeles(g_sup);
+    w = g_sup->ancho;
+    h = g_sup->alto;
+    s = w / VEN;
+    if (h / VEN < s) s = h / VEN;
+    if (s < 1) s = 1;
+    lado = VEN * s;
+    ox = (w - lado) / 2;
+    oy = (h - lado) / 2;
+
+    y = 0;
+    while (y < h) {
+        fila = y * w;
+        sy = y - oy;
+        fuente = -1;
+        if (sy >= 0 && sy < lado) fuente = (sy / s) * VEN;
+        x = 0;
+        while (x < w) {
+            c = C_NEGRO;
+            if (fuente >= 0) {
+                sx = x - ox;
+                if (sx >= 0 && sx < lado) c = g_px[fuente + sx / s];
+            }
+            dst[fila + x] = c;
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+}
+
 int main() {
-    BMO_SUPERFICIE *sup;
+    BMO_SUPERFICIE *vieja;
     PAQUETE *p;
     unsigned long long ev;
     unsigned long long t0;
@@ -431,12 +500,19 @@ int main() {
     int se_ve;
     int antes;
 
-    sup = bmo_superficie_crear_con_buzon(VEN, VEN, 32);
-    if (sup == 0) {
+    g_sup = bmo_superficie_crear_con_buzon(VEN, VEN, 32);
+    if (g_sup == 0) {
         printf("cubo: hace falta el escritorio (nadie compone)\n");
         return 1;
     }
-    g_px = bmo_superficie_pixeles(sup);
+    g_pend = 0;
+    g_quiere_w = 0;
+    g_quiere_h = 0;
+    g_px = (unsigned int *)malloc(VEN * VEN * 4);
+    if (g_px == 0) {
+        printf("cubo: sin monton para el lienzo\n");
+        return 1;
+    }
 
     /* La textura sale de MI PROPIO paquete: el mismo icono que el escritorio
      * pinta en la rejilla. El dato es uno. */
@@ -472,32 +548,60 @@ int main() {
         i = 0;
         while (i < 32) {
             i = i + 1;
-            ev = bmo_superficie_evento(sup);
+            ev = bmo_superficie_evento(g_sup);
             if ((ev & BMO_EVENTO_HAY) == 0) break;
+            /* Si llegan dos seguidos vale el ultimo: es el hueco de AHORA. */
+            if (bmo_sup_es_configure(ev) == 1) {
+                g_quiere_w = bmo_sup_configure_ancho(ev);
+                g_quiere_h = bmo_sup_configure_alto(ev);
+            }
+        }
+
+        /* ** EL CONFIGURE, EN DOS TIEMPOS (12-09). Primero se ofrece la nueva y
+         * se sigue pintando en la vieja; cuando el DIRECTOR la toma, se cambia y
+         * se libera la vieja. Nunca antes: el DIRECTOR la sigue componiendo. */
+        if (g_pend == 0 && g_quiere_w > 0) {
+            if (g_quiere_w != g_sup->ancho || g_quiere_h != g_sup->alto) {
+                g_pend = bmo_superficie_reconfigurar(g_sup, g_quiere_w, g_quiere_h);
+                if (g_pend == 0) {
+                    printf("[cubo] sin monton para %dx%d: me quedo como estoy\n",
+                           g_quiere_w, g_quiere_h);
+                }
+            }
+            g_quiere_w = 0;
+            g_quiere_h = 0;
+        }
+        if (g_pend != 0 && bmo_superficie_tomada(g_pend) == 1) {
+            vieja = g_sup;
+            g_sup = g_pend;
+            g_pend = 0;
+            bmo_superficie_liberar(vieja);
+            printf("[cubo] reconfigurado a %dx%d\n", g_sup->ancho, g_sup->alto);
         }
 
         /* R-APP8: si no se ve, no se pinta. Un cubo girando SI tiene que
          * repintar cada fotograma --eso es lo que hace un cubo girando-- y por
          * eso es honesto que se pare del todo cuando nadie lo mira. */
-        se_ve = bmo_superficie_se_ve(sup);
+        se_ve = bmo_superficie_se_ve(g_sup);
         if (se_ve == 1) {
             if (antes == 0) marcos = 0;
             t0 = __rdtsc();
             pinta(ang);
+            presenta();
             acum = acum + (__rdtsc() - t0);
             marcos = marcos + 1;
             ang = (ang + 1) & 255;
 
             /* El metro, una vez por segundo de fotogramas. */
             if (marcos >= 60) {
-                bmo_superficie_lista(sup);
-                printf("[cubo] %dx%d  fotograma %d us\n", VEN, VEN,
+                bmo_superficie_lista(g_sup);
+                printf("[cubo] %dx%d (pinta a 360)  fotograma %d us\n", g_sup->ancho, g_sup->alto,
                        (int)(acum / (unsigned long long)marcos
                              * 1000000 / hz));
                 acum = 0;
                 marcos = 0;
             } else {
-                bmo_superficie_lista(sup);
+                bmo_superficie_lista(g_sup);
             }
         }
         antes = se_ve;
