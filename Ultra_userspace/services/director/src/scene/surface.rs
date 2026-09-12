@@ -426,9 +426,14 @@ impl Surface {
     /// ** La acusacion se cuenta aqui: oculta, CON buzon, y la secuencia se
     /// sigue moviendo. Sin buzon no habia donde leer el veredicto, y culpar a
     /// quien no podia saberlo seria mentir.
-    fn decidir_vista(&mut self, p: &bmo::Pantalla, prestada: bool, tapada: bool) -> bool {
+    fn decidir_vista(
+        &mut self,
+        p: &bmo::Pantalla,
+        prestada: bool,
+        tapada: bool,
+    ) -> (bool, Option<(u32, &'static str)>) {
         let Some(cab) = Header::read(self.base, self.bytes) else {
-            return false;
+            return (false, None);
         };
         let nueva =
             bmo_golpe::vista(self.visible(p, &cab), self.chrome.minimized, prestada, tapada);
@@ -437,33 +442,18 @@ impl Surface {
                 self.seq_oculta = cab.sequence;
                 self.pinto_oculta = self.pinto_oculta.saturating_add(1);
             }
-            return false;
+            return (false, None);
         }
-        // ** Y SE DICE EN VOZ ALTA CADA VEZ QUE CAMBIA. (2026-09-12)
+        // ** EL VEREDICTO SE DEVUELVE, NO SE IMPRIME AQUI. (2026-09-12)
         //
-        // R-APP8 tiene una forma de fallo propia y silenciosa: si el veredicto
-        // sale mal UNA vez, la app obediente deja de dibujar, deja de subir su
-        // secuencia, y el DIRECTOR --que solo repega cuando esa secuencia
-        // cambia-- deja de pegarla. **Nadie se queja: la app esta obedeciendo.**
-        // El sintoma es una ventana que no aparece, y la acusacion `[vista]` no
-        // salta porque esa acusa a quien DESOBEDECE.
+        // La primera version lo gritaba por `bmo::consola`, que en el DIRECTOR
+        // es **el panel del kernel (F11)**. Y el dueno estaba mirando la caja de
+        // Ejecutar, que es donde sale lo del HIJO. Tuvo DOOM a 68 fps sin
+        // ventana delante y mi instrumento escribiendo en la otra pantalla.
         //
-        // El 12-09 eso fue exactamente lo que se vio --DOOM arranca, escribe en
-        // la consola y no sale su ventana-- y no habia forma de saber que
-        // veredicto estaba recibiendo. Ahora se dice, solo en el CAMBIO: un
-        // renglon por transicion no es ruido, y un veredicto que nadie ve es un
-        // juez sin sentencia escrita.
-        let mut n = [0u8; 12];
-        let largo = tid_text(self.tid, &mut n);
-        bmo::consola("[vista] ");
-        if let Ok(s) = core::str::from_utf8(&n[..largo]) {
-            bmo::consola(s);
-        }
-        bmo::consola(" -> ");
-        bmo::consola(nueva.nombre());
-        bmo::consola("
-");
-
+        // *** Un instrumento que no sale donde mira quien lo necesita no es un
+        // instrumento: es una nota para el que lo escribio. Ahora el veredicto
+        // SUBE --`vistas` lo devuelve-- y lo dice `_start` en la caja.
         let vuelve = nueva == bmo_golpe::Vista::SeVe;
         self.vista = nueva;
         self.seq_oculta = cab.sequence;
@@ -476,7 +466,7 @@ impl Surface {
         if vuelve {
             self.mark_dirty();
         }
-        vuelve
+        (vuelve, Some((self.tid, nueva.nombre())))
     }
 
     /// El byte 2 del estado, sin tocar los otros tres. Solo lo escribe el
@@ -549,6 +539,35 @@ pub(crate) struct Table {
 /// cuando se minimizo; mas dejaria pasar un segundo entero de gasto sin decirlo.
 const PINTA_OCULTA_TOPE: u32 = 35;
 
+/// **Que paso al mirar si alguien ofrecia una superficie.**
+///
+/// *** Era un `Option<usize>`, y ese `None` tapaba TRES casos distintos con el
+/// mismo silencio (2026-09-12):
+///
+/// ```text
+///    nadie ofrecio        lo normal, 60 veces por segundo. Callar esta bien
+///    no habia SITIO       las cuatro ranuras llenas. La app se queda
+///                         esperando para siempre y nadie lo dice
+///    no era una superficie  la cabecera `BSUP` no cuadro. Se devuelve el
+///                         bloque, y la app dibuja donde nadie mira
+/// ```
+///
+/// ** Los dos ultimos son "tu ventana no va a salir NUNCA", y salian por el
+/// mismo camino que "no pasa nada". El dueno se paso una tarde con DOOM
+/// corriendo a 68 fps y sin ventana, y el escritorio no tenia una sola linea
+/// que decir. Un `Option` que significa tres cosas no es un valor: es un hueco
+/// donde caben tres fallos.
+pub(crate) enum Adopcion {
+    /// Nacio una ventana en el hueco `hueco`.
+    Nacio { hueco: usize, tid: u32, ancho: u32, alto: u32 },
+    /// Alguien ofrecio y NO hay ranura libre. Se queda ofrecida.
+    SinSitio,
+    /// Alguien ofrecio algo que no es una superficie: se le devuelve.
+    NoEsSuperficie { tid: u32, bytes: u64 },
+    /// Nadie ofrecio nada. Es el caso normal y no se dice.
+    NadieOfrece,
+}
+
 impl Table {
     pub(crate) fn new() -> Self {
         Table { sup: [None, None, None, None], prestada: false }
@@ -556,7 +575,7 @@ impl Table {
 
     /// **Una vez por vuelta: que se ve de cada caja**, y se le dice a su app.
     /// `true` si alguna vuelve a verse. Ver `Surface::decidir_vista` (R-APP8).
-    pub(crate) fn vistas(&mut self, p: &bmo::Pantalla) -> bool {
+    pub(crate) fn vistas(&mut self, p: &bmo::Pantalla) -> (bool, Option<(u32, &'static str)>) {
         let prestada = self.prestada;
         // ** Y EL UNICO SOLAPE QUE EL DIRECTOR SABE CALCULAR HOY: una ventana
         // a PANTALLA COMPLETA tapa a todas las demas. Es el caso que importa
@@ -565,11 +584,21 @@ impl Table {
         // las otras no se ven. El solape general sigue abierto (W7b).
         let fs = self.alguna_a_pantalla_completa();
         let mut vuelve = false;
+        // ** Y el ULTIMO cambio se devuelve para que alguien pueda DECIRLO.
+        //
+        // Uno por vuelta y no todos: dos ventanas que cambian en el mismo
+        // fotograma son raras, y la segunda saldra en la vuelta siguiente. Un
+        // renglon por fotograma es un instrumento; cuatro son ruido.
+        let mut cambio = None;
         for s in self.iter_mut() {
             let tapada = fs && !s.chrome.is_fullscreen();
-            vuelve |= s.decidir_vista(p, prestada, tapada);
+            let (v, c) = s.decidir_vista(p, prestada, tapada);
+            vuelve |= v;
+            if c.is_some() {
+                cambio = c;
+            }
         }
-        vuelve
+        (vuelve, cambio)
     }
 
     /// **Hay alguna caja a pantalla completa?** Lo pregunta el juez de la
@@ -714,28 +743,29 @@ impl Table {
     /// Devuelve **en que hueco** nacio la ventana, no solo que nacio: sin ese
     /// numero el escritorio no puede nombrarla al foco, y una app sin nombre
     /// es una app que Alt+Tab no ve.
-    pub(crate) fn collect(&mut self, p: &bmo::Pantalla) -> Option<usize> {
+    pub(crate) fn collect(&mut self, p: &bmo::Pantalla) -> Adopcion {
         let Some(gap) = self.sup.iter().position(|s| s.is_none()) else {
             // Sin sitio no se toma. Dejarla ofrecida es lo correcto: la app
             // sigue esperando y la recogemos cuando se cierre una ventana, en
             // vez de tomarla para no poder ensenarla.
-            return None;
+            return Adopcion::SinSitio;
         };
         let Some((handle, base, bytes)) = bmo::tomar_prestado_de() else {
-            return None;
+            return Adopcion::NadieOfrece;
         };
         let tid = bmo::prestado_dueno(handle);
         match Surface::new(p, handle, base, bytes, tid) {
             Some(s) => {
+                let (w, h) = (s.chrome.width, s.chrome.height);
                 self.sup[gap] = Some(s);
-                Some(gap)
+                Adopcion::Nacio { hueco: gap, tid, ancho: w, alto: h }
             }
             None => {
                 // Lo ofrecido no es una superficie. Se devuelve en vez de
                 // quedarselo: retener memoria ajena que no sabemos leer es
                 // gastarle una ranura del kernel a quien nos la presto.
                 bmo::soltar_prestado(handle);
-                None
+                Adopcion::NoEsSuperficie { tid, bytes }
             }
         }
     }
