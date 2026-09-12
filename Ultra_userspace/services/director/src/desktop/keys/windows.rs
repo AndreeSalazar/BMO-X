@@ -51,7 +51,39 @@ pub(crate) fn on_key(dsk: &mut Desktop, p: &bmo::Pantalla, c: u8, alt_alone: boo
 // ** Un atajo que a veces no hace nada y nunca lo explica se lee como roto,
 // aunque este haciendo exactamente lo que se le escribio. Es la misma familia
 // que lleva toda la semana: algo correcto que se entiende como otra cosa.
-if c == 0x8C && alt_alone {
+// == *** Y CTRL+C HACE LO MISMO (2026-09-12) ==========================
+//
+// Lo pidio el dueno con el problema delante: *"control + C es que eso me
+// permite restaurar mi terminal y cerrar a la fuerza el app arrancado, no me
+// dejo poner save por eso"*.
+//
+// Y el problema es real y no es de comodidad: **mientras una app tiene el
+// foco, las teclas son suyas** --es el orden de `keys::app`-- asi que la caja
+// de Ejecutar se queda muda y no hay donde escribir `guarda`. Alt+F4 ya
+// resolvia eso desde el 05-09, pero `Ctrl+C` es el gesto que el dueno ya tiene
+// en los dedos de treinta anios de terminal, y un atajo que hay que recordar
+// es un atajo que no se usa.
+//
+// ** Mismo camino, no uno nuevo: `cerrar_app`. Tres gestos --la X, Alt+F4 y
+// esto-- y UN cierre. Dos cierres distintos para el mismo gesto es como se
+// llega a que uno mate el proceso y el otro no.
+//
+// ** Y con EJECUTAR delante no dice una frase: LIMPIA LA LINEA. Es lo que
+// hace `Ctrl+C` en cualquier terminal del mundo, y es ademas lo que el dueno
+// estaba intentando conseguir -- recuperar la caja para escribir otra cosa.
+//
+// [!] Lo que NO alcanza es lo mismo que no alcanza Alt+F4, y por el mismo
+// motivo: una app que se llevo la PANTALLA deja al escritorio dormido en
+// `lend_screen`, sin leer teclas. Para esas sigue siendo `Ctrl+Alt+Esc`, que
+// vive en Ring 0 porque es el unico sitio por donde pasan TODAS.
+//
+// [!] Y llega aqui de verdad: el kernel cuece `Ctrl+C` como el byte 0x03, la
+// cola cruda no reenvia teclas con modificador (`del_escritorio`) y la cocida
+// tampoco reenvia los codigos de control (`keys::app::caracter`). O sea que
+// **ninguna app lo ve**, y eso es a proposito: un rescate que la app pudiera
+// interceptar no seria un rescate.
+let ctrl_c = c == 0x03;
+if (c == 0x8C && alt_alone) || ctrl_c {
     match dsk.win.focus.actual() {
         // Una app: se cierra de verdad, por el MISMO camino que la X.
         Some(Ventana::App(i)) => {
@@ -75,8 +107,18 @@ if c == 0x8C && alt_alone {
         // dueno pensando que el atajo esta roto -- que es exactamente lo que
         // paso el 05-09.
         _ => {
-            dsk.out.grid.text(b"  Alt+F4 cierra la ventana de delante. Esta es la casa.
+            if ctrl_c {
+                // La caja delante y `Ctrl+C`: se limpia lo tecleado, como en
+                // cualquier terminal. No hay nada que cerrar y SI hay algo que
+                // devolver -- una linea en blanco donde escribir.
+                dsk.field.n = 0;
+                dsk.field.cur = 0;
+                dsk.out.grid.text(b"  linea limpia
 ");
+            } else {
+                dsk.out.grid.text(b"  Alt+F4 cierra la ventana de delante. Esta es la casa.
+");
+            }
             dsk.tick.repaint_field = true;
             return Key::Taken;
         }

@@ -34,8 +34,19 @@ Y sin "run", estas ordenes contestan ahi mismo:
   Alt+M          la minimiza
   Alt+Enter      pantalla completa, y se sale igual
   Ctrl+Alt       esconde el escritorio
+  Ctrl+C         cierra a la fuerza la app de delante y te devuelve
+                 la caja. Con la caja delante, limpia la linea
+  Alt+F4         lo mismo que Ctrl+C
   Ctrl+Alt+ESC   la salida de emergencia, y vive en Ring 0:
                  funciona aunque el escritorio este muerto
+
+Ctrl+C hace falta mas de lo que parece: mientras una app tiene el
+foco las teclas son SUYAS, asi que la caja de Ejecutar se queda
+muda y no hay donde escribir. Ninguna app puede interceptarlo --
+un rescate que la app pudiera quedarse no seria un rescate.
+
+[!] Y no alcanza a una app que se llevo la PANTALLA entera: ahi el
+escritorio esta dormido y no lee teclas. Para esas, Ctrl+Alt+ESC.
 
 La barra de titulo se arrastra con el raton. El boton de
 cerrar lo pone el escritorio, no la app.
