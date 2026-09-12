@@ -10,7 +10,7 @@
  * [cuesta]  NADA         se equivoca y una app cree que se pulso una tecla que
  *                        nadie pulso
  * [riesgo]  ESPEJO SILENCIO
- *                        ESPEJO: los bits 63 --raton-- y 62 --caracter-- los
+ *                        ESPEJO: los bits 63 --raton--, 62 --caracter-- y 61 --configure-- los
  *                        enciende el DIRECTOR y los lee esto. SILENCIO: leer `e & 0xFF` sin preguntar por ese
  *                        bit hace creer que se pulso la tecla numero 1 en cada
  *                        clic -- el fichero ya lo avisa; y el byte 2 del
@@ -112,6 +112,61 @@ int bmo_sup_es_caracter(unsigned long long e) {
  * `bmo_sup_es_caracter` esto devuelve un scancode disfrazado de letra. */
 int bmo_sup_caracter(unsigned long long e) {
     return (int)(e & 0xFF);
+}
+
+/* -- *** CONFIGURE: EL DIRECTOR TE DICE EL HUECO QUE TIENES (2026-09-12) ----
+ *
+ * Hasta hoy mandaba la app: declaraba su tamano al crear la superficie y el
+ * DIRECTOR se aguantaba -- a pantalla completa solo podia centrarla con bordes
+ * negros. Ahora, cuando el marco cambia (Alt+Enter, maximizar), llega por el
+ * buzon un evento con el hueco nuevo. Es el `configure` de Wayland, sin socket.
+ *
+ *     e = bmo_superficie_evento(s);
+ *     if (bmo_sup_es_configure(e)) {
+ *         nueva = bmo_superficie_reconfigurar(s, bmo_sup_configure_ancho(e),
+ *                                                bmo_sup_configure_alto(e));
+ *     }
+ *     ...cada vuelta, sigues pintando en `s`...
+ *     if (nueva != 0 && bmo_superficie_tomada(nueva)) {
+ *         bmo_superficie_liberar(s);
+ *         s = nueva;
+ *     }
+ *
+ * ** NO LIBERES LA VIEJA HASTA QUE LA NUEVA ESTE TOMADA. El DIRECTOR la sigue
+ * componiendo hasta que adopta la nueva; soltarla antes es darle a leer memoria
+ * que ya es de otro `malloc`, y eso no da error: da una ventana con basura.
+ *
+ * Ignorarlo es seguro: lleva el bit HAY --tu bucle de drenaje no se corta-- y
+ * el byte bajo a 0 sin PULSADA, que se lee como "se solto el scancode 0". Una
+ * app que no lo entienda se queda como estaba: centrada.
+ *
+ * Los numeros los fija `bmo-golpe/src/configure.rs`, y su banco lee esta
+ * cabecera: si cambias uno, el otro lado lo dice. */
+#define BMO_SUP_EV_CONFIGURE 0x2000000000000000ULL
+#define BMO_SUP_ESTADO_VENTANA 0
+#define BMO_SUP_ESTADO_MAXIMIZADA 1
+#define BMO_SUP_ESTADO_COMPLETA 2
+/* Bit 24 de la palabra de estado del buzon: "ya la tengo". */
+#define BMO_SUP_TOMADA 0x01000000
+
+int bmo_sup_es_configure(unsigned long long e) {
+    if ((e & BMO_SUP_EV_CONFIGURE) != 0) {
+        return 1;
+    }
+    return 0;
+}
+
+int bmo_sup_configure_ancho(unsigned long long e) {
+    return (int)((e >> 16) & 0xFFFF);
+}
+
+int bmo_sup_configure_alto(unsigned long long e) {
+    return (int)((e >> 32) & 0xFFFF);
+}
+
+/* `BMO_SUP_ESTADO_*`. */
+int bmo_sup_configure_estado(unsigned long long e) {
+    return (int)((e >> 48) & 0xFF);
 }
 
 /* Sacar un evento del buzon. **0 si no hay ninguno**, y no bloquea.
@@ -258,6 +313,25 @@ int bmo_superficie_vista(BMO_SUPERFICIE *s) {
 /* 1 si hay que pintar, 0 si nadie lo va a ver. */
 int bmo_superficie_se_ve(BMO_SUPERFICIE *s) {
     if (bmo_superficie_vista(s) == BMO_SUP_VISTA_SE_VE) {
+        return 1;
+    }
+    return 0;
+}
+
+/* **El DIRECTOR ya tomo esta superficie?** 1 / 0.
+ *
+ * Es el permiso para liberar la anterior tras un CONFIGURE. Sin buzon contesta
+ * 0: una superficie sin buzon no recibe CONFIGURE, asi que nunca lo pregunta. */
+int bmo_superficie_tomada(BMO_SUPERFICIE *s) {
+    unsigned long long buz;
+    if (s == 0) {
+        return 0;
+    }
+    buz = (unsigned long long)bmo_sup_leer(s->base, 6);
+    if (buz == 0) {
+        return 0;
+    }
+    if ((bmo_sup_leer(s->base, (int)(buz / 4) + 3) & BMO_SUP_TOMADA) != 0) {
         return 1;
     }
     return 0;

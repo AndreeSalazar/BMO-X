@@ -173,6 +173,11 @@ pub(crate) struct Surface {
     seq_oculta: u32,
     /// Ya se acuso en esta racha oculta. Se canta UNA vez por racha.
     acusada: bool,
+    /// **El ultimo CONFIGURE que se le mando**: `(ancho, alto, estado)`.
+    /// Empieza en lo que la app declaro, estado ventana. Sirve para no repetir
+    /// uno que ya se dijo -- y, cuando la app contesta con OTRO tamano (DOOM
+    /// escala a enteros), para no volver a pedirselo en bucle.
+    configurado: (u32, u32, u8),
 }
 
 impl Surface {
@@ -181,7 +186,7 @@ impl Surface {
     fn new(p: &bmo::Pantalla, handle: u64, base: u64, bytes: u64, tid: u32) -> Option<Self> {
         let cab = Header::read(base, bytes)?;
         let chrome = Chrome::for_content(p, cab.width, cab.height);
-        Some(Surface {
+        let s = Surface {
             chrome,
             handle,
             base,
@@ -189,7 +194,14 @@ impl Surface {
             tid,
             // Cualquier valor distinto del que hay: asi el primer `compose`
             // pinta sin tener que llevar ademas un "es la primera vez".
-            stuck: cab.sequence.wrapping_sub(1),
+            //
+            // ** SALVO LA SECUENCIA 0 (2026-09-12). `roja.h` la escribe al crear
+            // con este comentario: *"nada que pintar todavia"*. Y la memoria del
+            // monton no viene a cero, asi que pegarla es ensenar basura de
+            // `malloc`. Con una sola ventana no se veia -- la app entregaba antes
+            // de que el DIRECTOR mirara --, pero un CONFIGURE ofrece la nueva
+            // ANTES de pintarla, y ahi se habria visto un fotograma de basura.
+            stuck: if cab.sequence == 0 { 0 } else { cab.sequence.wrapping_sub(1) },
             // A cero para que el primer `moved` diga que si: asi el cromo lo
             // pinta el mismo camino que lo repinta al mover, y no hay un
             // "primera vez" que alguien pueda olvidarse de llamar.
@@ -199,7 +211,10 @@ impl Surface {
             pinto_oculta: 0,
             seq_oculta: cab.sequence,
             acusada: false,
-        })
+            configurado: (cab.width, cab.height, 0),
+        };
+        s.marcar_tomada(&cab);
+        Some(s)
     }
 
     /// Donde empieza el interior, dentro del marco.
@@ -388,7 +403,13 @@ impl Surface {
         // ** Y la VISTA en el byte 2, en la MISMA escritura: esta palabra se
         // pisa entera cada vuelta, y un veredicto escrito aparte lo borraria
         // el siguiente movimiento del raton (R-APP8).
-        let est = botones as u32 | (dentro as u32) << 8 | (self.vista as u32) << 16;
+        // ** Y TOMADA en el byte 3, en esta MISMA escritura: la palabra se pisa
+        // entera cada vuelta, y un bit escrito aparte lo borraria el siguiente
+        // movimiento del raton. Ver `bmo_golpe::configure::TOMADA`.
+        let est = botones as u32
+            | (dentro as u32) << 8
+            | (self.vista as u32) << 16
+            | bmo_golpe::configure::TOMADA;
         unsafe { core::ptr::write_volatile((idx + 12) as *mut u32, est) };
     }
 
@@ -497,6 +518,82 @@ impl Surface {
     }
 
     /// Sigue viva la app que presto esto?
+    /// **"Ya la tengo"**: el bit 24 de la palabra de estado del buzon.
+    ///
+    /// Es el permiso que la app espera para liberar la superficie VIEJA tras un
+    /// CONFIGURE (`wl_buffer.release`, en Wayland). Se lee-y-escribe para no
+    /// pisar botones, dentro y vista.
+    fn marcar_tomada(&self, cab: &Header) {
+        if cab.ranuras == 0 {
+            return;
+        }
+        let idx = self.base + cab.buzon + 12;
+        let est = unsafe { core::ptr::read_volatile(idx as *const u32) };
+        unsafe { core::ptr::write_volatile(idx as *mut u32, est | bmo_golpe::configure::TOMADA) };
+    }
+
+    /// **Decirle a la app el hueco que tiene ahora**, si cambio. `true` si se
+    /// mando.
+    ///
+    /// La cuenta vive en `bmo_golpe::configure::hueco`, que se prueba en el
+    /// anfitrion. Si la app no tiene buzon, o esta lleno, no se apunta: se
+    /// volvera a intentar la proxima vez que cambie el marco.
+    pub(crate) fn configurar(&mut self, p: &bmo::Pantalla) -> bool {
+        let quiere = bmo_golpe::configure::hueco(
+            self.chrome.is_fullscreen(),
+            self.chrome.is_maximized(),
+            (p.ancho, p.alto),
+            (self.chrome.width, self.chrome.height),
+            TITLE_H,
+        );
+        let clave = (quiere.ancho, quiere.alto, quiere.estado as u8);
+        if clave == self.configurado {
+            return false;
+        }
+        let Some(ev) = bmo_golpe::configure::codifica(quiere) else {
+            return false;
+        };
+        if !self.publicar(ev) {
+            return false;
+        }
+        self.configurado = clave;
+        true
+    }
+
+    /// **La app contesto a un CONFIGURE**: su superficie nueva ocupa la ranura
+    /// de la vieja. Devuelve la nueva y lo que mide, o la vieja intacta si lo
+    /// ofrecido no es una superficie.
+    ///
+    /// ** Se conserva el MARCO --posicion, maximizada, pantalla completa--
+    /// porque es el mismo marco con otro contenido: una ventana que saltara al
+    /// centro cada vez que cambia de tamano seria otra ventana. Y se conserva
+    /// `configurado`: si la app contesto con otro tamano del pedido, no se le
+    /// vuelve a pedir.
+    ///
+    /// [!] La VISTA no se hereda: la nueva empieza en `SeVe` y `vistas()` la
+    /// decide en la misma vuelta. Heredarla dejaria el byte del buzon nuevo a 0
+    /// mientras aqui se cree que ya se escribio otra cosa.
+    fn reemplazar(
+        vieja: Surface,
+        p: &bmo::Pantalla,
+        handle: u64,
+        base: u64,
+        bytes: u64,
+    ) -> Result<(Surface, u32, u32), Surface> {
+        let Some(mut nueva) = Surface::new(p, handle, base, bytes, vieja.tid) else {
+            return Err(vieja);
+        };
+        let (ancho, alto) = match Header::read(nueva.base, nueva.bytes) {
+            Some(c) => (c.width, c.height),
+            None => (0, 0),
+        };
+        let handle_viejo = vieja.handle;
+        nueva.configurado = vieja.configurado;
+        nueva.chrome = vieja.chrome;
+        bmo::soltar_prestado(handle_viejo);
+        Ok((nueva, ancho, alto))
+    }
+
     pub(crate) fn alive(&self) -> bool {
         bmo::prestado_dueno(self.handle) != 0
     }
@@ -564,6 +661,10 @@ const PINTA_OCULTA_TOPE: u32 = 35;
 pub(crate) enum Adopcion {
     /// Nacio una ventana en el hueco `hueco`.
     Nacio { hueco: usize, tid: u32, ancho: u32, alto: u32 },
+    /// La app contesto a un CONFIGURE: su superficie nueva ocupa la ranura
+    /// de la vieja, con el mismo marco. No nace una ventana: cambia de
+    /// tamano. Sin `hueco`, a proposito: el foco no se vuelve a dar.
+    Reconfigurada { tid: u32, ancho: u32, alto: u32 },
     /// Alguien ofrecio y NO hay ranura libre. Se queda ofrecida.
     SinSitio,
     /// Alguien ofrecio algo que no es una superficie: se le devuelve.
@@ -620,8 +721,10 @@ impl Table {
     /// hay tal caja o esta minimizada -- una ventana escondida no se pone a
     /// pantalla completa, porque no se veria el resultado.
     ///
-    /// La app no se entera por aqui, y no le hace falta: lo que cambia para
-    /// ella es su VISTA, y a pantalla completa sigue diciendo que se ve.
+    /// ** Y LA APP SE ENTERA (2026-09-12): se le manda un CONFIGURE con el
+    /// hueco nuevo. Hasta hoy este comentario decia que no se enteraba ni le
+    /// hacia falta -- y por eso a pantalla completa DOOM salia centrado con
+    /// bordes negros. Una app que no lo entienda se queda igual que antes.
     pub(crate) fn pantalla_completa(
         &mut self,
         i: usize,
@@ -635,6 +738,7 @@ impl Table {
         // El cromo y los pixeles, los dos: al entrar no hay marco que pintar
         // y al salir hay que volver a dibujarlo entero.
         s.repaint_all();
+        s.configurar(p);
         Some((viejo, s.chrome.is_fullscreen()))
     }
 
@@ -758,6 +862,32 @@ impl Table {
             return Adopcion::NadieOfrece;
         };
         let tid = bmo::prestado_dueno(handle);
+        // ** UNA APP, UNA VENTANA (2026-09-12). Si este tid ya tiene caja, lo
+        // que ofrece es su respuesta a un CONFIGURE, y va a SU ranura.
+        //
+        // [!] Es una regla nueva y hay que decirla: hasta hoy una app podia
+        // abrir dos ventanas ofreciendo dos veces. Ninguna del arbol lo hacia.
+        // Wayland si lo permite --una conexion, muchas superficies-- y aqui
+        // haria falta un identificador de superficie en la cabecera, que no hay.
+        let propia = self
+            .sup
+            .iter()
+            .position(|s| tid != 0 && s.as_ref().is_some_and(|s| s.tid == tid));
+        if let Some(k) = propia {
+            if let Some(vieja) = self.sup[k].take() {
+                return match Surface::reemplazar(vieja, p, handle, base, bytes) {
+                    Ok((nueva, ancho, alto)) => {
+                        self.sup[k] = Some(nueva);
+                        Adopcion::Reconfigurada { tid, ancho, alto }
+                    }
+                    Err(vieja) => {
+                        self.sup[k] = Some(vieja);
+                        bmo::soltar_prestado(handle);
+                        Adopcion::NoEsSuperficie { tid, bytes }
+                    }
+                };
+            }
+        }
         match Surface::new(p, handle, base, bytes, tid) {
             Some(s) => {
                 let (w, h) = (s.chrome.width, s.chrome.height);

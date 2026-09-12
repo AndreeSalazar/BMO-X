@@ -95,6 +95,10 @@ pub(crate) fn on_pointer(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Golpe) -> boo
                             erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
                             uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
                             s.repaint_all();
+                            // Y se le dice a la app el hueco nuevo: maximizar
+                            // sin avisarla deja su dibujo pequeno en un marco
+                            // grande. Ver `Surface::configurar`.
+                            s.configurar(p);
                         }
                     }
                     None => {

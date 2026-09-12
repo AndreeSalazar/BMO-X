@@ -55,6 +55,9 @@
 
 #![no_std]
 
+/// El CONFIGURE del buzon: el DIRECTOR le dice a la app el hueco que tiene.
+/// Ver su cabecera (2026-09-12).
+pub mod configure;
 mod vista;
 pub use vista::{vista, Vista};
 
