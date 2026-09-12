@@ -76,6 +76,8 @@ mod sonda_planos_altos_de_doom;
 mod sonda_escala_de_muro;
 mod sonda_marcar_planos;
 mod sonda_extern_de_doom;
+mod sonda_segloop_entero;
+mod sonda_enum_tapa_local;
 mod bandera_de_pantalla;
 mod sonda_layout_sha1;
 mod sonda_sha1;

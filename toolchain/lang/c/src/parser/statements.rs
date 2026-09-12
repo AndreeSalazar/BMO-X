@@ -121,6 +121,10 @@ impl Parser {
                 Token::Ident(n) => n,
                 _ => { self.pos = save; return self.parse_for_expr(); }
             };
+            // La variable del `for` tambien tapa a una constante de enum con su
+            // nombre, y ANTES del inicializador: en C su ambito empieza en el
+            // declarador. Ver `Parser::tapar_enum`.
+            self.tapar_enum(&name);
             let init = if *self.peek() == Token::Assign { self.advance(); Some(self.parse_expr()?) } else { None };
             self.skip_semicolon();
             self.var_types.insert(name.clone(), _typ.clone());

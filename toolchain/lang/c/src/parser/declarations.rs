@@ -85,6 +85,7 @@ impl Parser {
                 && self.tokens.get(self.pos + 1) == Some(&Token::Star)
             {
                 let (pname, ptype) = self.parse_fnptr_tail()?;
+                self.tapar_enum(&pname);
                 self.var_types.insert(pname.clone(), ptype.clone());
                 params.push(Param { typ: ptype, name: pname });
                 if *self.peek() == Token::Comma { self.advance(); }
@@ -157,6 +158,7 @@ impl Parser {
                 TypeSpec::Array(base, _) => TypeSpec::Ptr(base),
                 otro => otro,
             };
+            self.tapar_enum(&pname);
             self.var_types.insert(pname.clone(), ptype.clone());
             params.push(Param { typ: ptype, name: pname });
             if *self.peek() == Token::Comma { self.advance(); }
@@ -175,11 +177,18 @@ impl Parser {
         // para que una llamada anterior a la definicion sepa que recibe.
         if *self.peek() == Token::Semicolon {
             self.advance();
+            // Los nombres de un prototipo no llegan a ningun cuerpo: lo que
+            // taparon se devuelve ya.
+            self.destapar_enums();
             self.var_types.insert(name.clone(), ret_type);
             return Ok(Tope::Prototipo);
         }
         // After expect advances past ), pos should be at {
-        if self.pos >= self.tokens.len() || *self.peek() != Token::OpenBrace { self.pos = save; return Ok(Tope::NoEsFuncion); }
+        if self.pos >= self.tokens.len() || *self.peek() != Token::OpenBrace {
+            self.destapar_enums();
+            self.pos = save;
+            return Ok(Tope::NoEsFuncion);
+        }
         self.advance();
         // Cada funcion empieza sin `static` heredadas de la anterior: el mapa
         // ES el ambito.
@@ -270,7 +279,44 @@ impl Parser {
                 }
             }
         }
+        // Fuera del cuerpo, las constantes que las locales taparon vuelven a
+        // ser lo que eran.
+        self.destapar_enums();
         Ok(Tope::Funcion(Function { ret_type, name, params, var_count, var_names, body, line: start_line, variadica }))
+    }
+
+    /// ** **UNA LOCAL TAPA A LA CONSTANTE DEL ENUM QUE SE LLAMA IGUAL.**
+    ///
+    /// En C una constante de `enum` y una variable comparten el espacio de
+    /// nombres ordinario, y **el ambito de dentro gana**. Aqui ganaba siempre la
+    /// constante: `parse_primary` pregunta por `enum_constants` antes de hacer
+    /// del nombre una variable, y nadie la quitaba al declarar la local.
+    ///
+    /// *** Y ESO ERA EL FONDO DE DOOM (2026-09-12). `p_spec.h` declara
+    /// `enum { top, middle, bottom }` y `R_RenderSegLoop` tiene dos locales
+    /// `int top, bottom`. Leerlas daba 0 y 2; asignarlas calculaba el valor y
+    /// no lo guardaba en ningun sitio. Todo plano de suelo y techo salia con
+    /// `top 0 bottom 2`: tres filas por plano, y el resto del fondo, el
+    /// fotograma anterior. Visto con `llvm-objdump` sobre los bytes de verdad:
+    /// `mov rax, 0x2` donde tenia que haber una carga de `bottom`.
+    ///
+    /// Se quita al declarar y se devuelve al cerrar la funcion
+    /// (`destapar_enums`). [!] El ambito es la FUNCION, no el bloque: una
+    /// local de un bloque interior tapa la constante hasta el final de la
+    /// funcion. Es mas ancho que C, y solo cambia algo en un programa que use
+    /// la constante y una local con su nombre en la misma funcion -- que es
+    /// justo el caso que antes no compilaba bien de ninguna manera.
+    pub(super) fn tapar_enum(&mut self, nombre: &str) {
+        if let Some(valor) = self.enum_constants.remove(nombre) {
+            self.enum_tapadas.push((nombre.to_string(), valor));
+        }
+    }
+
+    /// Devuelve las constantes que tapo `tapar_enum`. Ver alli.
+    pub(super) fn destapar_enums(&mut self) {
+        for (nombre, valor) in self.enum_tapadas.drain(..) {
+            self.enum_constants.insert(nombre, valor);
+        }
     }
 
     /// **Una `static` dentro de una funcion.**
