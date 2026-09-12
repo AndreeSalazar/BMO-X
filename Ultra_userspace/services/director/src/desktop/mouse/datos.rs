@@ -46,9 +46,8 @@ pub(crate) fn on_pointer(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Golpe) -> boo
             }
             scene::data::paint(&p, &dsk.win.data);
             dsk.win.top_before = Ventana::Data;
-            dsk.tick.button_before = pos.botones != 0;
-            dsk.tick.ax = pos.x;
-            dsk.tick.ay = pos.y;
+            // Los flancos y la posicion los apunta `mouse::on_pointer` al
+            // volver, tambien por este `return`.
             return true;
         }
         // Y el derecho lo ABRE, sobre lo que haya debajo.

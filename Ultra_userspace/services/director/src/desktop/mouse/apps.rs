@@ -124,10 +124,17 @@ pub(crate) fn on_pointer(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Golpe) -> boo
         // Arrastrar y estirar. El sitio VIEJO se borra antes de mover:
         // aqui no hay nadie que repinte lo de debajo, asi que sin esto
         // la ventana deja un rastro de copias de si misma.
+        //
+        // ** `continue` Y NO `return` PARA LA QUE NO ESTA AGARRADA (2026-09-12).
+        // Era `return true`: la PRIMERA caja sin agarrar cortaba la vuelta
+        // entera del puntero. Con una app abierta eso era siempre, y se saltaba
+        // lo que va detras -- la barra y, hasta hoy, apuntar donde esta el
+        // raton. Ver `mouse::on_pointer`. Y una caja agarrada en la ranura 1 no
+        // se habria movido nunca con otra quieta en la 0.
         for i in 0..scene::surface::MAX {
             let Some(s) = dsk.table.get_mut(i) else { continue };
             if !s.chrome.grabbed() {
-                return true;
+                continue;
             }
             if !button {
                 s.chrome.release();
@@ -139,10 +146,20 @@ pub(crate) fn on_pointer(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Golpe) -> boo
                 erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
                 uncover(&p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
             }
+            return true;
         }
     }
 
-    false
+    // ** ATENDIDO SI EL PUNTERO ESTA ENCIMA DE UNA APP, y solo entonces. Lo que
+    // hay encima manda: un clic sobre la caja no es de la barra --a pantalla
+    // completa la app TAPA la barra, y pulsar ahi traeria una ficha que no se
+    // ve-- ni cambia el Z-order de las ventanas del sistema, que estan debajo.
+    // Fuera de las cajas, el escritorio vuelve a tener el raton.
+    (0..scene::surface::MAX).any(|i| {
+        dsk.table
+            .get_mut(i)
+            .is_some_and(|s| !s.chrome.minimized && s.chrome.contains(pos.x, pos.y))
+    })
 }
 
 /// **CERRAR LA APP DE LA CAJA `i`.** Un solo sitio, y por eso existe.

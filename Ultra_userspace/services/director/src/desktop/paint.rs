@@ -30,6 +30,33 @@ use crate::scene::output::paint_output;
 use crate::scene::{self, paint_field, paint_status, ACCENT, INK_BAD, TASKBAR};
 use crate::{erase_window, uncover};
 
+/// **La terminal pinto: las apps que la tapan se vuelven a pegar.**
+///
+/// ** Visto en el Ryzen el 2026-09-12: la barra de texto de Ejecutar, con su
+/// cursor, ASOMABA en medio de DOOM. El campo parpadea y la rejilla escribe
+/// por su cuenta, las dos ANTES de componer las apps -- y una superficie solo
+/// se repega cuando su secuencia cambia. DOOM entrega unas 58 veces por
+/// segundo contra 112 vueltas del DIRECTOR: la mitad de los fotogramas se
+/// quedaba el campo encima.
+///
+/// Cuesta una copia de la caja por parpadeo, no por vuelta. Es lo mismo que
+/// ya hace quien llama a `uncover`: lo pintado debajo obliga a repintar lo de
+/// encima.
+fn repintar_apps_encima(dsk: &mut Desktop) {
+    let (x, y, w, h) = (dsk.run_box.x, dsk.run_box.y, dsk.run_box.w(), dsk.run_box.h());
+    for s in dsk.table.iter_mut() {
+        let c = &s.chrome;
+        let se_tocan = !c.minimized
+            && c.x < x + w
+            && x < c.x + c.width
+            && c.y < y + h
+            && y < c.y + c.height;
+        if se_tocan {
+            s.repaint_all();
+        }
+    }
+}
+
 /// Everything that happens after the input has been read and understood.
 pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
     // Aqui y no antes: `will_paint` no es definitivo hasta que la recogida de
@@ -166,6 +193,7 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         if dsk.win.visible && dsk.win.top_before != Ventana::Data && !dsk.win.switcher_painted {
             paint_output(&p, &dsk.run_box, &dsk.out.grid);
             dsk.out.grid.dirty = false;
+            repintar_apps_encima(dsk);
         } else if !dsk.win.visible {
             dsk.out.grid.dirty = false;
         }
@@ -268,6 +296,7 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         && !dsk.win.switcher_painted
     {
         paint_field(&p, &dsk.run_box, dsk.field.line(), dsk.field.cur, dsk.field.caret);
+        repintar_apps_encima(dsk);
     }
 
     // * UNA sola vez, al cerrar el primer fotograma entero. Con esto, las
