@@ -419,6 +419,20 @@ def autoprueba():
               + "        let Some(d) = pid_de(x) else {" + chr(10)
               + "            return BmoStatus::ok_value(0);" + chr(10)
               + "        };" + chr(10))
+    # *** Y LA FILA QUE MAS CARA SALDRIA SIN ELLA: LA PROSA.
+    #
+    # Al arreglar `estratos_sellar` escribi un comentario que EXPLICA el fallo,
+    # y dentro decia `ok_value(0)`. El guardian lo conto -- o sea que acuso al
+    # comentario que documentaba el arreglo. Es la misma leccion que hizo que
+    # L6a pasara a contar lineas DE CODIGO el 24-08: un guardian que cobra por
+    # comentar le pone precio a explicar, y este arbol es 36% documentacion.
+    PROSA = ("        Err(e) => {" + chr(10)
+             + "            // aqui ponia `ok_value(0)`, que era decir que si" + chr(10)
+             + "            BmoStatus::negado(e.codigo(), 0)" + chr(10)
+             + "        }" + chr(10))
+    exige("R22(un comentario que NOMBRA el patron no se acusa)",
+          puertas_ambiguas({"a/op.rs": PROSA}), False)
+
     exige("R22(el nombre sale del guarda del match)",
           [k for k in puertas_ambiguas({"a/mod.rs": GUARDA})
            if k[1] == "MEM_OP_OFRECER"])

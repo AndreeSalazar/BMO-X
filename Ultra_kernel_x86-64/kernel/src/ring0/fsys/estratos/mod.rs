@@ -292,6 +292,39 @@ pub enum WriteError {
 }
 
 impl WriteError {
+    /// **El motivo como NUMERO, para que quepa por la puerta.**
+    ///
+    /// == *** `name()` NO CRUZA UN SYSCALL, Y ESE ERA EL PROBLEMA (12-09) =====
+    ///
+    /// Estos once motivos existen desde que existe ESTRATOS y **ninguno llegaba
+    /// a Ring 3**: el brazo de `ESTRATOS_SELLAR` hacia `Err(e) => ok_value(0)`,
+    /// o sea que once conversaciones distintas --el disco no confirmo la
+    /// barrera, la carpeta esta llena, el nombre no vale-- salian por la puerta
+    /// como el mismo cero, **con codigo de exito**.
+    ///
+    /// ** Y sellar es GUARDAR UN FICHERO. El que llamaba recibia "generacion 0",
+    /// que se lee como una generacion buena. De las nueve puertas que R22 caza,
+    /// esta es la que mas caro sale.
+    ///
+    /// `name()` sigue siendo la version que se PINTA; esto es la que VIAJA. Las
+    /// dos salen del mismo `match` a proposito: separarlas es como una acaba
+    /// diciendo algo distinto de la otra.
+    pub fn codigo(self) -> u32 {
+        match self {
+            WriteError::SinVolumen => 1,
+            WriteError::Rechazada(_) => 2,
+            WriteError::NoEscribio => 3,
+            WriteError::SinBarrera => 4,
+            WriteError::NoCabe => 5,
+            WriteError::NoSeLeeLaRaiz => 6,
+            WriteError::RutaNoEsta => 7,
+            WriteError::MuyHondo => 8,
+            WriteError::CarpetaLlena => 9,
+            WriteError::CarpetaNoCabeEntera => 10,
+            WriteError::NombreNoVale => 11,
+        }
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             WriteError::SinVolumen => "no hay volumen ESTRATOS montado",

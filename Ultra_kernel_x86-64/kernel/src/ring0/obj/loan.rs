@@ -137,26 +137,53 @@ pub const OP_DUENO: u64 = 0x03;
 /// ranuras y a partir de ahi ninguna app volveria a tener caja hasta reiniciar.
 pub const OP_SOLTAR: u64 = 0x04;
 
-/// **Ofrecer un trozo del bloque propio.** Devuelve `true` si quedo apuntado.
+// == *** LOS MOTIVOS DE UN NO (L6i, 2026-09-12) =============================
+//
+// `offer` devolvia `bool`, asi que sus CUATRO negativas --que mandan a hacer
+// cosas completamente distintas-- llegaban al que ofrece como el mismo `false`,
+// y de ahi al syscall como `ok_value(0)`, o sea como un SI.
+//
+// ** El kernel ya sabia cual era: las cuatro escriben su linea en CABINA. Lo
+// que faltaba no era el dato, era **dejarlo salir por la puerta**. Estos
+// numeros viajan en las banderas de `BmoStatus::negado`.
+
+/// Quedo apuntado.
+pub const OFRECIDO: u32 = 0;
+/// `desde + bytes` se sale del bloque que el kernel entrego. Es del que llama.
+pub const NO_CABE_EN_EL_BLOQUE: u32 = 1;
+/// Mas grande que `PRESTAMO_VENTANA`. Se arregla pidiendo una superficie menor.
+pub const NO_CABE_EN_LA_VENTANA: u32 = 2;
+/// Ofrecerse a uno mismo. Es un bug del que llama, no un estado.
+pub const A_MI_MISMO: u32 = 3;
+/// La tabla de ofertas esta llena. **Se puede volver a intentar**, y esa es la
+/// diferencia que un `false` borraba: las otras tres no mejoran esperando.
+pub const SIN_RANURAS: u32 = 4;
+/// **El tid del destinatario ya no resuelve a un proceso vivo.** Lo decide el
+/// despachador antes de llegar aqui --es el unico que ve el tid-- y vive en
+/// esta lista porque el que lo recibe no distingue de donde salio: para el son
+/// las cinco formas de que su oferta no quede apuntada.
+pub const PADRE_NO_VIVE: u32 = 5;
+
+/// **Ofrecer un trozo del bloque propio.** Devuelve `OFRECIDO`, o POR QUE no.
 ///
 /// `base` es la del bloque del que ofrece --ya resuelta por su capability, o sea
 /// que **es suyo por construccion**-- y `desde`/`bytes` el trozo. La unica
 /// comprobacion que hace falta es que el trozo quepa dentro, y es una resta:
 /// el rango lo concedio el kernel y lo tiene apuntado.
-pub fn offer(owner: u32, aspace: u64, base: u64, entregado: u64, desde: u64, bytes: u64, destino: u32) -> bool {
+pub fn offer(owner: u32, aspace: u64, base: u64, entregado: u64, desde: u64, bytes: u64, destino: u32) -> u32 {
     if bytes == 0 || desde.checked_add(bytes).map_or(true, |f| f > entregado) {
         crate::ring0::cabina::warn("prestamo", "el trozo no cabe en el bloque", desde);
-        return false;
+        return NO_CABE_EN_EL_BLOQUE;
     }
     // Y que quepa en SU WINDOW, que es lo que decide donde se mapea. Se
     // comprueba al ofrecer y no al tomar porque el que ofrece es quien puede
     // hacer algo al respecto: pedir una superficie mas pequena.
     if bytes > PRESTAMO_VENTANA {
         crate::ring0::cabina::warn("prestamo", "no cabe en una ventana de prestamo", bytes);
-        return false;
+        return NO_CABE_EN_LA_VENTANA;
     }
     if destino == owner {
-        return false;
+        return A_MI_MISMO;
     }
     let ofertas = unsafe { &mut *core::ptr::addr_of_mut!(OFERTAS) };
     // Una oferta por pareja (dueno, destino): reofrecer sustituye, no apila.
@@ -166,7 +193,7 @@ pub fn offer(owner: u32, aspace: u64, base: u64, entregado: u64, desde: u64, byt
             o.origen = base + desde;
             o.bytes = bytes;
             o.aspace_dueno = aspace;
-            return true;
+            return OFRECIDO;
         }
     }
     for o in ofertas.iter_mut() {
@@ -176,11 +203,11 @@ pub fn offer(owner: u32, aspace: u64, base: u64, entregado: u64, desde: u64, byt
                 bytes, destino, tomada: false, va_destino: 0, huerfana: false,
             };
             crate::ring0::cabina::info("prestamo", "ofrecido al pid", destino as u64);
-            return true;
+            return OFRECIDO;
         }
     }
     crate::ring0::cabina::warn("prestamo", "no quedan ofertas libres", MAX as u64);
-    false
+    SIN_RANURAS
 }
 
 /// **Tomar lo que me ofrecieron.** Devuelve el handle, o `None`.

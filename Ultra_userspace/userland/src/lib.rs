@@ -170,6 +170,21 @@ pub const APARATO_XHCI: u64 = 0;
 pub const OP_TOMAR: u32 = 0x1C;
 /// Operacion sobre un bloque PROPIO: ofrecer un trozo a otra tarea.
 pub const MEM_OP_OFRECER: u32 = 0x03;
+/// **Las CINCO formas de que una oferta no quede apuntada** (L6i, 2026-09-12).
+///
+/// Espejo de `ring0::obj::loan`. Viajan en las BANDERAS --los 32 bits altos de
+/// lo que contesta la puerta-- y llegan con `ERROR_NEGADO` en el codigo.
+///
+/// ** Hasta hoy las cinco llegaban como el mismo `ok_value(0)`, o sea como un
+/// SI. Y mandan a hacer cosas distintas: `SIN_RANURAS` **se puede reintentar**
+/// y las otras cuatro no mejoran esperando -- esa es exactamente la diferencia
+/// que un cero borraba.
+pub const OFRECIDO: u32 = 0;
+pub const OFRECER_NO_CABE_EN_EL_BLOQUE: u32 = 1;
+pub const OFRECER_NO_CABE_EN_LA_VENTANA: u32 = 2;
+pub const OFRECER_A_MI_MISMO: u32 = 3;
+pub const OFRECER_SIN_RANURAS: u32 = 4;
+pub const OFRECER_PADRE_NO_VIVE: u32 = 5;
 /// **Donde vive de verdad el bloque**, para escribirlo en un descriptor de DMA.
 /// Solo el dueno. Ver [`crate::sys::memoria_fisica`].
 pub const MEM_OP_FISICA: u32 = 0x04;
