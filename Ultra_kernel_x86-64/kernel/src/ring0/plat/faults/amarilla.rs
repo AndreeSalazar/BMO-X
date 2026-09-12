@@ -129,6 +129,59 @@ pub(super) extern "C" fn fault_report(vector: u64, error: u64, rip: u64, cr2: u6
     }
     inf.push(l);
 
+    // -- *** Y DONDE CAE ESE RIP. (2026-09-12)
+    //
+    // Lo pidio el dueno despues de que esta pantalla costara media sesion:
+    // *"que diga cuando no se fia del rip"*. Y la peticion nacio de una
+    // conclusion MIA equivocada -- yo dije que el `rip` mentia, y no mentia:
+    // `0x411000` era exacto, y lo que pasaba es que **el CPU habia saltado a
+    // MEDIA INSTRUCCION**. Decodificando desde ahi sale
+    // `rorb $0xc6, -0x7d(%rax)`, que es una lectura-modificacion-escritura
+    // --de ahi el `err=2`-- sobre `rax - 125`. Con `rax = 1` da exactamente el
+    // `cr2` que estaba en la pantalla.
+    //
+    // ** O sea que el numero nunca fue el problema: el problema era que estaba
+    // SOLO. Una direccion absoluta obliga a saberse de memoria donde se carga
+    // el kernel, y sin eso no se puede ni empezar a mirar.
+    //
+    // Esto contesta las dos preguntas que costaron el rato:
+    //
+    //    1. **es codigo del kernel?** Si no lo es, el CPU esta ejecutando
+    //       donde no debe, y eso cambia la clase de fallo entera: deja de ser
+    //       un puntero malo y pasa a ser el FLUJO DE CONTROL.
+    //    2. **que desplazamiento?** Es lo que come `simbolo.py`, que ya existe
+    //       y pone el nombre de la funcion sin tener la maquina delante.
+    //
+    // [!] Lo que esto NO dice, y conviene no prometerlo: si el `rip` cae en el
+    // PRINCIPIO de una instruccion. Para eso haria falta un desensamblador en
+    // Ring 0, y el desplazamiento mas `simbolo.py` contestan lo mismo en el
+    // anfitrion en diez segundos.
+    let mut l = Line::new();
+    l.s("   ");
+    let (ini, fin) = texto_del_kernel();
+    if rip >= ini && rip < fin {
+        l.s("en .text del kernel, +0x");
+        l.hex(rip - ini, 0);
+        inf.push(l);
+        let mut l = Line::new();
+        l.s("   nombralo:  py toolchain/tools/simbolo/simbolo.py 0x");
+        l.hex(rip, 0);
+        inf.push(l);
+    } else if rip == 0 {
+        // Ya lo dijo la linea de arriba; repetirlo seria ruido.
+    } else {
+        // ** ESTE ES EL CASO QUE HAY QUE GRITAR. Un `rip` fuera del codigo del
+        // kernel en un fallo de Ring 0 no es un dato mas: es que el CPU se fue
+        // de donde tenia que estar, y entonces lo que hay que buscar no es
+        // quien escribio mal, sino QUIEN SALTO.
+        l.s("*** NO ES CODIGO DEL KERNEL (.text es 0x");
+        l.hex(ini, 0);
+        l.s("..0x");
+        l.hex(fin, 0);
+        l.s(")");
+        inf.push(l);
+    }
+
     let mut l = Line::new();
     l.s("cr2=0x"); l.hex(cr2, 16);
     inf.push(l);
@@ -564,3 +617,23 @@ pub(super) fn pantalla_de_fallo(titulo: &str, informe: &Informe) -> ! {
     crate::ring0::plat::reinicio::ahora();
 }
 
+/// **Donde empieza y donde acaba el codigo del kernel**, del linker.
+///
+/// Los dos simbolos los pone `linker.ld`, que es el unico sitio que sabe la
+/// respuesta: el `0x400000` esta escrito ahi y en ningun otro lado. Preguntarlo
+/// aqui con una constante seria tener el numero en dos sitios, que es como
+/// empieza el `[riesgo] ESPEJO` de siempre.
+fn texto_del_kernel() -> (u64, u64) {
+    extern "C" {
+        static __text_start: u8;
+        static __text_end: u8;
+    }
+    // [!] Sin `unsafe`, y el trinquete de avisos lo cazo al primer intento:
+    // TOMAR la direccion de un `static` externo es seguro -- lo que no lo seria
+    // es LEERLO. Aqui no se lee ni un byte: los dos simbolos no tienen
+    // contenido, su valor ES su direccion.
+    (
+        core::ptr::addr_of!(__text_start) as u64,
+        core::ptr::addr_of!(__text_end) as u64,
+    )
+}
