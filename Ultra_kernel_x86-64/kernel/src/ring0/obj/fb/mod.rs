@@ -65,7 +65,12 @@ mod verde;
 
 pub use roja::{claim, process_died, release, rescate_de_emergencia, rescue};
 pub use verde::{
-    operation, owner, ERROR_BUSY, ERROR_NO_SCREEN, FB_OP_BASE, FB_OP_BYTES, FB_OP_DIMS,
-    FB_OP_STRIDE,
+    operation, owner, ERROR_NO_SCREEN, FB_OP_BASE, FB_OP_BYTES, FB_OP_DIMS, FB_OP_STRIDE,
 };
+// [!] AQUI LA FACHADA REEXPORTABA `ERROR_BUSY`, Y NO LO PEDIA NADIE.
+//
+// `fb/roja.rs` --el unico que lo usa-- lo coge de `verde` directamente. El
+// reexport era `pub`, asi que el compilador no podia avisar de que sobraba; al
+// pasar a `pub(crate)` por L6j, salto en el acto. Un `pub` de mas no es
+// generosidad: es un aviso que nadie va a recibir.
 

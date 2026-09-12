@@ -25,7 +25,9 @@ use crate::ring0::mm;
 use super::roja::{NO_OWNER, OWNER};
 
 /// Ya la tiene otro proceso.
-pub const ERROR_BUSY: u32 = 16;
+/// Reexportado: la definicion vive en `syscall::ops` desde el 12-09,
+/// porque la pantalla no es el unico aparato exclusivo. Ver L6j.
+pub(crate) use crate::ring0::syscall::ops::ERROR_APARATO_OCUPADO as ERROR_BUSY;
 
 /// Esta maquina arranco sin GOP: no hay pantalla que ceder.
 pub const ERROR_NO_SCREEN: u32 = 17;

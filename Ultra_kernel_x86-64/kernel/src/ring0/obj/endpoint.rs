@@ -50,8 +50,20 @@ pub const MAX_ENDPOINTS: usize = 8;
 /// Llamadas encoladas por endpoint antes de decir que no.
 const QUEUE: usize = 16;
 
-pub const ERROR_ENDPOINT_DEAD: u32 = 20;
-pub const ERROR_BUSY: u32 = 21;
+// *** ROTOS A PROPOSITO: VALIAN 20 Y 21 (2026-09-12).
+//
+// Y esos dos numeros ya eran `ERROR_NOT_THERE` y `ERROR_GATE` en `launch` y en
+// `userland::proceso`. O sea que una tarea que se encontrara un 21 de un canal
+// muerto lo leia como **"rechazado: la firma no cuadra"** -- un mensaje que
+// manda a mirar la firma de un `.bex` cuando lo que pasaba era que la cola
+// estaba llena.
+//
+// ** Se rompen estos y no los de `launch` porque `launch` SI se lee desde Ring
+// 3 --`main.rs` del DIRECTOR imprime los tres-- y estos no los lee nadie fuera
+// del kernel. Se midio antes de moverlos: romper donde no mira nadie es lo que
+// separa redefinir de romper. Ver L6j.
+pub const ERROR_ENDPOINT_DEAD: u32 = 18;
+pub const ERROR_ENDPOINT_OCUPADO: u32 = 19;
 
 #[derive(Clone, Copy)]
 struct Call {
@@ -167,7 +179,7 @@ pub fn call(idx: usize, op: u64, args: [u64; 3]) -> Outcome {
     {
         let e = &mut eps()[idx];
         if !e.vivo { return Outcome { code: ERROR_ENDPOINT_DEAD, value: 0 }; }
-        if e.n >= QUEUE { return Outcome { code: ERROR_BUSY, value: 0 }; }
+        if e.n >= QUEUE { return Outcome { code: ERROR_ENDPOINT_OCUPADO, value: 0 }; }
         let slot = (e.cabeza + e.n) % QUEUE;
         // ** AQUI HABIA UN `ocupada: true`, y era una MINA (retirado 08-09).
         // La ocupacion de esta cola la lleva `e.n` --y por eso el `if e.n >=
@@ -275,8 +287,8 @@ pub fn wait_for(idx: usize, servidor_pid: u32, deadline_tsc: u64) -> Outcome {
         None => {
             // Sin ranura de capability no hay forma de responder: se despierta
             // al llamante con el fallo en vez de dejarlo colgado para siempre.
-            complete(caller_tid, gen, ERROR_BUSY, 0);
-            Outcome { code: ERROR_BUSY, value: 0 }
+            complete(caller_tid, gen, ERROR_ENDPOINT_OCUPADO, 0);
+            Outcome { code: ERROR_ENDPOINT_OCUPADO, value: 0 }
         }
     }
 }

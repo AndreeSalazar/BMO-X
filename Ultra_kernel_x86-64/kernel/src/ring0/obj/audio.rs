@@ -77,7 +77,9 @@ static HANDLE: AtomicU64 = AtomicU64::new(0);
 static CALIBRADO: AtomicBool = AtomicBool::new(false);
 
 /// Ya lo tiene otro proceso.
-pub const ERROR_BUSY: u32 = 16;
+/// Reexportado: la definicion vive en `syscall::ops` desde el 12-09,
+/// porque el sonido no es el unico aparato exclusivo. Ver L6j.
+pub(crate) use crate::ring0::syscall::ops::ERROR_APARATO_OCUPADO as ERROR_BUSY;
 
 /// Tope de duracion de un pitido, en milisegundos.
 ///

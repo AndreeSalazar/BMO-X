@@ -437,6 +437,30 @@ def autoprueba():
           [k for k in puertas_ambiguas({"a/mod.rs": GUARDA})
            if k[1] == "MEM_OP_OFRECER"])
 
+
+    # -- R23: un numero, un error (L6j) --------------------------------------
+    #
+    # La fila que guarda de verdad es la de la PAREJA: el kernel y el userland
+    # nombrando el MISMO numero con el MISMO nombre no es un choque, es el
+    # contrato emparejado. Sin esta fila, la regla seria un muro que obliga a
+    # que cada lado se invente un numero propio -- justo lo contrario.
+    UNO = "pub const ERROR_X: u32 = 40;" + chr(10)
+    OTRO = "pub const ERROR_Y: u32 = 40;" + chr(10)
+    HEX = "pub const ERROR_X: u32 = 0x28;" + chr(10)
+    exige("R23(dos nombres, un numero)",
+          r23_un_numero_un_error({"a.rs": UNO, "b.rs": OTRO}))
+    exige("R23(PAREJA: mismo numero y mismo nombre, pasa)",
+          r23_un_numero_un_error({"kernel.rs": UNO, "userland.rs": UNO}), False)
+    exige("R23(un nombre, dos numeros)",
+          r23_un_numero_un_error({"a.rs": UNO,
+                                  "b.rs": "pub const ERROR_X: u32 = 41;" + chr(10)}))
+    # *** Y EL HEXADECIMAL, QUE CASI ME HACE ACUSAR A QUIEN CUMPLIA: el primer
+    # censo uso `= (\d+)` y leyo `0xE001` como un CERO, dando por hecho que
+    # cuatro errores de `memory.rs` valian lo mismo que EXITO.
+    exige("R23(0x28 y 40 son el MISMO numero)",
+          r23_un_numero_un_error({"a.rs": HEX, "b.rs": OTRO}))
+    exige("R23(sin ficheros)", r23_un_numero_un_error({}), False)
+
     if fallos:
         for f in fallos:
             print("  [X] " + f)

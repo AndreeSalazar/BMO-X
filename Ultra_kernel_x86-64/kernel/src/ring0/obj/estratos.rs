@@ -53,7 +53,7 @@
 //! ENTERO, y el tope deja de ser un numero para ser una pregunta al asignador.
 //! `reserve` pide marcos FISICOS CONTIGUOS del tamano del fichero: un `.bex` de
 //! 4 MiB son 1.024 paginas seguidas, y si la RAM esta fragmentada contesta
-//! `ERROR_TOO_LARGE`. No se rompe -- se niega, que es lo correcto.
+//! `ERROR_ARCH_GRANDE`. No se rompe -- se niega, que es lo correcto.
 //!
 //! Se mantiene porque el cliente de hoy es `launch`, y **un binario se necesita
 //! entero**: leerlo por trozos no ahorraria nada. El dia que haya un VISOR la

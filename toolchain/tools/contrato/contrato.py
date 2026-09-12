@@ -83,13 +83,18 @@ from contrato_consumo import *  # noqa: F401,F403
 # R22 (L6i, si es si y no es no) nace tambien en fichero propio: la
 # leccion de R21 esta escrita dos veces y no hace falta una tercera.
 from contrato_ambiguo import *  # noqa: F401,F403
+# R23 (L6j, un numero un error) salio de arreglar R22: el NO ya llegaba, y
+# llegaba con un numero que significaba otra cosa.
+from contrato_errores import *  # noqa: F401,F403
+# La LINEA BASE y los tres suelos que solo pueden subir. Salieron de aqui
+# el 12-09, cuando R23 empujo este fichero a 1.002 lineas de codigo.
+from contrato_base import *  # noqa: F401,F403
 import os
 import re
 import sys
 
-def como_numero(t):
-    t = t.replace("_", "")
-    return int(t, 16) if t.lower().startswith("0x") else int(t)
+# `como_numero` vive en `contrato_ley` desde el 12-09: lo comparte con
+# `contrato_base`, que se llevo la LINEA BASE al partir este fichero.
 
 
 # ===========================================================================
@@ -369,122 +374,6 @@ def r5_sin_numeros_repetidos(ops_kernel):
                     "familia %s: 0x%X lo usan %s" % (fam, valor, " y ".join(sorted(nombres)))
                 )
     return quejas
-
-
-# ===========================================================================
-#  LA LINEA BASE
-# ===========================================================================
-
-def linea_base_leer():
-    base = {}
-    if not os.path.exists(BASE):
-        return base
-    with open(BASE, "r", encoding="utf-8") as f:
-        for linea in f:
-            linea = linea.strip()
-            if not linea or linea.startswith("#"):
-                continue
-            partes = linea.split(None, 3)
-            if len(partes) < 3:
-                continue
-            base[como_numero(partes[0])] = {
-                "kernel": partes[1],
-                "abi": partes[2],
-                "nota": partes[3] if len(partes) > 3 else "",
-            }
-    return base
-
-
-def linea_base_escribir(kern, abi, previa):
-    filas = []
-    for num in sorted(set(kern) & set(abi)):
-        nota = previa.get(num, {}).get("nota", "")
-        if not nota:
-            nota = "COINCIDEN" if _parecen_lo_mismo(kern[num], abi[num]) else "DIVERGEN -- deuda"
-        filas.append("0x%02X %-18s %-18s %s" % (num, kern[num], abi[num], nota))
-    with open(BASE, "w", encoding="utf-8", newline="\n") as f:
-        f.write(CABECERA_BASE)
-        f.write("\n".join(filas))
-        f.write("\n")
-    return len(filas)
-
-
-def _parecen_lo_mismo(nk, na):
-    """Una heuristica, y SOLO para proponer al sellar -- nunca para juzgar.
-
-    Dos nombres en dos idiomas no se pueden comparar de verdad: `KIND_ARCHIVO` y
-    `File` son el mismo objeto y no comparten una letra. Lo que si se puede es
-    ADIVINAR y dejar que una persona corrija la nota. Juzgar con esto seria
-    inventar un veredicto; proponerlo ahorra escribir catorce lineas a mano.
-    """
-    return nk.replace("KIND_", "").replace("_", "").lower()[:4] == na.replace("_", "").lower()[:4]
-
-
-CABECERA_CUESTAS = """# EL SUELO DE L6e -- cuantos ficheros declaran `[cuesta]`.
-#
-# La ley esta en `META-KERNEL_HARD.md`, L6e (MODULAR PRECISA): el corte se elige
-# tambien por lo que cuesta que la pieza se equivoque, y la cabecera lo declara.
-#
-# ** Esto NO exige la etiqueta a los ~150 ficheros de `ring0`. Exige dos cosas
-# mas pequenas: que quien la declare use el vocabulario cerrado, y que este
-# numero **no baje nunca**. Cada fichero nuevo que la ponga sube el suelo, y el
-# suelo no se vuelve a bajar.
-#
-# El numero va solo en la primera linea util. Lo de abajo es el inventario, y es
-# comentario: esta para leerlo, no para juzgarlo.
-
-"""
-
-CABECERA_COBERTURA = """# EL SUELO DE R16 -- cuantas constantes del ABI tienen cabecera en REX.
-#
-# La pregunta del dueno era *"que reglas para que el ABI se aproveche TODO?"*, y
-# la respuesta honesta no es "se expone todo": es **el hueco es este numero, y
-# no puede crecer**.
-#
-# ** El denominador sale de `VALKYRIE-ABI/FRONTERA.txt`, no del ABI entero. Un
-# porcentaje contra las constantes enteras contaria como pendiente cosas que
-# nunca van a estar -- y eso no es una medida, es una excusa que se ve bien.
-#
-# El numero va solo en la primera linea util. Se resella con `--sellar`.
-#
-# [!] Lo que esto NO mide: si la cabecera es BUENA. Mide que exista.
-"""
-
-CABECERA_RIESGOS = """# EL SUELO DE L6f -- cuantos ficheros declaran `[riesgo]`.
-#
-# La ley esta en `META-KERNEL_HARD.md`, L6f (MODULAR PRECISA NIVEL 2). L6e dice
-# lo que CUESTA que una pieza se equivoque; esto dice POR QUE es probable que se
-# equivoque, que es la mitad que sirve el dia del fallo.
-#
-# ** Un `rip` da UNA funcion. Lo que no da es en cual de sus cuatro niveles
-# mirar. La clase lo dice, y por eso el vocabulario es cerrado: son los sitios
-# donde este proyecto ya encontro la aguja.
-#
-# El numero va solo en la primera linea util. Lo de abajo es el inventario, y es
-# comentario: esta para leerlo, no para juzgarlo.
-
-"""
-
-CABECERA_BASE = """# LINEA BASE del contrato -- los numeros que USAN LAS DOS TABLAS.
-#
-# El kernel (`obj/cap.rs`) y `bmo-abi` (`handle/kind.rs`) son dos listas de la
-# misma taxonomia en dos crates que no se hablan. Cuando un numero aparece en
-# las dos, es una AFIRMACION de que significan lo mismo -- y hoy hay cinco donde
-# eso es falso.
-#
-# ** ESTA LISTA ESTA PARA ENCOGERSE. Es un trinquete, como el de L6a: lo que ya
-# esta aqui se tolera con su motivo escrito al lado; un numero NUEVO en las dos
-# tablas para el build hasta que alguien decida cual de las dos cosas es.
-#
-# Hoy no hace dano porque el `kind` del handle **solo lo interpreta el kernel**:
-# el ABI declara la taxonomia y no la usa para resolver nada. Es deuda, no
-# fallo. El dia que alguien de Ring 3 mire ese byte, deja de serlo.
-#
-# Formato:  numero  nombre_kernel  nombre_abi  nota
-# Se regenera con `--sellar`, y la nota se escribe A MANO: una herramienta no
-# puede saber si `KIND_ARCHIVO` y `File` son el mismo objeto.
-
-"""
 
 
 # ===========================================================================
@@ -959,7 +848,7 @@ def comprobar():
     # bucle y no en seis lineas sueltas, y eso NO es estilo: al enganchar R22
     # este fichero toco las 1.000 de codigo EXACTAS, que es la tercera vez que
     # le pasa lo mismo -- y las dos anteriores estan escritas en su cabecera.
-    for q, n in (comprobar_consumo(r0), comprobar_ambiguo()):
+    for q, n in (comprobar_consumo(r0), comprobar_ambiguo(), comprobar_errores()):
         quejas += q
         notas += n
     rex = cabeceras_de_rex()

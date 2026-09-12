@@ -498,6 +498,60 @@ imposible de no ver.
   vocabulario. Sin trinquete, como R10: se empieza en 180 de 180. **Y en cada
   build dice cuales no son NADA**, que es la lista de lo que gasta en reposo
   saliendo sola.
+- **L6j. UN NUMERO, UN ERROR -- ningun codigo significa dos cosas
+  (2026-09-12).** L6i consiguio que la puerta dijera que NO. Esta consigue que
+  el NO **se entienda**, que no es lo mismo.
+
+  Peticion del dueno, el mismo dia y dos mensajes despues: *"dale con la tabla
+  de errores, que no se repitan; no romper todas las reglas, busca y redefinir,
+  y otras si romper si no entran"*.
+
+  Al arreglar L6i aparecio el mismo defecto un piso mas arriba: el numero
+  llegaba, y significaba otra cosa segun quien lo hubiera dicho.
+
+  ```text
+     ERROR_BUSY          valia 16, 21 y 22
+     ERROR_NOT_THERE     valia 20, 26 y 28
+     ERROR_NO_FREE_SLOT  valia 24, 25 y 27
+  ```
+
+  *** **Y el que mordia:** el `21` de un canal lleno --`endpoint::ERROR_BUSY`--
+  Ring 3 lo lee como `ERROR_GATE`, o sea **"rechazado: la firma no cuadra"**. Un
+  mensaje que manda a mirar la firma de un `.bex` cuando lo que pasaba era que
+  la cola estaba llena. *Decir que no y que se entienda otra cosa no es mejor que
+  callarse.*
+
+  ★ **Lo que NO se prohibe: compartir numero.** Un numero en dos ficheros es casi
+  siempre una PAREJA --el kernel y Ring 3 nombrando lo mismo-- y hay once. Lo que
+  se prohibe es compartir numero **con otro nombre**. Por eso el arreglo no movio
+  ni uno de esos once: **les puso en el kernel el nombre de Ring 3**, que es el
+  que se lee cuando algo falla. El kernel puede llamarse como quiera; el que mira
+  la pantalla, no.
+
+  ★★ **Y la regla de cuando se rompe, que es la que el dueno formulo:**
+
+  ```text
+     REDEFINIR   el numero se queda, cambia el nombre. No lo nota nadie
+                 -> file.rs, directory.rs, console.rs: 10 constantes
+     ROMPER      el numero cambia. SOLO donde nadie de Ring 3 lo lee, y se
+                 mide ANTES -> endpoint (20->18, 21->19), mmio (7->12)
+  ```
+
+  *** `launch` tambien tenia un `ERROR_BUSY` y **no se movio**, porque el
+  DIRECTOR imprime sus tres codigos en la caja de Ejecutar. **Se rompe donde no
+  mira nadie; donde alguien mira, se cumple.** Esa medida --quien lo lee-- es la
+  diferencia entre redefinir y romper, y se hace con `grep` antes de tocar nada.
+
+  Lo cobra `contrato.py` **R23**, y **sin trinquete**: el arbol quedo en CERO
+  choques el dia que nacio la regla --42 codigos, 31 numeros, 11 parejas-- asi
+  que no hay deuda que tolerar. Una regla que se estrena limpia se puede permitir
+  ser estricta.
+
+  [!] Y una cautela del juez, aprendida en su primer censo: **lee hexadecimal**.
+  La primera version uso `= (\d+)`, leyo `0xE001` como un cero y dio por hecho
+  que cuatro errores de `memory.rs` valian lo mismo que EXITO. Estaban bien. Un
+  guardian que lee mal acusa a quien cumple, y por eso esa fila esta en el banco.
+
 - **L6i. SI ES SI Y NO ES NO -- una puerta no contesta EXITO cuando NIEGA
   (2026-09-12).** L6f nombra el riesgo `SILENCIO` --*equivocarse no falla:
   sigue, y da un dato malo*-- y hasta hoy **nadie lo buscaba**: el FUERO sabia
@@ -1364,6 +1418,11 @@ controla el voltaje" seria falso, y este documento no puede permitirselo.
   con lo que se pide. En esta maquina son nueve de 180. Lo cobra `contrato.py`
   R21, y la regla de por que existe esta en
   [`EFICIENCIA_MAESTRO.md`](../docs/maestro/EFICIENCIA_MAESTRO.md).
+- **R-ORQ2 (2026-09-12).** ** **Y el NO se entiende.** Ningun codigo de error
+  significa dos cosas y ningun nombre vale dos numeros (L6j). Lo cobra
+  `contrato.py` R23, sin trinquete porque nacio en cero. Es la pareja de R-ORQ1:
+  una dice que el orquestador puede negar, la otra que al negar se le entiende --
+  **y un no ambiguo es peor que un silencio, porque manda a arreglar otra cosa.**
 - **R-ORQ1 (2026-09-12).** ** **Una puerta no contesta EXITO cuando niega.**
   Toda negativa del despachador viaja por el CODIGO, o por un motivo empaquetado
   en el valor -- nunca como un cero mudo (L6i). Lo cobra `contrato.py` R22, con
