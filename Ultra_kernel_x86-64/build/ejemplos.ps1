@@ -201,6 +201,11 @@ $cEjemplos = @(
     # Y se pinta sobre un TABLERO de cuadros a proposito -- el alfa es un bit,
     # y un fondo liso esconde que no se respete.
     @{ src = 'toolchain\lang\c\examples\imagen_C.c';    out = 'imagen.bex' ; dir = 'c' },
+    # ** LA GUIA, y el texto NO esta en el programa: viaja como recurso.
+    # Es la idea del `.datex` del dueno hecha con lo que el sistema ya
+    # soporta -- para cambiar la guia se edita `guia.txt` y se reempaca, y el
+    # programa no se toca ni se recompila.
+    @{ src = 'toolchain\lang\c\examples\guia_C.c';      out = 'guia.bex'   ; dir = 'c' },
     # La prueba de fopen/fread/fseek. Lee `datos\salida.txt` DOS veces y
     # compara: si las dos lecturas coinciden, la cadena de ficheros funciona.
     @{ src = 'toolchain\lang\c\examples\leer_C.c';      out = 'leer.bex'   ; dir = 'c' },
@@ -267,6 +272,28 @@ $cRecursos = @(
     # las cuatro esquinas transparentes, y eso es lo que hace que la prueba
     # del alfa sea una prueba: sobre el tablero de cuadros, las esquinas
     # tienen que dejar ver los cuadros.
+    # ** LA GUIA: su TEXTO y su CARA, los dos dentro del mismo fichero.
+    @{ bex = 'c\guia.bex'; recursos = @(
+        @{ nombre = 'guia.txt'; desde = 'toolchain\lang\c\examples\guia.txt' },
+        @{ nombre = 'icono'; icono = @(
+            '................',
+            '..oooooooooooo..',
+            '..oWWWWWWWWWWo..',
+            '..oWggggggggWo..',
+            '..oWWWWWWWWWWo..',
+            '..oWggggggWWWo..',
+            '..oWWWWWWWWWWo..',
+            '..oWggggggggWo..',
+            '..oWWWWWWWWWWo..',
+            '..oWgggggWWWWo..',
+            '..oWWWWWWWWWWo..',
+            '..oWWWbbbbWWWo..',
+            '..oWWWbWWbWWWo..',
+            '..oWWWWWbbWWWo..',
+            '..oWWWWWbWWWWo..',
+            '..oooooooooooo..'
+        ) }
+    ) }
     @{ bex = 'c\imagen.bex'; recursos = @(
         @{ nombre = 'icono'; icono = @(
             '.......oo.......',
@@ -440,6 +467,16 @@ try {
                 if ($r.ContainsKey('texto')) {
                     # Sin salto final y sin BOM: el programa cuenta los bytes.
                     [System.IO.File]::WriteAllText($f, $r.texto, (New-Object System.Text.UTF8Encoding $false))
+                } elseif ($r.ContainsKey('desde')) {
+                    # ** UN RECURSO QUE ES UN FICHERO DEL REPO, tal cual.
+                    #
+                    # `texto` sirve para una linea; una guia de cien no cabe en
+                    # un literal de PowerShell sin volverse ilegible, y ademas
+                    # **se edita mejor como fichero**: cambiar `guia.txt` y
+                    # reempacar no toca ni una linea del programa que la ensena.
+                    $orig = Join-Path $repo $r.desde
+                    if (-not (Test-Path $orig)) { Fail ('no esta el recurso ' + $r.desde) }
+                    Copy-Item -LiteralPath $orig -Destination $f -Force
                 } elseif ($r.ContainsKey('icono')) {
                     [System.IO.File]::WriteAllBytes($f, (Nuevo-Bico $r.icono))
                 } else {

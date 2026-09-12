@@ -1,0 +1,87 @@
+# BMO-X -- la guia de bolsillo
+
+Esta ventana la pinta guia.bex, y el texto que estas leyendo
+NO esta dentro de su codigo: viaja como un recurso dentro de
+su propio .bex, y el programa lo pide al arrancar.
+Para cambiar la guia se edita guia.txt y se vuelve a empacar.
+El programa no se toca.
+
+# La caja de Ejecutar
+
+Se escribe la ruta de un .bex y Enter.
+
+  run c/texto.bex      el bloc de notas
+  run c/imagen.bex     una app pintando su propia imagen
+  run c/ray.bex        el raycaster, con menu
+  run apps/doom.bex    DOOM (o clic en su icono)
+
+Y sin "run", estas ordenes contestan ahi mismo:
+
+  disco    que discos hay y de que tamano
+  info     lo que el kernel sabe de esta maquina
+  ls       lo que hay en la carpeta
+  lee      ensena un fichero
+  guarda   escribe lo que salio en datos/salida.txt
+  ayuda    la lista entera
+
+# Las teclas del escritorio
+
+  F11            el panel del kernel
+  F12            el panel de datos (ESTRATOS)
+  ESC            cierra el panel de delante
+  Alt+Tab        cambia de ventana
+  Alt+flechas    mueve la ventana
+  Alt+M          la minimiza
+  Alt+Enter      pantalla completa, y se sale igual
+  Ctrl+Alt       esconde el escritorio
+  Ctrl+Alt+ESC   la salida de emergencia, y vive en Ring 0:
+                 funciona aunque el escritorio este muerto
+
+La barra de titulo se arrastra con el raton. El boton de
+cerrar lo pone el escritorio, no la app.
+
+# Una regla que explica lo que veras
+
+  lo que no se ve, no se pinta
+
+Si minimizas una ventana, su programa SIGUE VIVO y deja de
+dibujar. Al volver, el primer fotograma ya es el de ahora, no
+uno viejo. Por eso minimizar DOOM baja los vatios en vez de
+congelarlo.
+
+# El bloc de notas
+
+  run c/texto.bex
+
+Escribe con tildes y con ene. Se mueve con las flechas, Inicio,
+Fin, RePag y AvPag. Se guarda con el boton de su barra, no con
+Ctrl+S: las teclas con Ctrl son del escritorio.
+
+  el punto naranja      hay cambios sin guardar
+  cerrar por el marco   PIERDE lo que no guardaste
+  el cursor no parpadea es una decision de vatios: parpadear
+                        son dos repintados por segundo para
+                        siempre, con la maquina en reposo
+
+Abre datos/notas.txt. Si no existe todavia, lo dice y lo crea
+al guardar.
+
+# Donde vive cada cosa en el disco
+
+  sys/     el sistema: el escritorio y la medida
+  c/       los ejemplos en C
+  cobol/   los de COBOL, por niveles del 1 al 10
+  ada/     el de Ada
+  inti/    las sondas de INTI
+  datos/   lo que los programas leen y escriben
+  apps/    lo que viene de FUERA del repo -- hoy, DOOM
+
+# Si algo se pone azul
+
+Una pantalla azul de BMO-X no es un adorno: trae el vector, la
+direccion que se toco, quien corria y --si estaba desmontando
+un proceso-- en que estacion de las diecisiete iba. Con una
+foto de esa pantalla se puede buscar el fallo en el codigo.
+
+Apuntar el numero de `estacion` y el `cr2` es lo que convierte
+un susto en un arreglo.
