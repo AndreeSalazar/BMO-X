@@ -498,6 +498,56 @@ imposible de no ver.
   vocabulario. Sin trinquete, como R10: se empieza en 180 de 180. **Y en cada
   build dice cuales no son NADA**, que es la lista de lo que gasta en reposo
   saliendo sola.
+- **L6i. SI ES SI Y NO ES NO -- una puerta no contesta EXITO cuando NIEGA
+  (2026-09-12).** L6f nombra el riesgo `SILENCIO` --*equivocarse no falla:
+  sigue, y da un dato malo*-- y hasta hoy **nadie lo buscaba**: el FUERO sabia
+  nombrar la enfermedad y no tenia quien la encontrara.
+
+  Peticion del dueno, con sus palabras: *"que el orquestador sea ESTRICTO, que
+  diga si si y no no, porque si es ambiguo se rompe TODO"*.
+
+  El fallo que la trajo son tres capas: el DIRECTOR no ensenaba la ventana de
+  DOOM, y abajo del todo estaba esto:
+
+  ```rust
+     let Some(destino) = scheduler::pid_de(frame.r8 as u32) else {
+         return BmoStatus::ok_value(0);        // <- EXITO
+     };
+     BmoStatus::ok_value(loan::offer(...) as u64)   // <- EXITO, niegue o no
+  ```
+
+  ** **La puerta tiene DOS canales y la negativa viajaba por el equivocado.**
+  `bmo_codigo` promete que *"0 es lo unico que significa exito"*; `bmo_valor`
+  lleva la respuesta. Cuando un NO viaja como VALOR es indistinguible de una
+  respuesta: el kernel decia que no y contestaba que si. El resultado fue una app
+  dibujando a 60 fps dentro de memoria que no lee nadie.
+
+  *** **Y el canal del valor SI puede decir que no**: lo que no puede es
+  callarse. `DISCO_OP_TRIM_LIBRE` devuelve `DISCO_TRIM_SIN_VOLUMEN` y
+  `RED_OP_ARMAR` devuelve `RED_SIN_TARJETA` -- un motivo empaquetado dentro del
+  valor. Esas dos ensenan la forma correcta y por eso estan en la lista como
+  `CORRECTA` y no como excepciones toleradas.
+
+  * **Contestar cero tampoco es siempre mentir.** `TASK_OP_TOMAR` contesta `0`
+  cuando nadie ofrece, y eso pasa mil veces por segundo: es la respuesta NORMAL,
+  no un fallo. La ley no prohibe el cero -- prohibe que el cero sea lo unico que
+  se sabe.
+
+  Lo cobra `contrato.py` **R22**, y con dos cautelas que son parte de la ley:
+
+  1. **no adivina.** Comprueba un HECHO SINTACTICO --*"aqui se contesta exito
+     desde una rama `None`, `Err` o `else`"*-- y nunca si esa concreta esta mal.
+     Quien lo juzga es una persona y lo escribe en `AMBIGUAS.txt` A MANO, la
+     misma disciplina que `LINEA_BASE.txt`. Un guardian que adivina da permiso
+     con autoridad.
+  2. **es un TRINQUETE.** Lo que ya estaba se tolera con su motivo al lado; una
+     puerta NUEVA que conteste exito al negar para el build. Arreglarlas todas de
+     golpe cambia lo que ve todo el que ya llama, y eso se decide puerta por
+     puerta.
+
+  Hoy son **nueve, de las que cinco son DEUDA**, y cada build las nombra. La
+  peor es `estratos_sellar`: sellar es GUARDAR UN FICHERO, y si falla el que
+  llamo recibe exito con generacion `0`, que se lee como una generacion buena.
 
   [!] **Lo que NINGUNA maquina comprueba: que la clase sea la correcta.** Un
   guardian que la dedujera de los `loop` adivinaria -- `plat/spin.rs` gira y es
@@ -1314,6 +1364,12 @@ controla el voltaje" seria falso, y este documento no puede permitirselo.
   con lo que se pide. En esta maquina son nueve de 180. Lo cobra `contrato.py`
   R21, y la regla de por que existe esta en
   [`EFICIENCIA_MAESTRO.md`](../docs/maestro/EFICIENCIA_MAESTRO.md).
+- **R-ORQ1 (2026-09-12).** ** **Una puerta no contesta EXITO cuando niega.**
+  Toda negativa del despachador viaja por el CODIGO, o por un motivo empaquetado
+  en el valor -- nunca como un cero mudo (L6i). Lo cobra `contrato.py` R22, con
+  su lista `AMBIGUAS.txt` y su trinquete. El nombre lleva ORQ porque esto es lo
+  que separa orquestar de multiplexar: **el que reparte tiene que poder decir
+  que no, y que se le entienda.**
 
 **EL PRECIO.** Ninguno todavia, y por una razon buena: el lector de energia se
 escribio **antes** de que hiciera falta discutir. Lo que si estuvo tres dias sin

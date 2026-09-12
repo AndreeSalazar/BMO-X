@@ -1,0 +1,27 @@
+# R22 (L6i) -- las puertas que contestan EXITO al NEGAR.
+#
+# ** ESTA LISTA ESTA PARA ENCOGERSE. Es un trinquete, como el de
+# L6a: lo que ya esta se tolera con su motivo al lado; una puerta
+# NUEVA que conteste exito al negar para el build.
+#
+# El motivo se escribe A MANO y empieza por UNA de estas dos:
+#    CORRECTA  el `None` no es un fallo, es la respuesta normal
+#    DEUDA     miente, y cambiarlo toca a quien ya llama
+#
+# *** Y LAS CUATRO `CORRECTA` ENSENAN COMO SE HACE BIEN. Dos contestan
+# cero porque cero ES la respuesta --nadie ofrece, no hay nada que leer--
+# y las otras dos empaquetan un MOTIVO dentro del valor
+# (`DISCO_TRIM_SIN_VOLUMEN`, `RED_SIN_TARJETA`). O sea que el canal del
+# valor SI puede decir que no: lo que no puede es callarse.
+#
+# Formato:  fichero  quien  motivo
+# Se regenera con `contrato.py --sellar`; el motivo, no.
+mod.rs MEM_OP_OFRECER DEUDA -- niega y contesta exito. Es la que dejo a DOOM dibujando a 60 fps para nadie el 2026-09-12: ni `pid_de` fallando ni `loan::offer` diciendo que no llegan al que ofrece. El motivo solo va a CABINA
+mod.rs TASK_OP_TOMAR CORRECTA -- "nadie ofrece" es la respuesta NORMAL, mil veces por segundo. Un error aqui seria ruido en el camino mas caliente del compositor
+op_consola.rs console_read CORRECTA -- lo dice su propio comentario: "cero = nada, no error: un programa que sondea no debe morir por preguntar"
+op_contar.rs PLACA_OP_CUANTAS DEUDA -- cero significa "hay cero tablas ACPI" y "no se censar la placa" a la vez. Es el mismo defecto que esta casa ya arreglo dos veces
+op_contar.rs PLACA_OP_TABLA DEUDA -- misma forma que la de arriba, y dos veces: sin censo y sin esa fila contestan igual que una fila vacia
+op_maquina.rs DISCO_OP_TRIM_LIBRE CORRECTA -- no se calla: empaqueta `DISCO_TRIM_SIN_VOLUMEN` en el campo de motivo. El valor DICE por que, que es lo que pide L6i
+op_maquina.rs RED_OP_ARMAR CORRECTA -- devuelve `RED_SIN_TARJETA`, un motivo propio, y ademas lo apunta en CABINA
+op_maquina.rs estratos_sellar DEUDA -- y es la peor de la lista: SELLAR es guardar un fichero. Si `seal()` falla, el que llamo recibe exito con generacion 0, que se lee como una generacion buena. Solo CABINA se entera
+op_maquina.rs smp_despertar DEUDA -- `banda::preparar` fallando contesta lo mismo que preparar cero bytes. Es una sonda, asi que duele poco, pero es la misma mentira

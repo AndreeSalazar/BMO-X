@@ -80,6 +80,9 @@ from contrato_drivers import *  # noqa: F401,F403
 # R21 (L6h, el consumo en reposo) nacio aqui dentro y L6a la echo el mismo dia:
 # `contrato.py` cruzo las 1.000 lineas, igual que con R20. Ver su cabecera.
 from contrato_consumo import *  # noqa: F401,F403
+# R22 (L6i, si es si y no es no) nace tambien en fichero propio: la
+# leccion de R21 esta escrita dos veces y no hace falta una tercera.
+from contrato_ambiguo import *  # noqa: F401,F403
 import os
 import re
 import sys
@@ -951,9 +954,14 @@ def comprobar():
     quejas += [("R10 L6g el semaforo de Ring 0", q) for q in r10_el_semaforo(r0)]
     # ** R21: EL CONSUMO, y su nota -- la lista de lo que gasta en reposo, que
     # sale en cada build para que crecer se vea sin que nadie pregunte.
-    q21, n21 = comprobar_consumo(r0)
-    quejas += q21
-    notas += n21
+    # ** R21 (lo que gasta en reposo) y R22 (las puertas que niegan diciendo
+    # que si) traen las dos su `(quejas, notas)` ya hecho. Se recogen en un
+    # bucle y no en seis lineas sueltas, y eso NO es estilo: al enganchar R22
+    # este fichero toco las 1.000 de codigo EXACTAS, que es la tercera vez que
+    # le pasa lo mismo -- y las dos anteriores estan escritas en su cabecera.
+    for q, n in (comprobar_consumo(r0), comprobar_ambiguo()):
+        quejas += q
+        notas += n
     rex = cabeceras_de_rex()
     quejas += [("R11 L6g el semaforo de REX", q) for q in r11_el_semaforo_de_rex(rex)]
     vias_rex = carpetas_de_carriles_rex()
