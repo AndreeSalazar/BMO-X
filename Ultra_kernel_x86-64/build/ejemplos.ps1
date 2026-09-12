@@ -193,6 +193,14 @@ $cEjemplos = @(
     # esta escrito como casilla en `docs/plan/PLAN_DIRECTOR.md`. El icono va
     # dentro del `.bex` igual: es su cara, la lleve quien la lea o no.
     @{ src = 'toolchain\lang\c\examples\texto_C.c';     out = 'texto.bex'  ; dir = 'c' },
+    # ** UNA APP SACA SU PROPIA IMAGEN DE DENTRO DE SI MISMA. Junta tres
+    # piezas que existian por separado y nunca se habian usado juntas:
+    # `paquete.h` (mi imagen, sin escribir ninguna ruta), `imagen.h` (el BICO,
+    # a escala entera) y `superficie.h`. El icono que lee es EL MISMO recurso
+    # que el escritorio pinta en la rejilla: el dato es uno, no hay copia.
+    # Y se pinta sobre un TABLERO de cuadros a proposito -- el alfa es un bit,
+    # y un fondo liso esconde que no se respete.
+    @{ src = 'toolchain\lang\c\examples\imagen_C.c';    out = 'imagen.bex' ; dir = 'c' },
     # La prueba de fopen/fread/fseek. Lee `datos\salida.txt` DOS veces y
     # compara: si las dos lecturas coinciden, la cadena de ficheros funciona.
     @{ src = 'toolchain\lang\c\examples\leer_C.c';      out = 'leer.bex'   ; dir = 'c' },
@@ -255,6 +263,30 @@ $cRecursos = @(
     # directo ni una cache de iconos: el `.bex` va con su cara dentro.
     #
     # Una hoja con su barra azul arriba, que es lo que el programa ensena.
+    # ** EL ICONO DE `imagen.bex` TIENE AGUJEROS A PROPOSITO. Un rombo deja
+    # las cuatro esquinas transparentes, y eso es lo que hace que la prueba
+    # del alfa sea una prueba: sobre el tablero de cuadros, las esquinas
+    # tienen que dejar ver los cuadros.
+    @{ bex = 'c\imagen.bex'; recursos = @(
+        @{ nombre = 'icono'; icono = @(
+            '.......oo.......',
+            '......obbo......',
+            '.....obbbbo.....',
+            '....obbbbbbo....',
+            '...obbbWWbbbo...',
+            '..obbbWWWWbbbo..',
+            '.obbbWWWWWWbbbo.',
+            'obbbWWWWWWWWbbbo',
+            'obbbWWWWWWWWbbbo',
+            '.obbbWWWWWWbbbo.',
+            '..obbbWWWWbbbo..',
+            '...obbbWWbbbo...',
+            '....obbbbbbo....',
+            '.....obbbbo.....',
+            '......obbo......',
+            '.......oo.......'
+        ) }
+    ) }
     @{ bex = 'c\texto.bex'; recursos = @(
         @{ nombre = 'icono'; icono = @(
             '................',

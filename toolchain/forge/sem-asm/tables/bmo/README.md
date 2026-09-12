@@ -11,7 +11,7 @@ y la tapan sin tocarla. La regla y el porque estan en
 [`toolchain/lang/c/README.md`](../../../../lang/c/README.md).
 
 REX es lo que hay entre las **dos puertas congeladas** (`INVOKE` y `WAIT`) y un
-programa. Trece cabeceras publicas, 4.090 lineas en 22 ficheros, y dos
+programa. Catorce cabeceras publicas, 4.312 lineas en 23 ficheros, y dos
 propiedades que conviene
 saber antes de usarlas:
 
@@ -55,6 +55,7 @@ un `mod.rs` que re-exporta. Incluir un carril suelto tambien vale.
 | [`entrada.h`](entrada.h) | 372 | AMARILLO | teclado y raton, y **devolverlos** | `examples/pantalla_C.c` |
 | [`fuente.h`](fuente.h) | 324 | VERDE | **escribir texto DENTRO de tu superficie** | `examples/texto_C.c` |
 | &nbsp;&nbsp;[`fuente/datos.h`](fuente/datos.h) | 152 | VERDE | los glifos 8x16. AUTO-GENERADO por `tools/fontgen`, del MISMO arte que la tabla del kernel | -- |
+| [`imagen.h`](imagen.h) | 205 | VERDE | **pintar una imagen que tu app lleva dentro** (`BICO`, a escala entera) | `examples/imagen_C.c` |
 | [`monton.h`](monton.h) | 351 | ROJO | `malloc`/`free`/`realloc`. Llega por `<stdlib.h>` | `examples/memoria_C.c` |
 | &nbsp;&nbsp;[`monton/roja.h`](monton/roja.h) | 168 | ROJO | la arena y el reparto | -- |
 | &nbsp;&nbsp;[`monton/verde.h`](monton/verde.h) | 74 | VERDE | cuanto queda y cuanto cabe | -- |
@@ -182,8 +183,9 @@ No para desanimar: para que nadie lo descubra a mitad de un proyecto.
   escritorio se queda TODA tecla con modificador: es su forma de no entregar el
   aparato. Un atajo propio se hace con una tecla desnuda o con un boton de tu
   superficie. Ver `superficie/amarilla.h`.
-- **Descifrar una imagen.** No hay PNG, JPEG ni zlib. El unico formato es `BICO`,
-  pixeles en crudo -- ver la seccion de arriba.
+- **Descifrar una imagen COMPRIMIDA.** No hay PNG, JPEG ni zlib. `imagen.h`
+  pinta `BICO` --pixeles en crudo-- y con eso una app ya lleva y dibuja sus
+  imagenes; lo que no hay es quien descomprima. Ver la seccion de arriba.
 - **Sonido de verdad.** `sonido.h` y `musica.h` existen y debajo hay un contrato
   y el altavoz del PC. No hay driver HDA ni transferencias isocronas por USB.
 - **Hilos.** No hay hilos de Ring 3.
