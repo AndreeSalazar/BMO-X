@@ -218,6 +218,7 @@ mano, y mientras tanto la deuda tiene nombre.
 | [`PLAN_VATIOS.md`](plan/PLAN_VATIOS.md) | 58 W en reposo: quien mantiene despierto al CPU, con la linea, y las cinco palancas en orden |
 | [`PLAN_AUTOCURACION.md`](plan/PLAN_AUTOCURACION.md) | las casillas de su MAESTRO |
 | [`PLAN_DIRECTOR.md`](plan/PLAN_DIRECTOR.md) | de compositor a administrador |
+| [`PLAN_CODEGEN.md`](plan/PLAN_CODEGEN.md) | el censo del compilador de C, los cortes por FASE y el numero que los ordena: 156 ciclos por pixel para seis instrucciones utiles |
 | [`PLAN_DOCUMENTOS.md`](plan/PLAN_DOCUMENTOS.md) | ★ **el escritorio deja de listar programas y lista lo que abres**. Idea del dueno, SIN decidir: el terreno medido, el unico hueco de verdad, y lo que cuesta cada camino |
 | [`PLAN_ALMACENAMIENTO.md`](plan/PLAN_ALMACENAMIENTO.md) | repartir la pila de disco |
 | [`PLAN_MAQUETA.md`](plan/PLAN_MAQUETA.md) | como se construye el compilador de composicion |

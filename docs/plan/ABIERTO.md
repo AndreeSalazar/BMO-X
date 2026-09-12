@@ -1,14 +1,14 @@
 <!-- GENERADO por toolchain/tools/planes. No se edita a mano. -->
 
-# LO QUE FALTA -- las casillas abiertas de los 30 planes
+# LO QUE FALTA -- las casillas abiertas de los 31 planes
 
 > Generado por `toolchain/tools/planes`. **El build comprueba que
 > este fichero y los planes dicen lo mismo**, asi que no puede
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   204 casillas ABIERTAS en 27 planes
-   129 hechas
+   209 casillas ABIERTAS en 28 planes
+   133 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -178,6 +178,15 @@
 - [ ] Y1.2 que BUS_PERIOD_MS salga del minimo de los aparatos vivos y no
 - [ ] no promete 0 ms, y llamarlo asi seria vender humo: un pixel viaja por
 - ... y 3 mas
+
+## [`PLAN_CODEGEN.md`](PLAN_CODEGEN.md) -- 5 abiertas, 4 hechas
+
+*PLAN DEL CODEGEN DE BMO C -- el censo, los cortes y el numero que los ordena*
+
+- [ ] emit_program son 357 lineas dentro de mod.rs, y hace TRES cosas:
+- [ ] emit_stmt son 175 lineas y un match de sentencias. Es hermano de
+- [ ] parser/preprocessor.rs son 1.204 lineas y es el otro monolito.
+- ... y 2 mas
 
 ## [`PLAN_EL_SEMAFORO_COMPLETO.md`](PLAN_EL_SEMAFORO_COMPLETO.md) -- 5 abiertas, 4 hechas
 
