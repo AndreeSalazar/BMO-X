@@ -249,6 +249,19 @@ info_cpu_mw_paquete  = "0x21"
 info_cpu_mw_nucleo   = "0x22"
 info_cpu_sensores    = "0x23"
 info_puertas         = "0x2F"
+#  Cuanta memoria tiene pedida cada proceso. Es de OTROS: sin autoridad, el
+#  kernel dice que no. Esta aqui para que un programa pueda ver ese NO.
+info_mem_quien_pid   = "0x24"
+
+#  ** CUANDO EL JEFE DICE QUE NO, y POR QUE (L6i, 2026-09-12).
+#
+#  `invoca` recoge el CODIGO: los 32 bits bajos son el motivo y los altos las
+#  banderas. `invoca_valor` recoge el valor, que en un NO es 0 -- por eso un
+#  programa que solo mira el valor no distingue "no existe" de "vale cero", y
+#  uno que mira el codigo si.
+error_no_existe      = "0x0A"
+error_sin_permiso    = "0x03"
+bandera_falta_capability = "0x10"
 
 #  ** PRESTAR Y TOMAR -- la memoria que viaja sin copiarse, desde INTI.
 #

@@ -353,14 +353,19 @@ const INFO_TXT_EXT_NOTA: u64 = 0x06;
 
 const PAGE: u64 = 4096;
 
-/// El valor del campo, o 0 si no existe.
+/// El valor del campo, o `None` si este kernel no tiene ese campo.
 ///
-/// Cero y no un error: un campo que este kernel todavia no sabe contestar tiene
-/// que poder pedirse sin que el programa se caiga. Ring 3 pinta "--" y sigue,
-/// que es lo que hace un panel cuando un dato no esta.
-pub fn campo(n: u64) -> u64 {
+/// *** Decia "o 0 si no existe" hasta el 2026-09-12, y era un SILENCIO de los
+/// que prohibe L6i: un cero no se distingue de un contador que vale cero. Un
+/// programa preguntaba por un campo mal escrito y recibia un dato plausible.
+///
+/// Ahora la puerta contesta NO SOPORTADO con el valor a cero -- lo mismo que ya
+/// hacia `cabina_info`. Y nadie se cae: los paneles leen el VALOR (`.value`,
+/// `bmo_valor`), que sigue siendo 0 y sigue pintando "--". Quien quiera saber
+/// POR QUE mira el codigo.
+pub fn campo(n: u64) -> Option<u64> {
     use crate::ring0::mm::phys;
-    match n {
+    Some(match n {
         INFO_RAM_TOTAL => phys::stats().0 * PAGE,
         INFO_RAM_LIBRE => phys::stats().1 * PAGE,
         INFO_RAM_MARCOS => phys::stats().0,
@@ -680,8 +685,22 @@ pub fn campo(n: u64) -> u64 {
         INFO_SMP_CSTATE => { let p = crate::ring0::plat::smp::dormir::profundidad();
               if crate::ring0::plat::smp::dormir::se_puede() { ((p >> 4) + 1) as u64 } else { 0 } },
         INFO_SMP_SIESTAS_CORTAS => crate::ring0::plat::smp::dormir::siestas_cortas(),
-        _ => 0,
-    }
+        _ => return None,
+    })
+}
+
+/// **Este campo cuenta cosas de OTROS procesos?**
+///
+/// `INFO` no pide capability porque leer un contador no ejerce ningun poder.
+/// Pero hay tres campos que no son de la maquina sino de los demas: cuanta
+/// memoria tiene pedida CADA proceso, y cuantas veces pidio. Con ellos cualquier
+/// app podia ver lo que hacen todas las otras.
+///
+/// Vive aqui, al lado de los campos, y no en la puerta: el dia que se anada un
+/// campo de otros, quien lo escribe esta mirando esta funcion.
+pub fn es_de_otros(n: u64) -> bool {
+    let base = n & 0xFF;
+    base == INFO_MEM_QUIEN_PID || base == INFO_MEM_QUIEN_BYTES || base == INFO_MEM_QUIEN_PETICIONES
 }
 
 /// La topologia, **por el perfil y no por el nombre del fabricante**.

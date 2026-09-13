@@ -27,28 +27,39 @@ fn ring0() -> PathBuf {
         .join("ring0")
 }
 
-/// El valor de `const NOMBRE: u64 = 0x..;` en ese fichero del kernel.
+/// El valor de `const NOMBRE: <tipo> = <numero>;` en ese fichero del kernel.
 ///
-/// ** Busca `const NOMBRE: u64` entero, con los dos puntos: sin ellos,
+/// ** Busca `const NOMBRE:` entero, con los dos puntos: sin ellos,
 /// `INFO_CPU_HILOS` encontraria `INFO_CPU_HILOS_POR_NUCLEO` y la prueba
 /// aprobaria un numero que no es.
+///
+/// Entiende tres formas, las que el kernel usa: decimal, `0x..` y `1 << n` (las
+/// banderas). Cualquier otra cosa hace fallar la prueba en vez de adivinar.
 fn del_kernel(fichero: &str, nombre: &str) -> u64 {
     let ruta = ring0().join(fichero);
     let texto = std::fs::read_to_string(&ruta)
         .unwrap_or_else(|e| panic!("no puedo leer {}: {}", ruta.display(), e));
-    let aguja = format!("const {}: u64 = ", nombre);
+    let aguja = format!("const {}:", nombre);
     let desde = texto
         .find(&aguja)
         .unwrap_or_else(|| panic!("{} no esta en {}", nombre, fichero))
         + aguja.len();
     let resto = &texto[desde..];
+    let igual = resto.find('=').expect("la constante no tiene `=`") + 1;
     let fin = resto.find(';').expect("la constante no termina en `;`");
-    let valor = resto[..fin].trim().replace('_', "");
-    match valor.strip_prefix("0x") {
-        Some(hex) => u64::from_str_radix(hex, 16),
-        None => valor.parse(),
+    let valor = resto[igual..fin].trim().replace('_', "");
+    let numero = |s: &str| -> u64 {
+        let s = s.trim();
+        match s.strip_prefix("0x") {
+            Some(hex) => u64::from_str_radix(hex, 16),
+            None => s.parse(),
+        }
+        .unwrap_or_else(|_| panic!("{} = {} no es un numero", nombre, valor))
+    };
+    match valor.split_once("<<") {
+        Some((a, b)) => numero(a) << numero(b),
+        None => numero(&valor),
     }
-    .unwrap_or_else(|_| panic!("{} = {} no es un numero", nombre, valor))
 }
 
 /// nombre en INTI, fichero del kernel, nombre en el kernel.
@@ -66,6 +77,10 @@ const ESPEJO: &[(&str, &str, &str)] = &[
     ("info_cpu_mw_nucleo", "core/report.rs", "INFO_CPU_MW_NUCLEO_ACTUAL"),
     ("info_cpu_sensores", "core/report.rs", "INFO_CPU_SENSORES"),
     ("info_puertas", "core/report.rs", "INFO_SYSCALL_CUENTA"),
+    ("info_mem_quien_pid", "core/report.rs", "INFO_MEM_QUIEN_PID"),
+    ("error_no_existe", "syscall/ops.rs", "ERROR_UNSUPPORTED"),
+    ("error_sin_permiso", "obj/cap.rs", "ERROR_PERMISSION_DENIED"),
+    ("bandera_falta_capability", "obj/cap.rs", "FLAG_NEEDS_CAP"),
     ("prestado_base", "obj/loan.rs", "OP_BASE"),
     ("prestado_bytes", "obj/loan.rs", "OP_BYTES"),
     ("prestado_dueno", "obj/loan.rs", "OP_DUENO"),

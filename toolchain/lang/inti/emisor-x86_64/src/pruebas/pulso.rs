@@ -109,6 +109,38 @@ fn esperar_medio_segundo_es_un_wait_con_su_plazo() {
     assert!(todas < 50, "{} puertas para medio segundo: eso es girar", todas);
 }
 
+/// ** EL NO SE LEE DEL CODIGO: motivo abajo, banderas arriba.
+///
+/// El emulador no sabe negar un campo --contesta exito a todo `INFO`-- asi que
+/// aqui se le da a la sonda la palabra que devolveria el kernel al negar la
+/// memoria de otros: `(16 << 32) | 3`. Si `codigo_de` o `banderas_de` cortaran
+/// mal, el usuario leeria un motivo que no es.
+#[test]
+fn el_no_del_jefe_se_parte_en_motivo_y_bandera() {
+    let r = (16u64 << 32) | 3;
+    let m = arranca(&con_principal(&format!(
+        "    linea(et_sin_perm(), codigo_de({r}))\n    linea(et_bandera(), banderas_de({r}))\n"
+    )));
+    assert_eq!(
+        lo_escrito(&m),
+        vec!["sin perm", "        ", "       3", "\n", "bandera ", "        ", "      16", "\n"]
+    );
+}
+
+/// Y `el_jefe_dice` pregunta lo que dice preguntar, por `invoca` -- que recoge
+/// el CODIGO. Con `invoca_valor` el NO llegaria como un 0 mudo.
+#[test]
+fn el_jefe_dice_pregunta_un_campo_que_no_existe_y_uno_de_otros() {
+    let m = arranca(&con_principal("    el_jefe_dice()\n"));
+    let preguntas: Vec<u64> = m
+        .syscalls
+        .iter()
+        .filter(|s| s.operation == 0x13)
+        .map(|s| s.arg0)
+        .collect();
+    assert_eq!(preguntas, vec![254, 0x24]);
+}
+
 /// ** La sonda entera compila, arranca, y no deja nada mudo.
 ///
 /// No se EJECUTA entera aqui a proposito: son veinte muestras de seis numeros de
