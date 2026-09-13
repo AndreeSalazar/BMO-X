@@ -627,18 +627,36 @@ pub(crate) fn guarda_temporal(
 }
 
 /// `mov reg, [rbp+disp]`
+///
+/// *** DOS FALLOS EN TRES BYTES, hasta el 2026-09-12, y los dos mudos:
+///
+/// ```text
+///    0x85 | (reg << 3)     con r10: 10 << 3 = 0x50, y 0x85|0x50 = 0xD5
+///                          -> mod=11: la instruccion deja de llevar
+///                             desplazamiento, mide 3 bytes y no 7, y los
+///                             cuatro del desplazamiento SE EJECUTAN
+///    0x48 fijo             sin REX.R: aunque midiera bien, iria a rdx
+/// ```
+///
+/// Solo muerde con `r8`..`r15`, y el emisor solo los usa como destino de un
+/// ARGUMENTO: el cuarto de la puerta (`r10`) y el quinto y sexto de una llamada
+/// (`r8`, `r9`). `cpu.inti` y `pulso.inti` corrieron en el Ryzen porque pasaban
+/// ahi constantes, que se cargan con `mov_r64_imm64` -- ese si pone el REX. Lo
+/// destapo `bico.inti`, el primero que paso una VARIABLE en el cuarto: el
+/// emulador salto a mitad de instruccion y dijo `opcode 0xD0`.
 fn mov_de_marco(out: &mut Vec<u8>, reg: u8, disp: i32) {
-    out.push(0x48);
+    out.push(0x48 | (((reg >> 3) & 1) << 2)); // REX.W + REX.R
     out.push(0x8B);
-    out.push(0x85 | (reg << 3));
+    out.push(0x85 | ((reg & 7) << 3));
     out.extend_from_slice(&disp.to_le_bytes());
 }
 
-/// `mov [rbp+disp], reg`
+/// `mov [rbp+disp], reg`. Mismo arreglo que `mov_de_marco`, y por el mismo
+/// motivo: el prologo guarda aqui el quinto y sexto parametro (`r8`, `r9`).
 fn mov_a_marco(out: &mut Vec<u8>, disp: i32, reg: u8) {
-    out.push(0x48);
+    out.push(0x48 | (((reg >> 3) & 1) << 2)); // REX.W + REX.R
     out.push(0x89);
-    out.push(0x85 | (reg << 3));
+    out.push(0x85 | ((reg & 7) << 3));
     out.extend_from_slice(&disp.to_le_bytes());
 }
 
