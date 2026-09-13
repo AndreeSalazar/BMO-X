@@ -467,6 +467,60 @@ function Nuevo-Qoi {
     return $b.ToArray()
 }
 
+# El FONDO del escritorio (2026-09-13): un atardecer de 480x270 en QOI --cielo,
+# luna, estrellas, dos cordilleras y su reflejo en un lago-- que el DIRECTOR
+# escala a la pantalla (`scene/fondo.rs`). Se GENERA por lo mismo que las fotos:
+# un binario en el repo no se lee en un diff. Solo usa RGB y RUN.
+function Nuevo-Fondo {
+    $w = 480; $h = 270; $lago = 212
+    $ms = New-Object System.IO.MemoryStream
+    $ms.Write([byte[]](113, 111, 105, 102), 0, 4)
+    foreach ($v in @($w, $h)) { $x = [BitConverter]::GetBytes([uint32]$v); [array]::Reverse($x); $ms.Write($x, 0, 4) }
+    $ms.WriteByte(3); $ms.WriteByte(0)
+    # El cielo por fila: noche arriba, violeta a media altura, rosa en el horizonte.
+    $cielo = New-Object 'int[]' $h
+    for ($y = 0; $y -lt $h; $y++) {
+        $t = [Math]::Min($y, $lago)
+        if ($t -lt 120) { $k = $t / 120.0; $r = 14 + 52 * $k; $g = 16 + 22 * $k; $b = 38 + 58 * $k }
+        else { $k = ($t - 120) / [double]($lago - 120); $r = 66 + 150 * $k; $g = 38 + 66 * $k; $b = 96 + 20 * $k }
+        $cielo[$y] = ([int]$r -shl 16) -bor ([int]$g -shl 8) -bor [int]$b
+    }
+    $lejos = New-Object 'int[]' $w; $cerca = New-Object 'int[]' $w
+    for ($x = 0; $x -lt $w; $x++) {
+        $lejos[$x] = [int](150 + 20 * [Math]::Sin($x / 37.0) + 9 * [Math]::Sin($x / 11.0 + 1))
+        $cerca[$x] = [int](184 + 16 * [Math]::Sin($x / 53.0 + 2) + 7 * [Math]::Sin($x / 17.0))
+    }
+    $prev = -1; $run = 0
+    for ($y = 0; $y -lt $h; $y++) {
+        # Debajo del lago se mira la fila ESPEJO, y sale a media luz.
+        $reflejo = $y -ge $lago
+        $yy = if ($reflejo) { 2 * $lago - $y - 1 } else { $y }
+        for ($x = 0; $x -lt $w; $x++) {
+            if ($yy -lt $lejos[$x]) {
+                $c = $cielo[$yy]
+                $dx = $x - 360; $dy = $yy - 62
+                if ($dx * $dx + $dy * $dy -lt 196) { $c = 0xF0DCC8 }
+                elseif ($yy -lt 130 -and (($x * 7919 + $yy * 104729) % 1013) -eq 0) { $c = 0xE6E6FF }
+            }
+            elseif ($yy -lt $cerca[$x]) { $c = 0x3A2E5A }
+            else { $c = 0x1C1630 }
+            if ($reflejo) { $c = ($c -shr 1) -band 0x7F7F7F }
+            if ($c -eq $prev) {
+                $run++
+                if ($run -eq 62) { $ms.WriteByte(253); $run = 0 }
+            } else {
+                if ($run -gt 0) { $ms.WriteByte([byte](191 + $run)); $run = 0 }
+                $ms.WriteByte(254)
+                $ms.WriteByte([byte](($c -shr 16) -band 255)); $ms.WriteByte([byte](($c -shr 8) -band 255)); $ms.WriteByte([byte]($c -band 255))
+                $prev = $c
+            }
+        }
+    }
+    if ($run -gt 0) { $ms.WriteByte([byte](191 + $run)) }
+    $ms.Write([byte[]](0, 0, 0, 0, 0, 0, 0, 1), 0, 8)
+    return ,$ms.ToArray()
+}
+
 function Nuevo-Bico {
     param([string[]]$filas)
     $lado = 16
@@ -547,6 +601,8 @@ try {
     New-Item -ItemType Directory -Force $sysDst | Out-Null
     Copy-Item (Join-Path $repo 'Ultra_userspace\services\director\director.cfg') (Join-Path $sysDst 'director.cfg') -Force
     Write-Host '    [sys] director.cfg (el aspecto del escritorio)' -ForegroundColor DarkGray
+    [System.IO.File]::WriteAllBytes((Join-Path $sysDst 'fondo.qoi'), (Nuevo-Fondo))
+    Write-Host '    [sys] fondo.qoi (480x270, la foto del escritorio)' -ForegroundColor DarkGray
 
     # -- Meter los datos DENTRO del .bex ---------------------------
     #

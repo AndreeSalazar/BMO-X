@@ -32,6 +32,7 @@ pub(crate) const POR_DEFECTO: Estilo = Estilo {
     vatios: true,
     memoria: true,
     cpu: true,
+    fondo_imagen: bmo_config::Ruta::VACIA,
 };
 
 pub(crate) const RUTA: &[u8] = b"sys/director.cfg";
@@ -88,5 +89,11 @@ pub(crate) fn contar_en(grid: &mut Output) {
     }
     if inf.recortado {
         grid.text(b"  (y mas lineas mal: solo se ensenan ocho)\n");
+    }
+    // La foto de fondo se pidio y no salio: se dice por que, y queda el degradado.
+    if let Some(m) = super::fondo::motivo() {
+        grid.text(b"  ");
+        grid.text(m.as_bytes());
+        grid.text(b" -- queda el degradado\n");
     }
 }

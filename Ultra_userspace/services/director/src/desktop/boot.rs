@@ -109,6 +109,9 @@ pub(crate) fn boot() -> (bmo::Pantalla, Option<bmo::Entrada>, &'static mut Deskt
     // ** EL ESTILO, antes del primer pixel del escritorio: el degradado y la
     // barra ya salen con lo que diga `sys/director.cfg` (2026-09-13).
     scene::estilo::cargar();
+    // ** Y LA FOTO DE FONDO, si `fondo_imagen` pide una: se descifra aqui, una
+    // vez, antes del primer pixel. Ver `scene::fondo`.
+    scene::fondo::cargar(&p);
     paint_background(&p);
     // ** LOS ICONOS, y se leen UNA VEZ.
     //

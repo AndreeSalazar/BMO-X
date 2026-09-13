@@ -35,6 +35,10 @@ pub(crate) mod nya;
 pub(crate) mod data;
 /// EL ESTILO leido de `sys/director.cfg` al arrancar (2026-09-13).
 pub(crate) mod estilo;
+/// La foto de fondo de `fondo_imagen`, para pintar y para restaurar.
+pub(crate) mod fondo;
+/// Los pictogramas de cada clase de fichero (app, imagen, audio, texto).
+pub(crate) mod pictos;
 /// LA BARRA: la pastilla flotante, su modelo de color y los widgets.
 pub(crate) mod barra;
 /// CON QUE SE ABRE CADA COSA: la tabla de tipos que leen el explorador y la
@@ -292,7 +296,11 @@ pub(crate) fn shadow(p: &bmo::Pantalla, x: u32, y: u32, w: u32, h: u32) {
 /// Vive aqui y no en quien pinta porque lo consultan DOS: el que dibuja el
 /// fondo y el que lo restaura al cerrar una ventana. Dos copias de un degradado
 /// es una franja que no cuadra justo donde estaba la ventana.
-pub(crate) fn background_at(y: u32, height: u32) -> u32 {
+pub(crate) fn background_at(x: u32, y: u32, height: u32) -> u32 {
+    // ** La FOTO de fondo manda sobre el degradado, si la hay. Ver `fondo`.
+    if let Some(c) = fondo::color(x, y) {
+        return c;
+    }
     if height == 0 {
         return BG;
     }
@@ -430,10 +438,11 @@ pub(crate) fn paint_background(p: &bmo::Pantalla) {
 
     // De ocho en ocho filas. A un pixel serian mil `rect` para una diferencia
     // que no se ve; a treinta y dos se notarian los escalones.
-    let mut y = 0;
+    // Con foto de fondo la pinta `fondo` entera, y el bucle ya no tiene filas.
+    let mut y = if fondo::pintar(p) { p.alto } else { 0 };
     while y < p.alto {
         let height = 8.min(p.alto - y);
-        p.rect(0, y, p.ancho, height, background_at(y, p.alto));
+        p.rect(0, y, p.ancho, height, background_at(0, y, p.alto));
         y += height;
     }
     // ** LA BARRA la pinta `barra`, que es tambien quien contesta por su color
@@ -695,7 +704,7 @@ pub(crate) fn scene_color(c: &RunBox, visible: bool, x: u32, y: u32, height: u32
         }
         return BOX_BG;
     }
-    background_at(y, height)
+    background_at(x, y, height)
 }
 
 

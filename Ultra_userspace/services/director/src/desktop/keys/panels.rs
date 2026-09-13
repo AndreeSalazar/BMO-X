@@ -209,7 +209,9 @@ if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
         let (repinta, cierra) = match c {
             // ESC vuelve a la rejilla. Es la misma tecla que devuelve las
             // teclas en la consola: salir de donde estas, sin cerrar nada.
-            0x1B => (true, true),
+            // RETROCESO tambien (2026-09-13): abriste una foto desde la
+            // biblioteca y quieres volver a la lista, no borrar nada.
+            0x1B | 0x08 => (true, true),
             0x80 => (dsk.win.data.visor.mover(-1, caben), false),
             0x81 => (dsk.win.data.visor.mover(1, caben), false),
             0x87 => (dsk.win.data.visor.mover(-(caben as isize), caben), false),
@@ -346,6 +348,11 @@ if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
                 }
                 b'0' => dsk.win.data.bib_filtrar(None),
                 b'r' | b'R' => dsk.win.data.bib_entrar(),
+                // RETROCESO: vuelve al explorador, donde estabas. Eddi: *"cuando
+                // entro me gustaria retroceder"*. En la biblioteca no hay nada
+                // que borrar, asi que la tecla significa lo que en el explorador:
+                // subir un nivel.
+                0x08 => dsk.win.data.view = View::Obra,
                 _ => match Clase::VISIBLES.iter().find(|k| k.tecla() == c.to_ascii_uppercase()) {
                     Some(&k) => dsk.win.data.bib_filtrar(Some(k)),
                     None => served = false,

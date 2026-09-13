@@ -294,18 +294,10 @@ fn realzar(p: &bmo::Pantalla, x: u32, y: u32, w: u32, h: u32) {
     rounded_rect(p, x + 1, y + 1, w - 2, h - 2, SEL_FONDO);
 }
 
-/// La letra del icono de una clase.
-fn letra(c: Clase) -> u8 {
-    c.tecla()
-}
-
-fn icono(p: &bmo::Pantalla, x: u32, y: u32, lado: u32, c: Clase, escala: u32) {
-    p.rect(x, y, lado, lado, c.color());
-    let l = [letra(c)];
-    let s = core::str::from_utf8(&l).unwrap_or("?");
-    let gx = x + (lado - bmo::GLIFO_ANCHO * escala) / 2;
-    let gy = y + (lado - bmo::GLIFO_ALTO * escala) / 2;
-    p.texto_escala(gx, gy, s, 0x0010_1418, escala);
+/// El icono de una clase: un DIBUJO desde el 2026-09-13, no una letra. Ver
+/// `scene::pictos`.
+fn icono(p: &bmo::Pantalla, x: u32, y: u32, lado: u32, c: Clase) {
+    crate::scene::pictos::dibujar(p, x, y, lado, c);
 }
 
 fn lado(p: &bmo::Pantalla, z: &Zona) {
@@ -348,7 +340,7 @@ fn vista(p: &bmo::Pantalla, z: &Zona, sel: usize) {
     };
     let x = z.x + 20;
     let mut y = z.y + 24;
-    icono(p, x, y, 64, it.clase, 3);
+    icono(p, x, y, 64, it.clase);
     y += 64 + 18;
     let nombre = &it.ruta[it.nombre as usize..it.largo as usize];
     let nombre_s = core::str::from_utf8(nombre).unwrap_or("?");
@@ -418,7 +410,7 @@ fn lista(p: &bmo::Pantalla, z: &Zona, from: usize, sel: usize, caben: usize) {
         if k == sel {
             realzar(p, z.x + 6, y + 2, ancho, FILA - 4);
         }
-        icono(p, z.x + 16, y + 7, 20, it.clase, 1);
+        icono(p, z.x + 16, y + 7, 20, it.clase);
         let ty = y + (FILA - bmo::GLIFO_ALTO) / 2;
         // Derecha: el tamano; delante, la carpeta. Lo que no cabe se come la
         // carpeta, nunca el nombre.

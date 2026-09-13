@@ -44,6 +44,42 @@ pub struct Estilo {
     pub vatios: bool,
     pub memoria: bool,
     pub cpu: bool,
+    /// Una FOTO de fondo (BICO, BMP o QOI) que tapa el degradado. Vacia = el
+    /// degradado de siempre.
+    pub fondo_imagen: Ruta,
+}
+
+/// Lo mas larga que puede ser una ruta del fichero.
+pub const RUTA_MAX: usize = 40;
+
+/// Una ruta corta y sin espacios. Sin montones: el DIRECTOR es `no_std`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Ruta {
+    b: [u8; RUTA_MAX],
+    n: u8,
+}
+
+impl Ruta {
+    pub const VACIA: Self = Self { b: [0; RUTA_MAX], n: 0 };
+
+    pub fn vacia(&self) -> bool {
+        self.n == 0
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        &self.b[..self.n as usize]
+    }
+
+    /// `None` si es demasiado larga o lleva algo que no es ASCII visible.
+    pub fn de(v: &[u8]) -> Option<Self> {
+        if v.len() > RUTA_MAX || v.iter().any(|&c| c <= b' ' || c >= 0x7F) {
+            return None;
+        }
+        let mut r = Self::VACIA;
+        r.b[..v.len()].copy_from_slice(v);
+        r.n = v.len() as u8;
+        Some(r)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -60,6 +96,8 @@ pub enum Motivo {
     FueraDeRango,
     /// Se esperaba `si` o `no`.
     SiNo,
+    /// Una ruta de mas de `RUTA_MAX` o con caracteres raros.
+    Ruta,
 }
 
 impl Motivo {
@@ -71,6 +109,7 @@ impl Motivo {
             Motivo::Numero => "ahi va un numero",
             Motivo::FueraDeRango => "numero fuera de su rango",
             Motivo::SiNo => "ahi va `si` o `no`",
+            Motivo::Ruta => "una ruta va sin espacios y con 40 letras como mucho",
         }
     }
 }
@@ -247,6 +286,9 @@ impl Estilo {
         w.si_no(b"memoria", self.memoria);
         w.si_no(b"vatios", self.vatios);
         w.si_no(b"reloj", self.reloj);
+        w.pega(b"fondo_imagen = ");
+        w.pega(if self.fondo_imagen.vacia() { b"no" } else { self.fondo_imagen.bytes() });
+        w.pega(b"\n");
         w.n
     }
 
@@ -271,6 +313,11 @@ impl Estilo {
             b"vatios" => self.vatios = sn()?,
             b"memoria" => self.memoria = sn()?,
             b"cpu" => self.cpu = sn()?,
+            // `no` devuelve el degradado: es la forma de quitar la foto sin
+            // borrar la linea.
+            b"fondo_imagen" => {
+                self.fondo_imagen = if v == b"no" { Ruta::VACIA } else { Ruta::de(v).ok_or(Motivo::Ruta)? }
+            }
             _ => return Err(Motivo::ClaveDesconocida),
         }
         Ok(())
@@ -293,7 +340,24 @@ mod pruebas {
         vatios: true,
         memoria: true,
         cpu: true,
+        fondo_imagen: Ruta::VACIA,
     };
+
+    #[test]
+    fn la_foto_de_fondo_se_pone_y_se_quita() {
+        let mut e = BASE;
+        let inf = e.aplicar(b"fondo_imagen = sys/fondo.qoi   # la del atardecer\n");
+        assert_eq!(inf.fallos(), &[]);
+        assert_eq!(e.fondo_imagen.bytes(), b"sys/fondo.qoi");
+        e.aplicar(b"fondo_imagen = no\n");
+        assert!(e.fondo_imagen.vacia());
+        let largo = [b'a'; RUTA_MAX + 1];
+        let mut linea = b"fondo_imagen = ".to_vec();
+        linea.extend_from_slice(&largo);
+        let inf = e.aplicar(&linea);
+        assert_eq!(inf.fallos()[0].motivo, Motivo::Ruta);
+        assert!(e.fondo_imagen.vacia(), "una ruta mala no pisa la que habia");
+    }
 
     #[test]
     fn un_fichero_bueno_se_aplica_entero() {
@@ -379,13 +443,14 @@ mod pruebas {
         e.barra_flotante = false;
         e.barra_hueco = 11;
         e.vatios = false;
+        e.fondo_imagen = Ruta::de(b"sys/fondo.qoi").unwrap();
         let mut buf = [0u8; 1024];
         let n = e.escribir(&mut buf);
         let mut leido = Estilo { acento: 0, barra_hueco: 0, ..BASE };
         let inf = leido.aplicar(&buf[..n]);
         assert_eq!(inf.fallos(), &[], "{}", String::from_utf8_lossy(&buf[..n]));
         assert_eq!(leido, e);
-        assert_eq!(inf.aplicadas, 11, "las once claves, todas");
+        assert_eq!(inf.aplicadas, 12, "las doce claves, todas");
     }
 
     #[test]

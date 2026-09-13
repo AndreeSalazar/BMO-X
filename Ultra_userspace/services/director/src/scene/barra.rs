@@ -96,7 +96,7 @@ pub(crate) fn color_en(x: u32, y: u32, alto: u32) -> u32 {
     }
     let (bx, by, bw, bh) = caja();
     if !inside_rounded(x, y, bx, by, bw, bh) {
-        return background_at(y, alto);
+        return background_at(x, y, alto);
     }
     if !inside_rounded(x, y, bx + 1, by + 1, bw - 2, bh - 2) {
         return e.barra_borde;
