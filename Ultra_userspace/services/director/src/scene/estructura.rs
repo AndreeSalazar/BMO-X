@@ -54,7 +54,7 @@ const EST_MIN_W: u32 = 640;
 const EST_MIN_H: u32 = 320;
 
 const EST_BG: u32 = 0x0014_0E1A;
-const EST_TITLE_BG: u32 = 0x0020_1630;
+pub(crate) const EST_TITLE_BG: u32 = 0x0020_1630;
 const EST_EDGE: u32 = 0x0044_2E60;
 const EST_TITLE: u32 = 0x00C0_7FD8;
 

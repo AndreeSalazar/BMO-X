@@ -92,11 +92,9 @@ pub(crate) fn on_pointer(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Golpe) -> boo
         // lineas mas abajo. Dos ventanas con el mismo cromo y solo una tenia el
         // arreglo -- que es la regla que este arbol lleva repitiendo toda la
         // semana en otros sitios.
-        let hover_now = dsk.win.data.chrome.button_at(pos.x, pos.y);
-        if hover_now != dsk.win.data.chrome.hover {
-            dsk.win.data.chrome.hover = hover_now;
-            dsk.win.data.chrome.paint_buttons(&p, scene::data::DATA_TITLE_BG);
-        }
+        // ** Y DESDE EL 2026-09-13 EL REALCE NO VIVE AQUI: vive en
+        // `mouse::realce`, que sabe que ventana esta ARRIBA. Esta copia pintaba
+        // los botones aunque otra ventana los tapara.
 
         if button && !dsk.tick.button_before {
             // Un boton se dispara al PULSAR y no al soltar. Es lo que
@@ -160,10 +158,16 @@ pub(crate) fn on_pointer(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Golpe) -> boo
                     // es justo lo que un panel de arbol compra sobre la miga de
                     // pan.
                     let z = scene::zonas::Zonas::repartir(&dsk.win.data.chrome, dsk.win.data.consola.abierta);
-                    // ** LA BIBLIOTECA: un clic elige la tarjeta, dos la abren.
-                    if let Some(k) = dsk.win.data.bib_en(pos.x, pos.y) {
-                        if dsk.win.data.bib_clic(k) {
-                            dsk.win.data.bib_abrir();
+                    // ** LA BIBLIOTECA: un clic en una categoria filtra; en la
+                    // lista, uno elige la fila y dos la abren.
+                    if let Some(golpe) = dsk.win.data.bib_en(pos.x, pos.y) {
+                        match golpe {
+                            scene::data::biblioteca::Golpe::Categoria(c) => dsk.win.data.bib_filtrar(c),
+                            scene::data::biblioteca::Golpe::Fila(k) => {
+                                if dsk.win.data.bib_clic(k) {
+                                    dsk.win.data.bib_abrir();
+                                }
+                            }
                         }
                         scene::data::paint(&p, &dsk.win.data);
                         dsk.win.top_before = Ventana::Data;

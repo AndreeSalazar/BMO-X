@@ -329,17 +329,18 @@ if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
                 }
             }
         }
-        // ** LA BIBLIOTECA: flechas por la rejilla, ENTRAR abre, letras filtran.
+        // ** LA BIBLIOTECA: arriba/abajo por la lista, izquierda/derecha por las
+        // categorias, ENTRAR abre, letras filtran.
         _ if dsk.win.data.view == View::Biblioteca => {
             use crate::scene::asociaciones::Clase;
-            let cols = dsk.win.data.bib_cols() as isize;
+            let pagina = dsk.win.data.bib_filas() as isize;
             match c {
-                0x82 => dsk.win.data.bib_mover(-1),
-                0x83 => dsk.win.data.bib_mover(1),
-                0x80 => dsk.win.data.bib_mover(-cols),
-                0x81 => dsk.win.data.bib_mover(cols),
-                0x87 => dsk.win.data.bib_mover(-cols * 3),
-                0x88 => dsk.win.data.bib_mover(cols * 3),
+                0x82 => dsk.win.data.bib_categoria(-1),
+                0x83 => dsk.win.data.bib_categoria(1),
+                0x80 => dsk.win.data.bib_mover(-1),
+                0x81 => dsk.win.data.bib_mover(1),
+                0x87 => dsk.win.data.bib_mover(-pagina),
+                0x88 => dsk.win.data.bib_mover(pagina),
                 b'\r' | b'\n' => {
                     dsk.win.data.bib_abrir();
                 }

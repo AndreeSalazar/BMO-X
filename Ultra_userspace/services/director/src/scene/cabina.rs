@@ -56,7 +56,7 @@ const CAB_MIN_H: u32 = 260;
 // era lo que mas cansaba de mirar en la version anterior de esta ventana, y ya
 // se rebajo una vez: la leccion esta pagada.
 const CAB_BG: u32 = 0x0007_0B0E;
-const CAB_TITLE_BG: u32 = 0x000D_1519;
+pub(crate) const CAB_TITLE_BG: u32 = 0x000D_1519;
 const CAB_EDGE: u32 = 0x0019_3038;
 const CYAN: u32 = 0x0034_E2E4;
 const CYAN_DIM: u32 = 0x0017_6E70;

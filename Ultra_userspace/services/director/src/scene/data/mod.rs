@@ -472,8 +472,17 @@ impl DataWindow {
         self.aviso = None;
     }
 
-    pub(crate) fn bib_cols(&self) -> usize {
-        biblioteca::rejilla(&self.bib_zona()).cols
+    /// Cuantas filas se ven: lo que salta RePag/AvPag.
+    pub(crate) fn bib_filas(&self) -> usize {
+        biblioteca::filas(&self.bib_zona())
+    }
+
+    /// La categoria de al lado (izquierda/derecha), dando la vuelta.
+    pub(crate) fn bib_categoria(&mut self, delta: isize) {
+        let cats = &biblioteca::CATEGORIAS;
+        let i = cats.iter().position(|c| *c == biblioteca::filtro()).unwrap_or(0) as isize;
+        let n = cats.len() as isize;
+        self.bib_filtrar(cats[((i + delta) % n + n) as usize % n as usize]);
     }
 
     /// Mueve la eleccion y arrastra la ventana de filas con ella.
@@ -486,12 +495,11 @@ impl DataWindow {
             return;
         }
         self.bib_sel = (self.bib_sel as isize + delta).clamp(0, total as isize - 1) as usize;
-        let r = biblioteca::rejilla(&self.bib_zona());
-        let fila = self.bib_sel / r.cols;
-        if fila < self.bib_from {
-            self.bib_from = fila;
-        } else if fila >= self.bib_from + r.filas {
-            self.bib_from = fila + 1 - r.filas;
+        let filas = self.bib_filas();
+        if self.bib_sel < self.bib_from {
+            self.bib_from = self.bib_sel;
+        } else if self.bib_sel >= self.bib_from + filas {
+            self.bib_from = self.bib_sel + 1 - filas;
         }
     }
 
@@ -502,7 +510,7 @@ impl DataWindow {
         self.aviso = None;
     }
 
-    pub(crate) fn bib_en(&self, px: u32, py: u32) -> Option<usize> {
+    pub(crate) fn bib_en(&self, px: u32, py: u32) -> Option<biblioteca::Golpe> {
         if self.view != View::Biblioteca || self.chrome.minimized || self.visor.abierto {
             return None;
         }

@@ -55,7 +55,7 @@ const SND_MIN_H: u32 = 300;
 // El ambar es de esta ventana igual que el azul es del kernel y el verde de
 // ESTRATOS: el color dice cual es antes de leer el titulo.
 const SND_BG: u32 = 0x0018_1105;
-const SND_TITLE_BG: u32 = 0x0026_1A08;
+pub(crate) const SND_TITLE_BG: u32 = 0x0026_1A08;
 const SND_EDGE: u32 = 0x004A_3418;
 const SND_TITLE: u32 = 0x00F0_A860;
 const SND_BAR: u32 = 0x00D8_8C3A;

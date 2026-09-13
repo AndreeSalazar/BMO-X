@@ -92,11 +92,8 @@ pub(crate) fn on_pointer(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Golpe) {
     if dsk.win.visible {
         use scene::chrome::Button;
 
-        let hover_now = dsk.run_box.chrome.button_at(pos.x, pos.y);
-        if hover_now != dsk.run_box.chrome.hover {
-            dsk.run_box.chrome.hover = hover_now;
-            dsk.run_box.chrome.paint_buttons(&p, scene::BOX_TITLE);
-        }
+        // El realce de los botones vive en `mouse::realce` (2026-09-13): esta
+        // copia los pintaba aunque el F12 o CABINA estuvieran encima.
 
         if button && !dsk.tick.button_before {
             match dsk.run_box.chrome.button_at(pos.x, pos.y) {

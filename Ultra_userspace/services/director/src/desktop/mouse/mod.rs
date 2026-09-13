@@ -67,6 +67,8 @@ pub(crate) mod ventanas;
 pub(crate) mod apps;
 /// Las fichas de la barra de tareas.
 pub(crate) mod barra;
+/// El realce de cerrar/minimizar/maximizar, UNA vez y con el Z-order.
+pub(crate) mod realce;
 
 /// **Lo que una vuelta del puntero sabe antes de repartirla.**
 ///
@@ -318,6 +320,10 @@ fn repartir(
         }
     }
 
+
+    // ** EL REALCE DE LOS BOTONES, antes de repartir el clic y para TODAS las
+    // ventanas a la vez: la de arriba o la app de debajo, nunca una tapada.
+    realce::actualizar(dsk, p, under_pointer, pos.x, pos.y);
 
     if datos::on_pointer(dsk, p, &g) {
         return;
