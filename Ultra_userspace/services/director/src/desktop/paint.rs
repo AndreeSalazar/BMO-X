@@ -57,6 +57,62 @@ fn repintar_apps_encima(dsk: &mut Desktop) {
     }
 }
 
+/// **Devuelve las ventanas del sistema que un borrado destapo** (2026-09-13).
+///
+/// Visto en el Ryzen: mover el cubo por encima de la biblioteca dejaba la FOTO
+/// de fondo donde estaba la lista. Ver `scene::dano`, que es quien apunta.
+///
+/// El orden es el Z-order: primero las ventanas que NO estan arriba, despues
+/// la de arriba, y las apps se recomponen al final porque van encima de todas.
+fn devolver(dsk: &mut Desktop, p: &bmo::Pantalla) {
+    if !scene::dano::hay() {
+        return;
+    }
+    let toca = |dsk: &Desktop, v: Ventana| -> bool {
+        let caja = |c: &scene::chrome::Chrome| !c.minimized && scene::dano::toca(c.x, c.y, c.width, c.height);
+        match v {
+            Ventana::Data => dsk.win.data_open && caja(&dsk.win.data.chrome),
+            Ventana::Cabina => dsk.win.cabina_open && caja(&dsk.win.cabina.chrome),
+            Ventana::Sound => dsk.win.sound_open && caja(&dsk.win.sound.chrome),
+            Ventana::Estructura => dsk.win.estructura_open && caja(&dsk.win.estructura.chrome),
+            Ventana::Run => {
+                dsk.win.visible
+                    && scene::dano::toca(dsk.run_box.x, dsk.run_box.y, dsk.run_box.w(), dsk.run_box.h())
+            }
+            // Las vitales se repintan solas cada 15 vueltas; las apps, abajo.
+            _ => false,
+        }
+    };
+    let pintar = |dsk: &mut Desktop, v: Ventana| match v {
+        Ventana::Data => scene::data::paint(p, &dsk.win.data),
+        Ventana::Cabina => scene::cabina::paint(p, &dsk.win.cabina),
+        Ventana::Sound => scene::sound::paint(
+            p, &dsk.win.sound, dsk.snd.cap.is_some(), dsk.snd.devices, dsk.snd.volume, dsk.snd.pressed,
+        ),
+        Ventana::Estructura => scene::estructura::paint(p, &dsk.win.estructura),
+        Ventana::Run => uncover(p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field),
+        _ => {}
+    };
+    let top = dsk.win.top_before;
+    let mut algo = false;
+    for v in Ventana::TODAS {
+        if v != top && toca(dsk, v) {
+            pintar(dsk, v);
+            algo = true;
+        }
+    }
+    if toca(dsk, top) {
+        pintar(dsk, top);
+        algo = true;
+    }
+    if algo {
+        for s in dsk.table.iter_mut() {
+            s.repaint_all();
+        }
+    }
+    scene::dano::olvidar();
+}
+
 /// Everything that happens after the input has been read and understood.
 pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
     // Aqui y no antes: `will_paint` no es definitivo hasta que la recogida de
@@ -355,6 +411,10 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
     //
     // El hueco de las que murieron se devuelve ANTES de componer las vivas:
     // borrar despues taparia a una ventana que si esta.
+    // Un borrado de esta vuelta obliga a pintar: lo destapado se devuelve abajo.
+    if scene::dano::hay() {
+        dsk.tick.will_paint = true;
+    }
     if dsk.tick.will_paint {
         for &(vx, vy, va, vl) in dsk.tick.dead_boxes[..dead].iter() {
             erase_window(&p, &dsk.run_box, vx, vy, va, vl, dsk.win.visible);
@@ -367,6 +427,7 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
                 s.repaint_all();
             }
         }
+        devolver(dsk, p);
         dsk.table.compose(&p);
     }
 

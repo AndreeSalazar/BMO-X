@@ -37,6 +37,8 @@ pub(crate) mod data;
 pub(crate) mod estilo;
 /// La foto de fondo de `fondo_imagen`, para pintar y para restaurar.
 pub(crate) mod fondo;
+/// Lo que un borrado destapo, para que el cierre del fotograma lo devuelva.
+pub(crate) mod dano;
 /// Los pictogramas de cada clase de fichero (app, imagen, audio, texto).
 pub(crate) mod pictos;
 /// LA BARRA: la pastilla flotante, su modelo de color y los widgets.
@@ -900,6 +902,9 @@ pub(crate) fn erase_window(
     // por abajo no hay que comprobarlo aqui.
     let height = height + SHADOW_BOTTOM;
     let width = width + SHADOW_RIGHT;
+    // Lo que se borra se APUNTA: las ventanas de debajo las devuelve el cierre
+    // del fotograma (`dano`), porque `scene_color` no las conoce.
+    dano::apuntar(x0, y0, width, height);
     for row in 0..height {
         for col in 0..width {
             let (x, y) = (x0 + col, y0 + row);
@@ -973,6 +978,8 @@ pub(crate) fn erase_moved(
         if tira.vacio() {
             continue;
         }
+        dano::apuntar(tira.x0.max(0) as u32, tira.y0.max(0) as u32,
+            (tira.x1 - tira.x0).max(0) as u32, (tira.y1 - tira.y0).max(0) as u32);
         // *** ESTE ES EL QUE CORRE POR CADA MOVIMIENTO DEL RATON, y por eso era
         // el que se notaba: arrastrar una ventana dispara este bucle hasta 250
         // veces por segundo --el ritmo del bus USB-- y cada pixel pagaba 272
