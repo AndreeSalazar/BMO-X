@@ -593,8 +593,16 @@ int main() {
 
     report("3. puerta pelada", best, total);
     report_split(doors, cycles, dguarda, drestaura, best / BATCH);
-    if (doors > 0) {
+    /* ** SIN METRO NO HAY JUICIO, y no es ROTO (2026-09-13).
+     *
+     * El Ryzen imprimio las dos lineas seguidas: "reparto: NO MEDIDO -- el metro
+     * esta retirado" y debajo "dispatch [ROTO] medida en cero". La segunda
+     * contradecia a la primera: nada esta roto, el metro no va en este kernel a
+     * proposito. ROTO se queda para un cero que NO se explica. */
+    if (doors > 0 && cycles > 0) {
         veredicto("dispatch", cycles / doors, BMO_INFO_PRESUPUESTO_DISPATCH);
+    } else if (doors > 0) {
+        printf("   dispatch [-] sin veredicto: el metro no va en este kernel\n");
     }
     veredicto("puerta ", best / BATCH, BMO_INFO_PRESUPUESTO_PUERTA);
     sobre_el_suelo(best / BATCH);

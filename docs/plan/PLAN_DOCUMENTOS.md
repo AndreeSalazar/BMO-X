@@ -297,7 +297,7 @@ codigo fuente, dentro del repo.
 > dueno lo VE.**
 
 No es una ley nueva; es la misma cruzando la frontera del artefacto. Y el
-precedente de como se hace ya existe: **`.ibex`**. Ese nombre no dice lo que el
+precedente de como se hace ya existe: **`.ibx`**. Ese nombre no dice lo que el
 programa hace -- dice que **se comprometio**, y lo declara dentro (su perfil, sus
 piezas, su mesa de katanas), de forma que un guardian puede desmentirlo. *"El
 MISMO formato, con un nombre que dice a que se ha comprometido."*

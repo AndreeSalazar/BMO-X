@@ -3,7 +3,7 @@
 //! ## Que se prueba aqui
 //!
 //! Que una `constante` cuyo valor es una lista de literales acaba en la seccion
-//! `RoData = 0x02` del `.ibex`, con sus bytes, y que el codigo llega a ella por
+//! `RoData = 0x02` del `.ibx`, con sus bytes, y que el codigo llega a ella por
 //! una reubicacion `SeccionAbs64` -- **no por una direccion inventada al
 //! emitir**, que no se puede saber hasta que el cargador la coloque.
 //!
@@ -44,7 +44,7 @@ fn compila(fuente_texto: &str, nombre: &str) -> Vec<u8> {
         String::from_utf8_lossy(&s.stdout),
         String::from_utf8_lossy(&s.stderr)
     );
-    std::fs::read(f.with_extension("ibex")).expect("no hay `.ibex`")
+    std::fs::read(f.with_extension("ibx")).expect("no hay `.ibx`")
 }
 
 const PRIMOS: &str = "\
@@ -75,7 +75,7 @@ fn u64_en(b: &[u8], i: usize) -> u64 {
 fn una_tabla_constante_acaba_en_rodata() {
     let bex = compila(PRIMOS, "primos");
     let rodata = paquete::seccion(&bex, SectionKind::RoData)
-        .expect("el `.ibex` no trae seccion RoData");
+        .expect("el `.ibx` no trae seccion RoData");
 
     assert_eq!(rodata.len(), 8 * 8, "ocho primos de ocho bytes");
     let leidos: Vec<u64> = (0..8).map(|i| u64_en(rodata, i * 8)).collect();
@@ -96,7 +96,7 @@ fn una_tabla_constante_acaba_en_rodata() {
 fn el_codigo_apunta_a_la_tabla_con_una_reubicacion() {
     let bex = compila(PRIMOS, "reloc");
     let relocs = paquete::seccion(&bex, SectionKind::Relocs)
-        .expect("el `.ibex` no trae seccion Relocs");
+        .expect("el `.ibx` no trae seccion Relocs");
     let codigo = paquete::seccion(&bex, SectionKind::Code).expect("sin Code");
 
     assert_eq!(relocs.len(), 24, "una sola reubicacion, de 24 bytes");
@@ -165,7 +165,7 @@ funcion principal devuelve entero32
     assert!(destinos.iter().all(|d| d % 8 == 0), "alineadas a ocho");
 }
 
-/// **Y el gate lo acepta**: un `.ibex` con RoData y reubicaciones sigue pasando.
+/// **Y el gate lo acepta**: un `.ibx` con RoData y reubicaciones sigue pasando.
 ///
 /// ** No es obvio: `validate_reloc_section` comprueba que cada reubicacion caiga
 /// dentro de su seccion, y una mal escrita rechazaria el fichero. Que pase
@@ -234,7 +234,7 @@ funcion principal devuelve entero32
     devuelve entero32(byte_de(0))
 ";
 
-/// ***EL LITERAL DE TEXTO LLEGA AL `.ibex` CON SU CABECERA DE OBJETO.***
+/// ***EL LITERAL DE TEXTO LLEGA AL `.ibx` CON SU CABECERA DE OBJETO.***
 ///
 /// Y no cuesta nada: la seccion 10.2 del maestro dice que un literal esta
 /// CONGELADO --*"inmortal. Nadie lo cambia, nadie cuenta sus referencias"*--

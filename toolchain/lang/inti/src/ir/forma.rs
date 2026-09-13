@@ -454,7 +454,7 @@ pub struct FuncionIr {
 ///
 /// Los bytes van a `SectionKind::RoData = 0x02` del `.bex`, y el codigo llega a
 /// ellos por una reubicacion -- **no van dentro de la seccion de codigo**. Meter
-/// datos ahi romperia el barrido lineal, que es lo que hace que un `.ibex` se
+/// datos ahi romperia el barrido lineal, que es lo que hace que un `.ibx` se
 /// pueda recorrer entero y es la exclusividad tecnica de INTI.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Congelado {

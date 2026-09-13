@@ -75,6 +75,46 @@ pub(crate) fn campo(s: &mut Output, name: &[u8]) {
     }
 }
 
+/// **La nota de una fila, partida por PALABRAS y con sangria.**
+///
+/// ** Existe por el volcado del Ryzen del 2026-09-13, que salio asi:
+///
+/// ```text
+///    en pie                  1 hilos   [#---] 8%
+///    en puertas           8712 t/vueltaCOMO MUCHO: trafico x el techo de puerta del perfi
+/// l de esta maquina
+/// ```
+///
+/// Dos fallos del mismo sitio: una unidad de ocho letras se pegaba a la nota
+/// (el relleno era `8 - largo`, o sea cero), y la rejilla parte en la columna 88
+/// sin mirar palabras -- `perfi` / `l`, y la continuacion en la columna 0,
+/// debajo de los NOMBRES, donde se lee como una fila nueva.
+///
+/// La pieza: SIEMPRE un espacio antes, y si la palabra no cabe, sigue en la
+/// linea de abajo a la altura de la nota. Una palabra mas larga que la columna
+/// entera se deja partir: no hay nada mejor que hacer con ella.
+fn nota_partida(s: &mut Output, nota: &[u8]) {
+    use crate::scene::OUT_COLS;
+    s.byte(b' ');
+    let sangria = s.col.min(OUT_COLS / 2);
+    s.with_ink(INK_ECHO);
+    for (i, palabra) in nota.split(|&c| c == b' ').enumerate() {
+        if i > 0 {
+            let cabe = s.col + 1 + palabra.len() <= OUT_COLS;
+            if !cabe && palabra.len() <= OUT_COLS - sangria {
+                s.byte(b'\n');
+                for _ in 0..sangria {
+                    s.byte(b' ');
+                }
+            } else {
+                s.byte(b' ');
+            }
+        }
+        s.text(palabra);
+    }
+    s.with_ink(INK_PLAIN);
+}
+
 /// Una fila de la tabla de consumo: `que`, el valor a la DERECHA, y la unidad.
 ///
 /// Las tres columnas van a ancho fijo porque una tabla en la que los numeros no
@@ -94,9 +134,7 @@ pub(crate) fn fila(s: &mut Output, que: &[u8], valor: u64, unidad: &[u8], nota: 
         for _ in unidad.len()..8 {
             s.byte(b' ');
         }
-        s.with_ink(INK_ECHO);
-        s.text(nota);
-        s.with_ink(INK_PLAIN);
+        nota_partida(s, nota);
     }
     s.byte(b'\n');
 }
@@ -125,10 +163,8 @@ pub(crate) fn fila_de(s: &mut Output, que: &[u8], valor: u64, total: u64, nota: 
     s.text(b" de ");
     s.dec(total);
     if !nota.is_empty() {
-        s.text(b"   ");
-        s.with_ink(INK_ECHO);
-        s.text(nota);
-        s.with_ink(INK_PLAIN);
+        s.text(b"  ");
+        nota_partida(s, nota);
     }
     s.byte(b'\n');
 }
@@ -150,9 +186,7 @@ pub(crate) fn fila_mili(s: &mut Output, que: &[u8], milis: u64, unidad: &[u8], n
         for _ in unidad.len()..8 {
             s.byte(b' ');
         }
-        s.with_ink(INK_ECHO);
-        s.text(nota);
-        s.with_ink(INK_PLAIN);
+        nota_partida(s, nota);
     }
     s.byte(b'\n');
 }

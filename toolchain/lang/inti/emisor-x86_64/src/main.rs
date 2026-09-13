@@ -151,7 +151,7 @@ fn main() {
     //
     // ## Las manos desnudas del gate
     //
-    // Aqui ponia `eprintln!("aviso: ...")` y se seguia: el `.ibex` se escribia
+    // Aqui ponia `eprintln!("aviso: ...")` y se seguia: el `.ibx` se escribia
     // igual. Y eso deja pasar lo que ninguna tabla de tipos puede ver -- **una
     // llamada sin destino es un `call` a un simbolo que no existe**, o sea un
     // binario que carga, salta a la nada, y se lleva la maquina por delante.
@@ -176,7 +176,7 @@ fn main() {
         eprintln!(
             "   Un binario al que le falta algo no hace lo que dice su fuente, asi que"
         );
-        eprintln!("   no se escribe. Antes esto era un aviso y el `.ibex` salia igual.");
+        eprintln!("   no se escribe. Antes esto era un aviso y el `.ibx` salia igual.");
         eprintln!("no se ha escrito nada.");
         exit(1);
     }
@@ -214,24 +214,24 @@ fn main() {
         Err(e) => fin(&format!("el `.bex` no pasa el gate: {}", e)),
     };
 
-    // -- ** `.ibex`, Y NO ES UNA ETIQUETA -------------------------------------
+    // -- ** `.ibx`, Y NO ES UNA ETIQUETA -------------------------------------
     //
     // Es el NOMBRE DE UN VEREDICTO. Este fichero llega al disco solo si paso las
     // dos exigencias de `empaquetar`: declara lo que es (`Manifest 0x09`) y su
     // mesa de katanas cuadra con sus bytes (`Katanas 0x16`). Si alguna falla, no
-    // se escribe nada -- asi que un `.ibex` en un disco **ya paso el contrato**,
+    // se escribe nada -- asi que un `.ibx` en un disco **ya paso el contrato**,
     // y eso se puede afirmar sin abrir ninguna herramienta.
     //
-    // ** Por eso INTI escribe SIEMPRE `.ibex` y nunca `.bex`. Dos nombres para
+    // ** Por eso INTI escribe SIEMPRE `.ibx` y nunca `.bex`. Dos nombres para
     // lo mismo obligarian a preguntar cual es cual; uno solo no deja sitio a la
     // duda. `.bex` se queda para los demas lenguajes, que no firman este
     // contrato -- y no por ser peores, sino porque no emiten reglas y no tienen
     // nada que declarar aqui.
     //
-    // Y se llama `.ibex` y no `.i` a proposito: **el linaje se ve en el
+    // Y se llama `.ibx` y no `.i` a proposito: **el linaje se ve en el
     // nombre**. Es un BEX, se carga con el mismo cargador, lo lee el mismo gate.
     // Lo unico que anade es a que se ha comprometido.
-    let destino = salida.unwrap_or_else(|| Path::new(&ruta).with_extension("ibex"));
+    let destino = salida.unwrap_or_else(|| Path::new(&ruta).with_extension("ibx"));
     match std::fs::write(&destino, &bytes) {
         Ok(_) => println!(
             "ok: {} bytes -> {}{}",

@@ -240,11 +240,17 @@ pub(crate) fn report_consumo(s: &mut Output, t: &crate::desktop::Tick) {
     {
         let hz3 = bmo::info(bmo::INFO_TSC_HZ);
         let por_ms3 = if hz3 >= 1000 { hz3 / 1000 } else { 1 };
-        let reposo = bmo::info(bmo::INFO_BSP_TICKS_REPOSO);
-        let total = bmo::ciclos().max(1);
-        fila(s, b"bsp dormido", reposo / por_ms3, b"ms",
-             b"el nucleo principal, hondo (mwaitx), desde el arranque");
-        fila_barra(s, b"bsp reposo", reposo, total, b"");
+        // ** UNA FILA Y NO DOS, y en milisegundos las dos mitades (2026-09-13).
+        //
+        // El Ryzen imprimio `bsp dormido 73923 ms` y debajo `bsp reposo
+        // 273517055228 [###-] 79%`: un numero crudo de TSC sin unidad, y un
+        // porcentaje que no cuadraba con la fila de arriba (73.923 de 77.113 ms
+        // son un 96%). El denominador era `rdtsc`, que cuenta desde que se
+        // ENCENDIO la placa -- firmware y cargador incluidos. El tiempo del
+        // kernel es `INFO_TICKS`, a 1 kHz.
+        let reposo_ms = bmo::info(bmo::INFO_BSP_TICKS_REPOSO) / por_ms3;
+        let vivo_ms = bmo::info(bmo::INFO_TICKS).max(1);
+        fila_barra(s, b"bsp dormido", reposo_ms.min(vivo_ms), vivo_ms, b"ms");
         fila(s, b"bsp siestas", bmo::info(bmo::INFO_BSP_REPOSOS), b"",
              b"cuantas veces; ~1000/s en reposo = el tick lo despierta");
     }

@@ -124,7 +124,7 @@ fn ejecuta_en(fuente: &str, nombre: &str, a: u64, b: u64) -> u64 {
     // cero**: numeros al azar, con el codigo correcto.
     //
     // ** Ninguna prueba unitaria habia visto nunca una tabla de verdad. Las que
-    // existian miran los BYTES del `.ibex` --que es otra pregunta, y sigue
+    // existian miran los BYTES del `.ibx` --que es otra pregunta, y sigue
     // siendo suya-- y ninguna la EJECUTABA. Lo destapo el decimal: `POTENCIAS`
     // daba basura y el fichero estaba bien.
     //
@@ -834,7 +834,7 @@ funcion f devuelve entero32
 /// se tiraba con un `Decl::Constante { .. } => {}`.
 ///
 /// *** El nombre llegaba suelto al emisor, `carga` lo bajaba a un `zero_r32`, y
-/// salia un `.ibex` que compilaba limpio, pasaba el gate, salia FIRMADO **y
+/// salia un `.ibx` que compilaba limpio, pasaba el gate, salia FIRMADO **y
 /// devolvia cero**. Tres capas con la pieza puesta y ninguna que la construyera.
 #[test]
 fn una_constante_del_modulo_vale_lo_que_dice() {

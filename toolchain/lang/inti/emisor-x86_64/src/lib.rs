@@ -320,7 +320,7 @@ pub fn emitir_con(m: &ModuloIr, taller: &Taller) -> Emitido {
         //
         // *** La primera version les sumaba el inicio de la funcion y quedaban
         // apuntando mas alla del hueco. No lo canto ninguna prueba: lo canto
-        // mirar los bytes del `.ibex` y ver que ahi no habia ocho ceros. Es la
+        // mirar los bytes del `.ibx` y ver que ahi no habia ocho ceros. Es la
         // misma comprobacion que hacen las katanas, y por eso ellas nunca lo
         // tuvieron: usan `out.len()` tal cual desde el primer dia.
         salida.reubicaciones.extend(cuenta.reubicaciones.iter().copied());
@@ -665,14 +665,14 @@ fn mov_a_marco(out: &mut Vec<u8>, disp: i32, reg: u8) {
 /// ## Por que es una funcion y no diez lineas dentro de `empaquetar`
 ///
 /// Porque tiene DOS clientes y **los dos tienen que ver exactamente lo mismo**:
-/// el `.ibex` que se escribe al disco, y el banco de pruebas que ejecuta en el
+/// el `.ibx` que se escribe al disco, y el banco de pruebas que ejecuta en el
 /// emulador.
 ///
 /// *** Hasta el 2026-08-23 el banco NO tenia esto, y la consecuencia era peor de
 /// lo que parece: `ejecuta_en` corre el codigo crudo, sin secciones y sin
 /// reubicaciones, asi que **una tabla congelada se leia de la direccion cero**.
 /// Ninguna prueba unitaria habia visto nunca una tabla de verdad -- las que
-/// existian miraban los BYTES del `.ibex`, que es otra pregunta.
+/// existian miraban los BYTES del `.ibx`, que es otra pregunta.
 ///
 /// Lo destapo el decimal: `POTENCIAS` daba numeros al azar y el codigo estaba
 /// bien. Duplicar esta disposicion en el banco habria dado dos layouts que se
@@ -725,7 +725,7 @@ pub fn empaquetar(e: &Emitido, manifiesto: Option<&str>) -> Result<Vec<u8>, Stri
     //
     // Meterlas en `Code` habria sido mas corto: no harian falta reubicaciones y
     // la direccion se sabria al emitir. **Y habria roto el barrido lineal**, que
-    // es lo que hace que un `.ibex` se pueda recorrer de principio a fin -- la
+    // es lo que hace que un `.ibx` se pueda recorrer de principio a fin -- la
     // exclusividad tecnica de INTI, escrita en `barrido.rs`.
     //
     // Un binario de C mete datos entre las instrucciones y por eso no se puede
