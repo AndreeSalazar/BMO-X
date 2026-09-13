@@ -265,9 +265,24 @@ pub(crate) fn parse(line: &[u8]) -> Command<'_> {
     // una orden de BMO-X, asi que caerian en "no lo conozco" -- que es correcto
     // y no ensena nada. Que la respuesta llegue aqui cuesta un `contains` y
     // convierte un desconcierto en una explicacion.
-    const FROM_LINUX: [&[u8]; 14] = [
-        b"sudo", b"su", b"apt", b"apt-get", b"pacman", b"yay", b"dnf", b"yum",
-        b"snap", b"systemctl", b"chmod", b"chown", b"grep", b"man",
+    //
+    // ** Y ES UNA LISTA CON SUS BURLAS AL LADO (2026-09-12): cada verbo de aqui
+    // tiene respuesta propia en `scene::nya::burla`, o cae en la general.
+    // [!] Ninguno puede ser una orden de BMO-X: esta comprobacion va ANTES del
+    // `match`, asi que un verbo repetido aqui TAPARIA a la orden de verdad.
+    // Por eso no estan `ls`, `cat`, `clear` ni `w`.
+    const FROM_LINUX: &[&[u8]] = &[
+        b"sudo", b"su", b"doas",
+        b"apt", b"apt-get", b"pacman", b"yay", b"paru", b"dnf", b"yum", b"zypper",
+        b"emerge", b"snap", b"flatpak",
+        b"systemctl", b"service", b"journalctl",
+        b"chmod", b"chown", b"chgrp",
+        b"mount", b"umount", b"fdisk", b"mkfs", b"dd", b"lsblk",
+        b"kill", b"killall", b"ps", b"top", b"htop",
+        b"man", b"grep",
+        b"vim", b"vi", b"nano", b"emacs",
+        b"neofetch", b"fastfetch", b"uname",
+        b"bash", b"zsh", b"fish", b"sh",
     ];
     if FROM_LINUX.iter().any(|&x| x == verb) {
         return Command::NotLinux(verb);

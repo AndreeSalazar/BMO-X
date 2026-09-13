@@ -30,6 +30,8 @@ pub(crate) mod calc_gen;
 /// confesado en su propia cabecera. Ya no hay copia.
 pub(crate) mod tema_gen;
 pub(crate) mod switcher;
+/// El gato que sale cuando alguien teclea Linux aqui.
+pub(crate) mod nya;
 pub(crate) mod data;
 /// LA PESTANA `numeros`: como esta el almacen. Salio de `data.rs` por L6a, y
 /// el corte se eligio por nombres libres: no comparte nada con el explorador.

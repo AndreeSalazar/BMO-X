@@ -171,6 +171,9 @@ pub(crate) struct Windows {
     pub taskbar_dirty: bool,
     pub taskbar_state_before: (bool, Ventana, bool, bool, bool),
     pub switcher_painted: bool,
+    /// Si la ventanita del gato esta pintada. La borra quien la pinto: ver
+    /// `scene::nya`.
+    pub nya_painted: bool,
     pub alt_before: bool,
 }
 
@@ -197,6 +200,7 @@ impl Windows {
             taskbar_dirty: true,
             taskbar_state_before: (false, Ventana::Run, false, false, false),
             switcher_painted: false,
+            nya_painted: false,
             alt_before: false,
         }
     }

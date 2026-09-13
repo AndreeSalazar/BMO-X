@@ -190,7 +190,7 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         //
         // Y es ARRIBA, no ABIERTA: con Datos abierta pero detras, la
         // rejilla se ve y tiene que seguir escribiendose.
-        if dsk.win.visible && dsk.win.top_before != Ventana::Data && !dsk.win.switcher_painted {
+        if dsk.win.visible && dsk.win.top_before != Ventana::Data && !dsk.win.switcher_painted && !dsk.win.nya_painted {
             paint_output(&p, &dsk.run_box, &dsk.out.grid);
             dsk.out.grid.dirty = false;
             repintar_apps_encima(dsk);
@@ -293,7 +293,7 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         && !fs
         && dsk.win.visible
         && dsk.win.top_before != Ventana::Data
-        && !dsk.win.switcher_painted
+        && !dsk.win.switcher_painted && !dsk.win.nya_painted
     {
         paint_field(&p, &dsk.run_box, dsk.field.line(), dsk.field.cur, dsk.field.caret);
         repintar_apps_encima(dsk);
