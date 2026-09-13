@@ -2,11 +2,43 @@
 
 ![INTI](../../../docs/arte/inti.png)
 
-> **INTI** -- el sol en quechua. Extension `.inti`.
+> **INTI** -- el sol en quechua. Extension `.inti`, y sus binarios `.ibex`.
 >
-> 🟢 **De F0 a F2d en verde (2026-08-19).** El contrato, el lexico, la
-> gramatica, los perfiles, los nombres, la IR **y el emisor**: **216 pruebas**.
-> ★★ Una suma de INTI **compila, corre y da 7**, y su `.bex` pasa `bmo-verify`.
+> 🟢 **Corre en el Ryzen** (22-08: `cpu.inti` con las reglas atrapando en
+> silicio; 12-09: `pulso.inti` leyendo 4,52 GHz y 58 W en tiempo real).
+> **560 pruebas** en `bmo-inti-front` (276) + `bmo-inti-x86-64` (284), medidas
+> por `.\bmo.ps1` el 2026-09-12. El estado de las tres
+> frases que lo definen, con lo que falta, esta en [`ESTADO.md`](ESTADO.md).
+
+## ⭐ 2026-09-12 -- la primera HERRAMIENTA, y tres fallos del emisor que llevaban ahi desde siempre
+
+**`ejemplos/bico.inti`** convierte `datos/foto.bmp` y `datos/foto.qoi` a
+**BICO**, el formato que el escritorio pinta. Es el sitio donde INTI le gana a
+C: leer datos que escribio OTRO. Los fallos famosos de libpng/libjpeg son
+medidas mentirosas que desbordan un bufer; aqui toda medida del fichero se
+compara con lo que llego, la aritmetica atrapa en vez de dar la vuelta, y los
+unicos dos bloques `crudo` estan contados. `tests/bico.rs` le da ficheros
+buenos **y rotos** (cortados, con un alto de 60.000, comprimidos): un codigo, y
+ningun fichero de salida.
+
+Y escribir programas de verdad destapo tres fallos del emisor, **los tres
+mudos** --compilaban, corrian, y hacian otra cosa--:
+
+| fallo | desde | lo destapo | prueba |
+|---|---|---|---|
+| `y` / `o` no emitian nada: `a y b` devolvia `a` | siempre | `pulso.inti`, un cero en blanco | `pruebas/logica.rs` |
+| `espera_a` cruzaba por INVOKE: no dormia, giraba | siempre | `pulso.inti` quemando 1,5 W en el Ryzen | `marco::espera_a_cruza_por_wait...` |
+| una VARIABLE hacia `r8`/`r9`/`r10` rompia la instruccion | siempre | `bico.inti`, el emulador en `opcode 0xD0` | `tests/argumentos_altos.rs` |
+
+★ Los tres tienen la forma que este proyecto persigue: **lo que no se emite no
+se prueba**. `cpu.inti` corrio en metal sin tocar ninguno de los tres caminos.
+
+| programa | que hace | `run` |
+|---|---|---|
+| [`sondas/cpu.inti`](sondas/cpu.inti) | lo que el CPU le cuenta a Ring 3, y las reglas atrapando | `inti/cpu.ibex` |
+| [`sondas/pulso.inti`](sondas/pulso.inti) | ⭐ el perfil del kernel en tiempo real (MHz, mW, obreros) y **el NO del kernel con su motivo** | `inti/pulso.ibex` |
+| [`ejemplos/bico.inti`](ejemplos/bico.inti) | ⭐ BMP/QOI -> BICO, contra ficheros rotos | `inti/bico.ibex` |
+| [`ejemplos/png.inti`](ejemplos/png.inti) | escribe un PNG valido | -- |
 
 ## Que es, en una frase
 
@@ -168,9 +200,10 @@ Y [`sondas/LEEME.md`](sondas/LEEME.md) -- **lo que solo el metal puede
 contestar**: los programas que hay que llevar al Ryzen porque el emulador no
 puede dar su respuesta.
 
-⚠ El numero incomodo esta ahi y conviene leerlo antes que esta tabla:
-**ninguna linea de INTI ha corrido nunca en un procesador**, y el programa mas
-grande que ha compilado tiene **once lineas**.
+⚠ El numero incomodo, al dia (2026-09-12): INTI **ya corre en el Ryzen**
+(`cpu.inti`, `pulso.inti`), pero **`bico.inti` no ha corrido todavia en metal**
+-- solo en el emulador. Y los tres fallos de arriba dicen lo que vale un
+emulador verde: nada de lo que un programa no ejercita.
 
 ---
 

@@ -28,8 +28,9 @@ use super::*;
 /// el kernel. En Python `2 + 2` recorre el despacho de objetos; aqui son dos
 /// instrucciones y la puerta ni aparece en los bytes.
 ///
-/// Y no es una perogrullada: el maestro tiene un numero para esto --**969
-/// ciclos** cuesta cruzar la puerta contra **20** una llamada-- y toda la
+/// Y no es una perogrullada: el maestro tiene un numero para esto --**675
+/// ticks** cuesta cruzar la puerta (M0b, 09-09; eran 969 ciclos el 17-08)
+/// contra ~20 una llamada-- y toda la
 /// arquitectura del lenguaje se decidio con el delante. Este test es lo que
 /// impide que esa decision se erosione sin que nadie lo note.
 #[test]

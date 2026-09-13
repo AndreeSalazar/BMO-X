@@ -65,6 +65,17 @@ fn del_kernel(fichero: &str, nombre: &str) -> u64 {
 /// nombre en INTI, fichero del kernel, nombre en el kernel.
 const ESPEJO: &[(&str, &str, &str)] = &[
     ("op_info", "syscall/ops.rs", "TASK_OP_INFO"),
+    ("op_consola_escribir", "syscall/ops.rs", "TASK_OP_CONSOLE_WRITE"),
+    ("op_ruta", "syscall/ops.rs", "TASK_OP_RUTA"),
+    ("op_pedir_memoria", "syscall/ops.rs", "TASK_OP_MEMORIA_PEDIR"),
+    ("op_base_del_bloque", "obj/memory.rs", "MEM_OP_BASE"),
+    ("op_archivo_abrir", "syscall/ops.rs", "TASK_OP_ARCHIVO_ABRIR"),
+    ("op_archivo_crear", "syscall/ops.rs", "TASK_OP_ARCHIVO_CREAR"),
+    ("op_arch_tamano", "obj/file.rs", "ARCH_OP_TAMANO"),
+    ("op_arch_leer_en", "obj/file.rs", "ARCH_OP_LEER_EN"),
+    ("op_arch_escribir", "obj/file.rs", "ARCH_OP_ESCRIBIR"),
+    ("op_arch_escribir_de", "obj/file.rs", "ARCH_OP_ESCRIBIR_DE"),
+    ("op_arch_cerrar", "obj/file.rs", "ARCH_OP_CERRAR"),
     ("op_ofrecer", "syscall/ops.rs", "MEM_OP_OFRECER"),
     ("op_tomar", "syscall/ops.rs", "TASK_OP_TOMAR"),
     ("op_mi_padre", "syscall/ops.rs", "TASK_OP_MI_PADRE"),

@@ -34,8 +34,11 @@ primero que no le debe nada a nadie.
 
 Lo que se hereda de `PYTHON_MAESTRO.md` y no se vuelve a discutir:
 
-- El runtime **no entra por `INVOKE`**: la puerta cuesta **969 ciclos** medidos
-  contra **20** de una llamada. `2+2` no tiene autoridad que arbitrar.
+- El runtime **no entra por `INVOKE`**: la puerta cuesta **675 ticks** medidos
+  (una puerta pelada, M0b, 2026-09-09) contra ~20 de una llamada. `2+2` no
+  tiene autoridad que arbitrar. *(Aqui ponia 969 ciclos, la medida del 17-08;
+  M0b quito el cerrojo del planificador de toda puerta. La decision no cambia:
+  el orden de magnitud es el mismo.)*
 - **Lo que si es contrato es el FORMATO**: secciones BEF `Tipos`, `Bytecode`,
   `Constantes`, con offsets y no punteros.
 - **La cabecera de objeto ya esta hecha** (`bmo_abi::dynobj`: 16 bytes, bit 63
