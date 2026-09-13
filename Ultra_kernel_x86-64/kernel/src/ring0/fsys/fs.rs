@@ -149,25 +149,78 @@ pub fn entrada_datos(dir_cluster: u32, n: usize) -> Option<([u8; 11], bool, u32)
 
 /// Resuelve una ruta de DIRECTORIO a su cluster, en el volumen de datos.
 /// Ruta vacia = la raiz.
+///
+/// ** Solo DATOS, y a proposito: esta es la que usa `file::create` para saber
+/// DONDE escribir. Una ruta `efi:` aqui contesta `None` -- la particion de
+/// arranque no tiene camino de escritura ni por equivocacion.
 pub fn dir_datos(ruta: &str) -> Option<u32> {
-    unsafe {
-        let v = (*core::ptr::addr_of_mut!(DATA_VOLUME)).as_mut()?;
-        let mut cluster = v.root_cluster();
-        let mut resto = ruta.trim();
-        if resto.len() >= 2 && resto.as_bytes()[1] == b':' { resto = &resto[2..]; }
-        while resto.starts_with('/') || resto.starts_with('\\') { resto = &resto[1..]; }
-        while !resto.is_empty() {
-            let corte = resto.find(['/', '\\']).unwrap_or(resto.len());
-            let (comp, rest) = resto.split_at(corte);
-            if !comp.is_empty() {
-                let name = nombre_8_3(comp)?;
-                cluster = v.find_subdir_in(&name, cluster)?;
-            }
-            resto = rest;
-            while resto.starts_with('/') || resto.starts_with('\\') { resto = &resto[1..]; }
-        }
-        Some(cluster)
+    if sin_volumen(ruta).0 {
+        return None;
     }
+    unsafe { bajar((*core::ptr::addr_of_mut!(DATA_VOLUME)).as_mut()?, ruta) }
+}
+
+/// ** `efi:` ES LA PARTICION DE ARRANQUE (2026-09-13).
+///
+/// Eddi: *"no aparece EFI -- no porque la quiera modificar"*. El kernel la
+/// montaba desde el primer dia (es de donde sale `BOOTX64.EFI`) y Ring 3 no
+/// podia ni MIRARLA: `DIR_ABRIR` solo conocia el volumen de datos. Ahora se
+/// puede listar con `efi:` delante (`ls efi:/efi/boot`).
+///
+/// Y mirar no abre ninguna puerta de escritura: el volumen se monto con
+/// `escribible = false` (el driver se planta antes de tocar el disco), y
+/// `dir_datos` --la unica que decide donde se crea un fichero-- rechaza el
+/// prefijo. Son dos cierres, y ninguno depende de que alguien se acuerde.
+///
+/// `(es_arranque, resto de la ruta)`.
+pub fn sin_volumen(ruta: &str) -> (bool, &str) {
+    let r = ruta.trim();
+    match r.get(..4) {
+        Some(p) if p.eq_ignore_ascii_case("efi:") => (true, &r[4..]),
+        _ => (false, r),
+    }
+}
+
+/// Un DIRECTORIO de cualquiera de los dos volumenes, para LISTARLO.
+/// `(es_arranque, cluster)`.
+pub fn dir_de(ruta: &str) -> Option<(bool, u32)> {
+    let (arranque, resto) = sin_volumen(ruta);
+    unsafe {
+        let v = if arranque {
+            (*core::ptr::addr_of_mut!(VOLUME)).as_mut()?
+        } else {
+            (*core::ptr::addr_of_mut!(DATA_VOLUME)).as_mut()?
+        };
+        Some((arranque, bajar(v, resto)?))
+    }
+}
+
+/// La entrada `n` de un directorio de cualquiera de los dos volumenes.
+pub fn entrada_de(arranque: bool, dir_cluster: u32, n: usize) -> Option<([u8; 11], bool, u32)> {
+    if !arranque {
+        return entrada_datos(dir_cluster, n);
+    }
+    unsafe { (*core::ptr::addr_of_mut!(VOLUME)).as_mut()?.entry_at(dir_cluster, n) }
+}
+
+/// Baja por una ruta de carpetas desde la raiz de `v`. El MISMO recorrido para
+/// los dos volumenes: dos copias acabarian aceptando rutas distintas.
+fn bajar(v: &mut FatVolume, ruta: &str) -> Option<u32> {
+    let mut cluster = v.root_cluster();
+    let mut resto = ruta.trim();
+    if resto.len() >= 2 && resto.as_bytes()[1] == b':' { resto = &resto[2..]; }
+    while resto.starts_with('/') || resto.starts_with('\\') { resto = &resto[1..]; }
+    while !resto.is_empty() {
+        let corte = resto.find(['/', '\\']).unwrap_or(resto.len());
+        let (comp, rest) = resto.split_at(corte);
+        if !comp.is_empty() {
+            let name = nombre_8_3(comp)?;
+            cluster = v.find_subdir_in(&name, cluster)?;
+        }
+        resto = rest;
+        while resto.starts_with('/') || resto.starts_with('\\') { resto = &resto[1..]; }
+    }
+    Some(cluster)
 }
 
 /// La misma conversion, para quien esta fuera de este modulo.
