@@ -476,7 +476,12 @@ try {
     # que dice a que se ha comprometido. Un `.ibex` en el disco declara su
     # perfil, sus piezas y su mesa de katanas, y no habria llegado aqui si esa
     # mesa no cuadrara con sus bytes. `.bex` se queda para los otros tres.
-    Compilar-Ejemplos @(@{ src = 'toolchain\lang\inti\sondas\cpu.inti'; out = 'cpu.ibex'; dir = 'inti' }) 'bmo-inti-x86-64' 'inti' 'ok:|error|aviso' $dataBase $repo
+    # ** `run inti/pulso.ibex` (2026-09-12): el perfil en TIEMPO REAL. El kernel
+    # lee los contadores del silicio y la sonda los PREGUNTA cada medio segundo.
+    Compilar-Ejemplos @(
+        @{ src = 'toolchain\lang\inti\sondas\cpu.inti'; out = 'cpu.ibex'; dir = 'inti' },
+        @{ src = 'toolchain\lang\inti\sondas\pulso.inti'; out = 'pulso.ibex'; dir = 'inti' }
+    ) 'bmo-inti-x86-64' 'inti' 'ok:|error|aviso' $dataBase $repo
 
     # -- Meter los datos DENTRO del .bex ---------------------------
     #

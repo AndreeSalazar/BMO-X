@@ -45,10 +45,28 @@ pub(crate) fn binaria(out: &mut Vec<u8>, op: Op, sin_signo: bool) {
                 x86::mov_r64_r64(out, IZQ, 2); // el resto vive en rdx
             }
         }
-        Op::BitsY => {
+        // *** `y` Y `o` CAIAN EN EL `_ => {}` DE ABAJO hasta el 2026-09-12, y no
+        // se emitia NADA: `a y b` devolvia `a`, porque `rax` se quedaba con el
+        // operando izquierdo. `verdadero y falso` daba verdadero.
+        //
+        // Lo cazo `sondas/pulso.inti`, el primer programa que escribio una
+        // condicion con dos comparaciones: un cero salia en blanco. Es la misma
+        // forma que los desplazamientos del 21-08 -- *lo que no se emite no se
+        // prueba*, y ninguna prueba ejecutaba un `y`.
+        //
+        // ** Un `and` basta, y no es un atajo: los dos lados ya llegan
+        // evaluados, de izquierda a derecha (Regla 6), y un `logico` vale 0 o 1
+        // -- las comparaciones lo dejan asi con `movzx`. Sobre 0/1, el `and` de
+        // bits ES el `y` logico.
+        //
+        // [!] Lo que NO hace: CORTOCIRCUITO. `i < n y lista[i] > 0` evalua los
+        // dos lados, asi que el indice se comprueba aunque `i < n` sea falso --
+        // y la Regla 2 atrapa. Eso es de la IR (saltos, no una instruccion) y va
+        // aparte; aqui solo se deja de mentir sobre el valor.
+        Op::BitsY | Op::Y => {
             out.extend_from_slice(&[0x48, 0x21, 0xC8]); // and rax, rcx
         }
-        Op::BitsO => x86::or_r64_r64(out, IZQ, DER),
+        Op::BitsO | Op::O => x86::or_r64_r64(out, IZQ, DER),
         Op::BitsXor => x86::xor_r64_r64(out, IZQ, DER),
 
         // ** LOS DESPLAZAMIENTOS, Y LA REGLA 7 DENTRO.
@@ -112,7 +130,14 @@ pub(crate) fn binaria(out: &mut Vec<u8>, op: Op, sin_signo: bool) {
             out.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
         }
         // Lo que pide runtime o no cabe en una instruccion.
-        _ => {}
+        //
+        // *** Con NOMBRE y sin `_`, desde el 2026-09-12. El comodin se trago los
+        // desplazamientos el 21-08 y `y`/`o` hasta hoy: un operador nuevo del
+        // arbol no fallaba al compilar, **no emitia nada** y el programa seguia
+        // con el operando izquierdo. Ahora un operador nuevo no compila hasta
+        // que alguien decida aqui que hace -- que es la misma decision que cerro
+        // el `match` de `ir::expresion`.
+        Op::Elevado | Op::EsUn => {}
     }
 }
 

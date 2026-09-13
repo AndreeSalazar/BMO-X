@@ -444,6 +444,8 @@ fn lo_escrito(m: &Machine) -> Vec<String> {
 //     lenguaje     las tres frases con las que se define INTI
 //     reglas       las doce, en bytes y corriendo
 //     sonda        el instrumento del Ryzen, calibrado
+//     pulso        el perfil en tiempo real: pregunta lo que dice y lo escribe
+//     logica       `y` y `o`: el valor de dos condiciones, corriendo
 //
 //  ** El andamio se queda AQUI --`emitido`, `ejecuta`, `arranca`-- porque lo usan
 //  los ocho. Un fichero de pruebas que ademas tiene que traerse su forma de
@@ -453,12 +455,14 @@ mod decimal;
 mod disposicion;
 mod flotante;
 mod lenguaje;
+mod logica;
 mod marco;
 mod memoria;
 mod metal;
 mod monton;
 mod necesita;
 mod objetos;
+mod pulso;
 mod reglas;
 mod signo;
 mod simd;

@@ -1,0 +1,171 @@
+# pulso.inti -- EL PERFIL DEL SILICIO, EN TIEMPO REAL, CONTADO DESDE INTI
+#
+# ===================================================================
+#  Que es esto, y por que existe
+# ===================================================================
+#
+# Eddi (2026-09-12): *"que Rust prepare la base y que INTI hable en perfil en
+# tiempo real y pueda exponer todo lo que pasa"*.
+#
+# `cpu.inti` pregunta al procesador lo que un programa de usuario PUEDE
+# preguntarle directamente: quien eres, a que ritmo cuentas. Esta sonda es la
+# otra mitad: lo que el procesador SOLO le cuenta al kernel.
+#
+# ===================================================================
+#  ** POR QUE INTI NO LEE ESOS REGISTROS, Y POR QUE ESO ES MEJOR
+# ===================================================================
+#
+# La frecuencia de verdad de un nucleo y los vatios del paquete viven en
+# registros del modelo. Leerlos desde Ring 3 no da un valor lento: da una
+# excepcion, y el programa muere en la primera linea.
+#
+#     el kernel (Rust)   LEE los contadores, resta dos lecturas, divide
+#     la puerta          lo entrega por valor, un numero por pregunta
+#     INTI               lo PREGUNTA, lo cuenta, y lo ensena
+#
+# ** Y no es un rodeo: un contador de energia crudo no significa nada sin sus
+# unidades, y las unidades cambian con cada silicio. El kernel ya tiene el
+# PERFIL de esta maquina; si INTI leyera el registro, tendria que tener otro, y
+# los dos acabarian discrepando.
+#
+# ===================================================================
+#  Como se lee
+# ===================================================================
+#
+# Primero `sensor`: bit 0 = sabe la frecuencia, bit 1 = sabe el consumo.
+# ** Un CERO en cualquier otra linea es "no se sabe", NUNCA "no gasta".
+#
+# Despues, veinte muestras, una cada medio segundo:
+#
+#     tick      milisegundos desde el arranque
+#     hz real   a que va el nucleo ahora mismo
+#     mW pkg    milivatios del paquete en ese intervalo
+#     mW nucl   los del nucleo que contesta -- UNO, no todos
+#     vivos     cuantos obreros hay en pie
+#     puertas   cuantas veces se ha cruzado la puerta del sistema
+#
+# Cada numero son tres escrituras de consola de ocho bytes: la etiqueta y dieciseis
+# cifras en decimal, alineadas a la derecha.
+#
+# ** OJO, y se dice aqui para que no se descubra comparando dos pantallas: la
+# frecuencia y los milivatios se miden POR DIFERENCIA con la pregunta anterior
+# de CUALQUIERA. Si el panel del escritorio tambien pregunta, esta sonda ve
+# intervalos mas cortos. El numero sigue siendo cierto; es de menos tiempo.
+
+perfil llano
+usa bmo
+
+# ===================================================================
+#  1. CONTAR -- la puerta, y los numeros en decimal
+# ===================================================================
+
+funcion palabra(w es natural64)
+    invoca(mi_tarea, op_consola_escribir, w, 0, 0)
+
+# **UNA PREGUNTA AL KERNEL.** Todo lo que esta sonda sabe pasa por aqui.
+funcion pregunta(que es natural64) devuelve natural64
+    devuelve invoca_valor(mi_tarea, op_info, que, 0, 0)
+
+funcion diez_a_la(n es natural64) devuelve natural64
+    cambiante p es natural64 = 1
+    cambiante k es natural64 = 0
+    repite mientras k < n
+        p = p * 10
+        k = k + 1
+    devuelve p
+
+# Ocho de las dieciseis cifras de `v`, empezando por la posicion `desde`.
+#
+# ** Los ceros de delante salen como ESPACIOS, pero el ultimo digito sale
+# siempre: un cero tiene que verse como `0` y no como una linea vacia, porque
+# una linea vacia no se distingue de una que no llego.
+#
+# Hecho en decimal y no en hex, al reves que `cpu.inti`: aquello eran firmas de
+# bits; esto son hercios y milivatios, y un numero que hay que traducir de
+# cabeza no se lee en tiempo real.
+funcion ocho_decimal(v es natural64, desde es natural64) devuelve natural64
+    cambiante w es natural64 = 0
+    cambiante i es natural64 = 0
+    repite mientras i < 8
+        cambiante cifra es natural64 = 15 - (desde + i)
+        cambiante p es natural64 = diez_a_la(cifra)
+        cambiante c es natural64 = 48 + ((v entre p) resto 10)
+        si v < p y cifra > 0
+            c = 32
+        w = w bits_o (c desplaza izquierda (i * 8))
+        i = i + 1
+    devuelve w
+
+funcion linea(etiqueta es natural64, dato es natural64)
+    palabra(etiqueta)
+    palabra(ocho_decimal(dato, 0))
+    palabra(ocho_decimal(dato, 8))
+
+# ===================================================================
+#  2. LAS ETIQUETAS -- ocho letras ASCII, little-endian, en decimal
+# ===================================================================
+#
+# ** Calculadas con un programa y no a mano. `-- fin -` da el mismo numero que
+# en `cpu.inti`, que es la comprobacion de que el empaquetado es el mismo.
+
+funcion et_pulso devuelve natural64
+    devuelve 3273962363785588013
+
+funcion et_sensor devuelve natural64
+    devuelve 2314976031471986035
+
+funcion et_tick devuelve natural64
+    devuelve 2314885532081154420
+
+funcion et_hz devuelve natural64
+    devuelve 2336349395032767080
+
+funcion et_pkg devuelve natural64
+    devuelve 2314963919608764269
+
+funcion et_nucl devuelve natural64
+    devuelve 2336351662708381549
+
+funcion et_vivos devuelve natural64
+    devuelve 2314885888631794038
+
+funcion et_puertas devuelve natural64
+    devuelve 2338319784298771824
+
+funcion et_fin devuelve natural64
+    devuelve 3251720329925504301
+
+# ===================================================================
+#  3. MEDIR -- sin girar
+# ===================================================================
+
+# **Esperar a que pase el tiempo CEDIENDO EL TURNO**, no girando.
+#
+# ** Con TOPE de vueltas, y el tope no es adorno: si el reloj no avanza --un
+# emulador, o un tick que se paro-- esto seria un bucle infinito que no dice
+# nada. Con el tope, la sonda sigue y el `tick` repetido lo ensena.
+funcion espera_ticks(cuantos es natural64)
+    antes es natural64 = pregunta(info_ticks)
+    cambiante vueltas es natural64 = 0
+    repite mientras vueltas < 100000 y pregunta(info_ticks) - antes < cuantos
+        invoca(mi_tarea, op_ceder, 0, 0, 0)
+        vueltas = vueltas + 1
+
+funcion muestra
+    linea(et_tick(), pregunta(info_ticks))
+    linea(et_hz(), pregunta(info_cpu_hz_real))
+    linea(et_pkg(), pregunta(info_cpu_mw_paquete))
+    linea(et_nucl(), pregunta(info_cpu_mw_nucleo))
+    linea(et_vivos(), pregunta(info_smp_vivos))
+    linea(et_puertas(), pregunta(info_puertas))
+
+funcion principal devuelve entero32
+    palabra(et_pulso())
+    linea(et_sensor(), pregunta(info_cpu_sensores))
+    cambiante n es natural64 = 0
+    repite mientras n < 20
+        espera_ticks(500)
+        muestra()
+        n = n + 1
+    palabra(et_fin())
+    devuelve 0
