@@ -179,6 +179,15 @@ para la meta A, porque aqui si se toca el 3D.
 
 # ★ EL ORDEN, y el disparador
 
+> ★★ **2026-09-12: el orden gana un requisito DELANTE de todo, y es de ritmo.**
+> Una CPU y una GPU trabajan con dos relojes independientes que se encuentran en
+> tres sitios con nombre: la cola acotada, el testigo de terminado y los datos
+> congelados. Ese contrato se escribe y se MIDE primero entre una app y el
+> DIRECTOR, que ya son dos relojes hoy -- escalones E0-E2 de
+> [`INTI_Y_LA_GPU.md`](../../../../docs/maestro/INTI_Y_LA_GPU.md) sec. 6. Cuando llegue
+> B2, la tarjeta es un tercer participante en un contrato ya medido, no un
+> modelo nuevo de sincronizacion.
+
 Esto **no es lo siguiente** y no debe serlo. El orden con motivo:
 
 1. **La meta A primero** (SDMA para el compositor) -- pequena, y ensena el

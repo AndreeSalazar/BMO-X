@@ -69,7 +69,8 @@
  * con un `mov`.
  *
  * ** CERO PUERTAS POR TECLA, Y NINGUNA OPERACION NUEVA DEL KERNEL. Una puerta
- * son 969 ciclos (`docs/componente/LA_PUERTA_POR_DENTRO.md`); para una
+ * son 675 ticks (M0b, 2026-09-09; eran 969 ciclos el 17-08 -- ver
+ * `docs/plan/PLAN_LA_PUERTA_SE_PARTE.md`); para una
  * calculadora eso es gratis, pero para algo que siga al teclado a sesenta por
  * segundo es el precio equivocado.
  *
