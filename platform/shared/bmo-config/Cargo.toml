@@ -1,0 +1,10 @@
+[package]
+name = "bmo-config"
+version = "0.1.0"
+edition = "2021"
+description = "La configuracion del DIRECTOR: `clave = valor` en un fichero de texto, leida sin creerse el fichero. Lo que no se entiende se apunta con su linea y deja el valor que habia."
+license = "Apache-2.0"
+
+# Sin dependencias y `no_std`, por lo mismo que `bmo-imagen`: un fichero que
+# edita una persona es un fichero ROTO algun dia, y eso se prueba aqui.
+[dependencies]

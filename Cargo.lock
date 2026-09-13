@@ -94,6 +94,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-config"
+version = "0.1.0"
+
+[[package]]
 name = "bmo-cpp-front"
 version = "0.1.0"
 dependencies = [

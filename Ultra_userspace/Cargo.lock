@@ -3,6 +3,10 @@
 version = 4
 
 [[package]]
+name = "bmo-config"
+version = "0.1.0"
+
+[[package]]
 name = "bmo-dibujo"
 version = "0.1.0"
 
@@ -42,6 +46,7 @@ version = "1.0.0"
 name = "bmo-service-director"
 version = "0.1.0"
 dependencies = [
+ "bmo-config",
  "bmo-dibujo",
  "bmo-golpe",
  "bmo-imagen",

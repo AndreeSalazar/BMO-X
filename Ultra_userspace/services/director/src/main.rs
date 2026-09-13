@@ -592,8 +592,7 @@ pub(crate) fn repintar_escritorio(
 ) {
     scene::paint_background(p);
     scene::launcher::paint(p, &dsk.launcher);
-    p.rect(16, 13, 14, 14, ACCENT);
-    p.texto(38, 14, "BMO-X", INK);
+    scene::barra::logo(p);
     dsk.win.taskbar_dirty = true;
     paint_run_box(p, &dsk.run_box);
     paint_field(p, &dsk.run_box, dsk.field.line(), dsk.field.cur, true);

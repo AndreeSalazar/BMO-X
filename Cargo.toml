@@ -74,6 +74,8 @@ members = [
     # ficheros ROTOS. Un decodificador probado solo en el metal se prueba con
     # las imagenes buenas, que son las que no hacen dano.
     "platform/shared/bmo-imagen",
+    # EL ASPECTO del DIRECTOR en `sys/director.cfg`, leido sin creerse el fichero.
+    "platform/shared/bmo-config",
     # El JUEZ de las medidas de ciclos. Vive aqui y no dentro del `.bex` que
     # mide por la misma razon que la politica de foco vive en `bmo-input`: aqui
     # se puede PROBAR. Un `.bex` es `no_main` para un target sin sistema

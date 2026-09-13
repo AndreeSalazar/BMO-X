@@ -45,7 +45,7 @@
 use bmo_userland as bmo;
 
 use super::amarilla::Dictamen;
-use crate::scene::{chip_box, INK, INK_DIM, TASKBAR};
+use crate::scene::{chip_box, INK, INK_DIM};
 use crate::text::decimal;
 
 /// La ranura siguiente al testigo del USB. El testigo mide 168 px desde la
@@ -73,7 +73,7 @@ pub(crate) fn pintar(p: &bmo::Pantalla, d: &Dictamen) {
     // ** La raya que lo separa del testigo. Sin ella los instrumentos se leen
     // como un solo parrafo de numeros. Ver `scene::SEPARADOR`.
     p.rect(x - 5, y + 4, 1, h.saturating_sub(8), crate::scene::SEPARADOR);
-    p.rect(x, y, ancho, h, TASKBAR);
+    p.rect(x, y, ancho, h, crate::scene::barra::fondo());
     let ty = y + (h.saturating_sub(bmo::GLIFO_ALTO)) / 2;
     // ** EL NOMBRE DICE EL MODO. No es adorno: si el kernel no dio el latido,
     // el bucle gira igual de bien y las dos formas se verian identicas. Ver la

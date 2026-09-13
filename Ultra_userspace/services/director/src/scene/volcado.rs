@@ -53,7 +53,7 @@
 use bmo_userland as bmo;
 
 use super::huella::{cambio, Huella};
-use super::{chip_box, INK, INK_DIM, TASKBAR};
+use super::{chip_box, INK, INK_DIM};
 use crate::text::decimal;
 
 /// Va detras del pulso, que ocupa 400 px desde `TRAS_TESTIGO`.
@@ -107,7 +107,7 @@ pub(crate) fn refrescar(p: &bmo::Pantalla, v: &bmo::Volcado) {
     // ** La raya que lo separa del instrumento de la izquierda. Sin ella los
     // tres se leen como un solo parrafo de numeros. Ver `scene::SEPARADOR`.
     p.rect(x - 5, y + 4, 1, h.saturating_sub(8), crate::scene::SEPARADOR);
-    p.rect(x, y, ANCHO, h, TASKBAR);
+    p.rect(x, y, ANCHO, h, super::barra::fondo());
     let ty = y + (h.saturating_sub(bmo::GLIFO_ALTO)) / 2;
     let tx = p.texto(x + 4, ty, "volcado ", INK_DIM);
 

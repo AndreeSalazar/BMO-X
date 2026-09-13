@@ -50,7 +50,7 @@
 
 use bmo_userland as bmo;
 
-use super::{chip_box, INK, INK_DIM, TASKBAR};
+use super::{chip_box, INK, INK_DIM};
 use crate::text::decimal;
 
 /// Ancho de la caja del testigo. Da para el punto y ~19 letras, que es lo que
@@ -272,7 +272,7 @@ fn pintar(p: &bmo::Pantalla, luz: Luz) {
     // El hueco entero primero: los mensajes miden distinto y sin borrar
     // quedarian letras del anterior asomando por la derecha -- que es como se
     // lee "TECLADO PARADOO".
-    p.rect(x, y, TESTIGO_W, h, TASKBAR);
+    p.rect(x, y, TESTIGO_W, h, super::barra::fondo());
     p.rect(x, y + (h - 8) / 2, 8, 8, color);
     // El texto en gris salvo cuando esta caido: en rojo, la palabra tiene que
     // llegar antes que el punto.

@@ -33,6 +33,10 @@ pub(crate) mod switcher;
 /// El gato que sale cuando alguien teclea Linux aqui.
 pub(crate) mod nya;
 pub(crate) mod data;
+/// EL ESTILO leido de `sys/director.cfg` al arrancar (2026-09-13).
+pub(crate) mod estilo;
+/// LA BARRA: la pastilla flotante, su modelo de color y los widgets.
+pub(crate) mod barra;
 /// CON QUE SE ABRE CADA COSA: la tabla de tipos que leen el explorador y la
 /// biblioteca. Anadir un tipo es una fila (2026-09-13).
 pub(crate) mod asociaciones;
@@ -106,6 +110,7 @@ pub(crate) fn olvidar_la_barra() {
     testigo::olvidar();
     volcado::olvidar();
     entrada::olvidar();
+    barra::olvidar();
     // [!] EL PULSO NO ESTA, y no es un olvido: no lleva huella. Su aguja es la
     // prueba de vida del bucle, asi que **tiene que repintarse siempre** --su
     // propio `amarilla.rs` lo dice desde el 08-09: *"lo que se ensena no es el
@@ -294,9 +299,9 @@ pub(crate) fn background_at(y: u32, height: u32) -> u32 {
         };
         c << desp
     };
-    mezcla(BG_TOP, BG_BOTTOM, 16)
-        | mezcla(BG_TOP, BG_BOTTOM, 8)
-        | mezcla(BG_TOP, BG_BOTTOM, 0)
+    // Los dos extremos salen del ESTILO (`sys/director.cfg`), no de constantes.
+    let (arriba, abajo) = (estilo::estilo().fondo_arriba, estilo::estilo().fondo_abajo);
+    mezcla(arriba, abajo, 16) | mezcla(arriba, abajo, 8) | mezcla(arriba, abajo, 0)
 }
 
 // -- Las FICHAS de la barra ----------------------------------------------
@@ -374,7 +379,7 @@ pub(crate) fn paint_chip(
     let (x, y, w, h) = chip_box(i);
     // Tres estados y tres aspectos. Dos que se vieran igual serian dos que no
     // se pueden distinguir de un vistazo, que es para lo que esta la barra.
-    let fondo = if active { 0x001F_2838 } else { TASKBAR };
+    let fondo = if active { 0x001F_2838 } else { barra::fondo() };
     p.rect(x, y, w, h, fondo);
     if active {
         // La activa lleva su subrayado, como las pestanas de Datos. Mismo
@@ -410,7 +415,7 @@ pub(crate) fn paint_background(p: &bmo::Pantalla) {
     //
     // La leccion, que es la de siempre: **una optimizacion que sustituye a algo
     // hereda sus responsabilidades**, no solo su resultado visible.
-    p.limpiar(BG_BOTTOM);
+    p.limpiar(estilo::estilo().fondo_abajo);
 
     // De ocho en ocho filas. A un pixel serian mil `rect` para una diferencia
     // que no se ve; a treinta y dos se notarian los escalones.
@@ -420,12 +425,10 @@ pub(crate) fn paint_background(p: &bmo::Pantalla) {
         p.rect(0, y, p.ancho, height, background_at(y, p.alto));
         y += height;
     }
-    p.rect(0, 0, p.ancho, TASKBAR_H, TASKBAR);
-    // ** EL FILO. Una linea clara arriba y una oscura abajo, y la barra deja de
-    // ser una mancha del mismo color que el fondo. Ver `TASKBAR_TOP`: es lo que
-    // hace el trabajo que la gente le atribuye al desenfoque.
-    p.rect(0, 0, p.ancho, 1, TASKBAR_TOP);
-    p.rect(0, TASKBAR_H - 1, p.ancho, 1, TASKBAR_LINE);
+    // ** LA BARRA la pinta `barra`, que es tambien quien contesta por su color
+    // al borrar el cursor: la pastilla flotante o la tira de siempre, segun
+    // `sys/director.cfg`. El filo de `TASKBAR_TOP` sigue en la de siempre.
+    barra::pintar(p);
 }
 
 // -- La caja -------------------------------------------------------------
@@ -649,14 +652,9 @@ impl RunBox {
 /// pasado por encima de la caja: el texto hay que volver a escribirlo.
 pub(crate) fn scene_color(c: &RunBox, visible: bool, x: u32, y: u32, height: u32) -> u32 {
     if y < TASKBAR_H {
-        if y == TASKBAR_H - 1 {
-            return TASKBAR_LINE;
-        }
-        // La marca de referencia dentro de la barra.
-        if x >= 16 && x < 30 && y >= 13 && y < 27 {
-            return ACCENT;
-        }
-        return TASKBAR;
+        // La barra contesta por si misma: la pastilla, su borde, la marca y los
+        // huecos de fondo. Ver `barra::color_en`.
+        return barra::color_en(x, y, height);
     }
     // * Se pregunta por el rectangulo REDONDEADO y no por `contains`. Si el
     // modelo creyera que la caja es cuadrada, al taparla y destaparla quedarian

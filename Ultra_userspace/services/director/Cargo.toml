@@ -31,3 +31,5 @@ bmo-ritmo = { path = "../../../platform/shared/bmo-ritmo" }
 bmo-juicio = { path = "../../../platform/shared/bmo-juicio" }
 # El visor de imagenes: decodifica fuera, probado contra ficheros rotos.
 bmo-imagen = { path = "../../../platform/shared/bmo-imagen" }
+# El aspecto, leido de `sys/director.cfg` al arrancar.
+bmo-config = { path = "../../../platform/shared/bmo-config" }

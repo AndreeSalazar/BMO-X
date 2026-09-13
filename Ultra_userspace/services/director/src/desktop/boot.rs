@@ -23,7 +23,7 @@ use bmo_userland as bmo;
 
 use super::Desktop;
 use crate::scene::{
-    paint_background, paint_field, paint_run_box, paint_status, ACCENT, INK, INK_BAD, INK_DIM,
+    paint_background, paint_field, paint_run_box, paint_status, INK_BAD, INK_DIM,
 };
 use crate::{scene, paint_output};
 
@@ -106,6 +106,9 @@ pub(crate) fn boot() -> (bmo::Pantalla, Option<bmo::Entrada>, &'static mut Deskt
     // escritorio son lo que hacia que esto pareciera un panel de pruebas y no
     // una maquina. Si algun dia hay que volver a medir el formato del
     // framebuffer, el `git log` tiene los valores exactos con su porque.
+    // ** EL ESTILO, antes del primer pixel del escritorio: el degradado y la
+    // barra ya salen con lo que diga `sys/director.cfg` (2026-09-13).
+    scene::estilo::cargar();
     paint_background(&p);
     // ** LOS ICONOS, y se leen UNA VEZ.
     //
@@ -124,8 +127,7 @@ pub(crate) fn boot() -> (bmo::Pantalla, Option<bmo::Entrada>, &'static mut Deskt
     // de `install`, que lleva el desbordamiento del Ryzen con sus numeros.
     let d = super::install(&p, child_console);
     scene::launcher::paint(&p, &d.launcher);
-    p.rect(16, 13, 14, 14, ACCENT);
-    p.texto(38, 14, "BMO-X", INK);
+    scene::barra::logo(&p);
 
     // ** AQUI NACE EL ESTADO, y de una vez.
     //
@@ -148,6 +150,8 @@ pub(crate) fn boot() -> (bmo::Pantalla, Option<bmo::Entrada>, &'static mut Deskt
     }
 
     paint_run_box(&p, &d.run_box);
+    // Lo que dijo `sys/director.cfg`, y cada linea que no se entendio.
+    scene::estilo::contar_en(&mut d.out.grid);
     if !has_console {
         d.out
             .grid

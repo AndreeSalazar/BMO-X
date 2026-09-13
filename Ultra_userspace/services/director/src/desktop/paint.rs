@@ -27,7 +27,7 @@ use bmo_userland as bmo;
 use super::{BLINK, Desktop, Ventana};
 use crate::scene::calc::paint_calc;
 use crate::scene::output::paint_output;
-use crate::scene::{self, paint_field, paint_status, ACCENT, INK_BAD, TASKBAR};
+use crate::scene::{self, paint_field, paint_status, ACCENT, INK_BAD};
 use crate::{erase_window, uncover};
 
 /// **La terminal pinto: las apps que la tapan se vuelven a pegar.**
@@ -232,7 +232,7 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
             // Cerrada: su hueco vuelve al color de la barra. Una ficha que
             // se queda tras cerrar la ventana promete algo que ya no esta.
             let (fx, fy, fw, fh) = scene::chip_box(1);
-            p.rect(fx, fy, fw, fh, TASKBAR);
+            p.rect(fx, fy, fw, fh, scene::barra::fondo());
         }
         // -- ** CABINA: LA UNICA FICHA QUE ESTA SIEMPRE --
         //
@@ -264,7 +264,10 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         let (fichas, n) = dsk.table.fichas();
         if n as u32 != scene::apps_en_barra() {
             let (fx, fy, _, fh) = scene::chip_box(scene::FICHA_APPS);
-            p.rect(fx, fy, p.ancho.saturating_sub(fx), fh, TASKBAR);
+            // Hasta donde acaba la BARRA y no hasta el borde de la pantalla:
+            // detras de la pastilla hay hueco de fondo, y pintarlo del color de
+            // la barra le comeria la esquina.
+            p.rect(fx, fy, scene::barra::derecha().saturating_sub(fx + 10), fh, scene::barra::fondo());
             scene::poner_apps_en_barra(n as u32);
         }
         for (k, &hueco) in fichas[..n].iter().enumerate() {
@@ -292,6 +295,11 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         // como se anade un chip y se olvida el suyo.
         scene::olvidar_la_barra();
         dsk.win.taskbar_dirty = false;
+    }
+    // ** LOS WIDGETS de la derecha: se recalculan una vez por segundo y solo se
+    // repintan si su texto cambio. Ver `scene::barra`.
+    if dsk.tick.will_paint && !fs {
+        scene::barra::widgets(&p, dsk.tick.consumo.ultimo.map(|c| c.mw_paquete));
     }
 
     // El parpadeo del cursor de escritura. Solo repinta cuando cambia de

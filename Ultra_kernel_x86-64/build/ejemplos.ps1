@@ -541,6 +541,12 @@ try {
     # repo y se lee en un diff.
     Copy-Item (Join-Path $repo 'toolchain\lang\inti\ejemplos\tema.mus') (Join-Path $imgDst 'tema.mus') -Force
     Write-Host '    [datos] tema.mus (Vivaldi, para inti/musica.ibx)' -ForegroundColor DarkGray
+    # El aspecto del escritorio: lo lee el DIRECTOR al arrancar. Texto, en el
+    # repo, y se edita ahi -- el despliegue pisa el de A:\sys\.
+    $sysDst = Join-Path $dataBase 'sys'
+    New-Item -ItemType Directory -Force $sysDst | Out-Null
+    Copy-Item (Join-Path $repo 'Ultra_userspace\services\director\director.cfg') (Join-Path $sysDst 'director.cfg') -Force
+    Write-Host '    [sys] director.cfg (el aspecto del escritorio)' -ForegroundColor DarkGray
 
     # -- Meter los datos DENTRO del .bex ---------------------------
     #
