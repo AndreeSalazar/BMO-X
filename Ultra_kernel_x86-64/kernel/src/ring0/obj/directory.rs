@@ -93,14 +93,19 @@ pub const DIR_OP_NOMBRE: u64 = 0x02;
 pub const DIR_OP_CERRAR: u64 = 0x03;
 
 static mut CLUSTER: [u32; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
+/// ** De que VOLUMEN es el cluster: `true` = la particion de arranque (`efi:`),
+/// en solo lectura. Un cluster sin su volumen es un numero que apunta a dos
+/// sitios distintos -- el 7 de la ESP no es el 7 de DATOS.
+static mut ARRANQUE: [bool; MAX_ABIERTOS] = [false; MAX_ABIERTOS];
 static mut INDICE: [usize; MAX_ABIERTOS] = [0; MAX_ABIERTOS];
 static mut NAME: [[u8; 11]; MAX_ABIERTOS] = [[b' '; 11]; MAX_ABIERTOS];
 static mut OWNER: [u32; MAX_ABIERTOS] = [NO_OWNER; MAX_ABIERTOS];
 
-/// Abre un directorio del volumen de datos y entrega su handle a `pid`.
-/// Ruta vacia = la raiz.
+/// Abre un directorio y entrega su handle a `pid`. Ruta vacia = la raiz de
+/// DATOS; `efi:` delante = la particion de arranque, solo para mirar (ver
+/// `fs::sin_volumen`). Listar no escribe, asi que aqui no hace falta mas.
 pub fn open(pid: u32, ruta: &str) -> Result<u64, u32> {
-    let cluster = match crate::ring0::fsys::fs::dir_datos(ruta) {
+    let (arranque, cluster) = match crate::ring0::fsys::fs::dir_de(ruta) {
         Some(c) => c,
         None => return Err(ERROR_DIR_NO_ESTA),
     };
@@ -111,6 +116,7 @@ pub fn open(pid: u32, ruta: &str) -> Result<u64, u32> {
             None => return Err(ERROR_DIR_SIN_HUECO),
         };
         CLUSTER[i] = cluster;
+        ARRANQUE[i] = arranque;
         // * Empieza en usize::MAX para que el PRIMER `SIGUIENTE` caiga en la
         // entrada 0. Si empezara en 0, la primera llamada devolveria la
         // segunda entrada y la primera no la veria nadie -- el clasico error
@@ -134,7 +140,7 @@ pub fn open(pid: u32, ruta: &str) -> Result<u64, u32> {
 fn next(i: usize) -> u64 {
     unsafe {
         let n = INDICE[i].wrapping_add(1);
-        match crate::ring0::fsys::fs::entrada_datos(CLUSTER[i], n) {
+        match crate::ring0::fsys::fs::entrada_de(ARRANQUE[i], CLUSTER[i], n) {
             Some((name, es_dir, tam)) => {
                 INDICE[i] = n;
                 NAME[i] = name;
