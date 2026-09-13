@@ -123,3 +123,5 @@
 0x22 TASK_OP_AUDIO_RELEASE          BMO_OP_SONIDO_SOLTAR             idem -- release / soltar. La UNICA que ya tenia pareja
 0x25 TASK_OP_MI_PAQUETE             BMO_OP_MI_PAQUETE                operacion sobre BMO_TAREA_ACTUAL
 0x26 TASK_OP_MI_PADRE               BMO_OP_MI_PADRE                  operacion sobre BMO_TAREA_ACTUAL
+0x31 TASK_OP_ATRIL                  BMO_OP_ATRIL   poner un numero en el atril de la orquesta. Campo 0..3, sin puntero a funcion
+0x32 TASK_OP_TOCAR                  BMO_OP_TOCAR   tocad: una PARTE del catalogo de bmo-orquesta, BLOQUEA hasta que acaba

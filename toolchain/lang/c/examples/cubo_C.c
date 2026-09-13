@@ -87,6 +87,7 @@
 #include <bmo/entrada.h>
 #include <bmo/fuente.h>
 #include <bmo/imagen.h>
+#include <bmo/orquesta.h>
 
 /* Cuadrada, y modesta a proposito: esto cuesta por pixel. El numero real lo
  * dira el `[cubo]` en el metal, y de ahi sale si sube o baja. */
@@ -441,8 +442,23 @@ static void pinta(int ang)
  * Lo que sobra alrededor va a negro -- es de la app, no del DIRECTOR, porque
  * esta superficie mide lo que el DIRECTOR pidio. Si la ventana es mas pequena
  * que 360 se recorta, sin escalar hacia abajo. */
-static void presenta(void) {
+/* ** PASO 2 DE LA ORQUESTA (2026-09-12): `presenta` pide la parte ESCALAR
+ * primero, y solo si la puerta dice que no lo hace aqui.
+ *
+ * Lo que se reparte NO es el trazado del cubo --eso es codigo de esta app, y un
+ * obrero no ejecuta codigo de nadie-- sino llevar el lienzo a la superficie,
+ * que es generico y es donde se iba la diferencia medida: ~83 ms a 360x360
+ * contra 98-152 ms a 1918x1011.
+ *
+ * [!] Tras el PRIMER no, no se vuelve a pedir: cada rechazo escribe en CABINA,
+ * y pedirlo sesenta veces por segundo seria llenar el panel con el mismo motivo.
+ *
+ * Devuelve cuantos atriles lo hicieron, o 0 si lo hizo esta funcion. */
+static int g_orquesta_no;
+
+static int presenta(void) {
     unsigned int *dst;
+    int atriles;
     int w;
     int h;
     int s;
@@ -460,6 +476,12 @@ static void presenta(void) {
     dst = bmo_superficie_pixeles(g_sup);
     w = g_sup->ancho;
     h = g_sup->alto;
+    if (g_orquesta_no == 0 && (w > VEN || h > VEN)) {
+        atriles = bmo_orquesta_escalar(dst, w, h, g_px, VEN, VEN);
+        if (atriles > 0) return atriles;
+        g_orquesta_no = 1;
+        printf("[cubo] la orquesta dijo que NO: escalo yo (el motivo, en CABINA)\n");
+    }
     s = w / VEN;
     if (h / VEN < s) s = h / VEN;
     if (s < 1) s = 1;
@@ -485,6 +507,7 @@ static void presenta(void) {
         }
         y = y + 1;
     }
+    return 0;
 }
 
 int main() {
@@ -494,6 +517,9 @@ int main() {
     unsigned long long t0;
     unsigned long long hz;
     unsigned long long acum;
+    unsigned long long t1;
+    unsigned long long acum_esc;
+    int atriles;
     int marcos;
     int ang;
     int i;
@@ -540,6 +566,9 @@ int main() {
     hz = bmo_valor(BMO_TAREA_ACTUAL, BMO_OP_INFO, BMO_INFO_TSC_HZ, 0, 0);
     if (hz == 0) hz = 1;
     acum = 0;
+    acum_esc = 0;
+    atriles = 0;
+    g_orquesta_no = 0;
     marcos = 0;
     ang = 0;
     antes = 1;
@@ -587,18 +616,26 @@ int main() {
             if (antes == 0) marcos = 0;
             t0 = __rdtsc();
             pinta(ang);
-            presenta();
+            t1 = __rdtsc();
+            atriles = presenta();
             acum = acum + (__rdtsc() - t0);
+            acum_esc = acum_esc + (__rdtsc() - t1);
             marcos = marcos + 1;
             ang = (ang + 1) & 255;
 
-            /* El metro, una vez por segundo de fotogramas. */
+            /* El metro, una vez por segundo de fotogramas. ** Y ahora dice por
+             * separado lo que cuesta ESCALAR y cuantos atriles lo hicieron: sin
+             * eso no se sabe si la orquesta ahorra o solo cambia de sitio el
+             * tiempo. `atriles 0` = lo escalo el cubo. */
             if (marcos >= 60) {
                 bmo_superficie_lista(g_sup);
-                printf("[cubo] %dx%d (pinta a 360)  fotograma %d us\n", g_sup->ancho, g_sup->alto,
-                       (int)(acum / (unsigned long long)marcos
-                             * 1000000 / hz));
+                printf("[cubo] %dx%d  fotograma %d us, escalar %d us, atriles %d\n",
+                       g_sup->ancho, g_sup->alto,
+                       (int)(acum / (unsigned long long)marcos * 1000000 / hz),
+                       (int)(acum_esc / (unsigned long long)marcos * 1000000 / hz),
+                       atriles);
                 acum = 0;
+                acum_esc = 0;
                 marcos = 0;
             } else {
                 bmo_superficie_lista(g_sup);
