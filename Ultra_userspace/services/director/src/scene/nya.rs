@@ -1,4 +1,5 @@
-//! **EL GATO**: la ventanita que sale cuando alguien teclea Linux aqui.
+//! **EL GATO**: la ventanita que sale cuando alguien teclea Linux, Windows o
+//! Mac aqui.
 //!
 //! [consumo] NADA      no corre en reposo: se pinta UNA vez al teclear la
 //!                     orden, y se borra con la siguiente tecla o clic (L6h)
@@ -7,20 +8,31 @@
 //!
 //! Un amigo del dueno, que venia de Linux, se sento delante y tecleo `sudo`.
 //! La respuesta ya existia en `commands/shell.rs`, pero salia como texto suelto
-//! dentro de la salida, mezclado con lo demas. El dueno lo pidio asi: *"que
-//! genere ventana, con ASCII, como burla indirecta :3"*.
+//! dentro de la salida. El dueno lo pidio asi: *"que genere ventana, con ASCII,
+//! como burla indirecta :3"* -- y despues, con un boceto delante: *"mas elegante
+//! y simple, el gato variando en cada comando, y si es Windows XD, y si es Mac
+//! pues ni modo"*.
 //!
-//! ** Se rie del MALENTENDIDO, nunca de quien lo tuvo -- y cada burla cuenta la
-//! diferencia de verdad entre los dos sistemas y a donde ir en su lugar. Una
-//! broma que no ensena nada es ruido; esta es la guia de alguien que llega de
-//! otro sitio.
+//! ** Se rie del MALENTENDIDO, nunca de quien lo tuvo, y cada burla dice la
+//! diferencia de verdad y a donde ir. Una broma que no ensena nada es ruido.
+//!
+//! # La forma, que es la del boceto
+//!
+//! ```text
+//!    +-----------------------------------------------------+
+//!    | BMO-X // METAKERNEL // LEY 24 // SO: NONE           |
+//!    +------------+----------------------------------------+
+//!    |   /\_/\    | Comando:     `sudo`                    |
+//!    |  ( o.o )   | Burla:       "Nyaa~ ..."               |
+//!    |   > ^ <    | Explicacion: ...                       |
+//!    +------------+----------------------------------------+
+//! ```
 //!
 //! # Como vive
 //!
-//! Igual que el conmutador de Alt+Tab (`switcher.rs`): se pinta encima de todo,
-//! una bandera dice que esta pintada, y quien la pinto la borra. Mientras esta,
-//! la caja de Ejecutar no se repinta encima (ver las guardas de `paint.rs`), y
-//! al cerrarla se devuelve el fondo y se repinta lo de debajo.
+//! Igual que el conmutador de Alt+Tab (`switcher.rs`): una bandera dice que
+//! esta pintada, y quien la pinto la borra. Mientras esta, la caja de Ejecutar
+//! no se repinta encima (las guardas de `paint.rs`).
 
 use bmo_userland as bmo;
 
@@ -28,157 +40,218 @@ use super::*;
 use crate::desktop::Desktop;
 use crate::uncover;
 
-const N_FONDO: u32 = 0x0012_1826;
-const N_BORDE: u32 = 0x00A0_78C8;
-const N_TITULO: u32 = 0x0024_1B36;
-const N_GATO: u32 = 0x00F0_C8E8;
+const N_FONDO: u32 = 0x0010_141C;
+const N_LINEA: u32 = 0x00B8_C4D0;
+const N_GATO: u32 = 0x00F4_C6E4;
 
-const FILA: u32 = bmo::GLIFO_ALTO + 4;
-/// Columnas de texto que caben: el gato ocupa 17 y el mensaje el resto.
-const COLS: u32 = 64;
-const FILAS: u32 = 12;
-/// Donde empieza la columna del mensaje, en caracteres.
-const COL_TEXTO: u32 = 18;
+const FILA: u32 = bmo::GLIFO_ALTO + 6;
+/// Ancho de la columna del gato, en caracteres.
+const COL_GATO: u32 = 13;
+/// Ancho de la columna del texto, en caracteres: "Explicacion: " y 45 mas.
+const COL_TEXTO: u32 = 59;
+const MARGEN: u32 = 12;
 
-/// El gato. Solo ASCII: la fuente del escritorio es de 8x16 y estos glifos
-/// estan todos.
-const GATO: [&str; 7] = [
-    r"   /\_____/\   ",
-    r"  /  o   o  \  ",
-    r" ( ==  ^  == ) ",
-    r"  )         (  ",
-    r" (           ) ",
-    r"( (  )   (  ) )",
-    r"(__(__)___(__))",
-];
-
-/// Lo que dice el gato: una frase y hasta tres lineas de "lo que hay aqui".
-pub(crate) struct Burla {
-    pub frase: &'static str,
-    pub lineas: [&'static str; 3],
+/// De donde viene la costumbre. Cambia la frase de la salida y de la barra.
+#[derive(Clone, Copy)]
+pub(crate) enum Familia {
+    Linux,
+    Windows,
+    Mac,
 }
 
-/// **La burla de cada verbo.** Todas caben en 45 columnas.
+impl Familia {
+    /// Para la barra de estado de la caja de Ejecutar.
+    pub(crate) fn estado(self) -> &'static str {
+        match self {
+            Familia::Linux => "esto no es Linux :3",
+            Familia::Windows => "esto no es Windows XD",
+            Familia::Mac => "esto no es Mac... ni modo",
+        }
+    }
+
+    /// Para la linea que queda en la salida.
+    pub(crate) fn nombre(self) -> &'static [u8] {
+        match self {
+            Familia::Linux => b"Linux",
+            Familia::Windows => b"Windows",
+            Familia::Mac => b"Mac",
+        }
+    }
+}
+
+/// Lo que dice el gato: su cara, la burla y la explicacion en una linea.
+pub(crate) struct Burla {
+    pub cara: [&'static str; 3],
+    pub frase: &'static str,
+    pub explica: &'static str,
+    pub familia: Familia,
+}
+
+const fn b(
+    cara: [&'static str; 3],
+    frase: &'static str,
+    explica: &'static str,
+    familia: Familia,
+) -> Burla {
+    Burla { cara, frase, explica, familia }
+}
+
+/// **La burla de cada verbo.** Frase y explicacion caben en 45 columnas.
 ///
-/// El `_` del final no es un "no lo se": `FROM_LINUX` (en `commands/mod.rs`) solo
-/// manda aqui lo que es de Linux, asi que el comodin cubre a los que no tienen
-/// una respuesta propia, con la respuesta general.
+/// El `_` del final no es un "no lo se": `FROM_LINUX` (en `commands/mod.rs`,
+/// que ya lleva tambien Windows y Mac) solo manda aqui lo que viene de fuera, asi que el comodin
+/// es la respuesta general para un verbo sin burla propia.
 pub(crate) fn burla(verb: &[u8]) -> Burla {
+    use Familia::*;
     match verb {
-        b"sudo" | b"su" | b"doas" => Burla {
-            frase: "Nyaa~ sudo? aqui nadie es root.",
-            lineas: [
-                "Un proceso nace con sus capabilities",
-                "y no hay a quien pedirle mas.",
-                "Lo que no te dieron, no existe.",
-            ],
-        },
+        b"sudo" | b"su" | b"doas" => b(
+            [r" /\_/\ ", r"( o.o )", r" > ^ < "],
+            "Nyaa~ sudo? aqui nadie es root!",
+            "Capabilities: lo que no te dieron, no existe",
+            Linux,
+        ),
         b"apt" | b"apt-get" | b"pacman" | b"yay" | b"paru" | b"dnf" | b"yum" | b"zypper"
-        | b"emerge" | b"snap" | b"flatpak" => Burla {
-            frase: "Nyaa~ repositorios? que tierno.",
-            lineas: [
-                "Aqui no se instala nada: se compila.",
-                "El toolchain es de la casa, y",
-                "cada programa sale en un .bex.",
-            ],
-        },
-        b"systemctl" | b"service" | b"journalctl" => Burla {
-            frase: "Nyaa~ demonios? aqui no hay.",
-            lineas: [
-                "Un servicio es un proceso de Ring 3",
-                "con su capability, y se lanza con run.",
-                "Lo que apunta el kernel: cabina.",
-            ],
-        },
-        b"chmod" | b"chown" | b"chgrp" => Burla {
-            frase: "Nyaa~ chmod 777? no hay bits.",
-            lineas: ["El permiso ES el handle: sin el,", "el objeto ni siquiera se nombra.", ""],
-        },
-        b"mount" | b"umount" | b"fdisk" | b"mkfs" | b"dd" | b"lsblk" => Burla {
-            frase: "Nyaa~ montar? el disco ya esta.",
-            lineas: [
-                "El almacen: ESTRATOS y FAT32.",
-                "Para mirarlo:          disco",
-                "Para devolver bloques: disco trim",
-            ],
-        },
-        b"kill" | b"killall" | b"ps" | b"top" | b"htop" => Burla {
-            frase: "Nyaa~ matar procesos? que brusco.",
-            lineas: ["Lo que corre y lo que gasta: consumo", "Cerrar una app: su X, o Alt+F4.", ""],
-        },
-        b"man" => Burla {
-            frase: "Nyaa~ 400 paginas? aqui cabe en una.",
-            lineas: ["ayuda   lo que hay, por temas", "guia    por donde empezar", ""],
-        },
-        b"grep" => Burla {
-            frase: "Nyaa~ grep? tengo rueda y filtros.",
-            lineas: ["cat y la rueda del raton.", "F11: CABINA filtra por gravedad.", ""],
-        },
-        b"vim" | b"vi" | b"nano" | b"emacs" => Burla {
-            frase: "Nyaa~ salir de vim? aqui ni entras.",
-            lineas: ["Para escribir un archivo:", "  write <ruta> <texto>", ""],
-        },
-        b"neofetch" | b"fastfetch" | b"uname" => Burla {
-            frase: "Nyaa~ presumir la maquina? venga.",
-            lineas: [
-                "info      RAM, CPU, tareas y disco",
-                "consumo   W, nucleos y MHz en tabla",
-                "ext       lo que ofrece el silicio",
-            ],
-        },
-        b"bash" | b"zsh" | b"fish" | b"sh" => Burla {
-            frase: "Nyaa~ otro shell? ya estas en uno.",
-            lineas: ["Esta caja ES la terminal.", "TAB completa; flecha arriba: historial.", ""],
-        },
-        _ => Burla {
-            frase: "Nyaa~ eso es de Linux.",
-            lineas: [
-                "Esto es BMO-X: bare metal orquestal.",
-                "No hay usuarios, ni paquetes, ni root.",
-                "Escribe ayuda para ver lo que SI hay.",
-            ],
-        },
+        | b"emerge" | b"snap" | b"flatpak" => b(
+            [r" /\_/\ ", r"( ^.^ )", r" > w < "],
+            "Nyaa~ repositorios? que tierno!",
+            "Aqui no se instala: se compila a un .bex",
+            Linux,
+        ),
+        b"systemctl" | b"service" | b"journalctl" => b(
+            [r" /\_/\ ", r"( -.- )", r" z z z "],
+            "Nyaa~ demonios? aqui se duerme bien.",
+            "Un servicio es un proceso de Ring 3: run",
+            Linux,
+        ),
+        b"chmod" | b"chown" | b"chgrp" => b(
+            [r" /\_/\ ", r"( >.< )", r" > ~ < "],
+            "Nyaa~ chmod 777? no hay bits!",
+            "El permiso ES el handle: sin el, ni existe",
+            Linux,
+        ),
+        b"mount" | b"umount" | b"fdisk" | b"mkfs" | b"dd" | b"lsblk" => b(
+            [r" /\_/\ ", r"( o_O )", r" / | \ "],
+            "Nyaa~ montar? si ya esta montado.",
+            "El almacen se mira con: disco",
+            Linux,
+        ),
+        b"kill" | b"killall" | b"ps" | b"top" | b"htop" => b(
+            [r" /\_/\ ", r"( T.T )", r" > n < "],
+            "Nyaa~ matar procesos? que brusco!",
+            "Lo que corre y lo que gasta: consumo",
+            Linux,
+        ),
+        b"man" => b(
+            [r" /\_/\ ", r"( @.@ )", r" > - < "],
+            "Nyaa~ 400 paginas? cabe en una.",
+            "Lo que hay: ayuda.  Por donde: guia",
+            Linux,
+        ),
+        b"grep" => b(
+            [r" /\_/\ ", r"( 0.0 )", r" > ? < "],
+            "Nyaa~ grep? tengo rueda y filtros.",
+            "La rueda del raton, o F11 con filtros",
+            Linux,
+        ),
+        b"vim" | b"vi" | b"nano" | b"emacs" => b(
+            [r" /\_/\ ", r"( x.x )", r"  :q!  "],
+            "Nyaa~ salir de vim? aqui ni entras.",
+            "Para escribir: write <ruta> <texto>",
+            Linux,
+        ),
+        b"neofetch" | b"fastfetch" | b"uname" => b(
+            [r" /\_/\ ", r"( *.* )", r" > v < "],
+            "Nyaa~ presumir la maquina? venga!",
+            "La maquina: info, consumo y ext",
+            Linux,
+        ),
+        b"bash" | b"zsh" | b"fish" | b"sh" => b(
+            [r" /\_/\ ", r"( u.u )", r" > _ < "],
+            "Nyaa~ otro shell? ya estas en uno.",
+            "Esta caja ES la terminal. TAB completa",
+            Linux,
+        ),
+        b"ipconfig" | b"tasklist" | b"taskkill" | b"regedit" | b"chkdsk" | b"diskpart"
+        | b"sfc" | b"winget" | b"choco" | b"powershell" | b"cmd" | b"del" | b"notepad"
+        | b"explorer" | b"systeminfo" => b(
+            [r" /\_/\ ", r"( =w= )", r" > XD< "],
+            "Nyaa~ Windows?! XD aqui no hay C:",
+            "Ni registro ni C: -- hay handles y .bex",
+            Windows,
+        ),
+        b"brew" | b"sw_vers" | b"diskutil" | b"launchctl" | b"defaults" | b"pbcopy"
+        | b"open" | b"softwareupdate" | b"xcode-select" => b(
+            [r" /\_/\ ", r"( ._. )", r" > . < "],
+            "Nyaa~ Mac? ...bueno, ni modo.",
+            "Ni brew ni Finder: toolchain propio y .bex",
+            Mac,
+        ),
+        _ => b(
+            [r" /\_/\ ", r"( o.o )", r" > ^ < "],
+            "Nyaa~ eso es de otro sistema!",
+            "BMO-X: bare metal orquestal. Prueba: ayuda",
+            Linux,
+        ),
     }
 }
 
 /// El rectangulo de la ventanita. **Una sola cuenta**, porque la usan pintar y
 /// borrar -- la leccion de `switcher::run_box`, que tuvo dos copias.
 fn caja(p: &bmo::Pantalla) -> (u32, u32, u32, u32) {
-    let w = (COLS * bmo::GLIFO_ANCHO + 32).min(p.ancho.saturating_sub(40));
-    let h = FILAS * FILA + 24;
+    let w = ((COL_GATO + COL_TEXTO) * bmo::GLIFO_ANCHO + MARGEN * 4 + 2)
+        .min(p.ancho.saturating_sub(40));
+    // titulo + raya + tres filas + pie, con aire arriba y abajo
+    let h = FILA * 5 + MARGEN * 4 + 4;
     (p.ancho.saturating_sub(w) / 2, p.alto.saturating_sub(h) / 2, w, h)
 }
 
 /// **Pinta el gato**, centrado y encima de todo.
 pub(crate) fn mostrar(dsk: &mut Desktop, p: &bmo::Pantalla, verb: &[u8]) {
     let (x, y, w, h) = caja(p);
-    p.rect(x, y, w, h, N_BORDE);
-    p.rect(x + 2, y + 2, w - 4, h - 4, N_FONDO);
-    p.rect(x + 2, y + 2, w - 4, FILA + 8, N_TITULO);
-    p.texto(x + 14, y + 8, "BMO-X  //  METAKERNEL  //  LEY 24  //  SO: NONE", ACCENT);
+    let bu = burla(verb);
 
-    let arriba = y + FILA + 24;
-    for (i, linea) in GATO.iter().enumerate() {
-        p.texto(x + 16, arriba + i as u32 * FILA, linea, N_GATO);
+    // El marco: fondo y una raya de un pixel alrededor.
+    p.rect(x, y, w, h, N_LINEA);
+    p.rect(x + 1, y + 1, w - 2, h - 2, N_FONDO);
+
+    // El titulo, y la raya que lo separa.
+    let ty = y + MARGEN;
+    p.texto(x + MARGEN, ty, "BMO-X // METAKERNEL // LEY 24 // SO: NONE", ACCENT);
+    let raya = ty + FILA + MARGEN / 2;
+    p.rect(x + 1, raya, w - 2, 1, N_LINEA);
+
+    // La raya vertical entre el gato y el texto.
+    let cuerpo = raya + MARGEN;
+    let div_x = x + MARGEN + COL_GATO * bmo::GLIFO_ANCHO;
+    p.rect(div_x, raya, 1, FILA * 3 + MARGEN * 2, N_LINEA);
+    p.rect(x + 1, cuerpo + FILA * 3 + MARGEN, w - 2, 1, N_LINEA);
+
+    // El gato, centrado en su columna.
+    let gx = x + MARGEN + (COL_GATO * bmo::GLIFO_ANCHO).saturating_sub(7 * bmo::GLIFO_ANCHO) / 2;
+    for (i, linea) in bu.cara.iter().enumerate() {
+        p.texto(gx, cuerpo + i as u32 * FILA, linea, N_GATO);
     }
 
-    let b = burla(verb);
-    let tx = x + 16 + COL_TEXTO * bmo::GLIFO_ANCHO;
-    // La orden que se tecleo, citada y recortada: una linea larga no puede
-    // salirse del marco.
-    let corte = verb.len().min(36);
+    // Las tres filas, con su etiqueta.
+    let tx = div_x + MARGEN;
+    let corte = verb.len().min(30);
     let orden = core::str::from_utf8(&verb[..corte]).unwrap_or("?");
-    let cx = p.texto(tx, arriba, "$ ", INK_DIM);
-    p.texto(cx, arriba, orden, INK_BAD);
-    p.texto(tx, arriba + FILA * 2, b.frase, INK);
-    for (i, linea) in b.lineas.iter().enumerate() {
-        p.texto(tx, arriba + FILA * (4 + i as u32), linea, INK_DIM);
-    }
+    let cx = p.texto(tx, cuerpo, "Comando:     `", INK_DIM);
+    let cx = p.texto(cx, cuerpo, orden, INK_BAD);
+    p.texto(cx, cuerpo, "`", INK_DIM);
 
+    let bx = p.texto(tx, cuerpo + FILA, "Burla:       \"", INK_DIM);
+    let bx = p.texto(bx, cuerpo + FILA, bu.frase, INK);
+    p.texto(bx, cuerpo + FILA, "\"", INK_DIM);
+
+    let ex = p.texto(tx, cuerpo + FILA * 2, "Explicacion: ", INK_DIM);
+    p.texto(ex, cuerpo + FILA * 2, bu.explica, ACCENT);
+
+    // El pie, pequeno y apagado.
     p.texto(
-        x + 16,
-        y + h - FILA - 6,
-        "cualquier tecla o clic cierra   --   ayuda: lo que SI hay",
+        x + MARGEN,
+        cuerpo + FILA * 3 + MARGEN * 2,
+        "cualquier tecla o clic cierra  :3",
         INK_DIM,
     );
     dsk.win.nya_painted = true;
