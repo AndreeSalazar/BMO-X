@@ -523,9 +523,23 @@ impl Machine {
         };
         self.syscalls.push(call);
 
+        // ** WAIT: la otra llamada congelada. Hasta el 2026-09-12 aqui habia un
+        // `assert` de que solo cruzaba INVOKE -- y era cierto porque ningun
+        // lenguaje emitia WAIT: el `espera_a` de INTI salia como INVOKE por un
+        // fallo del emisor. Arreglado aquel, este modelo tiene que existir.
+        //
+        // Sin handle (`rdi` = 0) el kernel duerme hasta el plazo y contesta
+        // exito con valor 0. Aqui no hay reloj que dejar pasar: se contesta lo
+        // mismo en el acto, y quien espera por TIEMPO lo vera en su propio
+        // reloj -- que es lo que tiene que mirar en metal igualmente, porque
+        // WAIT puede volver antes (es ADVISORY).
+        if call.nr == bmo_abi::syscalls::surface::NR_WAIT as u64 {
+            self.finalizar_syscall(0);
+            return;
+        }
         assert_eq!(
             call.nr, NR_INVOKE as u64,
-            "solo INVOKE cruza esta puerta (rax={:#x})",
+            "solo INVOKE y WAIT cruzan esta puerta (rax={:#x})",
             call.nr
         );
 

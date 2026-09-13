@@ -67,6 +67,11 @@ pub struct Modulos {
     /// registro equivocado no falla, DEVUELVE OTRA COSA. Y las dos cosas son
     /// numeros del mismo ancho, asi que nada se queja.
     recoge: HashMap<String, String>,
+    /// nombre -> por que puerta cruza ("espera"). Sin fila, por la de siempre.
+    ///
+    /// ** Mismo motivo que `recoge`: cruzar por la puerta equivocada no falla,
+    /// PIDE OTRA COSA. `espera_a` cruzaba por INVOKE y volvia en el acto.
+    cruza: HashMap<String, String>,
     /// Los modulos cuyos nombres se bajan a UNA INSTRUCCION, no a una llamada.
     ///
     /// ** Sin esto, `cuenta_unos(x)` se bajaba a un `call` a un simbolo que no
@@ -97,6 +102,7 @@ impl Modulos {
         };
         let mut por_nombre = HashMap::new();
         let mut recoge = HashMap::new();
+        let mut cruza = HashMap::new();
         let mut accede = HashMap::new();
         let mut pide_crudo = HashSet::new();
         let mut constantes = HashMap::new();
@@ -109,7 +115,7 @@ impl Modulos {
                 // columnas mas sobre nombres que ya trae otro.
                 if matches!(
                     k.as_str(),
-                    "meta" | "recoge" | "accede" | "crudo" | "constantes" | "instrucciones"
+                    "meta" | "recoge" | "cruza" | "accede" | "crudo" | "constantes" | "instrucciones"
                 ) {
                     continue;
                 }
@@ -121,6 +127,13 @@ impl Modulos {
                 for (k, v) in t {
                     if let Some(q) = v.as_str() {
                         recoge.insert(k.clone(), q.to_string());
+                    }
+                }
+            }
+            if let Some(t) = raiz.get("cruza").and_then(|v| v.as_table()) {
+                for (k, v) in t {
+                    if let Some(q) = v.as_str() {
+                        cruza.insert(k.clone(), q.to_string());
                     }
                 }
             }
@@ -163,6 +176,7 @@ impl Modulos {
         Self {
             por_nombre,
             recoge,
+            cruza,
             accede,
             pide_crudo,
             constantes,
@@ -213,6 +227,12 @@ impl Modulos {
     /// `None` si el nombre no cruza ninguna puerta, que es lo normal.
     pub fn recoge(&self, nombre: &str) -> Option<&str> {
         self.recoge.get(nombre).map(|s| s.as_str())
+    }
+
+    /// Por que puerta cruza este nombre: `Some("espera")`, o `None` para la de
+    /// siempre (INVOKE).
+    pub fn cruza(&self, nombre: &str) -> Option<&str> {
+        self.cruza.get(nombre).map(|s| s.as_str())
     }
 
     /// Los nombres que trae un `usa`. Vacio si no es un modulo conocido -- que

@@ -35,7 +35,7 @@
 # Primero `sensor`: bit 0 = sabe la frecuencia, bit 1 = sabe el consumo.
 # ** Un CERO en cualquier otra linea es "no se sabe", NUNCA "no gasta".
 #
-# Despues, veinte muestras, una cada medio segundo:
+# Despues, veinte muestras, una cada medio segundo, UNA LINEA POR NUMERO:
 #
 #     tick      milisegundos desde el arranque
 #     hz real   a que va el nucleo ahora mismo
@@ -44,13 +44,33 @@
 #     vivos     cuantos obreros hay en pie
 #     puertas   cuantas veces se ha cruzado la puerta del sistema
 #
-# Cada numero son tres escrituras de consola de ocho bytes: la etiqueta y dieciseis
-# cifras en decimal, alineadas a la derecha.
-#
 # ** OJO, y se dice aqui para que no se descubra comparando dos pantallas: la
 # frecuencia y los milivatios se miden POR DIFERENCIA con la pregunta anterior
 # de CUALQUIERA. Si el panel del escritorio tambien pregunta, esta sonda ve
 # intervalos mas cortos. El numero sigue siendo cierto; es de menos tiempo.
+#
+# ===================================================================
+#  ** LO QUE ENSENO LA PRIMERA VEZ EN EL RYZEN (2026-09-12)
+# ===================================================================
+#
+# Corrio, y los numeros cuadraban con `consumo` (4,52 GHz, 58 W). Pero la sonda
+# ENSUCIABA lo que media:
+#
+#     el tick avanzaba ~169 por muestra, no 500
+#     `puertas` subia ~201.300 por muestra
+#     el nucleo gastaba 8,3 W contra 6,8 en reposo
+#
+# Esperaba CEDIENDO el turno, y ceder sin nadie mas listo vuelve en el acto: el
+# bucle giraba hasta su tope de 100.000 vueltas, dos puertas por vuelta. Una
+# sonda de vatios que se come 1,5 W no mide la maquina: se mide a si misma.
+#
+# Ahora espera con WAIT, la otra llamada congelada, que DUERME la tarea hasta el
+# plazo. Y buscando por que no se habia hecho asi desde el principio salio otro
+# fallo mudo: `espera_a` cruzaba por INVOKE y no dormia nunca. Ver `[cruza]` en
+# `modulos.toml`.
+#
+# Y la salida: sin salto de linea, la consola pegaba las palabras de ocho bytes
+# una detras de otra y no se podia leer.
 
 perfil llano
 usa bmo
@@ -61,6 +81,10 @@ usa bmo
 
 funcion palabra(w es natural64)
     invoca(mi_tarea, op_consola_escribir, w, 0, 0)
+
+# Un salto de linea: el byte 10 y, detras, ceros -- el kernel corta en el primero.
+funcion salto
+    palabra(10)
 
 # **UNA PREGUNTA AL KERNEL.** Todo lo que esta sonda sabe pasa por aqui.
 funcion pregunta(que es natural64) devuelve natural64
@@ -100,6 +124,7 @@ funcion linea(etiqueta es natural64, dato es natural64)
     palabra(etiqueta)
     palabra(ocho_decimal(dato, 0))
     palabra(ocho_decimal(dato, 8))
+    salto()
 
 # ===================================================================
 #  2. LAS ETIQUETAS -- ocho letras ASCII, little-endian, en decimal
@@ -136,19 +161,29 @@ funcion et_fin devuelve natural64
     devuelve 3251720329925504301
 
 # ===================================================================
-#  3. MEDIR -- sin girar
+#  3. MEDIR -- durmiendo, no girando
 # ===================================================================
 
-# **Esperar a que pase el tiempo CEDIENDO EL TURNO**, no girando.
+# **Dormir hasta que pasen `cuantos` milisegundos.**
 #
-# ** Con TOPE de vueltas, y el tope no es adorno: si el reloj no avanza --un
-# emulador, o un tick que se paro-- esto seria un bucle infinito que no dice
-# nada. Con el tope, la sonda sigue y el `tick` repetido lo ensena.
-funcion espera_ticks(cuantos es natural64)
+# `espera_a(0, 0, plazo)`: sin nada que esperar (handle 0), solo el plazo en
+# NANOSEGUNDOS. El kernel duerme la tarea y el nucleo puede bajar a reposo.
+#
+# ** Y se vuelve a mirar el reloj despues, en vez de fiarse: WAIT es ADVISORY,
+# puede volver antes. Por eso es un bucle -- y con TOPE de veinte vueltas, para
+# que un reloj parado (un emulador, un tick muerto) no cuelgue la sonda: se
+# sigue, y el `tick` repetido lo ensena.
+#
+# [!] Nunca un plazo de CERO: para el kernel eso es "sin plazo", o sea dormir
+# hasta que alguien despierte a la tarea -- y aqui no la despierta nadie. Como
+# `pasados < cuantos` dentro del bucle, lo que queda es siempre al menos 1 ms.
+funcion espera_ms(cuantos es natural64)
     antes es natural64 = pregunta(info_ticks)
+    cambiante pasados es natural64 = 0
     cambiante vueltas es natural64 = 0
-    repite mientras vueltas < 100000 y pregunta(info_ticks) - antes < cuantos
-        invoca(mi_tarea, op_ceder, 0, 0, 0)
+    repite mientras vueltas < 20 y pasados < cuantos
+        espera_a(0, 0, (cuantos - pasados) * 1000000)
+        pasados = pregunta(info_ticks) - antes
         vueltas = vueltas + 1
 
 funcion muestra
@@ -158,14 +193,18 @@ funcion muestra
     linea(et_nucl(), pregunta(info_cpu_mw_nucleo))
     linea(et_vivos(), pregunta(info_smp_vivos))
     linea(et_puertas(), pregunta(info_puertas))
+    salto()
 
 funcion principal devuelve entero32
     palabra(et_pulso())
+    salto()
     linea(et_sensor(), pregunta(info_cpu_sensores))
+    salto()
     cambiante n es natural64 = 0
     repite mientras n < 20
-        espera_ticks(500)
+        espera_ms(500)
         muestra()
         n = n + 1
     palabra(et_fin())
+    salto()
     devuelve 0

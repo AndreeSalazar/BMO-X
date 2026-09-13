@@ -349,10 +349,17 @@ pub(crate) fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) 
                         for (i, a) in argumentos.iter().enumerate().take(p.caben()) {
                             carga(out, p.argumentos[i], a, &marco);
                         }
-                        // Solo hay una puerta. Ese es el congelamiento de los
-                        // dos syscalls, visto desde el unico sitio donde se
-                        // notaria si dejara de ser verdad.
-                        x86::mov_r32_imm32(out, p.numero, NR_INVOKE);
+                        // *** DOS puertas, no una. Aqui ponia "solo hay una
+                        // puerta" y cargaba INVOKE para todo nombre de `[bmo]`
+                        // --`espera_a` incluido--, asi que esperar no dormia:
+                        // pedia una operacion sobre el handle 0 y volvia en el
+                        // acto (2026-09-12). El congelamiento son DOS syscalls,
+                        // y cual cruza cada nombre lo dice `[cruza]`.
+                        let nr = match taller.recoge.cruza(n) {
+                            Some("espera") => NR_WAIT,
+                            _ => NR_INVOKE,
+                        };
+                        x86::mov_r32_imm32(out, p.numero, nr);
                         x86::syscall(out);
                         // ** Y de DONDE se recoge no lo decide la instruccion:
                         // lo decide el nombre. La misma puerta contesta un
