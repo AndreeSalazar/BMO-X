@@ -732,3 +732,41 @@ pub fn find_xhci(skip: usize) -> Option<XhciLoc> {
     }
     None
 }
+
+/// **EL CENSO DE ALMACENAMIENTO**: que controladores de disco hay, contado en
+/// CABINA. Se llama UNA vez desde `phase::main`.
+///
+/// ** Vivia en `cabina/mod.rs` como `boot_probe`, y era la razon de que el
+/// registro --la familia mas baja, la que llaman todos-- importara `dev::pci`
+/// (L8b, 2026-09-13). Contar lo que hay en el bus es oficio del bus; CABINA solo
+/// lo apunta.
+///
+/// CENSO COMPLETO, no "el primero". Si la BIOS tiene el SATA del chipset en
+/// modo RAID, ese controlador aparece con clase RAID y no con clase AHCI -- y un
+/// buscador que solo pregunta por AHCI pasa de largo sin enterarse de que existe.
+pub fn censo_almacenamiento() {
+    let mut index = 0usize;
+    let mut found = 0u64;
+    while let Some(loc) = storage_at(index) {
+        index += 1;
+        found += 1;
+        let msg = match loc.kind {
+            StorageKind::Nvme => "controlador NVMe (via PCI)",
+            StorageKind::Ahci => "controlador SATA/AHCI (via PCI)",
+            StorageKind::Raid => "controlador en modo RAID (via PCI)",
+            StorageKind::Ide => "controlador en modo IDE (via PCI)",
+            _ => "controlador de almacenamiento (via PCI)",
+        };
+        // El valor lleva bus:dev.func empaquetado + el MMIO, para poder
+        // localizarlo despues sin volver a barrer el bus.
+        crate::ring0::cabina::info("pci", msg, loc.mmio);
+        if index >= 8 {
+            break;
+        }
+    }
+    if found == 0 {
+        crate::ring0::cabina::warn("pci", "sin controlador de almacenamiento visible", 0);
+    } else {
+        crate::ring0::cabina::info("pci", "controladores de almacenamiento hallados", found);
+    }
+}

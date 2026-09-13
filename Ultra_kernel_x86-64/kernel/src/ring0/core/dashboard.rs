@@ -31,7 +31,7 @@ pub(crate) static mut DASH_LOG_ROW: usize = 0;
 pub(crate) fn log_rows() -> usize {
     let total = splash::dash_rows();
     if total == 0 { return 1; }
-    total.saturating_sub(crate::ring0::cabina::band_rows(total)).max(1)
+    total.saturating_sub(crate::ring0::mirador::band_rows(total)).max(1)
 }
 
 // Mirror the serial output to a line in the dashboard's log

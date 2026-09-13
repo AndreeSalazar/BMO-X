@@ -759,6 +759,48 @@ cruce carpeta no se ve. Es una cota inferior -- y para un trinquete basta, porqu
 lo que se ve no puede empeorar. Guardian: `toolchain/tools/capas/capas.py`
 (`--mapa` ensena el mapa entero).
 
+### L8b. ** LAS FAMILIAS DEL PRINCIPAL: cada subsistema dice quien es, y el guardian lo exige PRIMERO
+
+L8 mira crates. Dentro del kernel no hay crates: hay dieciseis subsistemas en un
+binario, y ahi vivia el espagueti de verdad -- un nudo de 13 de ellos. Eddi, el
+2026-09-13: *"un comentario especial que diga que familia es, que el kernel
+empieza en 0 y conecta con el siguiente, para guiar en los puntos importantes --
+y que el guardian lo exija primero"*.
+
+```
+   //! [familia] cabina  nivel 1 -- el REGISTRO: todo el kernel apunta aqui lo que pasa
+   //! [conecta] reloj
+```
+
+La cabecera va en el `mod.rs` o el `.rs` del subsistema, o **dentro del bloque**
+`pub mod x {` cuando se declara en linea en `ring0/mod.rs`. Y el guardian
+comprueba, en este orden:
+
+1. **Que este.** Un subsistema sin `[familia]` y `[conecta]` rompe el build, y
+   mientras falte uno no se juzga nada mas: un nivel que no existe no se compara.
+2. **Que no mienta.** Cada `use` a otra familia esta en `[conecta]`, y todo lo de
+   `[conecta]` se usa. La cabecera es el mapa que se lee sin abrir el codigo; un
+   mapa viejo es peor que ninguno.
+3. **Que baje.** Una familia solo usa familias de nivel MAS BAJO. Las que hoy
+   suben estan en `LINEA_BASE.txt` como `sube kernel a b`: trinquete, solo bajan.
+
+**L8b-1. Los niveles los puso la medida, no la opinion.** Con `reloj` e `info` en
+0, CABINA en 1 y `core` arriba, se busco el orden que menos sube: 22 aristas, 119
+de 1.395 usos. `plat` quedo alto y `uconsole` bajo, y eso dice como es ESTE
+kernel: la plataforma orquesta interrupciones que tocan a todos.
+
+**L8b-2. El primer corte fue CABINA, y era DOS oficios con un nombre.** El
+registro (`info/warn/fault`, el anillo, la caida) lo llaman los once; el cockpit,
+las vigilancias y la caja negra leen a todos. Juntos, la familia que todo el
+kernel llama importaba a todo el kernel -- 54 usos subiendo desde el suelo --. Se
+partio en `cabina` (nivel 1, solo sabe la hora) y `mirador` (nivel 13), y la hora
+salio a `reloj` (nivel 0) en vez de leerse de `plat`. **Siete parejas del nudo se
+fueron sin escribir logica nueva**: mudar, y que el dato suba como parametro.
+
+*El precio*: `core` sigue siendo el "todos lo llaman" que no deberia ser (obj 21,
+plat 11, dev 8, syscall 8...), y `mirador <-> core` sustituye a `cabina <-> core`.
+Es el siguiente corte, y la base lo tiene apuntado.
+
 ---
 
 ## 2. Los cinco ejes, y cual manda en BMO-X

@@ -209,7 +209,7 @@ pub fn init(ctx: &BootContext) {
             .iter()
             .any(|m| m.kind == 1 && m.base <= b && e <= m.base + m.size)
     };
-    crate::ring0::cabina::caida::abrir(en_ram);
+    crate::ring0::cabina::caida::abrir(en_ram, crate::ring0::mm::phys_to_virt(crate::ring0::cabina::caida::BASE) as u64);
     if ctx.ring3_payload_phys != 0 {
         reserve_range(ctx.ring3_payload_phys, ctx.ring3_payload_size);
     }

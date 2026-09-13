@@ -34,7 +34,7 @@ pub(crate) fn shell_cabina() {
         s_log("[cabina] escribe 'disk' para ver que dijo el gate de identidad");
         return;
     }
-    let n = crate::ring0::cabina::dump_to_disk();
+    let n = crate::ring0::mirador::dump_to_disk();
     if n == 0 {
         s_log("[cabina] no se volco (el motivo esta en la bitacora)");
         return;

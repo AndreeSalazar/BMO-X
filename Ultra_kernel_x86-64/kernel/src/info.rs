@@ -1,5 +1,8 @@
 //! Framebuffer globals ??? populated from `BootContext` at kernel entry.
 //!
+//! [familia] info  nivel 0 -- lo que dejo el arranque: framebuffer e IDT; no llama a nadie
+//! [conecta] -
+//!
 //! These are the simplest possible "interface" that the splash, syscall
 //! handlers, and any future pixel-drawing code consume. They are written
 //! exactly once from `_start` and then treated as read-only.

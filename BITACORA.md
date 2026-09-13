@@ -4394,3 +4394,55 @@ se esta anadiendo.**
 
 > El espagueti no estaba donde lo declara el `Cargo.toml`, sino donde nadie lo
 > declara: en los `use` de dentro.
+
+## Ep. 82 -- CABINA eran dos oficios con un nombre, y el kernel aprende a decir de que familia es
+
+**2026-09-13.** Eddi: *"dale con el nudo del kernel, empieza por cabina -- y un
+comentario especial que diga que familia es, que el guardian exija PRIMERO"*.
+
+### Por que CABINA era el primer nudo
+
+La medida lo contesto antes de tocar nada. Los once subsistemas que la usan
+llaman al REGISTRO (`info`, `warn`, `fault`). Pero dentro de CABINA vivian
+tambien el cockpit, las vigilancias y la caja negra, que leen `dev`, `mm`,
+`plat`, `task`, `fsys`... **La familia que todo el kernel llama importaba a todo
+el kernel: 54 usos subiendo desde el suelo.**
+
+Se partio sin logica nueva:
+
+| antes | despues |
+|---|---|
+| `cabina` lo hacia todo | `cabina` (nivel 1): el anillo, la caida y la lectura de Ring 3 |
+| | `mirador` (nivel 13): cockpit, vigilancias, caja negra, volcar la caida |
+| la hora se leia de `plat::timer` | `reloj` (nivel 0): el contador; `plat` lo avanza |
+| `caida` preguntaba a `mm` donde esta | quien la abre le pasa la base virtual |
+| el censo PCI vivia en CABINA | `dev::pci::censo_almacenamiento` |
+
+Resultado: CABINA solo conecta con `reloj`, **las parejas del nudo bajan de 27 a
+21**, y los avisos del compilador del kernel de 14 a 12.
+
+### El metro tenia un agujero
+
+`use crate::ring0::{obj, task};` contaba como UNA arista hacia `ring0` y
+escondia las dos de verdad: la expresion regular se paraba en la llave. Se vio
+al preparar las familias, y el metro ahora expande los grupos.
+
+### L8b: cada subsistema dice quien es
+
+```
+   //! [familia] cabina  nivel 1 -- el REGISTRO: todo el kernel apunta aqui lo que pasa
+   //! [conecta] reloj
+```
+
+Dieciseis cabeceras, seis de ellas DENTRO de los bloques `pub mod x {` de
+`ring0/mod.rs` -- y un `dev/mod.rs` que existe al lado y no se compila, que es
+por lo que el guardian lee primero el bloque en linea. El orden de los juicios
+es la regla: **que este, que no mienta, que baje**. Los niveles los puso la
+medida: el orden que menos sube deja 22 aristas, y esas van a la base.
+
+[!] Lo que queda, dicho: `core` es el "todos lo llaman" que no deberia ser --
+`obj` le hace 21 usos, `plat` 11-- y `mirador <-> core` sustituye a `cabina <->
+core`. Es el siguiente corte.
+
+> Un nudo no siempre es un mal diseno de las relaciones: a veces es un solo
+> nombre para dos oficios.

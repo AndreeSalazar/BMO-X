@@ -318,7 +318,8 @@ pub fn main(ctx: &mut BootContext) {
     // CABINA abre los ojos y censa el almacenamiento (scan PCI). Va AQUI, en el
     // acto donde el kernel despierta hardware -- antes vivia dentro del render y
     // clavaba ~65k lecturas de config PCI en el primer frame del cockpit.
-    crate::ring0::cabina::boot_probe();
+    crate::ring0::cabina::info("cabina", "observador omnisciente en linea", 0);
+    crate::ring0::dev::pci::censo_almacenamiento();
     // *** Y SE CAREA LA TOPOLOGIA, aqui y no cuando alguien teclee `smp`.
     //
     // Va justo detras de `boot_probe` porque necesita lo mismo que el: que ACPI
@@ -440,7 +441,7 @@ pub fn main(ctx: &mut BootContext) {
     crate::ring0::fsys::fs::mount_data();
     // Y lo que la RAM conservo del arranque anterior, al disco: ahora que el
     // disco esta montado y es fiable, que es cuando NO lo estaba al morir.
-    crate::ring0::cabina::caida::volcar();
+    crate::ring0::mirador::volcar_caida();
     // Y ESTRATOS, si alguna particion lleva uno. Solo lectura: el modulo no
     // sabe escribir, asi que montarlo no puede estropear nada.
     crate::ring0::fsys::estratos::mount();

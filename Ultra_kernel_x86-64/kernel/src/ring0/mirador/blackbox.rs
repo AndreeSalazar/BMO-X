@@ -109,12 +109,6 @@ pub(crate) fn append(mut n: usize, s: &str) -> usize {
     n
 }
 
-/// Total de eventos grabados desde el arranque (puede exceder el anillo).
-pub fn event_total() -> u64 { unsafe { EV_TOTAL } }
-/// Eventos perdidos por reentrancia. Deberia ser 0; si no lo es, algo falto
-/// durante un fault y la bitacora lo dice en vez de callarlo.
-pub fn event_lost() -> u64 { unsafe { EV_LOST } }
-
 // Paleta de estado (aviso por color, como pidio el usuario): verde = bien,
 // ambar = atencion, rojo = problema, cyan = info/titulo, gris = neutro.
 // Los valores son los mismos que la paleta del panel (core/splash.rs): CABINA

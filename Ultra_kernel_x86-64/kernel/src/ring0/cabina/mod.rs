@@ -1,5 +1,8 @@
 //! CABINA -- el registrador omnisciente del sistema (lado Ring 0).
 //!
+//! [familia] cabina  nivel 1 -- el REGISTRO: todo el kernel apunta aqui lo que pasa, y solo sabe la hora
+//! [conecta] reloj
+//!
 //! [carril]  AMARILLO  la fachada del registrador
 //! [consumo] NADA      apunta o pinta cuando alguien lo llama
 //!
@@ -32,9 +35,8 @@
 //! A futuro: volcado del anillo a disco (NVMe+FAT32) = la caja negra forense,
 //! y el buffer de shared-memory para que Ring 3 aporte su parte.
 
-use cabina_core::{TelemetrySnapshot, Event, Severity, Layer, Entity};
+use cabina_core::{Event, Severity, Layer, Entity};
 use cabina_core::event::Fmt;
-use crate::ring0::core::splash::{splash_dashboard_log_color, DASH_LOG_W};
 
 /// THE RECORDER: the event ring everything else here reads from.
 /// EL BARRIDO: lo que no se escapa de ningun filtro. Ver su cabecera.
@@ -50,21 +52,16 @@ pub(crate) mod attempt;
 /// placa hasta que el Ryzen conteste.
 pub mod caida;
 pub use attempt::*;
-/// THE BLACK BOX: the ring, on the disk. The only part that survives a power
-/// cut, and the only one that can fail for reasons unrelated to logging.
-pub(crate) mod blackbox;
-pub use blackbox::*;
-/// THE WATCHES: this IS polling, and the reason is that a device which stops
-/// answering does not send an event saying so.
-pub(crate) mod watch;
-pub use watch::*;
 /// FORMATTING WITHOUT `std`: a line built by hand in a fixed byte buffer.
 pub(crate) mod format;
 pub(crate) use format::*;
-/// THE COCKPIT: severity colours, filters, layout. Presentation only -- none of
-/// it changes what is recorded.
-pub(crate) mod cockpit;
-pub use cockpit::*;
+/// LA LECTURA: lo que Ring 3 pregunta del anillo (`TASK_OP_CABINA_*`). Solo LEE
+/// lo apuntado; vivia al final de `cockpit.rs`.
+pub(crate) mod lectura;
+pub use lectura::*;
+// ** El cockpit, las vigilancias y la caja negra se fueron al MIRADOR
+// (`ring0/mirador`, L8b 2026-09-13): leen a todo el kernel para ensenarlo, y
+// eso no puede vivir en la familia que todo el kernel llama.
 
 // -- ** THE SAME VOCABULARY, SAYING WHAT THE NUMBER IS -----------------------
 //
@@ -134,39 +131,6 @@ pub(crate) fn event_back(n: usize) -> Option<Event> {
     }
 }
 
-// -- Censo de arranque -------------------------------------------------------
-
-/// Primer paso hacia la CAJA NEGRA: que controlador de disco hay? Saberlo
-/// decide el driver a cablear (AHCI vs NVMe). Se llama UNA vez desde
-/// `phase::main` -- antes vivia dentro del render, donde un scan PCI por fuerza
-/// bruta (~65k lecturas de config) bloqueaba el primer frame.
-pub fn boot_probe() {
-    info("cabina", "observador omnisciente en linea", 0);
-    // CENSO COMPLETO, no "el primero". Saber cuantos controladores de
-    // almacenamiento hay y DE QUE TIPO es lo que dice donde buscar un disco.
-    // Si la BIOS tiene el SATA del chipset en modo RAID, ese controlador
-    // aparece con clase RAID y no con clase AHCI -- y un buscador que solo
-    // pregunta por AHCI pasa de largo sin enterarse de que existe.
-    let mut index = 0usize;
-    let mut found = 0u64;
-    while let Some(loc) = crate::ring0::dev::pci::storage_at(index) {
-        index += 1;
-        found += 1;
-        let msg = match loc.kind {
-            crate::ring0::dev::pci::StorageKind::Nvme => "controlador NVMe (via PCI)",
-            crate::ring0::dev::pci::StorageKind::Ahci => "controlador SATA/AHCI (via PCI)",
-            crate::ring0::dev::pci::StorageKind::Raid => "controlador en modo RAID (via PCI)",
-            crate::ring0::dev::pci::StorageKind::Ide  => "controlador en modo IDE (via PCI)",
-            _ => "controlador de almacenamiento (via PCI)",
-        };
-        // El valor lleva bus:dev.func empaquetado + el MMIO, para poder
-        // localizarlo despues sin volver a barrer el bus.
-        info("pci", msg, loc.mmio);
-        if index >= 8 { break; }
-    }
-    if found == 0 {
-        warn("pci", "sin controlador de almacenamiento visible", 0);
-    } else {
-        info("pci", "controladores de almacenamiento hallados", found);
-    }
-}
+// ** Aqui vivia `boot_probe`, el censo PCI de almacenamiento. Se fue a
+// `dev::pci::censo_almacenamiento` (L8b): contar lo que hay en el bus es oficio
+// del bus, y era lo que hacia a este registro importar `dev`.

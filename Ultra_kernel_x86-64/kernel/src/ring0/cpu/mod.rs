@@ -1,5 +1,8 @@
 //! El CPU: lo que se le pregunta y lo que se le mide.
 //!
+//! [familia] cpu  nivel 8 -- lo que se le pregunta y se le mide al CPU: frecuencia y vatios
+//! [conecta] cabina, cpu_vendor, task
+//!
 //! [carril]  VERDE     lo que se le pregunta al CPU
 //! [consumo] NADA      contesta cuando alguien pregunta
 //!

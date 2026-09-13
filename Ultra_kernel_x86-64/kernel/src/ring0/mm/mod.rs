@@ -1,5 +1,8 @@
 //! Memory management: physical frames (`phys`) + virtual address spaces (`vmm`).
 //!
+//! [familia] mm  nivel 2 -- la memoria: marcos fisicos y espacios de direcciones
+//! [conecta] cabina, core, dev, plat
+//!
 //! [carril]  ROJO      PHYSMAP_SIZE vive aqui, y es el numero del espejo
 //! [consumo] NADA      corre cuando alguien pide o suelta memoria
 //!

@@ -1,15 +1,11 @@
-# LINEA_BASE de capas.py (L8) -- las parejas de subsistemas que HOY se importan
-# en los dos sentidos. Solo pueden bajar: una pareja nueva rompe el build.
-# Se regenera con `py toolchain/tools/capas/capas.py --sellar`.
+# LINEA_BASE de capas.py (L8) -- lo que HOY se tolera, y solo puede bajar.
+#   nudo <binario> <a> <b>   dos subsistemas que se importan en los dos sentidos
+#   sube <binario> <a> <b>   una familia que usa otra de su nivel o mas alta (L8b)
+# Se regenera con `py toolchain/tools/capas/capas.py --sellar --motivo "..."`.
 # subida: primera medida de L8 (2026-09-13): el kernel ya era un nudo de 13 subsistemas; se apunta para que no crezca
-nudo kernel ring0/cabina ring0/core
-nudo kernel ring0/cabina ring0/dev
-nudo kernel ring0/cabina ring0/fsys
-nudo kernel ring0/cabina ring0/mm
-nudo kernel ring0/cabina ring0/plat
-nudo kernel ring0/cabina ring0/task
-nudo kernel ring0/cabina ring0/uconsole
+# subida: L8b (2026-09-13): primeras familias del kernel. CABINA partida en registro (nivel 1) y mirador (13): 7 parejas fuera; core<->mirador sustituye a cabina<->core y es el siguiente corte
 nudo kernel ring0/core ring0/dev
+nudo kernel ring0/core ring0/mirador
 nudo kernel ring0/core ring0/mm
 nudo kernel ring0/core ring0/obj
 nudo kernel ring0/core ring0/plat
@@ -29,4 +25,26 @@ nudo kernel ring0/obj ring0/syscall
 nudo kernel ring0/obj ring0/task
 nudo kernel ring0/plat ring0/task
 nudo kernel ring0/task ring0/uconsole
+sube kernel cpu_vendor plat
+sube kernel cpu_vendor syscall
+sube kernel dev core
+sube kernel dev obj
+sube kernel dev plat
+sube kernel mirador core
+sube kernel mm core
+sube kernel mm dev
+sube kernel mm plat
+sube kernel obj core
+sube kernel obj plat
+sube kernel obj syscall
+sube kernel plat core
+sube kernel syscall core
+sube kernel task core
+sube kernel task dev
+sube kernel task fsys
+sube kernel task obj
+sube kernel task plat
+sube kernel uconsole core
+sube kernel uconsole dev
+sube kernel uconsole task
 nudo director commands desktop

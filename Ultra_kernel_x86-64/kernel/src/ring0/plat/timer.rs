@@ -12,7 +12,6 @@
 
 use boot_context::BootContext;
 use core::arch::{asm, naked_asm};
-use core::sync::atomic::{AtomicU64, Ordering};
 
 use crate::ring0::task::percpu;
 use crate::ring0::plat::trap::TrapFrame;
@@ -29,7 +28,6 @@ const LAPIC_EOI_OFFSET: u64 = 0xB0;
 const LAPIC_LVT_TIMER_OFFSET: u64 = 0x320;
 const LAPIC_LVT_MASKED: u32 = 1 << 16;
 
-static TICKS: AtomicU64 = AtomicU64::new(0);
 static mut LAPIC_EOI: *mut u32 = core::ptr::null_mut();
 
 #[repr(C, packed)]
@@ -193,7 +191,7 @@ extern "C" fn timer_dispatch(_frame: &mut TrapFrame) -> u64 {
         crate::ring0::task::percpu::trap_rsp(),
         crate::ring0::task::scheduler::current_tid(),
     );
-    let n = TICKS.fetch_add(1, Ordering::Relaxed) + 1;
+    let n = crate::ring0::reloj::avanzar();
     // Budgeted estuary service before the scheduler decision: pending
     // submissions become completions and their WAITers wake this tick.
     // Must run before on_timer so no scheduler lock is held here.
@@ -262,7 +260,7 @@ pub fn init(ctx: &BootContext) -> bool {
 }
 
 pub fn ticks() -> u64 {
-    TICKS.load(Ordering::Relaxed)
+    crate::ring0::reloj::ticks()
 }
 
 /// **Fin de interrupcion.** Lo comparten todos los vectores que lleguen por el

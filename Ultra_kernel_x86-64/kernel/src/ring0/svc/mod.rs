@@ -1,5 +1,8 @@
 //! Ring 0 capability services transported over BMO Channel.
 //!
+//! [familia] svc  nivel 12 -- los servicios de Ring 0 que se hablan por canal
+//! [conecta] obj, plat, task
+//!
 //! [carril]  VERDE     el reparto de los servicios
 //! [consumo] NADA      sirve cuando alguien llama; lo despierta el tick via
 //!                     channel

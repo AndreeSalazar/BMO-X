@@ -4,4 +4,5 @@
 # eran 97 y uno de ellos escondia que `WAIT` no habia bloqueado nunca.
 #
 # 2026-09-08  97 -> 38   (cargo fix + el despachador arreglado + 4 muertos)
-38
+# 2026-09-13  38 -> 37   (L8b: CABINA partida en registro y mirador)
+37

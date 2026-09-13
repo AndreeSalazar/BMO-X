@@ -20,18 +20,34 @@ Se midio antes de escribir una linea, y el espagueti NO estaba donde parecia:
                                          scene, watch)
     DENTRO de bmo-userland               limpio
 
-Por eso este guardian tiene DOS varas, y no son la misma:
+Por eso este guardian tiene TRES varas, y no son la misma:
 
-    CRATES   MURO. Las capas se declaran por carpeta, la direccion permitida es
-             una tabla, y una arista que sube no pasa NUNCA. Es exacto: sale de
-             `[dependencies]`, que un `pub use` no puede esconder (L7c).
-    NUDOS    TRINQUETE. Una pareja de subsistemas que se importan en los dos
-             sentidos no se deshace en una tarde -- el kernel tiene 27 --, asi
-             que las de hoy van a `LINEA_BASE.txt` y lo que se prohibe es una
-             pareja NUEVA. Solo pueden bajar.
+    CRATES    MURO. Las capas se declaran por carpeta, la direccion permitida es
+              una tabla, y una arista que sube no pasa NUNCA. Es exacto: sale de
+              `[dependencies]`, que un `pub use` no puede esconder (L7c).
+    NUDOS     TRINQUETE. Una pareja de subsistemas que se importan en los dos
+              sentidos no se deshace en una tarde, asi que las de hoy van a
+              `LINEA_BASE.txt` y lo que se prohibe es una pareja NUEVA.
+    FAMILIAS  (L8b, solo el kernel -- el principal). Cada subsistema DICE en su
+              cabecera que familia es, en que nivel esta y a quien conecta:
 
-Las capas, de abajo arriba
-==========================
+                  //! [familia] cabina  nivel 1 -- el registro que todos llaman
+                  //! [conecta] reloj
+
+              y el guardian lo EXIGE PRIMERO: sin esa declaracion no juzga nada
+              mas. Despues comprueba que la cabecera no miente (cada `use` a
+              otra familia esta en `[conecta]`, y todo lo de `[conecta]` se usa)
+              y que las aristas BAJAN de nivel. Las que hoy suben van a la base
+              como `sube kernel a b`: trinquete, solo pueden bajar.
+
+** Eddi, sobre la tercera: *"comentario especial que diga que familia es, que el
+kernel empieza en 0 y conecta con el siguiente, para guiar en los puntos
+importantes -- y que el guardian lo exija primero"*. La cabecera es el mapa que
+se lee sin abrir el codigo, y el guardian es lo que impide que el mapa se
+quede viejo.
+
+Las capas de crates, de abajo arriba
+====================================
 
     puro         platform/shared    logica sin hardware, probada en el anfitrion
     contrato     platform/abi       el ABI: lo que Ring 0 y Ring 3 firman
@@ -49,33 +65,23 @@ Las capas, de abajo arriba
     ring3        -> ring3 contrato puro          ** NUNCA driver ni nucleo
     herramienta  -> herramienta contrato puro driver
 
-** La regla que mas importa es la de `ring3`: **Ring 3 no enlaza codigo que corre
-en Ring 0.** Si dos anillos necesitan la misma logica, esa logica es `puro` y vive
-en `platform/shared`; si necesitan hablar, hablan por el ABI.
-
-La capa se DECLARA, y la declaracion se COMPRUEBA
-=================================================
-
-Un crate puede declarar en su cabecera `//! capa: puro -- motivo` aunque viva en
-otra carpeta: `bmo-rtc` DECIDE fechas y no toca un puerto. Pero una declaracion
-que no se comprueba es una opinion, asi que `puro` exige que el crate no tenga
-un solo `unsafe` o que lleve `#![forbid(unsafe_code)]`. Solo se puede declarar
-`puro`: declarar que algo SUBE de capa no le quita a nadie una restriccion.
+Un crate puede declarar `//! capa: puro -- motivo` aunque viva en otra carpeta,
+y la declaracion se comprueba: cero `unsafe` o `#![forbid(unsafe_code)]`.
 
 Lo que NO mide, dicho
 =====================
 
-Los nudos se cuentan por `crate::a::b`. Un `super::super::` que cruce carpeta no
-se ve, ni un `use` dentro de una macro. Es una cota inferior, y como trinquete
-basta: lo que se ve no puede empeorar.
+Los usos se cuentan por `crate::a::b` (con los grupos `crate::a::{b, c}`
+expandidos). Un `super::super::` que cruce carpeta no se ve, ni un `use` dentro
+de una macro. Es una cota inferior, y como trinquete basta.
 
 Como esta construido (L7)
 =========================
 
-    abuelo   leer_cargo, leer_capa, contar_unsafe, usos   un fichero, un hecho
-    padre    Crate, censar, medir_nudos                   junta los hechos
-    hijo     aristas                                      relaciona dos crates
-    nieto    juzgar, probar                               el veredicto
+    abuelo   leer_cargo, leer_capa, contar_unsafe, usos, leer_familia
+    padre    Crate, censar, medir_nudos, leer_familias
+    hijo     aristas
+    nieto    juzgar_crates, juzgar_nudos, juzgar_familias, probar
 """
 
 import argparse
@@ -100,7 +106,6 @@ PERMITIDO = {
     'herramienta': {'herramienta', 'contrato', 'puro', 'driver'},
 }
 
-# El orden importa: el primer prefijo que case gana.
 POR_CARPETA = (
     ('Ultra_kernel_x86-64/kernel', 'nucleo'),
     ('Ultra_kernel_x86-64/', 'arranque'),
@@ -114,12 +119,12 @@ POR_CARPETA = (
 
 DECLARABLES = {'puro'}
 
-# Donde se miden los nudos: (nombre, carpeta de fuentes, niveles de ruta que
-# hacen un subsistema).
+# (nombre, carpeta de fuentes, niveles de ruta que hacen un subsistema,
+#  raices que no son familia -- o None si ese binario no declara familias).
 BINARIOS = (
-    ('kernel', 'Ultra_kernel_x86-64/kernel/src', 2),
-    ('director', 'Ultra_userspace/services/director/src', 1),
-    ('userland', 'Ultra_userspace/userland/src', 1),
+    ('kernel', 'Ultra_kernel_x86-64/kernel/src', 2, {'ring0'}),
+    ('director', 'Ultra_userspace/services/director/src', 1, None),
+    ('userland', 'Ultra_userspace/userland/src', 1, None),
 )
 
 DEP_RUTA = re.compile(r'^\s*([A-Za-z0-9_-]+)\s*=\s*\{[^}\n]*\bpath\s*=\s*"([^"]+)"', re.M)
@@ -127,7 +132,9 @@ NOMBRE = re.compile(r'^\s*name\s*=\s*"([^"]+)"', re.M)
 CAPA = re.compile(r'^\s*//!\s*capa:\s*([a-z0-9]+)(?:\s*--\s*(\S.*))?$', re.M)
 UNSAFE = re.compile(r'\bunsafe\b')
 FORBID = re.compile(r'#!\[\s*forbid\(\s*unsafe_code\s*\)\s*\]')
-USO = re.compile(r'\bcrate::((?:[a-z_][a-z0-9_]*::)*[a-z_][a-z0-9_]*)')
+IDENT = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
+FAMILIA = re.compile(r'^\s*//!\s*\[familia\]\s+([a-z_][a-z0-9_]*)\s+nivel\s+(\d+)\s*--\s*(\S.*)$', re.M)
+CONECTA = re.compile(r'^\s*//!\s*\[conecta\][ \t]*(.*)$', re.M)
 
 
 # == ABUELO ====================================================================
@@ -152,15 +159,13 @@ def leer_cargo(ruta):
     t = leer(ruta)
     if t is None:
         return None
-    paquete = seccion(t, 'package')
-    m = NOMBRE.search(paquete)
+    m = NOMBRE.search(seccion(t, 'package'))
     if not m:
         return None
     return m.group(1), [p for _, p in DEP_RUTA.findall(seccion(t, 'dependencies'))]
 
 
 def leer_capa(dir_crate):
-    """(capa, motivo) declarada en la cabecera, o (None, None)."""
     for cabeza in ('src/lib.rs', 'src/main.rs'):
         t = leer(os.path.join(dir_crate, cabeza), 6000)
         if t:
@@ -176,7 +181,6 @@ def sin_comentarios(t):
 
 
 def contar_unsafe(dir_crate):
-    """(cuantos `unsafe` hay en el codigo, si lleva forbid(unsafe_code))."""
     n, prohibe = 0, False
     for d, _, fs in os.walk(os.path.join(dir_crate, 'src')):
         for f in fs:
@@ -187,8 +191,91 @@ def contar_unsafe(dir_crate):
     return n, prohibe
 
 
+def _ruta(t, i, prefijo):
+    """Las rutas que salen de `t[i:]`: `a::b::{c, d::e}` -> [a,b,c] y [a,b,d,e].
+
+    ** Hasta el 2026-09-13 esto era una expresion regular que se paraba en la
+    llave: `use crate::ring0::{obj, task};` contaba como UNA arista hacia `ring0`
+    y escondia las dos de verdad. Se vio al preparar L8b del kernel.
+    """
+    ruta = list(prefijo)
+    while True:
+        m = IDENT.match(t, i)
+        if m:
+            ruta.append(m.group(0))
+            i = m.end()
+            if t.startswith('::', i):
+                i += 2
+                if t.startswith('{', i):
+                    return _grupo(t, i + 1, ruta)
+                continue
+            return [ruta]
+        if t.startswith('{', i):
+            return _grupo(t, i + 1, ruta)
+        return [ruta] if ruta else []
+
+
+def _grupo(t, i, prefijo):
+    trozos, prof, inicio, j = [], 0, i, i
+    while j < len(t):
+        c = t[j]
+        if c == '{':
+            prof += 1
+        elif c == '}':
+            if prof == 0:
+                trozos.append(t[inicio:j])
+                break
+            prof -= 1
+        elif c == ',' and prof == 0:
+            trozos.append(t[inicio:j])
+            inicio = j + 1
+        j += 1
+    salida = []
+    for tr in trozos:
+        tr = tr.strip()
+        if tr == 'self':
+            salida.append(list(prefijo))
+        elif tr:
+            salida.extend(_ruta(tr, 0, prefijo))
+    return salida
+
+
 def usos(texto):
-    return [m.group(1).split('::') for m in USO.finditer(sin_comentarios(texto))]
+    t = sin_comentarios(texto)
+    salida = []
+    for m in re.finditer(r'\bcrate::', t):
+        salida.extend(_ruta(t, m.end(), []))
+    return salida
+
+
+def cabecera_de(src, sub):
+    """El texto donde un subsistema declara su familia.
+
+    ** PRIMERO el bloque EN LINEA del padre (`pub mod obj { //! [familia] ... }`):
+    en el kernel, `obj`, `task`, `fsys`, `plat`, `core` y `dev` no tienen
+    `mod.rs` -- se declaran dentro de `ring0/mod.rs`, y un `dev/mod.rs` que
+    exista al lado NO se compila. Leer el fichero primero habria juzgado una
+    cabecera muerta.
+    """
+    partes = sub.split('/')
+    padre_dir = os.path.join(src, *partes[:-1])
+    for padre in ('mod.rs', 'lib.rs', 'main.rs'):
+        t = leer(os.path.join(padre_dir, padre))
+        if not t:
+            continue
+        m = re.search(r'^[ \t]*pub(?:\([a-z]+\))?[ \t]+mod[ \t]+%s[ \t]*\{[ \t]*\n' % re.escape(partes[-1]), t, re.M)
+        if m:
+            lineas = []
+            for linea in t[m.end():].splitlines():
+                if not linea.strip().startswith('//'):
+                    break
+                lineas.append(linea.strip())
+            return '\n'.join(lineas)
+    for p in (os.path.join(src, *partes, 'mod.rs'), os.path.join(src, *partes) + '.rs'):
+        t = leer(p, 8000)
+        if t is not None:
+            return t
+    return None
 
 
 # == PADRE =====================================================================
@@ -210,8 +297,7 @@ def capa_por_carpeta(carpeta):
 
 def censar(raiz):
     # ** Con `--others`: un crate NUEVO, que todavia no esta en git, tambien se
-    # juzga. Sin esto el guardian no vio `bmo-foco` el dia que se escribio -- y lo
-    # que se escapa es justo lo que se esta anadiendo, que es lo que hay que mirar.
+    # juzga. Sin esto el guardian no vio `bmo-foco` el dia que se escribio.
     ficheros = subprocess.run(['git', '-C', raiz, 'ls-files', '--cached', '--others', '--exclude-standard'],
                               capture_output=True, text=True, check=True).stdout.splitlines()
     crates = {}
@@ -241,7 +327,7 @@ def subsistema(rel, nivel):
 
 
 def medir_nudos(src, nivel):
-    """({(a, b): usos}, parejas mutuas) de los subsistemas bajo `src`."""
+    """({(a, b): usos}, parejas mutuas, subsistemas) bajo `src`."""
     aristas, nodos = collections.Counter(), set()
     for d, _, fs in os.walk(src):
         for f in fs:
@@ -258,7 +344,27 @@ def medir_nudos(src, nivel):
                     aristas[(a, b)] += 1
     aristas = collections.Counter({k: v for k, v in aristas.items() if k[1] in nodos})
     mutuas = {tuple(sorted(k)) for k in aristas if (k[1], k[0]) in aristas}
-    return aristas, mutuas
+    return aristas, mutuas, nodos
+
+
+def leer_familias(src, nodos, raices):
+    """({subsistema: familia}, [subsistemas sin declaracion])."""
+    familias, faltan = {}, []
+    for n in sorted(nodos):
+        if n in raices:
+            continue
+        t = cabecera_de(src, n) or ''
+        m = FAMILIA.search(t)
+        if not m:
+            faltan.append(n)
+            continue
+        c = CONECTA.search(t)
+        conecta = set()
+        if c:
+            conecta = {x for x in re.split(r'[\s,]+', c.group(1).strip()) if x and x != '-'}
+        familias[n] = {'nombre': m.group(1), 'nivel': int(m.group(2)), 'que': m.group(3).strip(),
+                       'conecta': conecta, 'tiene_conecta': c is not None}
+    return familias, faltan
 
 
 # == HIJO ======================================================================
@@ -287,7 +393,6 @@ def por_que(o, d):
 
 
 def juzgar_crates(crates):
-    """Lista de textos, uno por cada cosa que esta mal. Vacia = limpio."""
     malas = []
     for c in sorted(crates.values(), key=lambda c: c.carpeta):
         if c.capa is None:
@@ -310,22 +415,61 @@ def juzgar_crates(crates):
     return malas
 
 
+def corto(sub):
+    return sub.split('/')[-1]
+
+
+def juzgar_familias(aristas_, familias, faltan, raices):
+    """(errores, subidas). Los errores rompen siempre; las subidas, contra la base.
+
+    ** EL ORDEN ES LA REGLA: si falta una declaracion no se juzga nada mas. Una
+    familia sin nivel no se puede comparar con nadie, y un informe de subidas
+    medio calculado sobre un mapa medio escrito confunde mas que ayuda.
+    """
+    if faltan:
+        return (['%s no declara su familia. Ponle en la cabecera:\n'
+                 '        //! [familia] %s  nivel N -- que es y para quien\n'
+                 '        //! [conecta] las familias que usa, o -' % (n, corto(n)) for n in faltan], set())
+    errores, subidas = [], set()
+    for n, f in sorted(familias.items()):
+        if f['nombre'] != corto(n):
+            errores.append('%s declara `[familia] %s`: el nombre es el de su carpeta o fichero' % (n, f['nombre']))
+        if not f['tiene_conecta']:
+            errores.append('%s no tiene `//! [conecta]` (con `-` si no usa a nadie)' % n)
+    usados = collections.defaultdict(set)
+    for (a, b) in aristas_:
+        if a in raices or b in raices or a not in familias or b not in familias:
+            continue
+        usados[a].add(corto(b))
+        if corto(b) not in familias[a]['conecta']:
+            errores.append('%s usa %s y su `[conecta]` no lo dice' % (a, corto(b)))
+        if familias[b]['nivel'] >= familias[a]['nivel']:
+            subidas.add((corto(a), corto(b)))
+    for n, f in sorted(familias.items()):
+        for s in sorted(f['conecta'] - usados[n]):
+            errores.append('%s declara `[conecta] %s` y no lo usa: la cabecera miente' % (n, s))
+    return errores, subidas
+
+
 def leer_linea_base(ruta=BASE):
-    base = collections.defaultdict(set)
+    """(nudos por binario, subidas por binario, si habia base)."""
+    nudos, subidas = collections.defaultdict(set), collections.defaultdict(set)
     t = leer(ruta)
     for linea in (t or '').splitlines():
-        partes = linea.split()
-        if len(partes) == 4 and partes[0] == 'nudo':
-            base[partes[1]].add((partes[2], partes[3]))
-    return base, t is not None
+        p = linea.split()
+        if len(p) == 4 and p[0] == 'nudo':
+            nudos[p[1]].add((p[2], p[3]))
+        elif len(p) == 4 and p[0] == 'sube':
+            subidas[p[1]].add((p[2], p[3]))
+    return nudos, subidas, t is not None
 
 
-def juzgar_nudos(hoy, base):
-    """(nuevas, deshechas) por binario."""
+def comparar(hoy, base):
+    """(nuevas, deshechas) por binario, para cualquier conjunto de parejas."""
     nuevas, deshechas = {}, {}
-    for nombre, mutuas in hoy.items():
-        nuevas[nombre] = sorted(mutuas - base.get(nombre, set()))
-        deshechas[nombre] = sorted(base.get(nombre, set()) - mutuas)
+    for nombre, actuales in hoy.items():
+        nuevas[nombre] = sorted(actuales - base.get(nombre, set()))
+        deshechas[nombre] = sorted(base.get(nombre, set()) - actuales)
     return nuevas, deshechas
 
 
@@ -361,30 +505,61 @@ def probar():
     exige('declarar nucleo dice NO', juicio(cr('m', 'platform/drivers/m', declarada='nucleo')) != [])
     exige('carpeta sin capa dice NO', juicio(cr('z', 'otra/cosa')) != [])
 
-    nuevas, deshechas = juzgar_nudos({'k': {('a', 'b')}}, {})
-    exige('una pareja mutua nueva dice NO', nuevas['k'] == [('a', 'b')])
-    nuevas, deshechas = juzgar_nudos({'k': {('a', 'b')}}, {'k': {('a', 'b'), ('c', 'd')}})
+    nuevas, deshechas = comparar({'k': {('a', 'b')}}, {})
+    exige('una pareja nueva dice NO', nuevas['k'] == [('a', 'b')])
+    nuevas, deshechas = comparar({'k': {('a', 'b')}}, {'k': {('a', 'b'), ('c', 'd')}})
     exige('la de la base pasa, y la deshecha se ve', nuevas['k'] == [] and deshechas['k'] == [('c', 'd')])
+    exige('un grupo con llaves son VARIAS rutas',
+          usos('use crate::ring0::{obj::cap, task::{proc, self}};') ==
+          [['ring0', 'obj', 'cap'], ['ring0', 'task', 'proc'], ['ring0', 'task']])
 
-    with tempfile.TemporaryDirectory() as t:
-        for rel, texto in (('a/mod.rs', 'use crate::b::x;'), ('b/uno.rs', 'fn f() { crate::a::y(); }'),
-                           ('c.rs', '// use crate::a::z;\nuse crate::b::w;')):
-            os.makedirs(os.path.dirname(os.path.join(t, rel)) or t, exist_ok=True)
-            io.open(os.path.join(t, rel), 'w', encoding='utf-8').write(texto)
-        aristas_, mutuas = medir_nudos(t, 1)
-        exige('mide la pareja a<->b', mutuas == {('a', 'b')})
-        exige('un `crate::` comentado no cuenta', ('c', 'a') not in aristas_ and ('c', 'b') in aristas_)
+    def arbol(ficheros):
+        t = tempfile.mkdtemp()
+        for rel, texto in ficheros.items():
+            p = os.path.join(t, *rel.split('/'))
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            io.open(p, 'w', encoding='utf-8').write(texto)
+        return t
+
+    t = arbol({'a/mod.rs': 'use crate::b::x;', 'b/uno.rs': 'fn f() { crate::a::y(); }',
+               'c.rs': '// use crate::a::z;\nuse crate::b::w;'})
+    ar, mutuas, _ = medir_nudos(t, 1)
+    exige('mide la pareja a<->b', mutuas == {('a', 'b')})
+    exige('un `crate::` comentado no cuenta', ('c', 'a') not in ar and ('c', 'b') in ar)
+
+    base_ok = {
+        'alto/mod.rs': '//! [familia] alto  nivel 2 -- el de arriba\n//! [conecta] bajo\nuse crate::bajo::x;',
+        'bajo.rs': '//! [familia] bajo  nivel 0 -- el suelo\n//! [conecta] -\nfn f() {}',
+    }
+
+    def familias_de(ficheros):
+        t = arbol(ficheros)
+        ar, _, nodos = medir_nudos(t, 1)
+        fams, faltan = leer_familias(t, nodos, set())
+        return juzgar_familias(ar, fams, faltan, set())
+
+    errores, subidas = familias_de(base_ok)
+    exige('una familia bien declarada que baja pasa', errores == [] and subidas == set())
+    errores, _ = familias_de(dict(base_ok, **{'otro.rs': 'use crate::bajo::x;'}))
+    exige('un subsistema SIN [familia] se exige primero', len(errores) == 1 and 'otro' in errores[0])
+    errores, _ = familias_de(dict(base_ok, **{'bajo.rs': '//! [familia] bajo  nivel 0 -- el suelo\n//! [conecta] -\nuse crate::alto::y;'}))
+    exige('usar una familia que [conecta] no dice es NO', any('no lo dice' in e for e in errores))
+    errores, subidas = familias_de(dict(base_ok, **{'bajo.rs': '//! [familia] bajo  nivel 0 -- el suelo\n//! [conecta] alto\nuse crate::alto::y;'}))
+    exige('declarada y usada hacia arriba es una SUBIDA, no un error', errores == [] and subidas == {('bajo', 'alto')})
+    errores, _ = familias_de(dict(base_ok, **{'alto/mod.rs': '//! [familia] alto  nivel 2 -- x\n//! [conecta] bajo, fantasma\nuse crate::bajo::x;'}))
+    exige('un [conecta] que no se usa es una cabecera que miente', any('miente' in e for e in errores))
     return fallos
 
 
 # == LA SALIDA =================================================================
 
 def main():
-    ap = argparse.ArgumentParser(description='El metro de L8: capas entre crates y nudos dentro.')
-    ap.add_argument('--check', action='store_true', help='sale con 1 si algo sube de capa o hay un nudo nuevo')
-    ap.add_argument('--mapa', action='store_true', help='ensena el mapa entero: capas, aristas y parejas')
-    ap.add_argument('--sellar', action='store_true', help='graba las parejas de hoy en la linea base')
-    ap.add_argument('--motivo', default='', help='POR QUE entra una pareja nueva en la base. Sin esto, se rechaza')
+    ap = argparse.ArgumentParser(description='El metro de L8: capas entre crates, nudos y familias dentro.')
+    ap.add_argument('--check', action='store_true', help='sale con 1 si algo sube de capa, hay un nudo o una subida nueva, o falta una familia')
+    ap.add_argument('--mapa', action='store_true', help='ensena el mapa entero')
+    ap.add_argument('--conecta', action='store_true', help='imprime, por subsistema del kernel, a que familias conecta HOY')
+    ap.add_argument('--sellar', action='store_true', help='graba nudos y subidas de hoy en la linea base')
+    ap.add_argument('--motivo', default='', help='POR QUE entra algo nuevo en la base. Sin esto, se rechaza')
     ap.add_argument('--raiz', default=None)
     args = ap.parse_args()
     raiz = args.raiz or os.path.abspath(os.path.join(AQUI, '..', '..', '..'))
@@ -398,11 +573,32 @@ def main():
 
     crates = censar(raiz)
     malas = juzgar_crates(crates)
-    hoy, detalle = {}, {}
-    for nombre, src, nivel in BINARIOS:
-        detalle[nombre], hoy[nombre] = medir_nudos(os.path.join(raiz, src), nivel)
-    base, hay_base = leer_linea_base()
-    nuevas, deshechas = juzgar_nudos(hoy, base)
+    nudos_hoy, subidas_hoy, detalle, familias, errores_fam = {}, {}, {}, {}, {}
+    for nombre, src, nivel, raices in BINARIOS:
+        src_abs = os.path.join(raiz, src)
+        ar, mutuas, nodos = medir_nudos(src_abs, nivel)
+        detalle[nombre], nudos_hoy[nombre] = ar, mutuas
+        if raices is not None:
+            fams, faltan = leer_familias(src_abs, nodos, raices)
+            familias[nombre] = fams
+            errores_fam[nombre], subidas_hoy[nombre] = juzgar_familias(ar, fams, faltan, raices)
+    base_nudos, base_subidas, hay_base = leer_linea_base()
+    nudos_nuevos, nudos_idos = comparar(nudos_hoy, base_nudos)
+    sub_nuevas, sub_idas = comparar(subidas_hoy, base_subidas)
+
+    if args.conecta:
+        for nombre, src, nivel, raices in BINARIOS:
+            if raices is None:
+                continue
+            ar = detalle[nombre]
+            por = collections.defaultdict(set)
+            for (a, b) in ar:
+                if a not in raices and b not in raices:
+                    por[a].add(corto(b))
+            nodos = {a for a, _ in ar} | {b for _, b in ar}
+            for n in sorted(nodos - raices):
+                print('%-22s %s' % (n, ', '.join(sorted(por[n])) or '-'))
+        return 0
 
     por_capa = collections.Counter(capa_efectiva(c) for c in crates.values())
     tipos = collections.Counter((capa_efectiva(o), capa_efectiva(d)) for o, d in aristas(crates))
@@ -415,62 +611,93 @@ def main():
         print('\n== ARISTAS POR CAPA')
         for (o, d), n in sorted(tipos.items()):
             print('  %-12s -> %-12s %3d' % (o, d, n))
-        for nombre, _, _ in BINARIOS:
+        for nombre, _, _, _ in BINARIOS:
             ar = detalle[nombre]
-            print('\n== NUDOS de %s: %d parejas en los dos sentidos' % (nombre, len(hoy[nombre])))
-            for a, b in sorted(hoy[nombre], key=lambda p: -(ar[p] + ar[(p[1], p[0])])):
+            print('\n== NUDOS de %s: %d parejas en los dos sentidos' % (nombre, len(nudos_hoy[nombre])))
+            for a, b in sorted(nudos_hoy[nombre], key=lambda p: -(ar[p] + ar[(p[1], p[0])])):
                 print('  %-24s <-> %-24s %4d / %-4d' % (a, b, ar[(a, b)], ar[(b, a)]))
+            if nombre in familias:
+                print('\n== FAMILIAS de %s, de abajo arriba' % nombre)
+                for n, f in sorted(familias[nombre].items(), key=lambda kv: (kv[1]['nivel'], kv[0])):
+                    print('  nivel %2d  %-12s %s' % (f['nivel'], f['nombre'], f['que']))
+                    print('            conecta: %s' % (', '.join(sorted(f['conecta'])) or '-'))
+                print('\n== SUBIDAS de %s: %d aristas van a un nivel igual o mas alto' % (nombre, len(subidas_hoy[nombre])))
+                pares = [(a, b) for (a, b) in ar if corto(a) != corto(b)]
+                for a, b in sorted(subidas_hoy[nombre]):
+                    usos_ = sum(v for (x, y), v in ar.items() if corto(x) == a and corto(y) == b)
+                    print('  %-12s -> %-12s %4d usos' % (a, b, usos_))
 
     if args.sellar:
-        if malas:
-            print('no se sella con aristas que suben de capa: eso es un muro, no un trinquete')
-            for m in malas:
+        if malas or any(errores_fam.values()):
+            print('no se sella con errores: una capa que sube o una familia mal declarada es un muro, no un trinquete')
+            for m in malas + [e for es in errores_fam.values() for e in es]:
                 print('  [x] ' + m)
             return 1
-        suben = sum(len(v) for v in nuevas.values())
-        if suben and not args.motivo.strip():
-            print('entran %d parejas nuevas en la base: hace falta --motivo' % suben)
+        entran = sum(len(v) for v in nudos_nuevos.values()) + sum(len(v) for v in sub_nuevas.values())
+        if entran and not args.motivo.strip():
+            print('entran %d parejas nuevas en la base: hace falta --motivo' % entran)
             return 1
-        lineas = ['# LINEA_BASE de capas.py (L8) -- las parejas de subsistemas que HOY se importan',
-                  '# en los dos sentidos. Solo pueden bajar: una pareja nueva rompe el build.',
-                  '# Se regenera con `py toolchain/tools/capas/capas.py --sellar`.']
+        lineas = ['# LINEA_BASE de capas.py (L8) -- lo que HOY se tolera, y solo puede bajar.',
+                  '#   nudo <binario> <a> <b>   dos subsistemas que se importan en los dos sentidos',
+                  '#   sube <binario> <a> <b>   una familia que usa otra de su nivel o mas alta (L8b)',
+                  '# Se regenera con `py toolchain/tools/capas/capas.py --sellar --motivo "..."`.']
         viejo = leer(BASE) or ''
         lineas += [l for l in viejo.splitlines() if l.startswith('# subida')]
-        if suben:
+        if entran:
             lineas.append('# subida: %s' % args.motivo.strip())
-        for nombre, _, _ in BINARIOS:
-            for a, b in sorted(hoy[nombre]):
+        for nombre, _, _, _ in BINARIOS:
+            for a, b in sorted(nudos_hoy[nombre]):
                 lineas.append('nudo %s %s %s' % (nombre, a, b))
+            for a, b in sorted(subidas_hoy.get(nombre, ())):
+                lineas.append('sube %s %s %s' % (nombre, a, b))
         io.open(BASE, 'w', encoding='utf-8', newline='\n').write('\n'.join(lineas) + '\n')
         print('linea base sellada: %s' % BASE)
         return 0
 
     fallo = False
+    for nombre, errores in errores_fam.items():
+        if errores:
+            fallo = True
+            print('L8b: las familias de %s -- esto se exige PRIMERO:' % nombre)
+            for e in errores:
+                print('  [x] ' + e)
     if malas:
         fallo = True
         print('L8: %d dependencia(s) que no respetan las capas:' % len(malas))
         for m in malas:
             print('  [x] ' + m)
     if not hay_base:
-        print('[!] no hay linea base de nudos todavia: `--sellar` la graba.')
-    for nombre, _, _ in BINARIOS:
-        for a, b in nuevas.get(nombre, []) if hay_base else []:
+        print('[!] no hay linea base todavia: `--sellar` la graba.')
+    for nombre, _, _, _ in BINARIOS:
+        ar = detalle[nombre]
+        for a, b in (nudos_nuevos.get(nombre, []) if hay_base else []):
             fallo = True
-            ar = detalle[nombre]
             print('  [x] %s: %s <-> %s se importan en los DOS sentidos (%d / %d usos) y no estaba en la base'
                   % (nombre, a, b, ar[(a, b)], ar[(b, a)]))
-        for a, b in deshechas.get(nombre, []):
+        for a, b in nudos_idos.get(nombre, []):
             print('  [+] %s: %s <-> %s ya NO es un nudo. Sella (`--sellar`) para que no pueda volver.' % (nombre, a, b))
+        if errores_fam.get(nombre):
+            continue
+        for a, b in (sub_nuevas.get(nombre, []) if hay_base else []):
+            fallo = True
+            print('  [x] %s: la familia %s usa %s, que esta en su nivel o mas arriba, y no estaba en la base'
+                  % (nombre, a, b))
+        for a, b in sub_idas.get(nombre, []):
+            print('  [+] %s: %s ya no sube a %s. Sella (`--sellar`) para que no pueda volver.' % (nombre, a, b))
     if fallo:
-        print('\nComo se arregla: la dependencia baja de capa (el tipo compartido se muda a `puro`),')
-        print('o el dato sube como parametro. Ver L8 en FUERO/META-KERNEL_HARD.md.')
+        print('\nComo se arregla: la dependencia baja (el dato sube como parametro, o lo compartido')
+        print('se muda a una familia mas baja), y la cabecera dice la verdad. Ver L8 y L8b en')
+        print('FUERO/META-KERNEL_HARD.md.')
         return 1
 
     declaradas = sorted(c.nombre for c in crates.values() if c.declarada)
     print('clean: %d crates en %d capas, %d aristas, y ninguna sube de capa (%s declaran puro y lo son)'
           % (len(crates), len(por_capa), sum(tipos.values()), ', '.join(declaradas) or 'ningun crate'))
     print('clean: nudos -- %s; ninguno nuevo'
-          % ', '.join('%s %d (base %d)' % (n, len(hoy[n]), len(base.get(n, ()))) for n, _, _ in BINARIOS))
+          % ', '.join('%s %d (base %d)' % (n, len(nudos_hoy[n]), len(base_nudos.get(n, ()))) for n, _, _, _ in BINARIOS))
+    for nombre, fams in familias.items():
+        print('clean: familias de %s -- %d declaradas y todas dicen la verdad; %d aristas suben (base %d), ninguna nueva'
+              % (nombre, len(fams), len(subidas_hoy[nombre]), len(base_subidas.get(nombre, ()))))
     return 0
 
 

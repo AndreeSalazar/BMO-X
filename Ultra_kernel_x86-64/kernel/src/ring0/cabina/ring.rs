@@ -115,7 +115,7 @@ pub fn record_fmt(sev: Severity, module: &str, msg: &str, value: u64, fmt: Fmt) 
         // numero, que es lo que permite preguntar despues si este todavia se
         // puede leer.
         ev.seq = EV_SEQ;
-        ev.tick_ns = crate::ring0::plat::timer::ticks();
+        ev.tick_ns = crate::ring0::reloj::ticks();
         let arr = core::ptr::addr_of_mut!(EVENTS) as *mut Event;
         core::ptr::write(arr.add(EV_WRITE), ev);
         EV_WRITE = (EV_WRITE + 1) % EVENT_RING;

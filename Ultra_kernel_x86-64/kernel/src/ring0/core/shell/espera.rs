@@ -111,7 +111,7 @@ pub(crate) fn siguiente_byte(linea: &[u8], cursor: usize) -> u8 {
         }
         dash_prompt(core::str::from_utf8(linea).unwrap_or(""), cursor);
         // CABINA -- cockpit omnisciente en la banda inferior.
-        crate::ring0::cabina::render_hud();
+        crate::ring0::mirador::render_hud();
 
         // Entrada: serial (COM1), teclado USB o PS/2, lo que tenga un byte.
         //

@@ -1,5 +1,8 @@
 //! x86-64 SYSCALL entry and BMO ABI v2 dispatcher (**2** frozen syscalls).
 //!
+//! [familia] syscall  nivel 11 -- la PUERTA: los dos syscalls congelados y su despacho
+//! [conecta] cabina, core, cpu_vendor, dev, fsys, mm, obj, plat, task, uconsole
+//!
 //! [carril]  ROJO      el despachador de los DOS syscalls congelados
 //! [consumo] NADA      corre solo cuando una tarea cruza la puerta
 //!

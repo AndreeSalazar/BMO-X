@@ -1,5 +1,8 @@
 //! Ring 3 bootstrap console.
 //!
+//! [familia] uconsole  nivel 3 -- la consola de arranque de Ring 3: bytes por valor hacia la pantalla
+//! [conecta] cabina, core, dev, mm, task
+//!
 //! [carril]  AMARILLO  la consola de arranque de Ring 3
 //! [consumo] NADA      la consola de arranque de Ring 3: corre cuando escribe
 //!

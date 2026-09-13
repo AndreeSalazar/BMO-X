@@ -1,5 +1,8 @@
 //! `cpu_vendor/` -- CPU-specific knowledge for the Ryzen 5 5600X (Vermeer, Zen 3).
 //!
+//! [familia] cpu_vendor  nivel 7 -- lo propio del Ryzen 5 5600X: perfil, XSAVE, MSR
+//! [conecta] cabina, dev, plat, syscall
+//!
 //! [carril]  VERDE     el reparto del vendor
 //! [consumo] NADA      pregunta al silicio en el arranque, o es contrato
 //!

@@ -31,6 +31,8 @@
 /// Los objetos que Ring 3 puede tener, uno por `KIND_`. Un nombre es
 /// adivinable; un handle concedido no.
 pub mod obj {
+    //! [familia] obj  nivel 9 -- los objetos que Ring 3 puede tener, uno por KIND_
+    //! [conecta] cabina, core, dev, fsys, mm, plat, syscall, task, uconsole
     pub mod file;
     /// LA PUERTA DE ESTRATOS para un `Archivo`: leer desde Ring 3 lo que se
     /// escribio en el sistema de ficheros propio. Tramo 1.1.
@@ -69,6 +71,8 @@ pub mod obj {
 
 /// Procesos: admitirlos, planificarlos, lanzarlos desde el disco.
 pub mod task {
+    //! [familia] task  nivel 4 -- los procesos: admitir, planificar y lanzar
+    //! [conecta] cabina, core, dev, fsys, mm, obj, plat, uconsole
     /// **El cierre de cada seccion al aterrizar.** Un `.bex` trae un BLAKE3 por
     /// seccion; esto los comprueba en el momento en que la seccion termina de
     /// caer en la memoria del proceso, no despues sobre un bufer.
@@ -102,12 +106,16 @@ pub mod task {
 /// Almacenamiento logico: de sectores a ARCHIVOS. El disco como hardware vive
 /// en `dev/disk.rs`; la diferencia es la misma que entre un sector y un nombre.
 pub mod fsys {
+    //! [familia] fsys  nivel 6 -- de sectores a ficheros: FAT32 y ESTRATOS
+    //! [conecta] cabina, dev, task
     pub mod estratos;
     pub mod fs;
 }
 
 /// La plataforma que sostiene al kernel: fallos, trampas, reloj y cerrojos.
 pub mod plat {
+    //! [familia] plat  nivel 10 -- la plataforma: tick, interrupciones, SMP, fallos y reinicio
+    //! [conecta] cabina, core, cpu, cpu_vendor, dev, mm, obj, reloj, task
     pub mod faults;
     /// El censo de nucleos que da el firmware por ACPI. Es la fuente de los
     /// APIC IDs, y sustituye a la suposicion `0..hilos-1`.
@@ -137,6 +145,8 @@ pub mod plat {
 }
 
 pub mod core {
+    //! [familia] core  nivel 14 -- el arranque y el shell de Ring 0: orquesta a todos y nadie deberia llamarlo
+    //! [conecta] cabina, cpu, cpu_vendor, dev, fsys, mirador, mm, obj, plat, svc, syscall, task, uconsole
     pub mod entry;
     /// El informe del sistema que Ring 3 pide por `TASK_OP_INFO`. Esta aqui y
     /// no en `obj/` porque no es un objeto con handle: son datos que el kernel
@@ -192,6 +202,8 @@ pub mod core {
 pub mod cpu;
 pub mod cpu_vendor;
 pub mod dev {
+    //! [familia] dev  nivel 5 -- el hardware de verdad: PCI, AHCI, xHCI, framebuffer, red, reloj de la placa
+    //! [conecta] cabina, core, mm, obj, plat, task
     /// El VOLUMEN del audifono USB, por control transfer. Llega antes que
     /// reproducir nada: ver la cabecera del modulo.
     pub mod uaudio;
@@ -221,4 +233,10 @@ pub mod svc;
 pub mod syscall;
 /// La caja negra: lo que el sistema confiesa de si mismo.
 pub mod cabina;
+/// EL RELOJ: el contador del tick, en nivel 0. Salio de `plat::timer` (L8b): la hora
+/// es un dato que la plataforma produce, y el registro la necesita sin importarla.
+pub mod reloj;
+/// EL MIRADOR: lo que CABINA ensena y vuelca. Salio de `cabina` (L8b): el registro lo
+/// llaman todos y no lee a nadie; el mirador lee a todos y solo lo llama `core`.
+pub mod mirador;
 pub mod uconsole;

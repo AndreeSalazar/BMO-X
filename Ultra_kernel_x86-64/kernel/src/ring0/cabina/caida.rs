@@ -78,8 +78,6 @@
 //! nunca. Una linea partida por otra en el fichero de caida es un precio; un
 //! fichero vacio no lo es.
 
-use crate::ring0::mm;
-
 /// Donde vive. 64 MiB: lejos de las etapas (1, 2 y 4 MiB) y del kernel.
 pub const BASE: u64 = 0x0400_0000;
 /// Cuanto: 256 KiB de texto, que son unas cinco mil lineas.
@@ -104,9 +102,14 @@ static mut ANTES_N: usize = 0;
 static mut RECUPERADO: usize = 0;
 static mut GENERACION: u32 = 0;
 
+/// Donde se ve `BASE` desde el kernel. **Lo pone quien abre** (`mm::phys::init`)
+/// y no se pregunta a `mm`: CABINA es la familia mas baja que apunta (L8b), y
+/// el dato sube como parametro en vez de importar la memoria (L7a).
+static mut VIRT: u64 = 0;
+
 #[inline(always)]
 fn ptr(off: u64) -> *mut u8 {
-    mm::phys_to_virt(BASE + off) as *mut u8
+    unsafe { (VIRT + off) as *mut u8 }
 }
 
 unsafe fn lee64(off: u64) -> u64 { core::ptr::read_volatile(ptr(off) as *const u64) }
@@ -147,8 +150,9 @@ pub fn anotar(b: u8) {
 /// Se llama desde `mm::phys::init`, justo despues de reservar el rango y con
 /// el physmap ya en pie. `dentro_de_ram` lo comprueba quien llama, que es
 /// quien tiene el mapa: si la region no cae en RAM usable, esto no se abre y
-/// se dice.
-pub fn abrir(dentro_de_ram: bool) {
+/// se dice. `base_virtual` es donde el physmap ensena `BASE`.
+pub fn abrir(dentro_de_ram: bool, base_virtual: u64) {
+    unsafe { VIRT = base_virtual };
     if !dentro_de_ram {
         crate::ring0::cabina::warn(
             "caida",
@@ -247,26 +251,18 @@ unsafe fn enderezar(cursor: u64) {
     texto.reverse();
 }
 
-/// **Volcar lo recuperado a `CAIDA.TXT`**, cuando el disco ya esta montado.
+/// **Lo que se recupero del arranque anterior**, en orden cronologico. Vacio si
+/// no habia nada.
 ///
-/// Devuelve los bytes escritos. Cero si no habia nada, o si el disco dijo que
-/// no -- y en ese caso CABINA ya lo conto.
-pub fn volcar() -> usize {
+/// ** Aqui vivia `volcar`, que lo escribia en `CAIDA.TXT`. Escribir en el disco
+/// es de quien LEE a todos, no del registro que todos llaman: salio al
+/// `mirador` (L8b, 2026-09-13), y CABINA solo entrega los bytes.
+pub fn texto_recuperado() -> &'static [u8] {
     let n = unsafe { RECUPERADO };
     if n == 0 {
-        return 0;
+        return &[];
     }
-    let texto = unsafe { core::slice::from_raw_parts(ptr(CAB) as *const u8, n) };
-    match crate::ring0::fsys::fs::create(b"CAIDA   TXT", texto) {
-        Ok(()) => {
-            crate::ring0::cabina::info("caida", "guardado en CAIDA.TXT: bytes", n as u64);
-            n
-        }
-        Err(_) => {
-            crate::ring0::cabina::warn("caida", "el disco no acepto CAIDA.TXT; sigue en RAM", n as u64);
-            0
-        }
-    }
+    unsafe { core::slice::from_raw_parts(ptr(CAB) as *const u8, n) }
 }
 
 /// Cuantos bytes se recuperaron del arranque anterior (para el panel).
