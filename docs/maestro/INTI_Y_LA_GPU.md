@@ -188,3 +188,125 @@ depurar, y este arbol tiene una regla sobre eso que lleva escrita desde agosto:
 
   > La forma se decide antes porque es gratis. El codigo se escribe despues
   > porque no lo es.
+
+---
+
+# 6. ★★ INDEPENDIENTES Y DEPENDIENTES A LA VEZ (2026-09-12)
+
+> El dueno, jugando Left 4 Dead 2: *"mi GPU trabaja independiente de la CPU si
+> es frame... necesito que cambies los planes para que la CPU y la GPU sean
+> independientes y al mismo tiempo dependientes"*.
+
+La observacion es exacta, y cambia el plan en un punto concreto: **la seccion 4
+decia COMO se le da trabajo a la GPU (la parte, el anillo, el timbre), y no decia
+nada de RITMO.** Esta seccion es el ritmo.
+
+## 6.1 Lo que pasa de verdad en un juego como L4D2
+
+```text
+   CPU   logica del juego -> prepara el fotograma N -> lo ENCOLA -> sigue con N+1
+   GPU                          <- toma el N de la cola -> lo pinta -> lo presenta
+```
+
+Son **dos relojes**. La CPU no espera a que la GPU pinte el N para empezar el
+N+1, y la GPU no sabe nada de la logica del juego. Eso es la INDEPENDENCIA.
+
+Y la DEPENDENCIA esta en tres sitios, y solo en tres:
+
+```text
+   1. la COLA        la CPU puede adelantar como mucho K fotogramas. Si la
+                     llena, espera. (El "fotogramas pre-renderizados" de los
+                     drivers es esa K.)
+   2. el TESTIGO     la GPU publica "termine el N". Quien necesita saberlo lo
+                     mira; nadie mas espera
+   3. los DATOS      lo que viaja en el fotograma N no se puede tocar mientras
+                     la GPU lo lee
+```
+
+★ De ahi sale el dato que todo jugador ve sin nombrarlo: **los fps son el MINIMO
+de los dos relojes**. Si la CPU es la lenta, la GPU espera con la cola vacia
+(*CPU-bound*). Si la GPU es la lenta, la cola se llena y la CPU espera
+(*GPU-bound*). Una maquina bien orquestada sabe **cual de las dos es** en cada
+momento, y lo dice.
+
+## 6.2 ** Y BMO-X ya tiene la mitad, sin GPU
+
+`<bmo/superficie.h>` resolvio el punto 2 el mes pasado, entre dos procesos de
+CPU, y con la misma forma:
+
+```text
+   la app          pinta en SU memoria y sube SECUENCIA cuando el dibujo
+                   esta entero                              (productor)
+   el DIRECTOR     compone a SU ritmo, y solo repinta si ve una SECUENCIA
+                   distinta de la ultima                    (consumidor)
+```
+
+Nadie espera a nadie: una app colgada no se lleva el escritorio, y un escritorio
+ocupado no frena a la app. **Es el modelo de L4D2 con la app haciendo de CPU y el
+DIRECTOR haciendo de GPU.** Cuando llegue una tarjeta no hay que inventar el
+contrato: hay que ponerle un tercer participante.
+
+Lo que NO tiene todavia, y es exactamente lo que la pregunta del dueno pide:
+
+```text
+   la COLA acotada   hoy la "cola" es de 1 y se pisa: el DIRECTOR ve el ultimo
+                     entero. Correcto para ventanas; un reproductor de video
+                     necesita K > 1 y SABER cuantos se perdieron
+   el TESTIGO DE     la app no sabe cuando se PRESENTO su fotograma, solo que
+   VUELTA            lo publico. Sin eso no puede medir su latencia ni
+                     esperar sin girar
+   el VEREDICTO      nadie dice hoy si una app va limitada por su propio calculo
+                     o por el compositor
+```
+
+## 6.3 El contrato: dos relojes, tres puntos de encuentro, cuatro reglas
+
+```text
+   R-RITMO-1  NADIE ESPERA SIN PLAZO. Quien espera al otro usa WAIT con plazo
+              (ver PLAN_EL_PLAZO). Un participante colgado se acusa; no para
+              al resto
+   R-RITMO-2  LA COLA TIENE UNA K DECLARADA. Ni infinita (latencia sin techo)
+              ni implicita. Quien produce la declara; quien consume la cumple
+   R-RITMO-3  LO QUE VIAJA ESTA CONGELADO. Un fotograma publicado no se escribe
+              hasta que el consumidor lo suelte -- o se escribe OTRO
+   R-RITMO-4  EL MAS LENTO SE NOMBRA. Toda tuberia publica cuanto espero cada
+              reloj al otro, y quien marca el ritmo sale en CABINA
+```
+
+*** R-RITMO-3 es donde **INTI paga lo que la seccion 2 prometia**: el valor
+CONGELADO de INTI (el `IMMORTAL` de `bmo_abi::dynobj`) es justo "esto ya no se
+toca". En C, que un fotograma en vuelo no se escriba es disciplina; en INTI se
+puede hacer que no compile. Y el testigo de vuelta es otra SECUENCIA, en la
+direccion contraria: una escritura de 32 bits que el otro lee con un `mov`, sin
+puerta -- el mismo patron que el buzon.
+
+## 6.4 El nuevo orden, y los tres primeros escalones NO necesitan GPU
+
+```text
+   E0  MEDIR los dos relojes que ya hay       app contra DIRECTOR: fotogramas
+                                              publicados, presentados y
+                                              PERDIDOS, y cual espero a cual.
+                                              Sin tocar el formato
+   E1  el TESTIGO DE VUELTA                   el DIRECTOR escribe "presente la
+                                              secuencia N" en la superficie.
+                                              La app mide su latencia y puede
+                                              ESPERAR con WAIT, sin girar
+   E2  la COLA con K                          K anillos de superficie en vez de
+                                              uno; el reproductor de video es
+                                              su primer cliente de verdad
+   E3  la GPU como TERCER participante        el anillo PM4 y el timbre de la
+                                              seccion 4, con los MISMOS tres
+                                              puntos de encuentro
+```
+
+★★ **E0, E1 y E2 se hacen con la maquina que hay y se prueban con DOOM y el
+cubo**, que ya son productores reales. Y cuando llegue E3, la tarjeta no trae un
+modelo nuevo de sincronizacion: trae un participante mas en uno que ya se midio.
+
+[!] Lo que esto NO cambia: sigue sin escribirse codigo de GPU (seccion 5), la
+unidad sigue siendo la parte y no el registro, y la GPU sigue siendo el cuarto
+aparato del NEUTRO. Lo que cambia es que **el plan deja de ser solo "como se le
+manda trabajo" y pasa a ser tambien "a que ritmo, y quien espera a quien"**.
+
+  > Independientes en el trabajo, dependientes en tres sitios con nombre. Todo
+  > lo que no sea uno de esos tres sitios es un cerrojo que nadie pidio.
