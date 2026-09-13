@@ -428,6 +428,35 @@ pub fn cuantos_atriles(total: u64, disponibles: u64) -> u64 {
 /// Lo minimo que justifica darle una vuelta a un atril. Ver `cuantos_atriles`.
 pub const MINIMO_POR_ATRIL: u64 = 8;
 
+/// ** **DESPERTAR PORQUE UNA APP LO PIDIO.** `true` si conviene levantar los
+/// nucleos antes de repartir.
+///
+/// La politica es del dueno (2026-09-12): *"que se activen automaticamente si el
+/// app pide -- ojo, SI ES QUE pide -- pero si mi orquestador dice que no, que se
+/// verifique por que"*. Y choca a proposito con la cabecera de
+/// `smp::despertar`, que decia que INIT+SIPI *"se dispara a proposito, no por
+/// escribir su nombre"*. Se resuelve asi: **pedir una parte ES el proposito**.
+/// Lo que no se hace es despertar por despertar.
+///
+/// ```text
+///    ya hay nucleos en pie       no   no hay nada que levantar
+///    la app pidio 1 atril        no   pidio no repartir
+///    la faena no merece 2        no   la barrera costaria mas que el trabajo
+///    YA SE INTENTO una vez       no   si no contesto nadie, o el dueno los paro
+///                                     con `smp stop`, no se insiste solo
+///    todo lo demas               SI
+/// ```
+///
+/// [!] La ultima fila es la que respeta al dueno: despertar es irreversible sin
+/// reiniciar y cuesta hasta 10 ms por nucleo, asi que ocurre **una vez por
+/// arranque**. Parar a mano gana siempre.
+pub fn conviene_despertar(total: u64, vivos: u64, pedidos: u64, ya_se_intento: bool) -> bool {
+    if ya_se_intento || vivos > 0 || pedidos == 1 {
+        return false;
+    }
+    cuantos_atriles(total, u64::MAX) > 1
+}
+
 /// **EL GUARDIAN DEL ESPEJO**, y corre en compilacion.
 ///
 /// El catalogo tiene que tener tantas entradas como dice `PARTES_ESCRITAS`. Si
@@ -670,6 +699,34 @@ mod pruebas {
 
         let enorme = Encargo { destino: 1, origen: 1, total: u64::MAX / 2, dato: 3 };
         assert_eq!(bytes_de(Parte::Expandir, &enorme), None);
+    }
+
+    /// La politica del dueno, fila a fila: se despierta si la app PIDE y
+    /// merece la pena, una vez, y nunca si ya hay nucleos o si ya se intento.
+    #[test]
+    fn despertar_solo_si_la_app_pide_y_una_vez() {
+        // El caso del cubo a pantalla completa: 1011 filas, nadie en pie.
+        assert!(conviene_despertar(1011, 0, 0, false));
+        // Ya hay obreros: no hay nada que levantar.
+        assert!(!conviene_despertar(1011, 11, 0, false));
+        // La app pidio UN atril: pidio no repartir.
+        assert!(!conviene_despertar(1011, 0, 1, false));
+        // Pidio varios: tambien vale.
+        assert!(conviene_despertar(1011, 0, 4, false));
+        // Una faena que no merece dos atriles no despierta a nadie.
+        assert!(!conviene_despertar(MINIMO_POR_ATRIL, 0, 0, false));
+        assert!(conviene_despertar(MINIMO_POR_ATRIL * 2, 0, 0, false));
+        // *** Y la que respeta al dueno: si ya se intento, no se insiste.
+        assert!(!conviene_despertar(1011, 0, 0, true));
+    }
+
+    /// ** `cuantos_atriles` cuenta al BSP. `atril.rs` le pasaba los obreros
+    /// SIN el BSP, y con once obreros en pie repartia entre once: uno quieto.
+    #[test]
+    fn once_obreros_y_el_bsp_son_doce_atriles() {
+        let obreros = 11u64;
+        assert_eq!(cuantos_atriles(1011, obreros + 1), 12);
+        assert_eq!(cuantos_atriles(1011, 0 + 1), 1, "sin obreros, el BSP solo");
     }
 
     fn valor_de_rex(nombre: &str) -> u64 {

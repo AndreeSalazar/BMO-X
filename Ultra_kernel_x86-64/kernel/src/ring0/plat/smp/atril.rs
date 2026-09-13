@@ -64,9 +64,16 @@
 //! asi que su espacio no puede cambiar debajo. Esa es la razon de que la puerta
 //! bloquee, y no la comodidad.
 
-use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
-use bmo_orquesta::{bytes_de, cuantos_atriles, se_puede_tocar, Encargo, Escala, Parte, Rango};
+use bmo_orquesta::{
+    bytes_de, conviene_despertar, cuantos_atriles, se_puede_tocar, Encargo, Escala, Parte, Rango,
+};
+
+/// Si la orquesta ya intento despertar nucleos por su cuenta en este arranque.
+/// Ver `bmo_orquesta::conviene_despertar`: se intenta UNA vez, y parar a mano
+/// con `smp stop` gana siempre.
+static YA_SE_INTENTO: AtomicBool = AtomicBool::new(false);
 
 // == EL ATRIL, publicado antes de la ronda =================================
 static DESTINO: AtomicU64 = AtomicU64::new(0);
@@ -284,8 +291,33 @@ pub fn tocar(pid: u32, parte_num: u64, pedidos: u64) -> u64 {
     // pida cien atriles en una maquina de seis nucleos no recibe cien: recibe
     // los que hay, y el recorte se apunta. Es la ley 24 --el hardware se
     // PERFILA-- aplicada a un reparto.
-    let (vivos, _) = super::alive();
-    let en_pie = vivos as u64;
+    let (mut vivos, _) = super::alive();
+    // ** SI LA APP PIDE Y NO HAY NADIE EN PIE, SE DESPIERTA -- una vez.
+    //
+    // Politica del dueno (2026-09-12): los nucleos se activan solos cuando una
+    // app pide una parte que merece repartirse. El juicio vive en
+    // `bmo_orquesta::conviene_despertar`, probado en el anfitrion; aqui solo se
+    // obedece y se DICE en CABINA, porque despertar cambia el estado del
+    // hardware y eso no puede ser silencioso ni cuando sale bien.
+    if conviene_despertar(e.total, vivos as u64, pedidos, YA_SE_INTENTO.load(Ordering::SeqCst)) {
+        YA_SE_INTENTO.store(true, Ordering::SeqCst);
+        let (despiertos, esperados) = super::despertar(u32::MAX, |_| {});
+        crate::ring0::cabina::info("orquesta", "una app pidio: nucleos despertados", despiertos as u64);
+        if despiertos == 0 {
+            // ** El "nel" del orquestador, con su motivo: se reparte con el BSP
+            // solo y no se vuelve a intentar hasta reiniciar.
+            crate::ring0::cabina::warn(
+                "orquesta",
+                "desperte y no contesto ningun nucleo: toca el BSP solo",
+                esperados as u64,
+            );
+        }
+        vivos = super::alive().0;
+    }
+    // ** `+ 1` porque `alive()` cuenta los OBREROS y `cuantos_atriles` cuenta al
+    // BSP (su prueba lo dice: *"con un solo nucleo en pie, uno"*). Sin el, con
+    // once obreros en pie se repartia entre once y uno se quedaba quieto.
+    let en_pie = vivos as u64 + 1;
     let conviene = cuantos_atriles(e.total, en_pie);
     let atriles = if pedidos == 0 {
         conviene
