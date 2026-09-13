@@ -1,0 +1,32 @@
+# LINEA_BASE de capas.py (L8) -- las parejas de subsistemas que HOY se importan
+# en los dos sentidos. Solo pueden bajar: una pareja nueva rompe el build.
+# Se regenera con `py toolchain/tools/capas/capas.py --sellar`.
+# subida: primera medida de L8 (2026-09-13): el kernel ya era un nudo de 13 subsistemas; se apunta para que no crezca
+nudo kernel ring0/cabina ring0/core
+nudo kernel ring0/cabina ring0/dev
+nudo kernel ring0/cabina ring0/fsys
+nudo kernel ring0/cabina ring0/mm
+nudo kernel ring0/cabina ring0/plat
+nudo kernel ring0/cabina ring0/task
+nudo kernel ring0/cabina ring0/uconsole
+nudo kernel ring0/core ring0/dev
+nudo kernel ring0/core ring0/mm
+nudo kernel ring0/core ring0/obj
+nudo kernel ring0/core ring0/plat
+nudo kernel ring0/core ring0/syscall
+nudo kernel ring0/core ring0/task
+nudo kernel ring0/core ring0/uconsole
+nudo kernel ring0/cpu_vendor ring0/plat
+nudo kernel ring0/cpu_vendor ring0/syscall
+nudo kernel ring0/dev ring0/mm
+nudo kernel ring0/dev ring0/obj
+nudo kernel ring0/dev ring0/plat
+nudo kernel ring0/dev ring0/task
+nudo kernel ring0/fsys ring0/task
+nudo kernel ring0/mm ring0/plat
+nudo kernel ring0/obj ring0/plat
+nudo kernel ring0/obj ring0/syscall
+nudo kernel ring0/obj ring0/task
+nudo kernel ring0/plat ring0/task
+nudo kernel ring0/task ring0/uconsole
+nudo director commands desktop

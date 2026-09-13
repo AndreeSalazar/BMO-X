@@ -217,6 +217,13 @@ Guardian 'Validating document citations resolve' `
 Guardian 'Validating L6a: no new module over the line' `
     'toolchain\tools\censo-modular\censo_modular.py' 'L6a' `
     'L6a: un modulo nuevo pasa de las 1.000 lineas, o uno de la linea base crecio'
+# ** L8: LAS CAPAS. Muro entre crates (Ring 3 no enlaza Ring 0, nadie enlaza el
+# nucleo, un puro no sabe de nadie) y trinquete dentro de los binarios (una
+# pareja de subsistemas que se importan en los dos sentidos no puede ser NUEVA).
+# El por que entero, en la cabecera de `capas.py` y en L8.
+Guardian 'Validating L8: dependencies go down the layers' `
+    'toolchain\tools\capas\capas.py' 'L8' `
+    'L8: una dependencia sube de capa, o hay un nudo nuevo entre subsistemas'
 
 # ** EL AMBITO de un commit, y SOLO el ambito. Trinquete como el de L6a, y no
 # mira la prosa: el por que entero esta en la cabecera de ambitos.py.

@@ -283,14 +283,14 @@ pub(crate) fn parse(line: &[u8]) -> Command<'_> {
     // convierte un desconcierto en una explicacion.
     //
     // ** Y ES UNA LISTA CON SUS BURLAS AL LADO (2026-09-12): cada verbo de aqui
-    // tiene respuesta propia en `scene::nya::burla`, o cae en la general.
+    // tiene respuesta propia en `desktop::nya::burla`, o cae en la general.
     // [!] Ninguno puede ser una orden de BMO-X: esta comprobacion va ANTES del
     // `match`, asi que un verbo repetido aqui TAPARIA a la orden de verdad.
     // Por eso no estan `ls`, `cat`, `clear` ni `w` -- y de Windows faltan a
     // proposito `dir`, `cls`, `start` y `help`, que aqui SI son ordenes.
     //
     // ** Y desde el 2026-09-12 tambien Windows y Mac, al final: el gato tiene
-    // cara y burla para cada familia (`scene::nya::Familia`).
+    // cara y burla para cada familia (`desktop::nya::Familia`).
     const FROM_LINUX: &[&[u8]] = &[
         b"ipconfig", b"tasklist", b"taskkill", b"regedit", b"chkdsk", b"diskpart", b"sfc",
         b"winget", b"choco", b"powershell", b"cmd", b"del", b"notepad", b"explorer",

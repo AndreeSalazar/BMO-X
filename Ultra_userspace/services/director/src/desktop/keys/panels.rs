@@ -154,7 +154,7 @@ if dsk.win.cabina_open
 // `cabina_open`, que es **"esta abierta"** y no "esta delante": con
 // CABINA tapada por Datos, estas dos siguen moviendo el log que NO se
 // ve, que es el fallo del 08-09 con el signo cambiado. La pregunta buena
-// ya existe --`bmo_input::Foco::esta_delante`-- y hoy no la llama nadie
+// ya existe --`bmo_foco::Foco::esta_delante`-- y hoy no la llama nadie
 // en todo el repo: `Focus` ni siquiera la asoma. Es un trabajo aparte.
 if dsk.win.cabina_open && (c == 0x87 || c == 0x88) {
     let any = bmo::cabina_disponibles();

@@ -1,5 +1,7 @@
 //! **El reloj de la placa** -- la parte que DECIDE, sin tocar un puerto.
 //!
+//! capa: puro -- decide fechas y no toca un puerto; lo enlazan el kernel y el DIRECTOR (L8)
+//!
 //! ## Por que hace falta
 //!
 //! Hasta hoy BMO-X no sabia que dia era. CABINA sella cada evento con `t3096C`

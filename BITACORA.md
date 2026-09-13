@@ -4358,3 +4358,39 @@ emulador verde prueba: lo que se ejercito.
 
 > Se empieza por arriba cuando abajo hace falta el metal; pero se dice que es
 > arriba.
+
+## Ep. 81 -- Se busco el espagueti entre crates, y estaba dentro del kernel
+
+**2026-09-13.** Eddi: *"analizar todos los que conectan con el principal, y el
+guardian que obligue CLARO que dependencia es, para matar el espagueti"*.
+
+Se midio antes de escribir la regla, en los 8 workspaces:
+
+| donde | que salio |
+|---|---|
+| entre 81 crates | 3 cruces malos, y los tres eran lo mismo: logica PURA viviendo en `drivers/` |
+| dentro del kernel | **un nudo de 13 de 16 subsistemas, 27 parejas** que se importan en los dos sentidos |
+| dentro del DIRECTOR | un nudo de 4, con 2 parejas |
+| dentro de `bmo-userland` | limpio |
+
+El cruce que mas decia: **el DIRECTOR, en Ring 3, enlazaba `bmo-input` --un driver
+con puertos PS/2 dentro-- solo para la politica de foco.** Salio a `bmo-foco`
+(puro), y `bmo-input` la reexporta con su nombre de siempre: las veinticinco citas
+de `bmo_input::foco` en los documentos siguen siendo verdad.
+
+L8 (`FUERO/META-KERNEL_HARD.md`) y su guardian, `capas.py`: **la dependencia solo
+baja y nadie enlaza el nucleo**. Entre crates es un MURO, porque es exacto y hoy
+esta limpio; dentro de un binario es un TRINQUETE, porque 27 parejas no se
+deshacen en una tarde. Una capa se puede declarar (`//! capa: puro`) y la
+declaracion se comprueba contra los `unsafe`.
+
+Y el trinquete se estreno bajando: `desktop <-> scene` dejo de ser nudo con cuatro
+mudanzas y ninguna logica nueva (`abrir` a `scene`, `nya` a `desktop`, `Ventana`
+a la raiz, la traduccion del pulso al `Tick`).
+
+[!] El guardian no vio `bmo-foco` en su primera vuelta: contaba con `git ls-files`
+y el crate nuevo no estaba en git. **Lo que se escapa de un censo es justo lo que
+se esta anadiendo.**
+
+> El espagueti no estaba donde lo declara el `Cargo.toml`, sino donde nadie lo
+> declara: en los `use` de dentro.

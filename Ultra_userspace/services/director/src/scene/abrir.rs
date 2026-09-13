@@ -17,7 +17,7 @@
 //! Una sola ranura y no una cola: dos lanzamientos pedidos en la misma vuelta
 //! son un doble clic repetido, y el segundo pisa al primero.
 
-use crate::scene::PATH_MAX;
+use super::PATH_MAX;
 
 static mut LINEA: [u8; PATH_MAX] = [0; PATH_MAX];
 static mut LARGO: usize = 0;

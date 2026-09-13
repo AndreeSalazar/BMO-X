@@ -36,8 +36,8 @@
 
 use bmo_userland as bmo;
 
-use super::*;
-use crate::desktop::Desktop;
+use crate::scene::*;
+use super::Desktop;
 use crate::uncover;
 
 const N_FONDO: u32 = 0x0010_141C;
@@ -277,10 +277,10 @@ pub(crate) fn borrar(dsk: &mut Desktop, p: &bmo::Pantalla) {
     // ventanas del sistema si estan abiertas, y las apps.
     uncover(p, &dsk.run_box, &dsk.launcher, dsk.win.visible, &mut dsk.out.grid, &mut dsk.tick.repaint_field);
     if dsk.win.data_open {
-        super::data::paint(p, &dsk.win.data);
+        crate::scene::data::paint(p, &dsk.win.data);
     }
     if dsk.win.cabina_open {
-        super::cabina::paint(p, &dsk.win.cabina);
+        crate::scene::cabina::paint(p, &dsk.win.cabina);
     }
     for s in dsk.table.iter_mut() {
         s.repaint_all();

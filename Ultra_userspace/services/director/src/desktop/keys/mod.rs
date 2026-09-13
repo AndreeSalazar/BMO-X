@@ -175,16 +175,16 @@ pub(crate) fn edges(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Gathered) {
     //
     // Aqui, lo primero, y SIN quedarse la pulsacion: quien teclea despues de
     // leerlo ya esta escribiendo la orden buena, y comerse esa letra seria
-    // castigarle por haberlo leido. Ver `scene::nya`.
+    // castigarle por haberlo leido. Ver `desktop::nya`.
     if dsk.win.nya_painted && (g.nt > 0 || (g.pos.botones != 0 && !dsk.tick.button_before)) {
-        scene::nya::borrar(dsk, p);
+        crate::desktop::nya::borrar(dsk, p);
     }
 
     // -- Alt+Tab: el conmutador --
     //
     // La pila se reordena al SOLTAR, no en cada Tab: eso es lo que hace
     // que pulsarlo dos veces te devuelva a donde estabas. Ver
-    // `bmo_input::focus`.
+    // `bmo_foco::focus`.
     // ** La guarda es `switcher_painted`, NO `focus.conmutando()`.
     //
     // Eran dos estados distintos gobernando la misma cosa: uno dice
@@ -359,7 +359,7 @@ pub(crate) fn dispatch(
         }
         // -- * DE QUIEN es esta tecla? --
         //
-        // Hasta que existio `bmo_input::focus`, TODA tecla se editaba en la
+        // Hasta que existio `bmo_foco::focus`, TODA tecla se editaba en la
         // linea de Ejecutar aunque la consola de datos estuviera encima:
         // escribias en una ventana tapada, sin verlo.
         //

@@ -1,0 +1,10 @@
+[package]
+name = "bmo-foco"
+version = "0.1.0"
+edition = "2021"
+description = "El FOCO del escritorio: quien recibe las teclas, la pila MRU y el Z-order. Politica pura, sin hardware, probada en el anfitrion."
+license = "Apache-2.0"
+
+# Sin dependencias. Salio de `bmo-input` el 2026-09-13 (L8): el DIRECTOR, en
+# Ring 3, enlazaba un driver de Ring 0 solo para usar esta politica.
+[dependencies]

@@ -72,8 +72,6 @@
 //! entre `pulso` y `pinta` no es una curiosidad: es el desperdicio, medido.
 //! Ver el presupuesto escrito en `main.rs`, junto al `yield_screen`.
 
-use crate::desktop;
-
 /// **Lo que este medidor recibe en una vuelta.** Va junta y no como cuatro
 /// parametros sueltos: son **una sola lectura** --el mismo instante del mismo
 /// segundo-- y repartirla en la firma invita a pintar la mitad de un segundo
@@ -192,20 +190,7 @@ pub(crate) fn leer(l: &Lectura) -> Dictamen {
     }
 }
 
-/// La lectura de este cuarto, sacada del reloj del escritorio.
-///
-/// Vive aqui y no en quien pinta porque es **traduccion, no dibujo**: es el
-/// unico sitio que sabe que `Tick` y `Lectura` hablan del mismo segundo. Antes
-/// esa traduccion se escribia en `paint.rs`, o sea en el fichero que menos
-/// tiene que saber de las dos cosas.
-pub(crate) fn de(t: &desktop::Tick) -> Lectura {
-    Lectura {
-        vueltas: t.loops_per_second,
-        sin_reloj: t.sin_reloj(),
-        cuerpo_ms: t.cuerpo_ms,
-        puerta_ms: t.puerta_ms,
-        pinta: t.pintados_por_segundo,
-        en_latido: t.en_latido(),
-        en_reposo: t.en_reposo(),
-    }
-}
+// ** La traduccion `Tick -> Lectura` vivio aqui hasta el 2026-09-13, y era la
+// ultima arista de `scene` hacia `desktop` (L8): el medidor tenia que conocer el
+// reloj del escritorio. Ahora la hace el propio reloj (`Tick::lectura_pulso`) y
+// esta pieza solo sabe de su `Lectura`. Sigue sin estar en `paint.rs`.

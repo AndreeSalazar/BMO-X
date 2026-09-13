@@ -494,7 +494,7 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         // significa nada, y sin el reparto no se sabe si el segundo se GASTA o
         // se ESPERA. Armarla es trabajo del modulo --`pulso::de`-- y no de
         // aqui: este fichero es el que menos tiene que saber de las dos cosas.
-        scene::pulso::refrescar(&p, &scene::pulso::de(&dsk.tick));
+        scene::pulso::refrescar(&p, &dsk.tick.lectura_pulso());
         // ** Y AL LADO, LO QUE CUESTA EL FOTOGRAMA. El pulso dice el TIEMPO
         // --`cuerpo`-- y esto los BYTES; uno sin el otro no distingue "mucho"
         // de "lento", que es justo la pregunta abierta del 08-09. Ver la

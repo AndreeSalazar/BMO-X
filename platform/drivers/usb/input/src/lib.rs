@@ -28,11 +28,11 @@ pub mod hal;
 #[cfg(feature = "ps2")]
 pub mod hal_ps2;
 pub mod event;
-/// El FOCO: quien recibe las teclas cuando hay mas de una ventana. Vive aqui
-/// porque enrutar entrada es el oficio de este crate -- y porque aqui se puede
-/// probar: el compositor es `no_main` para un target sin sistema operativo y no
-/// corre un test.
-pub mod foco;
+/// El FOCO: quien recibe las teclas cuando hay mas de una ventana. Vivio aqui
+/// hasta el 2026-09-13; salio a `bmo-foco` (L8) porque lo usa tambien el
+/// DIRECTOR, que es Ring 3 y no debe enlazar un driver. Se reexporta con el
+/// nombre de siempre para que nada de lo que lo cita cambie.
+pub use bmo_foco as foco;
 pub mod keyboard;
 pub mod mouse;
 

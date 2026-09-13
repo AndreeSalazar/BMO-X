@@ -38,13 +38,13 @@ pub(crate) fn nothing(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
 /// para ti. Se rie del malentendido, nunca de quien
 /// lo tuvo.
 ///
-/// ** Y DESDE EL 2026-09-12 LO DICE UNA VENTANA (`scene::nya`), no la salida.
+/// ** Y DESDE EL 2026-09-12 LO DICE UNA VENTANA (`desktop::nya`), no la salida.
 /// Antes el gato y la explicacion se escribian renglon a renglon entre lo
 /// demas, y el dueno lo dijo: *"los que imprime en texto estan desordenados"*.
 /// En la salida queda UNA linea, para que la orden siga en el historial y en
 /// `save`; el gato, las burlas por verbo y a donde ir viven en la ventanita.
 pub(crate) fn not_linux(dsk: &mut Desktop, p: &bmo::Pantalla, verb: &[u8]) -> After {
-    let familia = crate::scene::nya::burla(verb).familia;
+    let familia = crate::desktop::nya::burla(verb).familia;
     dsk.out.grid.with_ink(INK_ECHO);
     dsk.out.grid.text(b"  ");
     dsk.out.grid.text(verb);
@@ -52,7 +52,7 @@ pub(crate) fn not_linux(dsk: &mut Desktop, p: &bmo::Pantalla, verb: &[u8]) -> Af
     dsk.out.grid.text(familia.nombre());
     dsk.out.grid.text(b" -- te lo cuenta el gato :3\n");
     dsk.out.grid.with_ink(INK_PLAIN);
-    crate::scene::nya::mostrar(dsk, p, verb);
+    crate::desktop::nya::mostrar(dsk, p, verb);
     paint_status(&p, &dsk.run_box, familia.estado(), INK_DIM);
     dsk.tick.repaint_field = true;
     After::Settle

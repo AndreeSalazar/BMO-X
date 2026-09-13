@@ -98,8 +98,3 @@ pub(crate) fn refrescar(p: &bmo::Pantalla, l: &Lectura) {
     verde::pintar(p, &amarilla::leer(l));
 }
 
-/// La lectura de este cuarto, sacada del reloj del escritorio. Ver
-/// `amarilla::de`.
-pub(crate) fn de(t: &crate::desktop::Tick) -> Lectura {
-    amarilla::de(t)
-}

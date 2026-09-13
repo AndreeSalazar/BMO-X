@@ -36,14 +36,16 @@ pub(crate) mod boot;
 pub(crate) mod tick;
 pub(crate) mod calc;
 /// LANZAR DESDE CUALQUIER SITIO: una ranura que `_start` vacia (2026-09-13).
-pub(crate) mod abrir;
+pub(crate) use crate::scene::abrir;
 /// EL EDITOR DE ASPECTO: `aspecto` en Ejecutar, en vivo y guardado en
 /// `sys/director.cfg` (2026-09-13).
 pub(crate) mod aspecto;
 pub(crate) mod keys;
 pub(crate) mod mouse;
 pub(crate) mod paint;
-pub(crate) mod ventana;
+pub(crate) use crate::ventana;
+/// El gato que sale cuando alguien teclea Linux aqui. Vivia en `scene`; necesita el escritorio entero, asi que es de aqui (L8).
+pub(crate) mod nya;
 pub(crate) use boot::boot;
 /// **Which window is which.** An id is a TYPE here, not a loose `u8` -- the
 /// why is written where it lives, and it cost a repeated `3` to learn.
@@ -179,7 +181,7 @@ pub(crate) struct Windows {
     pub taskbar_state_before: (bool, Ventana, bool, bool, bool, u8),
     pub switcher_painted: bool,
     /// Si la ventanita del gato esta pintada. La borra quien la pinto: ver
-    /// `scene::nya`.
+    /// `desktop::nya`.
     pub nya_painted: bool,
     pub alt_before: bool,
 }

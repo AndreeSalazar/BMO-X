@@ -4,7 +4,7 @@
 //!                     compositor se lo pide, y el compositor solo pinta si
 //!                     algo cambio (L6h)
 //!
-//! La politica vive en `bmo_input::focus` y **se prueba alli**; aqui solo se
+//! La politica vive en `bmo_foco::focus` y **se prueba alli**; aqui solo se
 //! pinta lo que esa politica ya decidio. Es el mismo reparto de siempre: quien
 //! decide no dibuja, y quien dibuja no decide.
 //!
@@ -21,7 +21,7 @@
 use bmo_userland as bmo;
 
 use super::*;
-use crate::desktop::Ventana;
+use crate::ventana::Ventana;
 
 const SW_BG: u32 = 0x0016_2032;
 const SW_EDGE: u32 = 0x0060_80A8;

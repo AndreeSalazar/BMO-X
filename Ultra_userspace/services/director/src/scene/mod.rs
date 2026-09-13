@@ -30,8 +30,8 @@ pub(crate) mod calc_gen;
 /// confesado en su propia cabecera. Ya no hay copia.
 pub(crate) mod tema_gen;
 pub(crate) mod switcher;
-/// El gato que sale cuando alguien teclea Linux aqui.
-pub(crate) mod nya;
+/// El pedido de ABRIR: lo hace la biblioteca y lo atiende el teclado. Vivia en `desktop` (L8).
+pub(crate) mod abrir;
 pub(crate) mod data;
 /// EL ESTILO leido de `sys/director.cfg` al arrancar (2026-09-13).
 pub(crate) mod estilo;

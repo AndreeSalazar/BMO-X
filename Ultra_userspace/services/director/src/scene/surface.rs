@@ -794,7 +794,7 @@ impl Table {
     ///
     /// [!] El orden es el de la mesa, que hoy es el de llegada. Cuando dos cajas
     /// se solapen habra que preguntarle al foco quien esta delante -- y eso ya
-    /// tiene dueno (`bmo_input::foco`, paso 2c.3), asi que no se inventa aqui
+    /// tiene dueno (`bmo_foco::foco`, paso 2c.3), asi que no se inventa aqui
     /// una segunda politica que luego habria que reconciliar.
     // ** YA TIENE LLAMANTE (2026-08-23): `desktop::keys::app::raton`. Lo que
     // decia aqui --"todavia no lo llama nadie, y eso es el plan"-- se cumplio

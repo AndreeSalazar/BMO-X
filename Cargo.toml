@@ -79,6 +79,9 @@ members = [
     # TCP/IP PROPIO: Ethernet, ARP, IPv4, ICMP, UDP y TCP. Ring 3, determinista y
     # de lista blanca, probado aqui contra pilas de mentira. Ver RED_MAESTRO.md.
     "platform/shared/bmo-pila",
+    # EL FOCO: salio de `bmo-input` (L8). Politica pura que usan Ring 0 y Ring 3;
+    # un driver no es el sitio de lo que comparten dos anillos.
+    "platform/shared/bmo-foco",
     # El JUEZ de las medidas de ciclos. Vive aqui y no dentro del `.bex` que
     # mide por la misma razon que la politica de foco vive en `bmo-input`: aqui
     # se puede PROBAR. Un `.bex` es `no_main` para un target sin sistema

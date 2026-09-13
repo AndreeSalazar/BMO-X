@@ -7,6 +7,8 @@ description = "BMO Input Subsystem -- HAL-based keyboard/mouse/pointer driver wi
 [lib]
 
 [dependencies]
+# El FOCO salio a `platform/shared` (L8) y aqui se reexporta con su nombre de siempre.
+bmo-foco = { path = "../../../shared/bmo-foco" }
 
 [features]
 default = ["ps2"]

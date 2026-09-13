@@ -80,6 +80,8 @@ mod simbolos;
 mod commands;
 mod text;
 mod watch;
+/// Que ventana es cual. Vivia en `desktop`; la nombran tambien `scene` y el foco (L8).
+mod ventana;
 
 use scene::output::{paint_output, Output};
 use scene::*;
@@ -829,7 +831,7 @@ pub extern "C" fn _start() -> ! {
             dsk.out.grid.text(&l[..n]);
             dsk.tick.repaint_field = true;
             // ** Y SE LE DICE AL FOCO QUE EXISTE. Hasta hoy una app tenia
-            // caja pero no nombre: `bmo_input::foco` habla en ids y ninguno
+            // caja pero no nombre: `bmo_foco::foco` habla en ids y ninguno
             // era suyo, asi que Alt+Tab pasaba de largo por encima de una
             // ventana que se estaba viendo.
             dsk.win.focus.open(desktop::Ventana::App(hueco as u8));

@@ -7,7 +7,7 @@
 //!
 //! Hasta el 2026-08-18 esto eran seis `const W_*: u8` en `desktop/mod.rs`, y
 //! dos de ellas valian 3: `W_CPU` y `W_SOUND`. Nada dejo de compilar, porque
-//! para `bmo_input::Foco` un id es un `u8` y todos los `u8` son igual de
+//! para `bmo_foco::Foco` un id es un `u8` y todos los `u8` son igual de
 //! validos. Lo que hacia se cuenta entero en `Ventana::Sound`.
 //!
 //! El numero repetido era el sintoma. **La pieza rota era que el id fuera un
@@ -45,7 +45,7 @@
 //! que es la unica funcion de todo el compositor que convierte una ventana en
 //! un numero.
 
-use bmo_input::Modo;
+use bmo_foco::Modo;
 
 /// Una ventana del escritorio.
 ///
@@ -59,7 +59,7 @@ pub(crate) enum Ventana {
     ///
     /// Hasta el 2026-08-19 este enum era C-like y `id()` era `self as u8`: seis
     /// ventanas fijas, decididas al compilar. Una app no cabia ahi, y por eso
-    /// `bmo_input::foco` --que si tenia la politica-- **no tenia forma de
+    /// `bmo_foco::foco` --que si tenia la politica-- **no tenia forma de
     /// nombrarla**: el plan daba el foco de las apps por resuelto y lo que
     /// faltaba no era la politica, era el vocabulario.
     ///
@@ -127,7 +127,7 @@ impl Ventana {
         Ventana::Estructura,
     ];
 
-    /// El numero que entiende `bmo_input::Foco`.
+    /// El numero que entiende `bmo_foco::Foco`.
     ///
     /// **La unica funcion del compositor que convierte una ventana en un id.**
     /// Todo lo demas habla en `Ventana`, y por eso ya no se puede escribir un
@@ -200,7 +200,7 @@ impl Ventana {
 
 /// **El foco, hablando en ventanas.**
 ///
-/// Es `bmo_input::Foco` con los ids traducidos y nada mas: ni una decision
+/// Es `bmo_foco::Foco` con los ids traducidos y nada mas: ni una decision
 /// vive aqui. La politica --quien recibe la tecla, que hace Alt+Tab, que
 /// significa `Fijo`-- esta en `bmo_input`, se prueba alli con veinte tests, y
 /// este envoltorio existe para que el compositor no tenga que escribir un
@@ -210,11 +210,11 @@ impl Ventana {
 /// asi quien lea `focus.es_para(...)` aqui y luego abra `foco.rs` encuentra la
 /// misma palabra, y lo unico que cambia entre los dos sitios es el tipo del
 /// argumento -- que es exactamente lo que este fichero anade.
-pub(crate) struct Focus(bmo_input::Foco);
+pub(crate) struct Focus(bmo_foco::Foco);
 
 impl Focus {
     pub(crate) fn nuevo() -> Self {
-        Self(bmo_input::Foco::nuevo())
+        Self(bmo_foco::Foco::nuevo())
     }
 
     /// Es de esta ventana la tecla que acaba de llegar?
@@ -231,7 +231,7 @@ impl Focus {
     /// `abierta && es_para(v)` de las que **como mucho una puede ser cierta**,
     /// porque el foco es UNO: seis preguntas para leer un campo.
     ///
-    /// * `bmo_input::Foco` tambien tiene `delante()`, y NO se asoma aqui a
+    /// * `bmo_foco::Foco` tambien tiene `delante()`, y NO se asoma aqui a
     /// proposito: hoy devuelve exactamente lo mismo que `actual()` --las dos
     /// leen `orden[0]`-- asi que asomarla seria ofrecer dos nombres para una
     /// sola respuesta. La pregunta que su documentacion promete --*quien se ve

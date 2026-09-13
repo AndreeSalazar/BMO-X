@@ -352,6 +352,24 @@ pub(super) const QUARTER_LOOPS: u32 = 15;
 
 
 impl Tick {
+    /// **La lectura del PULSO para este cuarto**, sacada de este reloj.
+    ///
+    /// ** Vivia en `scene/pulso/amarilla.rs` como `de(&Tick)`, y era la ultima
+    /// arista de `scene` hacia `desktop` (L8, 2026-09-13): el medidor tenia que
+    /// conocer el reloj del escritorio. Es traduccion, no dibujo -- y la hace el
+    /// que tiene los campos. Sigue sin estar en `paint.rs`.
+    pub(crate) fn lectura_pulso(&self) -> crate::scene::pulso::Lectura {
+        crate::scene::pulso::Lectura {
+            vueltas: self.loops_per_second,
+            sin_reloj: self.sin_reloj(),
+            cuerpo_ms: self.cuerpo_ms,
+            puerta_ms: self.puerta_ms,
+            pinta: self.pintados_por_segundo,
+            en_latido: self.en_latido(),
+            en_reposo: self.en_reposo(),
+        }
+    }
+
     /// **Un reloj recien puesto en hora.**
     ///
     /// ** Vive aqui y no en `Desktop::new` desde el corte del 2026-09-08, y no

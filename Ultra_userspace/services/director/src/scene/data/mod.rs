@@ -443,8 +443,8 @@ impl DataWindow {
         }
         let pedido = match abre {
             Abre::Visor => return self.visor.abrir(ruta, nombre),
-            Abre::Programa => crate::desktop::abrir::pedir(&[ruta]),
-            Abre::Con(app) => crate::desktop::abrir::pedir(&[app, ruta]),
+            Abre::Programa => crate::scene::abrir::pedir(&[ruta]),
+            Abre::Con(app) => crate::scene::abrir::pedir(&[app, ruta]),
             Abre::Falta(motivo) => {
                 self.aviso = Some(motivo);
                 return true;

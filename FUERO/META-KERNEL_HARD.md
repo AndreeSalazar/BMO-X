@@ -706,6 +706,59 @@ varias`) en vez de callarse.
 se puede juzgar asi. Saberlo costo un `grep`; construir el metro equivocado
 habria costado el guardian entero, porque uno que grita sin motivo se apaga.
 
+### L8. ** LA DIRECCION: el principal no se nombra desde abajo
+
+L7 ordena las generaciones DENTRO de una familia. Esta ordena las CAPAS del
+sistema entero, y tiene un centro: **el nucleo es el principal**. Se escribio el
+2026-09-13, cuando Eddi pidio *"el guardian que obligue CLARO que dependencia es,
+para matar el espagueti"*, y se midio antes de escribirla.
+
+```
+   puro         platform/shared    logica sin hardware, probada en el anfitrion
+   contrato     platform/abi       lo que Ring 0 y Ring 3 firman
+   driver       platform/drivers   lo que ENLAZA el kernel y toca aparatos
+   arranque     boot_context, faggin, uefi_chain
+   nucleo       el kernel          EL PRINCIPAL
+   ring3        Ultra_userspace    habla con el principal por el ABI
+   herramienta  toolchain          no corre en la maquina
+```
+
+**La ley, en una frase: LA DEPENDENCIA SOLO BAJA, Y NADIE ENLAZA AL PRINCIPAL.**
+
+```
+   nucleo       -> nucleo arranque driver contrato puro
+   driver       -> driver contrato puro
+   contrato     -> contrato puro
+   puro         -> puro
+   ring3        -> ring3 contrato puro          ** nunca driver ni nucleo
+   herramienta  -> herramienta contrato puro driver
+```
+
+**L8a. Ring 3 no enlaza codigo que corre en Ring 0.** Lo que dos anillos
+comparten es `puro` y vive en `platform/shared`; lo que se dicen, va por el ABI.
+La medida lo encontro el primer dia: el DIRECTOR enlazaba `bmo-input` --un
+driver con puertos PS/2 dentro-- solo para la politica de foco. Salio a
+`bmo-foco`, y `bmo-input` la reexporta con su nombre de siempre.
+
+**L8b. La capa se declara y la declaracion se comprueba.** Un crate puede decir
+`//! capa: puro -- motivo` aunque viva en `drivers/`: `bmo-rtc` decide fechas y no
+toca un puerto. Pero `puro` exige cero `unsafe` o `#![forbid(unsafe_code)]`, y
+solo se puede declarar `puro`: declarar que algo sube no le quita a nadie un
+limite.
+
+**L8c. Entre crates es un MURO; dentro de un binario, un TRINQUETE.** Entre
+crates la relacion es exacta (`[dependencies]`, L7c) y hoy esta limpia, asi que
+no hay linea base: una arista que sube no pasa. Dentro, se miden las parejas de
+subsistemas que se importan en los DOS sentidos, y el dia que se escribio el
+kernel tenia **27** en un solo nudo de 13 de sus 16 subsistemas, y el DIRECTOR
+un nudo de 4. Eso no se deshace en una tarde: va a `LINEA_BASE.txt`, y lo que se
+prohibe es una pareja NUEVA.
+
+*El precio*: los nudos se cuentan por `crate::a::b`, y un `super::super::` que
+cruce carpeta no se ve. Es una cota inferior -- y para un trinquete basta, porque
+lo que se ve no puede empeorar. Guardian: `toolchain/tools/capas/capas.py`
+(`--mapa` ensena el mapa entero).
+
 ---
 
 ## 2. Los cinco ejes, y cual manda en BMO-X

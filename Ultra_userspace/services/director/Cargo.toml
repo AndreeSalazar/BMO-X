@@ -9,13 +9,15 @@ name = "director"
 path = "src/main.rs"
 
 [dependencies]
+# `bmo-rtc` vive en drivers/ pero DECLARA `capa: puro` y el guardian L8 lo
+# comprueba: decide fechas y no toca un puerto.
 bmo-rtc = { path = "../../../platform/drivers/rtc" }
 bmo-userland = { path = "../../userland" }
-# La politica de FOCO (quien recibe las teclas) vive en el subsistema de
-# entrada, no aqui: es el oficio de ese crate y ademas alli se puede PROBAR --
-# este binario es `no_main` para un target sin sistema operativo y no corre un
-# test. Aqui solo se pinta lo que la politica ya decidio.
-bmo-input = { path = "../../../platform/drivers/usb/input", default-features = false }
+# La politica de FOCO (quien recibe las teclas). Alli se puede PROBAR -- este
+# binario es `no_main` para un target sin sistema operativo y no corre un test.
+# ** Hasta el 2026-09-13 esto era `bmo-input`, un driver de Ring 0 enlazado desde
+# Ring 3 solo por esta politica. L8: lo compartido entre anillos es `puro`.
+bmo-foco = { path = "../../../platform/shared/bmo-foco" }
 # El RECORTE, que usa la cara generada por MAQUETA para reparar un danio sin
 # repintarlo todo. Es el mismo `Recorte` que usan el rasterizador y el kernel:
 # medio abierto `[x0, x1)`, y una sola implementacion para las tres orillas.

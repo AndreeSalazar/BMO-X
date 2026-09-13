@@ -1,3 +1,17 @@
+//! **BMO FOCO** -- quien recibe las teclas, la pila MRU y el Z-order.
+//!
+//! generacion: nieto -- la politica y su veredicto; no sabe que es una ventana
+//! capa: puro -- ni un `unsafe`, ni un aparato: lo usan Ring 0 y Ring 3
+//!
+//! ## De donde sale (2026-09-13, L8)
+//!
+//! Vivia en `bmo-input` como `foco.rs`, y el DIRECTOR --Ring 3-- enlazaba ese
+//! driver de Ring 0 solo para usar esta politica. L8 dice que lo que comparten
+//! dos anillos es `puro` y vive en `platform/shared`. `bmo-input` la reexporta
+//! como `bmo_input::foco`, asi que nada de lo que la cita cambia de nombre.
+
+#![cfg_attr(not(test), no_std)]
+
 //! **El foco**: quien recibe las teclas cuando hay mas de una ventana.
 //!
 //! === Como se llama esto de verdad ===

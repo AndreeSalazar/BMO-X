@@ -187,7 +187,7 @@ fn repartir(
     //
     // * El orden de estas dos preguntas ES el Z-order: Datos se pinta
     // ENCIMA de Ejecutar, asi que se pregunta primero, y un clic en la
-    // zona compartida es de la de arriba. `bmo_input::focus` no sabe que
+    // zona compartida es de la de arriba. `bmo_foco::focus` no sabe que
     // ventana tapa a cual y no tiene por que: eso lo sabe el que pinta.
     // * Con TRES ventanas, el orden de las preguntas deja de caber en
     // un `if/else` escrito a mano por pares. Se pregunta primero por la
