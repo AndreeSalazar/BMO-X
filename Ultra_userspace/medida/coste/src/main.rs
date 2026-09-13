@@ -511,10 +511,35 @@ pub extern "C" fn _start() -> ! {
     //
     // Se leen ANTES de abrir ninguna ventana de medida: son dos puertas, y una
     // puerta dentro de la ventana es lo que ya contamino una tanda entera.
-    let reloj = juez::Reloj {
-        tsc_hz: bmo::info(bmo::INFO_TSC_HZ),
-        nucleo_hz: bmo::info(bmo::INFO_CPU_HZ_REAL),
+    //
+    // ** Y EL RELOJ DEL NUCLEO SE MIDE ALREDEDOR DEL PRIMER BUCLE (2026-09-12).
+    // Aqui se leia `INFO_CPU_HZ_REAL`, que es "desde la ultima vez que ALGUIEN
+    // pregunto" -- y quien pregunto antes podia ser el panel del escritorio un
+    // milisegundo antes. Ahora se leen MPERF y APERF crudos antes y despues del
+    // bucle vacio, que dura lo bastante para que digan algo, y la resta es SOLO
+    // de este programa.
+    let tsc_hz = bmo::info(bmo::INFO_TSC_HZ);
+    let antes = juez::consumo::Lectura {
+        mperf: bmo::info(bmo::INFO_CPU_MPERF),
+        aperf: bmo::info(bmo::INFO_CPU_APERF),
+        tsc: bmo::ciclos(),
+        ..Default::default()
     };
+
+    // -- 1. el bucle, para poder restarlo -----------------------------
+    let (vacio_min, vacio_media) = medir(|n| unsafe { vacio(n) });
+
+    let despues = juez::consumo::Lectura {
+        mperf: bmo::info(bmo::INFO_CPU_MPERF),
+        aperf: bmo::info(bmo::INFO_CPU_APERF),
+        tsc: bmo::ciclos(),
+        ..Default::default()
+    };
+    let nucleo_hz = match juez::consumo::entre(&antes, &despues, tsc_hz) {
+        juez::consumo::Entre::Consumo(c) => c.hz_nucleo,
+        _ => 0,
+    };
+    let reloj = juez::Reloj { tsc_hz, nucleo_hz };
     di!(
         l,
         "TSC {} MHz (lo que cuenta rdtsc), nucleo {} MHz (a lo que va el CPU)\n",
@@ -529,9 +554,6 @@ pub extern "C" fn _start() -> ! {
         None => di!(l, "sin MPERF/APERF: se dan TICKS y nada mas\n"),
     }
     di!(l, "lote {LOTE}, vueltas {VUELTAS}\n");
-
-    // -- 1. el bucle, para poder restarlo -----------------------------
-    let (vacio_min, vacio_media) = medir(|n| unsafe { vacio(n) });
     di!(l, "1. bucle vacio   min {vacio_min} ticks/op, media {vacio_media}\n");
 
     // -- 2. la puerta pelada ------------------------------------------

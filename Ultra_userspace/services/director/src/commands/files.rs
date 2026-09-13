@@ -229,7 +229,7 @@ pub(crate) fn save(dsk: &mut Desktop, p: &bmo::Pantalla, arg: &[u8]) -> After {
         // dio la vuelta, asi que no hay forma de pedir filas que ya no estan.
         let marca = dsk.out.grid.mark();
         match cual {
-            0 => super::reports::report_cpu(&mut dsk.out.grid),
+            0 => super::reports::report_cpu(&mut dsk.out.grid, dsk.tick.consumo.ultimo),
             1 => super::reports::report_memory(&mut dsk.out.grid),
             2 => super::reports::report_consumo(&mut dsk.out.grid, &dsk.tick),
             _ => super::reports::report_apps(&mut dsk.out.grid),

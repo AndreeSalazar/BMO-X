@@ -3,7 +3,7 @@
 //! [carril]  ROJO      el tick del LAPIC: sin el no hay planificador
 //! [consumo] LATE      el tick: mil veces por segundo, haya o no haya nadie.
 //!                     Cada vuelta: latido::tic, channel::service_all y
-//!                     scheduler::on_timer
+//!                     scheduler::on_timer; y cada 1024, power::acumular
 //!
 //! `s2_mem` calibrates and starts LAPIC vector 48. Ring 0 replaces that
 //! vector's boot-time halt stub with this handler, which shares the exact
@@ -207,7 +207,14 @@ extern "C" fn timer_dispatch(_frame: &mut TrapFrame) -> u64 {
     // seguro). Pintar desde AQUI (contexto IRQ: switch de CR3 + 4 filas de
     // framebuffer) era pesado y causaba cuelgue->reset en el arranque. El
     // shell ya la mantiene always-on, asi que este llamado sobra.
-    let _ = n;
+    // ** UNA VEZ POR SEGUNDO (1024 ticks a 1 kHz, una mascara en vez de una
+    // division), la energia se ACUMULA (2026-09-12).
+    // El registro de RAPL es de 32 bits y da la vuelta cada ~16 minutos; si
+    // nadie lo mira en dos vueltas se pierde una, y el contador que el kernel
+    // da a Ring 3 dejaria de ser "desde el arranque". Tres `rdmsr` por segundo.
+    if n & 0x3FF == 0 {
+        crate::ring0::cpu::power::acumular();
+    }
 
     // SAFETY: initialized before vector 48 is installed and only used by the
     // BSP while SMP is disabled.

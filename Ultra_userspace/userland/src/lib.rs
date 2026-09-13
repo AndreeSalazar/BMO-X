@@ -307,6 +307,15 @@ pub const INFO_CPU_MW_NUCLEO_ACTUAL: u64 = 0x22;
 /// Es lo que permite a la terminal decir QUE esta aplicando, en vez de pintar
 /// ceros y dejar al que mira sin saber si el sensor no existe o el valor es 0.
 pub const INFO_CPU_SENSORES: u64 = 0x23;
+/// Microjulios del paquete desde el arranque. Contador que solo crece: el
+/// consumo de un rato es la resta de dos lecturas TUYAS. Ver `bmo_juicio::consumo`.
+pub const INFO_CPU_UJ_PAQUETE: u64 = 0x69;
+/// Microjulios del nucleo que contesta (el BSP), desde el arranque.
+pub const INFO_CPU_UJ_NUCLEO: u64 = 0x6A;
+/// `MPERF` del BSP, crudo.
+pub const INFO_CPU_MPERF: u64 = 0x6B;
+/// `APERF` del BSP, crudo. Frecuencia = TSC_HZ x dAPERF / dMPERF.
+pub const INFO_CPU_APERF: u64 = 0x6C;
 
 // -- ** QUIEN ESTA COMIENDO MEMORIA -------------------------------------
 //

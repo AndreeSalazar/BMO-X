@@ -282,7 +282,7 @@ if let Some(open) = toggle_cpu {
     dsk.win.cpu_open = open;
     if open {
         dsk.win.focus.open(Ventana::Cpu);
-        scene::vitals::paint(&p, &dsk.win.cpu, dsk.tick.loops_per_second);
+        scene::vitals::paint(&p, &dsk.win.cpu, dsk.tick.loops_per_second, dsk.tick.consumo.ultimo);
     } else {
         dsk.win.focus.close(Ventana::Cpu);
         erase_window(
@@ -304,7 +304,7 @@ if let Some(open) = toggle_mem {
     dsk.win.mem_open = open;
     if open {
         dsk.win.focus.open(Ventana::Mem);
-        scene::vitals::paint(&p, &dsk.win.mem, dsk.tick.loops_per_second);
+        scene::vitals::paint(&p, &dsk.win.mem, dsk.tick.loops_per_second, dsk.tick.consumo.ultimo);
     } else {
         dsk.win.focus.close(Ventana::Mem);
         erase_window(

@@ -249,10 +249,10 @@ op_arch_escribir_de  = "0x08"
 #  primera: dice que puede medir este silicio (bit 0 frecuencia, bit 1 consumo)
 #  antes de que nadie lea un cero como si fuera un dato.
 #
-#  ** Y las medidas por DIFERENCIA (frecuencia y milivatios) guardan UNA lectura
-#  anterior para todo el sistema. Si el panel del escritorio tambien pregunta,
-#  cada uno ve un intervalo mas corto: el numero sigue siendo cierto, pero es de
-#  menos tiempo. Dicho aqui para que nadie lo descubra comparando dos pantallas.
+#  ** Frecuencia y vatios llegan como CONTADORES QUE SOLO CRECEN (2026-09-12):
+#  microjulios desde el arranque, MPERF y APERF. El programa guarda su lectura
+#  anterior y resta. Antes eran "desde la ultima consulta de CUALQUIERA", y dos
+#  lectores --el panel y esta sonda-- se robaban el intervalo.
 #
 #  Numeros de `ring0/core/report.rs` y `syscall/ops.rs`. Hay una prueba que los
 #  compara con el fuente del kernel: `tests/espejo_del_kernel.rs`.
@@ -261,9 +261,10 @@ info_tsc_hz          = "0x05"
 info_cpu_hilos       = "0x06"
 info_ticks           = "0x0B"
 info_smp_vivos       = "0x1B"
-info_cpu_hz_real     = "0x20"
-info_cpu_mw_paquete  = "0x21"
-info_cpu_mw_nucleo   = "0x22"
+info_cpu_uj_paquete  = "0x69"
+info_cpu_uj_nucleo   = "0x6A"
+info_cpu_mperf       = "0x6B"
+info_cpu_aperf       = "0x6C"
 info_cpu_sensores    = "0x23"
 info_puertas         = "0x2F"
 #  Cuanta memoria tiene pedida cada proceso. Es de OTROS: sin autoridad, el

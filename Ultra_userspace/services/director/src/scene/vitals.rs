@@ -129,7 +129,15 @@ fn bar(used_one: u64, total: u64, width: usize, dst: &mut [u8], n: &mut usize) {
 /// `vueltas` son las del bucle del escritorio en el ultimo segundo entero
 /// (`desktop::Tick::loops_per_second`). Llega como argumento y no se calcula
 /// aqui porque una VISTA no mide: mide quien da las vueltas.
-pub(crate) fn paint(p: &bmo::Pantalla, c: &VitalsWindow, vueltas: u32) {
+///
+/// `consumo` es lo ultimo que midio el UNICO lector del escritorio
+/// (`Tick::consumo`). Llega hecho por lo mismo que `vueltas`.
+pub(crate) fn paint(
+    p: &bmo::Pantalla,
+    c: &VitalsWindow,
+    vueltas: u32,
+    consumo: Option<bmo_juicio::consumo::Consumo>,
+) {
     if c.chrome.minimized {
         return;
     }
@@ -161,7 +169,7 @@ pub(crate) fn paint(p: &bmo::Pantalla, c: &VitalsWindow, vueltas: u32) {
     let mut b = [0u8; 96];
 
     match c.which {
-        Which::Cpu => paint_cpu(p, c, tx, &mut y, step, &mut b, vueltas),
+        Which::Cpu => paint_cpu(p, c, tx, &mut y, step, &mut b, vueltas, consumo),
         Which::Memoria => paint_memory(p, c, tx, &mut y, step, &mut b),
     }
 
@@ -190,6 +198,7 @@ fn paint_cpu(
     step: u32,
     b: &mut [u8; 96],
     vueltas: u32,
+    consumo: Option<bmo_juicio::consumo::Consumo>,
 ) {
     let _ = c;
 
@@ -216,7 +225,7 @@ fn paint_cpu(
     *y += step;
 
     let hz = bmo::info(bmo::INFO_TSC_HZ);
-    let actual = bmo::info(bmo::INFO_CPU_HZ_REAL);
+    let actual = consumo.map_or(0, |m| m.hz_nucleo);
     let mut n = 0usize;
     if actual == 0 {
         place(b"-- (aun sin dos lecturas)", b, &mut n);
@@ -229,7 +238,7 @@ fn paint_cpu(
     row(p, tx, *y, "va a", &b[..n], if actual > hz { INK_OK } else { INK });
     *y += step;
 
-    let mw = bmo::info(bmo::INFO_CPU_MW_PAQUETE);
+    let mw = consumo.map_or(0, |m| m.mw_paquete);
     let mut n = 0usize;
     if mw == 0 {
         place(b"-- (sin RAPL)", b, &mut n);
@@ -243,7 +252,7 @@ fn paint_cpu(
     // [!] Y el de ESTE nucleo va aparte y con su nombre completo. Ver el
     // comentario de `INFO_CPU_MW_NUCLEO_ACTUAL`: llamarlo "nucleos" hizo que un
     // numero correcto se leyera como una mentira.
-    let mwn = bmo::info(bmo::INFO_CPU_MW_NUCLEO_ACTUAL);
+    let mwn = consumo.map_or(0, |m| m.mw_nucleo);
     let mut n = 0usize;
     if mwn == 0 {
         place(b"--", b, &mut n);
