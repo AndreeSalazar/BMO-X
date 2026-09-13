@@ -19,6 +19,7 @@
 use bmo_userland as bmo;
 
 use super::*;
+use super::fuente;
 use crate::scene::iconos;
 use crate::scene::zonas::{Zona, MIGA_H};
 use crate::text::decimal;
@@ -41,21 +42,30 @@ use crate::text::decimal;
 
 pub(crate) fn obra(p: &bmo::Pantalla, c: &DataWindow) {
     let z = Zonas::repartir(&c.chrome, c.consola.abierta);
+    // ** LAS PESTANAS DE VOLUMEN van PRIMERO y siempre (2026-09-13): si
+    // ESTRATOS no monta, tiene que seguir pudiendose ir a DATOS o a EFI. Ver
+    // `fuente`.
+    let mx = pestanas(p, &z.miga);
+    let my = z.miga.y + (MIGA_H - bmo::GLIFO_ALTO) / 2;
 
-    if bmo::info(bmo::INFO_ES_MONTADO) == 0 {
-        p.texto(z.miga.x, z.miga.y, "ningun volumen ESTRATOS montado.", INK_BAD);
+    if fuente::es_estratos() {
+        if bmo::info(bmo::INFO_ES_MONTADO) == 0 {
+            p.texto(mx, my, "ningun volumen ESTRATOS montado.", INK_BAD);
+            return;
+        }
+        // La guarda solo PREGUNTA. Poner el cursor en la raiz es de quien entra
+        // en la vista (`keys/panels.rs`) -- ver la nota larga que dejo ahi el
+        // fallo de "pintar navegaba".
+        if bmo::estratos::tipo() == bmo::estratos::NOTHING {
+            p.texto(mx, my, "el volumen monta pero no tiene raiz legible (F11).", INK_BAD);
+            return;
+        }
+    } else if !fuente::legible() {
+        p.texto(mx, my, "este volumen no se deja listar: el motivo esta en F11.", INK_BAD);
         return;
     }
-    // La guarda solo PREGUNTA. Poner el cursor en la raiz es de quien entra en
-    // la vista (`keys/panels.rs`) -- ver la nota larga que dejo ahi el fallo de
-    // "pintar navegaba".
-    if bmo::estratos::tipo() == bmo::estratos::NOTHING {
-        p.texto(z.miga.x, z.miga.y, "el volumen monta pero no tiene raiz legible.", INK_BAD);
-        p.texto(z.miga.x, z.miga.y + bmo::GLIFO_ALTO + 4, "el motivo esta en F11.", INK_DIM);
-        return;
-    }
 
-    miga(p, &z.miga);
+    miga(p, &z.miga, mx);
     arbol::paint(p, &z.arbol, c.arbol_from, DATA_TITLE, NODE_SEL);
     // ** EL VISOR OCUPA EL SITIO DE LA REJILLA, no se pone encima. Entrar en un
     // fichero es como entrar en una carpeta: cambias lo que hay en ese panel y
@@ -94,14 +104,15 @@ pub(crate) fn obra(p: &bmo::Pantalla, c: &DataWindow) {
 /// * Estaba ESCRITA DOS VECES, una en cada pestana, y por eso vive aqui ahora:
 /// con las dos vistas a la vez habria pintado dos migas distintas del mismo
 /// sitio.
-fn miga(p: &bmo::Pantalla, z: &Zona) {
-    let hondo = bmo::estratos::hondo();
+fn miga(p: &bmo::Pantalla, z: &Zona, x0: u32) {
+    let hondo = fuente::hondo();
     let ty = z.y + (MIGA_H - bmo::GLIFO_ALTO) / 2;
-    let mut x = p.texto(z.x, ty, "/", DATA_TITLE);
+    let raiz = if fuente::activo() == fuente::Volumen::Efi { "efi:/" } else { "/" };
+    let mut x = p.texto(x0, ty, raiz, DATA_TITLE);
     let mut level = 1u64;
     while level <= hondo {
         let mut nom = [0u8; 40];
-        let n = bmo::estratos::nombre_nivel(level, &mut nom);
+        let n = fuente::nombre_nivel(level, &mut nom);
         x = p.texto(x + 2, ty, " > ", INK_DIM);
         // El ultimo tramo en blanco y los de antes apagados: se lee de un
         // vistazo donde estas sin perder de donde vienes.
@@ -111,9 +122,9 @@ fn miga(p: &bmo::Pantalla, z: &Zona) {
     }
     let mut b = [0u8; 10];
     let x = p.texto(x + 3 * bmo::GLIFO_ANCHO, ty, "hijos ", INK_DIM);
-    let n = decimal(bmo::estratos::hijos(), &mut b);
+    let n = decimal(fuente::hijos(), &mut b);
     let x = p.texto_bytes(x, ty, &b[..n], INK);
-    if bmo::estratos::truncado() {
+    if fuente::truncado() {
         // Se DICE. Un listado recortado en silencio se ve igual que un
         // directorio con pocos archivos, y esa confusion cuesta horas.
         p.texto(x, ty, "  (RECORTADO)", INK_BAD);
@@ -121,12 +132,50 @@ fn miga(p: &bmo::Pantalla, z: &Zona) {
     p.rect(z.x, z.abajo() - 2, z.w, 1, DATA_EDGE);
 }
 
+/// **Donde cae cada pestana de volumen**: `(x inicial, x final)`, en el orden de
+/// `Volumen::TODOS`. ** La comparten quien pinta y quien acierta con el raton
+/// (`DataWindow::pestana_en`): dos copias de una geometria se separan solas.
+pub(crate) fn pestanas_x(z: &Zona) -> [(u32, u32); 3] {
+    let mut x = z.x;
+    let mut out = [(0u32, 0u32); 3];
+    for (k, v) in fuente::Volumen::TODOS.iter().enumerate() {
+        let w = (v.nombre().len() as u32 + 4) * bmo::GLIFO_ANCHO;
+        out[k] = (x, x + w);
+        x += w + 6;
+    }
+    out
+}
+
+/// **Las pestanas de VOLUMEN**, al principio de la miga: `1 ESTRATOS 2 DATOS
+/// 3 EFI`. La activa lleva fondo y subrayado. Devuelve donde puede empezar lo
+/// que va detras.
+///
+/// La cifra va DENTRO de la pestana porque es la tecla: un atajo que no se ve
+/// escrito lo conoce solo quien lo programo.
+fn pestanas(p: &bmo::Pantalla, z: &Zona) -> u32 {
+    let ty = z.y + (MIGA_H - bmo::GLIFO_ALTO) / 2;
+    let activo = fuente::activo();
+    let xs = pestanas_x(z);
+    for (k, v) in fuente::Volumen::TODOS.iter().enumerate() {
+        let (x0, x1) = xs[k];
+        let es = *v == activo;
+        if es {
+            p.rect(x0, z.y + 2, x1 - x0, MIGA_H.saturating_sub(6), NODE_SEL);
+            p.rect(x0, z.abajo().saturating_sub(4), x1 - x0, 2, DATA_TITLE);
+        }
+        let cifra = [b'1' + k as u8];
+        let x = p.texto_bytes(x0 + bmo::GLIFO_ANCHO, ty, &cifra, INK_DIM);
+        p.texto(x + bmo::GLIFO_ANCHO, ty, v.nombre(), if es { INK } else { INK_DIM });
+    }
+    xs[2].1 + 2 * bmo::GLIFO_ANCHO
+}
+
 /// **EL PIE**: el detalle del nodo senalado, y la linea que anuncia las teclas.
 ///
 /// Las dos lineas ya existian sueltas al fondo de la ventana, cada una midiendo
 /// por su cuenta contra `chrome.height`. Aqui reciben su zona.
 fn pie(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
-    let how_many = bmo::estratos::hijos() as usize;
+    let how_many = fuente::hijos() as usize;
     p.rect(z.x, z.y, z.w, 1, DATA_EDGE);
 
     // -- * EL DETALLE del nodo senalado --
@@ -137,8 +186,18 @@ fn pie(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
     if c.sel < how_many {
         let mut b = [0u8; 10];
         let x = p.texto(z.x, dy, "sel: ", INK_DIM);
-        let n = decimal(bmo::estratos::hijo_bytes(c.sel as u64), &mut b);
+        let n = decimal(fuente::hijo_bytes(c.sel as u64), &mut b);
         let x = p.texto_bytes(x, dy, &b[..n], INK);
+        // Atributos y firma son de ESTRATOS: un fichero FAT32 no tiene ni lo uno
+        // ni lo otro, y ensenar "firma no" diria que falta algo que alli no existe.
+        if !fuente::es_estratos() {
+            let que = if fuente::activo() == fuente::Volumen::Efi {
+                " B   FAT32, particion de arranque: SOLO MIRAR"
+            } else {
+                " B   FAT32"
+            };
+            p.texto(x, dy, que, INK_DIM);
+        } else {
         let x = p.texto(x, dy, " B   atributos ", INK_DIM);
         let n = decimal(bmo::estratos::hijo_atributos(c.sel as u64), &mut b);
         let x = p.texto_bytes(x, dy, &b[..n], INK);
@@ -164,6 +223,7 @@ fn pie(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
             // que no existe.
             Some(bmo::estratos::FIRMA_NO_CABE) => { p.texto(vx, dy, "no cabe (>256 KiB)", INK_DIM); }
             _ => { p.texto(vx, dy, "no se pudo leer", INK_BAD); }
+        }
         }
     }
 
@@ -191,9 +251,14 @@ fn pie(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
             "NO se sello. el volumen sigue igual; el motivo esta en F11.",
             INK_BAD,
         ),
+        Seal::Idle if !fuente::es_estratos() => p.texto(
+            z.x, y,
+            "1 2 3 volumen  flechas mueven  ENTRAR baja o VE  RETROCESO sube",
+            INK_DIM,
+        ),
         Seal::Idle => p.texto(
             z.x, y,
-            "flechas mueven  ENTRAR baja o VE  F2 renombra  V firma  S sella  Ctrl+n consola",
+            "1 2 3 volumen  flechas  ENTRAR baja o VE  F2 renombra  V firma  S sella  Ctrl+n",
             INK_DIM,
         ),
     };
@@ -226,7 +291,7 @@ fn paint_folders(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
     if !z.hay() {
         return;
     }
-    let how_many = bmo::estratos::hijos() as usize;
+    let how_many = fuente::hijos() as usize;
     let mut ty = z.y;
 
     // La cabecera de columnas, y su linea. Las `x` salen del ancho de LA ZONA
@@ -255,7 +320,7 @@ fn paint_folders(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
 
     let mut i = c.from;
     while i < last {
-        let kind = bmo::estratos::hijo_tipo(i as u64);
+        let kind = fuente::hijo_tipo(i as u64);
         let (type_name, color) = class_color(kind);
 
         // El realce de la fila senalada. Va DEBAJO del texto y ocupa el ancho
@@ -277,12 +342,12 @@ fn paint_folders(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
         super::iconos::pintar(p, z.x + 2, ty + (ROW_H - iconos::LADO) / 2, kind, color, 1);
 
         let mut nom = [0u8; 64];
-        let n = bmo::estratos::hijo_nombre(i as u64, &mut nom);
+        let n = fuente::hijo_nombre(i as u64, &mut nom);
         let ty_texto = ty + (ROW_H - bmo::GLIFO_ALTO) / 2;
         p.texto_bytes(z.x + 22, ty_texto, &nom[..n], INK);
         p.texto(col_kind, ty_texto, type_name, INK_DIM);
         let mut b = [0u8; 10];
-        let nb = decimal(bmo::estratos::hijo_bytes(i as u64), &mut b);
+        let nb = decimal(fuente::hijo_bytes(i as u64), &mut b);
         p.texto_bytes(col_size, ty_texto, &b[..nb], INK_DIM);
 
         ty += ROW_H;
@@ -313,8 +378,8 @@ fn paint_nodes(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
     if !z.hay() {
         return;
     }
-    let how_many = bmo::estratos::hijos() as usize;
-    let hondo = bmo::estratos::hondo();
+    let how_many = fuente::hijos() as usize;
+    let hondo = fuente::hondo();
 
     // -- * EL REPARTO DEL ANCHO --
     //
@@ -335,9 +400,9 @@ fn paint_nodes(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
         parent_name[0] = b'/';
         1
     } else {
-        bmo::estratos::nombre_nivel(hondo, &mut parent_name)
+        fuente::nombre_nivel(hondo, &mut parent_name)
     };
-    node_box(p, tx, parent_y, box_w, bmo::estratos::tipo(), &parent_name[..np], false);
+    node_box(p, tx, parent_y, box_w, fuente::tipo(), &parent_name[..np], false);
     if hondo > 0 {
         // Se dice que se puede subir, y como. Un gesto que existe y no esta
         // escrito lo conoce solo quien lo programo.
@@ -402,9 +467,9 @@ fn paint_nodes(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
             (children_x as i32 - 7, center as i32 + 4),
             DATA_EDGE_LINE,
         );
-        let kind = bmo::estratos::hijo_tipo(i as u64);
+        let kind = fuente::hijo_tipo(i as u64);
         let mut name = [0u8; 64];
-        let n = bmo::estratos::hijo_nombre(i as u64, &mut name);
+        let n = fuente::hijo_nombre(i as u64, &mut name);
         node_box(p, children_x, hy, box_w, kind, &name[..n], i == c.sel);
         hy += NODE_H + NODE_GAP;
     }

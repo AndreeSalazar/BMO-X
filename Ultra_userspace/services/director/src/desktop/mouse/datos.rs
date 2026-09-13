@@ -161,7 +161,14 @@ pub(crate) fn on_pointer(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Golpe) -> boo
                     // pan.
                     let z = scene::zonas::Zonas::repartir(&dsk.win.data.chrome, dsk.win.data.consola.abierta);
                     if dsk.win.data.view == scene::data::View::Obra {
-                        if let Some(fila) =
+                        // ** LAS PESTANAS DE VOLUMEN, antes que nada: estan en
+                        // la miga, que no es de ningun otro panel.
+                        if let Some(v) = dsk.win.data.pestana_en(pos.x, pos.y) {
+                            dsk.win.data.cambiar_volumen(v);
+                            scene::data::paint(&p, &dsk.win.data);
+                            dsk.win.top_before = Ventana::Data;
+                            servido = true;
+                        } else if let Some(fila) =
                             scene::arbol::fila_en(&z.arbol, dsk.win.data.arbol_from, pos.x, pos.y)
                         {
                             let movido = match fila {
@@ -207,7 +214,7 @@ pub(crate) fn on_pointer(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Golpe) -> boo
                                 // Lo MISMO que ENTRAR, y llamando a lo mismo:
                                 // baja si es carpeta, y si es archivo lo abre
                                 // en el visor. Dos gestos, una regla.
-                                if bmo::estratos::entrar(i as u64) {
+                                if scene::data::fuente::entrar(i as u64) {
                                     dsk.win.data.to_top();
                                 } else {
                                     dsk.win.data.ver_senalado();
@@ -224,12 +231,12 @@ pub(crate) fn on_pointer(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Golpe) -> boo
                     // servia para mover la ventana, y una ventana llena
                     // de cajas en la que no se puede pulsar ninguna es
                     // una ventana que parece interactiva y no lo es.
-                    let how_many = bmo::estratos::hijos() as usize;
+                    let how_many = scene::data::fuente::hijos() as usize;
                     match if servido { None } else { dsk.win.data.box_at(pos.x, pos.y, how_many) } {
                         // La caja del PADRE: sube un nivel. Es el gesto
                         // que la mano busca sola cuando ya has bajado.
                         Some(i) if i == usize::MAX => {
-                            if bmo::estratos::subir() {
+                            if scene::data::fuente::subir() {
                                 dsk.win.data.to_top();
                                 dsk.win.data.verified = None;
                                 scene::data::paint(&p, &dsk.win.data);
@@ -247,7 +254,7 @@ pub(crate) fn on_pointer(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Golpe) -> boo
                             // senalar y pulsar ENTRAR. El clic a secas
                             // solo senala, porque senalar tiene que
                             // poder hacerse sin miedo a moverte de sitio.
-                            if ctrl && bmo::estratos::entrar(i as u64) {
+                            if ctrl && scene::data::fuente::entrar(i as u64) {
                                 dsk.win.data.to_top();
                             }
                             scene::data::paint(&p, &dsk.win.data);

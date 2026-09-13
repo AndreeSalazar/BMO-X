@@ -347,12 +347,16 @@ impl DataWindow {
     /// en el buffer del que abre. El dia que las dos quieran lo mismo, esta es
     /// la que se queda -- aqui es donde vive el cursor.
     pub(crate) fn ruta_del_hijo(&self, i: usize, dst: &mut [u8; 128]) -> usize {
-        let mut k = 0usize;
-        let hondo = bmo::estratos::hondo();
+        // `efi:` delante si se mira la particion de arranque: la ruta tiene que
+        // decir de QUE volumen es, o abriria el fichero del mismo nombre en DATOS.
+        let pre = fuente::prefijo();
+        dst[..pre.len()].copy_from_slice(pre);
+        let mut k = pre.len();
+        let hondo = fuente::hondo();
         let mut nivel = 1u64;
         while nivel <= hondo {
             let mut nom = [0u8; 64];
-            let m = bmo::estratos::nombre_nivel(nivel, &mut nom);
+            let m = fuente::nombre_nivel(nivel, &mut nom);
             if k + m + 1 >= dst.len() {
                 return 0;
             }
@@ -363,7 +367,7 @@ impl DataWindow {
             nivel += 1;
         }
         let mut nom = [0u8; 64];
-        let m = bmo::estratos::hijo_nombre(i as u64, &mut nom);
+        let m = fuente::hijo_nombre(i as u64, &mut nom);
         if m == 0 || k + m > dst.len() {
             return 0;
         }
@@ -392,10 +396,10 @@ impl DataWindow {
     /// igual como ruta, y el visor ensenaria sus entradas crudas como si fueran
     /// texto. Eso no es ver un fichero, es ensenar el formato por dentro.
     pub(crate) fn ver_senalado(&mut self) -> bool {
-        if self.sel >= bmo::estratos::hijos() as usize {
+        if self.sel >= fuente::hijos() as usize {
             return false;
         }
-        if bmo::estratos::hijo_tipo(self.sel as u64) != bmo::estratos::ARCHIVO {
+        if fuente::hijo_tipo(self.sel as u64) != fuente::ARCHIVO {
             return false;
         }
         let mut ruta = [0u8; 128];
@@ -404,8 +408,39 @@ impl DataWindow {
             return false;
         }
         let mut nom = [0u8; 64];
-        let m = bmo::estratos::hijo_nombre(self.sel as u64, &mut nom);
+        let m = fuente::hijo_nombre(self.sel as u64, &mut nom);
         self.visor.abrir(&ruta[..k], &nom[..m])
+    }
+
+    /// **Sobre que pestana de VOLUMEN cayo el puntero**, si sobre alguna. La
+    /// geometria es la misma que pinta (`obra::pestanas_x`).
+    pub(crate) fn pestana_en(&self, px: u32, py: u32) -> Option<fuente::Volumen> {
+        if self.view != View::Obra || self.chrome.minimized {
+            return None;
+        }
+        let z = Zonas::repartir(&self.chrome, self.consola.abierta).miga;
+        if !z.contiene(px, py) {
+            return None;
+        }
+        obra::pestanas_x(&z)
+            .iter()
+            .position(|&(a, b)| px >= a && px < b)
+            .map(|k| fuente::Volumen::TODOS[k])
+    }
+
+    /// **Cambia de volumen**, y todo lo que era del anterior se suelta: la
+    /// seleccion, el visor, el menu y la consola -- que escribe en ESTRATOS y en
+    /// otro volumen escribiria a ciegas en uno que no se ve.
+    pub(crate) fn cambiar_volumen(&mut self, v: fuente::Volumen) {
+        fuente::cambiar(v);
+        self.to_top();
+        self.arbol_from = 0;
+        self.verified = None;
+        self.visor.cerrar();
+        self.menu.cerrar();
+        self.consola.abierta = false;
+        self.consola.activa = false;
+        self.seal = Seal::Idle;
     }
 
     pub(crate) fn fila_rejilla_en(&self, px: u32, py: u32) -> Option<usize> {
@@ -424,7 +459,7 @@ impl DataWindow {
         let i = self.from + k;
         // Por debajo de la ultima fila es el PANEL, no la ultima. Pulsar el
         // hueco de abajo no puede seleccionar lo que hay mas arriba.
-        if i < bmo::estratos::hijos() as usize && k < self.fit_count() {
+        if i < fuente::hijos() as usize && k < self.fit_count() {
             Some(i)
         } else {
             None
@@ -666,6 +701,9 @@ pub(crate) use obra::{obra, REJILLA_CABECERA, ROW_H};
 /// L6a, y lo que se anade a una ventana crece por su cuenta.
 pub(crate) mod visor;
 pub(crate) use visor::Visor;
+
+/// **La FUENTE**: que volumen contesta -- ESTRATOS, DATOS o EFI (2026-09-13).
+pub(crate) mod fuente;
 
 /// **Repinta SOLO la consola del pie.**
 ///

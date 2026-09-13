@@ -136,6 +136,22 @@ impl Menu {
         self.x = x;
         self.y = y;
         self.n = 0;
+        // ** En DATOS y EFI el menu solo NAVEGA (2026-09-13). Renombrar, borrar,
+        // crear y sellar son gestos de ESTRATOS: ofrecerlos sobre un FAT32 seria
+        // escribirlos en el volumen que no se esta mirando.
+        if !super::data::fuente::es_estratos() {
+            if let Sobre::Hijo(i) = sobre {
+                if super::data::fuente::hijo_tipo(i as u64) == bmo::estratos::DIRECTORIO {
+                    self.mete("entrar", "", Hace::Entrar, false);
+                }
+            }
+            if super::data::fuente::hondo() > 0 {
+                self.mete("subir", "", Hace::Subir, false);
+            }
+            // Un menu sin entradas no se abre: seria un rectangulo vacio.
+            self.visible = self.n > 0;
+            return;
+        }
         match sobre {
             Sobre::Hijo(i) => {
                 let es_dir = bmo::estratos::hijo_tipo(i as u64) == bmo::estratos::DIRECTORIO;

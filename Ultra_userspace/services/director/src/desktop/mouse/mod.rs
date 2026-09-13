@@ -277,7 +277,7 @@ fn repartir(
             Some(Ventana::Data) if dsk.win.data.view == scene::data::View::Obra => {
                 // Girar hacia arriba sube por la lista: `wheel` positivo
                 // es hacia arriba y la seleccion de arriba es la menor.
-                let how_many = bmo::estratos::hijos() as usize;
+                let how_many = scene::data::fuente::hijos() as usize;
                 dsk.win.data.move_sel(-wheel, how_many);
                 scene::data::paint(&p, &dsk.win.data);
             }
@@ -382,20 +382,20 @@ pub(super) fn usar_entrada(
     // El nombre de lo senalado, que es lo que la orden necesita.
     let mut nom = [0u8; 64];
     let n = match sobre {
-        Sobre::Hijo(i) => bmo::estratos::hijo_nombre(i as u64, &mut nom),
+        Sobre::Hijo(i) => scene::data::fuente::hijo_nombre(i as u64, &mut nom),
         Sobre::Aqui => 0,
     };
     match e.hace {
         Hace::Entrar => {
             if let Sobre::Hijo(i) = sobre {
-                if bmo::estratos::entrar(i as u64) {
+                if scene::data::fuente::entrar(i as u64) {
                     dsk.win.data.to_top();
                     dsk.win.data.verified = None;
                 }
             }
         }
         Hace::Subir => {
-            if bmo::estratos::subir() {
+            if scene::data::fuente::subir() {
                 dsk.win.data.to_top();
                 dsk.win.data.verified = None;
             }

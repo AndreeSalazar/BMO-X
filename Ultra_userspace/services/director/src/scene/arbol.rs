@@ -49,6 +49,9 @@
 use bmo_userland as bmo;
 
 use super::zonas::Zona;
+// ** No habla con ESTRATOS: habla con la FUENTE, que decide que volumen
+// contesta (2026-09-13). El arbol no sabe si pinta ESTRATOS, DATOS o EFI.
+use super::data::fuente;
 use super::{INK, INK_DIM};
 
 /// Alto de una fila. El mismo que la rejilla, para que las dos columnas se lean
@@ -93,7 +96,7 @@ impl Fila {
 /// Llena `dst` a partir de la fila `desde` y devuelve **cuantas hay en total**,
 /// que casi nunca es cuantas caben -- por eso se devuelven las dos cosas.
 pub(crate) fn filas(desde: usize, dst: &mut [Fila]) -> usize {
-    let hondo = bmo::estratos::hondo();
+    let hondo = fuente::hondo();
     let mut total = 0usize;
     let mut n = 0usize;
     enumerar(0, hondo, desde, dst, &mut total, &mut n);
@@ -114,12 +117,12 @@ fn enumerar(
     total: &mut usize,
     n: &mut usize,
 ) {
-    let elegido = bmo::estratos::nivel_elegido(nivel);
-    let cuantos = bmo::estratos::nivel_hijos(nivel);
+    let elegido = fuente::nivel_elegido(nivel);
+    let cuantos = fuente::nivel_hijos(nivel);
     let mut i = 0u64;
     while i < cuantos {
-        if bmo::estratos::nivel_hijo_tipo(nivel, i) == bmo::estratos::DIRECTORIO {
-            let abierta = elegido != bmo::estratos::NINGUNO && i == elegido;
+        if fuente::nivel_hijo_tipo(nivel, i) == fuente::DIRECTORIO {
+            let abierta = elegido != fuente::NINGUNO && i == elegido;
             if *total >= desde && *n < dst.len() {
                 dst[*n] = Fila { nivel, indice: i, abierta };
                 *n += 1;
@@ -180,7 +183,7 @@ pub(crate) fn paint(p: &bmo::Pantalla, z: &Zona, desde: usize, accent: u32, sel_
     // No entra en el desplazamiento a proposito: es el unico sitio al que
     // siempre se puede volver, y una lista larga que se lleva el `/` fuera de
     // la vista deja sin salida a quien se ha perdido.
-    let raiz_ink = if bmo::estratos::hondo() == 0 { accent } else { INK };
+    let raiz_ink = if fuente::hondo() == 0 { accent } else { INK };
     p.texto(z.x + 4, z.y + (ROW_H - bmo::GLIFO_ALTO) / 2, "/", raiz_ink);
     p.texto(
         z.x + 4 + 2 * bmo::GLIFO_ANCHO,
@@ -208,7 +211,7 @@ pub(crate) fn paint(p: &bmo::Pantalla, z: &Zona, desde: usize, accent: u32, sel_
         // de al lado y la flecha se lee sola.
         p.texto(x, ty, if f.abierta { "v" } else { ">" }, INK_DIM);
         let mut nom = [0u8; 64];
-        let n = bmo::estratos::nivel_hijo_nombre(f.nivel, f.indice, &mut nom);
+        let n = fuente::nivel_hijo_nombre(f.nivel, f.indice, &mut nom);
         let nx = x + 2 * bmo::GLIFO_ANCHO;
         let corte = n.min(cabe_nombre(z, nx));
         let ink = if f.abierta { INK } else { INK_DIM };
@@ -242,18 +245,18 @@ pub(crate) fn paint(p: &bmo::Pantalla, z: &Zona, desde: usize, accent: u32, sel_
 /// se paso por el. Antes esto habria sido una relectura del directorio por cada
 /// nivel que se sube -- o sea, un salto de tres niveles pagando tres listados.
 pub(crate) fn saltar_a(nivel: u64, indice: u64) -> bool {
-    while bmo::estratos::hondo() > nivel {
-        if !bmo::estratos::subir() {
+    while fuente::hondo() > nivel {
+        if !fuente::subir() {
             return false;
         }
     }
     // Si el nivel pedido es MAS hondo que donde estamos, la fila ya no existe:
     // el arbol se pinto antes de que el cursor se moviera. No se inventa un
     // camino hacia abajo -- se dice que no y el siguiente repintado lo cuadra.
-    if bmo::estratos::hondo() != nivel {
+    if fuente::hondo() != nivel {
         return false;
     }
-    bmo::estratos::entrar(indice)
+    fuente::entrar(indice)
 }
 
 /// Vuelve a la raiz subiendo, que no cuesta ni una lectura.
@@ -261,5 +264,5 @@ pub(crate) fn saltar_a(nivel: u64, indice: u64) -> bool {
 /// `a_la_raiz()` del cursor haria lo mismo **releyendo** el directorio raiz y
 /// el detalle de sus hijos. Subir no relee nada: los niveles siguen ahi.
 pub(crate) fn a_la_raiz_subiendo() {
-    while bmo::estratos::subir() {}
+    while fuente::subir() {}
 }

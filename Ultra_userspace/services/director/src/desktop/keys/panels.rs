@@ -191,7 +191,8 @@ if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
     // [!] `Ctrl+n` se comprueba ANTES de eso, porque tiene que poder
     // recuperar las teclas cuando la consola las solto. Un atajo que solo
     // funciona si ya tienes el foco no sirve para pedir el foco.
-    if ctrl && c == 0xF1 {
+    // La consola escribe en ESTRATOS: en DATOS o EFI no se abre.
+    if ctrl && c == 0xF1 && scene::data::fuente::es_estratos() {
         dsk.win.data.consola.alternar();
         scene::data::paint(p, &dsk.win.data);
         return Key::Taken;
@@ -255,7 +256,7 @@ if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
                     // llamaba a `a_la_raiz()` en cada repintado y
                     // por eso la vista de nodos no podia navegar.
                     // Pintar no navega.
-                    bmo::estratos::a_la_raiz();
+                    scene::data::fuente::a_la_raiz();
                     dsk.win.data.to_top();
                     dsk.win.data.arbol_from = 0;
                     View::Obra
@@ -323,6 +324,13 @@ if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
             }
         }
         _ if dsk.win.data.view == View::Numbers => served = false,
+        // ** 1, 2, 3: EL VOLUMEN (2026-09-13). ESTRATOS, DATOS (la FAT32 de las
+        // apps) y EFI (la particion de arranque, solo para mirar). Son las
+        // cifras que llevan escritas las pestanas. Ver `scene::data::fuente`.
+        b'1' | b'2' | b'3' => {
+            let v = scene::data::fuente::Volumen::TODOS[(c - b'1') as usize];
+            dsk.win.data.cambiar_volumen(v);
+        }
         // ** F2 RENOMBRA LO SENALADO, como en cualquier explorador.
         //
         // No estrena camino: escribe `renombra <lo senalado> ` en la consola y
@@ -341,7 +349,7 @@ if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
         // F12.
         0x8A => {
             let cuantos = bmo::estratos::hijos() as usize;
-            if dsk.win.data.sel < cuantos {
+            if scene::data::fuente::es_estratos() && dsk.win.data.sel < cuantos {
                 let mut nom = [0u8; 64];
                 let n = bmo::estratos::hijo_nombre(dsk.win.data.sel as u64, &mut nom);
                 dsk.win.data.consola.poner_orden("renombra", &nom[..n], false);
@@ -353,15 +361,15 @@ if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
         // Al cambiar de caja se borra la verificacion: es de
         // UN archivo, y un `CUADRA` viejo bajo el nombre de
         // otro es peor que no decir nada.
-        0x80 => { dsk.win.data.move_sel(-1, bmo::estratos::hijos() as usize); dsk.win.data.verified = None; }
-        0x81 => { dsk.win.data.move_sel(1, bmo::estratos::hijos() as usize); dsk.win.data.verified = None; }
-        0x87 => dsk.win.data.move_sel(-5, bmo::estratos::hijos() as usize),
-        0x88 => dsk.win.data.move_sel(5, bmo::estratos::hijos() as usize),
+        0x80 => { dsk.win.data.move_sel(-1, scene::data::fuente::hijos() as usize); dsk.win.data.verified = None; }
+        0x81 => { dsk.win.data.move_sel(1, scene::data::fuente::hijos() as usize); dsk.win.data.verified = None; }
+        0x87 => dsk.win.data.move_sel(-5, scene::data::fuente::hijos() as usize),
+        0x88 => dsk.win.data.move_sel(5, scene::data::fuente::hijos() as usize),
         // ENTRAR / DERECHA: bajar al hijo senalado. `entrar`
         // dice que no si es un archivo, y entonces no pasa nada
         // -- que es lo correcto: un archivo no tiene dentro.
         b'\r' | b'\n' | 0x83 => {
-            if bmo::estratos::entrar(dsk.win.data.sel as u64) {
+            if scene::data::fuente::entrar(dsk.win.data.sel as u64) {
                 dsk.win.data.to_top();
                 dsk.win.data.verified = None;
             } else {
@@ -374,18 +382,19 @@ if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
         }
         // RETROCESO / IZQUIERDA: subir al padre.
         0x08 | 0x82 => {
-            if bmo::estratos::subir() {
+            if scene::data::fuente::subir() {
                 dsk.win.data.to_top();
                 dsk.win.data.verified = None;
             }
         }
-        // * V: COMPROBAR LA FIRMA del nodo senalado.
+        // * V: COMPROBAR LA FIRMA del nodo senalado. Solo en ESTRATOS: un
+        // fichero FAT32 no lleva firma que comprobar.
         //
         // Se pide a mano y no se calcula al pintar: lee el
         // archivo entero y le hace el BLAKE3, y hacer eso
         // sesenta veces por segundo convertiria este panel en
         // un martillo sobre el disco.
-        b'v' | b'V' => {
+        b'v' | b'V' if scene::data::fuente::es_estratos() => {
             dsk.win.data.verified =
                 Some(bmo::estratos::verificar(dsk.win.data.sel as u64));
             dsk.win.data.seal = Seal::Idle;
@@ -398,7 +407,7 @@ if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
         // dos tiempos porque una tecla suelta que escribe en el
         // disco, en una ventana donde se pulsan flechas, seria
         // peor que las dos palabras que se quitaron.
-        b's' | b'S' => {
+        b's' | b'S' if scene::data::fuente::es_estratos() => {
             dsk.win.data.seal = match dsk.win.data.seal {
                 Seal::Asking => match bmo::estratos_sellar() {
                     0 => Seal::Failed,
