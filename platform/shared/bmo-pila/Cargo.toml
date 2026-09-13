@@ -1,0 +1,12 @@
+[package]
+name = "bmo-pila"
+version = "0.1.0"
+edition = "2021"
+description = "TCP/IP propio de BMO-X: Ethernet, ARP, IPv4, ICMP, UDP y TCP, determinista (sin reloj ni monton) y de lista blanca. Ring 3, probado en el anfitrion."
+license = "Apache-2.0"
+
+# Una sola dependencia, y es la de la casa: el ISN de TCP y el puerto propio
+# salen de HMAC-SHA256 (RFC 6528 / RFC 6056). Escribir otro hash aqui seria
+# criptografia sin vectores.
+[dependencies]
+bmo-cripto = { path = "../bmo-cripto" }

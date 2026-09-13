@@ -4301,3 +4301,60 @@ de unidad: dividia ciclos entre la frecuencia del TSC, que cuenta ticks. Lo vio
 el dueno leyendo la pantalla.
 
 > Un numero copiado a mano tiene fecha aunque no la lleve escrita.
+
+## Ep. 80 -- La foto de fondo destapo un hueco que llevaba semanas escrito, y la red empieza por arriba
+
+**2026-09-13.** Un dia de escritorio que acabo en TCP.
+
+### El cubo se comia la biblioteca (metal)
+
+Con la foto de fondo nueva, Eddi movio el cubo por encima del F12: donde pasaba,
+la lista de la biblioteca desaparecia y salia **el atardecer**. El culpable no
+era nuevo. `erase_window`/`erase_moved` preguntan a `scene_color`, que conoce la
+barra, Ejecutar y el fondo; `uncover` devolvia iconos y Ejecutar. Datos, CABINA,
+Sonido y ESTRUCTURA se quedaban borradas -- y el propio `uncover` lo tenia escrito
+como *"hueco conocido"*. Con el degradado oscuro casi no se veia; con una foto
+de colores, si.
+
+El arreglo no toca los ~30 sitios que borran: **borrar apunta** (`scene/dano.rs`,
+ocho rectangulos sueltos) y el cierre del fotograma devuelve las ventanas que
+tocan lo apuntado, las de debajo primero y la de arriba al final (`236c91b7`).
+
+> Un hueco documentado sigue siendo un hueco. Solo cambia quien lo encuentra.
+
+### Y los tres botones, y la biblioteca de Windows
+
+El mismo dia: el realce de cerrar/minimizar/maximizar estaba escrito DOS veces y
+ninguna miraba el Z-order (`e108c677`), y media biblioteca eran copias de
+`$RECYCLE.BIN` -- la papelera que Windows deja en cualquier disco que toca.
+
+### *** `bmo-pila`: TCP/IP propio, antes de que llegue la primera trama
+
+Eddi: *"TCP/IP propio, ultra determinista, que ESTE BLINDADO AGRESIVAMENTE"*. Es
+Ring 3 y vive en el anfitrion, como manda `RED_MAESTRO`: Ethernet, ARP, IPv4,
+ICMP, UDP y TCP, 49 pruebas.
+
+| ley | que significa aqui |
+|---|---|
+| determinista | la hora entra como argumento; reintentos 1-2-4-8-16-32 s sin estimar RTT; sin cola de reensamblado; tamanos fijos |
+| lista blanca | fuera VLAN, IPv6, opciones IP, fragmentos, ICMP que no es eco, banderas de escaner, UDP sin suma |
+| el NO se dice | cada rechazo lleva su `Rechazo`, con nombre |
+
+Y lo que la experiencia de otras pilas ensena: ARP que **no aprende lo que no
+pregunto** (envenenamiento), RST que solo corta con la secuencia EXACTA y SYN en
+una conexion viva que da ACK de reto (RFC 5961), ISN por HMAC-SHA256 de
+`bmo-cripto` (RFC 6528), puerto cerrado que no contesta ni RST, y veinte mil
+mutaciones de tramas y segmentos sin un panico.
+
+** La prueba que mas dice no es la de los datos: es `el_syn_se_rinde_con_tiempos_fijos`,
+que exige los envios en **0, 1000, 3000, 7000, 15000, 31000 y 63000 ms** y ni un
+milisegundo distinto. Eso es lo que "determinista" quiere decir cuando se puede
+comprobar.
+
+[!] **Ningun byte ha salido por el cable.** `red rx` sigue sin foto buena desde el
+28-08, y transmitir (el anillo TX del RTL8168) es Ring 0 y esta sin escribir. La
+pila esta probada contra otra pila de mentira, que es exactamente lo que un
+emulador verde prueba: lo que se ejercito.
+
+> Se empieza por arriba cuando abajo hace falta el metal; pero se dice que es
+> arriba.

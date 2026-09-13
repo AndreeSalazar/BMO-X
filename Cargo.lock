@@ -384,6 +384,13 @@ name = "bmo-particiones"
 version = "0.1.0"
 
 [[package]]
+name = "bmo-pila"
+version = "0.1.0"
+dependencies = [
+ "bmo-cripto",
+]
+
+[[package]]
 name = "bmo-prestamo-juicio"
 version = "0.1.0"
 
