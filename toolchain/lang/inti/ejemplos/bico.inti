@@ -1,0 +1,402 @@
+# bico.inti -- DE BMP O QOI A BICO: la primera herramienta de BMO-X en INTI
+#
+# ===================================================================
+#  Que hace
+# ===================================================================
+#
+# Lee `datos/foto.bmp` y `datos/foto.qoi`, y deja al lado `datos/fotob.bic` y
+# `datos/fotoq.bic`: el formato de imagen que el escritorio ya sabe pintar
+# (`<bmo/imagen.h>` y los iconos del DIRECTOR). Por consola, una linea por
+# formato con su codigo:
+#
+#     0  bien               5  medidas: cero, o mas de 256 de lado
+#     1  no hay fichero     6  cortado: faltan bytes que la cabecera promete
+#     2  mas de 256 KiB     7  no se pudo crear la salida
+#     3  no es ese formato  8  no se pudo guardar
+#     4  variante que no se soporta (BMP comprimido, 16 bits...)
+#
+# ===================================================================
+#  ** POR QUE ESTO VA EN INTI Y NO EN C
+# ===================================================================
+#
+# Los fallos de seguridad mas famosos de las librerias de imagenes --libpng,
+# libjpeg, zlib-- tienen la misma forma: un fichero MALICIOSO declara unas
+# medidas, el decodificador multiplica sin mirar, el numero da la vuelta, y se
+# escribe fuera del bufer. En C eso es comportamiento indefinido y el programa
+# sigue.
+#
+# Aqui no puede pasar en silencio, y por dos motivos distintos:
+#
+#   1. TODA medida que viene del fichero se compara con lo que hay antes de
+#      usarla (ver `bmp_a_bico`). Es disciplina del programa.
+#   2. Y si una se escapara, la aritmetica no da la vuelta: ATRAPA (Regla 1).
+#      Eso no es disciplina: es el lenguaje.
+#
+# ** Y lo que QUEDA sin comprobar esta contado: `leer` y `pon8` son los dos
+# unicos bloques `crudo`, y el informe del `.ibex` los cuenta. Toda la
+# confianza del programa esta en ellos -- y los dos solo tocan el bloque que el
+# kernel le dio a ESTE proceso.
+#
+# ** Y un QOI hace sumas que DAN LA VUELTA a proposito (`r + dr` modulo 256).
+# En C es aritmetica de `unsigned char` y nadie la ve. Aqui se escribe con
+# `resto 256`, a la vista: no hay ni una suma en este fichero que desborde.
+#
+# ===================================================================
+#  La memoria: UN bloque, tres zonas
+# ===================================================================
+#
+#     0 .. 262144         el fichero de entrada, entero
+#     262144 .. +256      la tabla de 64 colores de QOI
+#     262400 ..           la salida: 8 de cabecera + 4 por pixel
+#
+# 256x256x4 + 8 = 262152, asi que todo cabe en 1 MiB. BICO son pixeles en
+# crudo: es el formato para iconos y texturas pequenas, no para una foto de dos
+# megapixeles -- y el tope lo dice en vez de descubrirlo.
+
+perfil llano
+usa bmo
+usa memoria
+
+# ===================================================================
+#  1. Las medidas y la consola
+# ===================================================================
+
+funcion max_entrada devuelve natural64
+    devuelve 262144
+
+funcion lado_maximo devuelve natural64
+    devuelve 256
+
+funcion sitio_tabla devuelve natural64
+    devuelve 262144
+
+funcion sitio_salida devuelve natural64
+    devuelve 262400
+
+funcion medida_del_bloque devuelve natural64
+    devuelve 1048576
+
+funcion palabra(w es natural64)
+    invoca(mi_tarea, op_consola_escribir, w, 0, 0)
+
+funcion salto
+    palabra(10)
+
+# Una linea: la etiqueta y el codigo, que es siempre de una cifra.
+funcion informa(etiqueta es natural64, codigo es natural64)
+    palabra(etiqueta)
+    palabra(48 + codigo)
+    salto()
+
+funcion et_bico devuelve natural64
+    devuelve 2337196035897568557
+
+funcion et_bmp devuelve natural64
+    devuelve 2314885530823716194
+
+funcion et_qoi devuelve natural64
+    devuelve 2314885530823257969
+
+funcion et_fin devuelve natural64
+    devuelve 2314885530823584102
+
+# ===================================================================
+#  2. Leer y escribir bytes -- los DOS unicos bloques `crudo`
+# ===================================================================
+
+funcion leer(base es natural64, i es natural64) devuelve natural64
+    crudo
+        devuelve lee_natural8(base + i)
+
+funcion pon8(base es natural64, i es natural64, v es natural64)
+    crudo
+        escribe_natural8(base + i, v bits_y 255)
+
+funcion le16(base es natural64, i es natural64) devuelve natural64
+    devuelve leer(base, i) + leer(base, i + 1) * 256
+
+funcion le32(base es natural64, i es natural64) devuelve natural64
+    devuelve le16(base, i) + le16(base, i + 2) * 65536
+
+# QOI es BIG-ENDIAN en sus medidas; BMP es little-endian. Dos funciones y no
+# una con bandera: el nombre dice cual lee.
+funcion be32(base es natural64, i es natural64) devuelve natural64
+    devuelve leer(base, i) * 16777216 + leer(base, i + 1) * 65536 + leer(base, i + 2) * 256 + leer(base, i + 3)
+
+funcion pon16(base es natural64, i es natural64, v es natural64)
+    pon8(base, i, v)
+    pon8(base, i + 1, v desplaza derecha 8)
+
+# ===================================================================
+#  3. El fichero: entero al bloque, y del bloque al disco
+# ===================================================================
+
+# Lo trae ENTERO al principio del bloque. Devuelve cuantos bytes, o
+# `max_entrada() + codigo` si no pudo -- un solo numero, porque en `llano` una
+# funcion devuelve uno, y ningun fichero valido mide mas que `max_entrada`.
+funcion lee_fichero(bloque es natural64, r1 es natural64, r2 es natural64) devuelve natural64
+    invoca(mi_tarea, op_ruta, r1, 0, 0)
+    invoca(mi_tarea, op_ruta, r2, 0, 0)
+    f es natural64 = invoca_valor(mi_tarea, op_archivo_abrir, 0, 0, 0)
+    si f = 0
+        devuelve max_entrada() + 1
+    medida es natural64 = invoca_valor(f, op_arch_tamano, 0, 0, 0)
+    si medida > max_entrada()
+        invoca(f, op_arch_cerrar, 0, 0, 0)
+        devuelve max_entrada() + 2
+    cambiante hechos es natural64 = 0
+    cambiante sigue es natural64 = 1
+    repite mientras sigue = 1 y hechos < medida
+        cambiante leidos es natural64 = invoca_valor(f, op_arch_leer_en, bloque, hechos, medida - hechos)
+        si leidos = 0
+            sigue = 0
+        hechos = hechos + leidos
+    invoca(f, op_arch_cerrar, 0, 0, 0)
+    devuelve hechos
+
+# Guarda la salida. La medida la LEE de la cabecera BICO que ya se escribio:
+# asi no hay dos sitios que puedan decir dos medidas distintas.
+funcion guarda_bico(bloque es natural64, base es natural64, r1 es natural64, r2 es natural64) devuelve natural64
+    s es natural64 = sitio_salida()
+    bytes es natural64 = 8 + le16(base, s + 4) * le16(base, s + 6) * 4
+    invoca(mi_tarea, op_ruta, r1, 0, 0)
+    invoca(mi_tarea, op_ruta, r2, 0, 0)
+    f es natural64 = invoca_valor(mi_tarea, op_archivo_crear, 0, 0, 0)
+    si f = 0
+        devuelve 7
+    puestos es natural64 = invoca_valor(f, op_arch_escribir_de, bloque, s, bytes)
+    # Se cierra SIEMPRE, y despues se mira: un fichero abierto para escribir que
+    # no se cierra no llega al disco, y la ranura se pierde.
+    guardado es natural64 = invoca_valor(f, op_arch_cerrar, 0, 0, 0)
+    si puestos no es bytes o guardado = 0
+        devuelve 8
+    devuelve 0
+
+# ===================================================================
+#  4. BICO: la cabecera y un pixel
+# ===================================================================
+
+funcion cabecera_bico(base es natural64, ancho es natural64, alto es natural64)
+    s es natural64 = sitio_salida()
+    pon8(base, s, 66)
+    pon8(base, s + 1, 73)
+    pon8(base, s + 2, 67)
+    pon8(base, s + 3, 79)
+    pon16(base, s + 4, ancho)
+    pon16(base, s + 6, alto)
+
+# El pixel `k`, en el orden del fichero: azul, verde, rojo, alfa.
+funcion pon_pixel(base es natural64, k es natural64, azul es natural64, verde es natural64, rojo es natural64, alfa es natural64)
+    sitio es natural64 = sitio_salida() + 8 + k * 4
+    pon8(base, sitio, azul)
+    pon8(base, sitio + 1, verde)
+    pon8(base, sitio + 2, rojo)
+    pon8(base, sitio + 3, alfa)
+
+# ===================================================================
+#  5. BMP
+# ===================================================================
+#
+# Lo que se soporta, que es lo que escribe casi todo el mundo: 24 o 32 bits,
+# sin comprimir, de abajo arriba (alto positivo) o de arriba abajo (negativo).
+#
+# ** El alfa de un BMP de 32 bits SIN COMPRIMIR no es alfa: el formato lo llama
+# reservado, y muchos programas lo dejan a cero. Leerlo como transparencia
+# daria una imagen invisible. Por eso sale opaco -- y es el formato el que lo
+# dice, no una preferencia.
+
+funcion bmp_a_bico(base es natural64, n es natural64) devuelve natural64
+    si n < 54
+        devuelve 6
+    si leer(base, 0) no es 66 o leer(base, 1) no es 77
+        devuelve 3
+    datos es natural64 = le32(base, 10)
+    si le32(base, 14) < 40
+        devuelve 4
+    ancho es natural64 = le32(base, 18)
+    alto_crudo es natural64 = le32(base, 22)
+    si le16(base, 26) no es 1
+        devuelve 4
+    bits es natural64 = le16(base, 28)
+    si bits no es 24 y bits no es 32
+        devuelve 4
+    si le32(base, 30) no es 0
+        devuelve 4
+    # Un ancho negativo leido sin signo es >= 2^31, y cae aqui igual.
+    si ancho = 0 o ancho > lado_maximo()
+        devuelve 5
+    cambiante alto es natural64 = alto_crudo
+    cambiante de_arriba es natural64 = 0
+    si alto_crudo >= 2147483648
+        alto = 4294967296 - alto_crudo
+        de_arriba = 1
+    si alto = 0 o alto > lado_maximo()
+        devuelve 5
+    por_pixel es natural64 = bits entre 8
+    fila es natural64 = ((bits * ancho + 31) entre 32) * 4
+    # *** LA COMPROBACION QUE LIBPNG NO HIZO: lo que la cabecera promete cabe en
+    # lo que llego. Con los topes de arriba, `fila * alto` no puede pasar de
+    # 263.168 -- y aun asi, si pudiera, atraparia en vez de dar la vuelta.
+    si datos > n
+        devuelve 6
+    si fila * alto > n - datos
+        devuelve 6
+    cabecera_bico(base, ancho, alto)
+    cambiante fil es natural64 = 0
+    repite mientras fil < alto
+        cambiante fuente es natural64 = alto - 1 - fil
+        si de_arriba = 1
+            fuente = fil
+        cambiante col es natural64 = 0
+        repite mientras col < ancho
+            cambiante p es natural64 = datos + fuente * fila + col * por_pixel
+            pon_pixel(base, fil * ancho + col, leer(base, p), leer(base, p + 1), leer(base, p + 2), 255)
+            col = col + 1
+        fil = fil + 1
+    devuelve 0
+
+# ===================================================================
+#  6. QOI
+# ===================================================================
+#
+# Seis operaciones, y el estado es el color anterior y una tabla de 64:
+#
+#     11111110 r g b      RGB: color nuevo, mismo alfa
+#     11111111 r g b a    RGBA
+#     00iiiiii            INDEX: el color de la tabla
+#     01rrggbb            DIFF: cada canal -2..+1 respecto al anterior
+#     10gggggg rrrrbbbb   LUMA: verde -32..+31, y rojo y azul relativos al verde
+#     11nnnnnn            RUN: el anterior, n+1 veces
+#
+# ** Las diferencias se escriben SUMANDO y con `resto 256`: `r + dr - 2` con
+# `r` natural a cero atraparia, porque INTI no da la vuelta sin que se lo
+# pidan. `(r + dr + 254) resto 256` es la misma cuenta, modulo 256, sin pasar
+# nunca por debajo de cero.
+
+funcion qoi_a_bico(base es natural64, n es natural64) devuelve natural64
+    si n < 22
+        devuelve 6
+    si leer(base, 0) no es 113 o leer(base, 1) no es 111 o leer(base, 2) no es 105 o leer(base, 3) no es 102
+        devuelve 3
+    ancho es natural64 = be32(base, 4)
+    alto es natural64 = be32(base, 8)
+    si ancho = 0 o ancho > lado_maximo() o alto = 0 o alto > lado_maximo()
+        devuelve 5
+    canales es natural64 = leer(base, 12)
+    si canales no es 3 y canales no es 4
+        devuelve 4
+    si leer(base, 13) > 1
+        devuelve 4
+    cambiante t es natural64 = 0
+    repite mientras t < 256
+        pon8(base, sitio_tabla() + t, 0)
+        t = t + 1
+    cabecera_bico(base, ancho, alto)
+    total es natural64 = ancho * alto
+    # Los ocho ultimos bytes son la marca de fin, y no son datos.
+    fin es natural64 = n - 8
+    cambiante rojo es natural64 = 0
+    cambiante verde es natural64 = 0
+    cambiante azul es natural64 = 0
+    cambiante alfa es natural64 = 255
+    cambiante tanda es natural64 = 0
+    cambiante i es natural64 = 14
+    cambiante k es natural64 = 0
+    repite mientras k < total
+        si tanda > 0
+            tanda = tanda - 1
+        sino
+            # ** Cada byte que se va a leer se compara con `fin` ANTES. Un QOI
+            # que promete 256x256 y trae diez bytes se para aqui con un 6.
+            si i >= fin
+                devuelve 6
+            cambiante b1 es natural64 = leer(base, i)
+            si b1 = 254
+                si i + 3 >= fin
+                    devuelve 6
+                rojo = leer(base, i + 1)
+                verde = leer(base, i + 2)
+                azul = leer(base, i + 3)
+                i = i + 4
+            sino
+                si b1 = 255
+                    si i + 4 >= fin
+                        devuelve 6
+                    rojo = leer(base, i + 1)
+                    verde = leer(base, i + 2)
+                    azul = leer(base, i + 3)
+                    alfa = leer(base, i + 4)
+                    i = i + 5
+                sino
+                    cambiante tipo es natural64 = b1 desplaza derecha 6
+                    si tipo = 0
+                        cambiante sitio es natural64 = sitio_tabla() + (b1 bits_y 63) * 4
+                        rojo = leer(base, sitio)
+                        verde = leer(base, sitio + 1)
+                        azul = leer(base, sitio + 2)
+                        alfa = leer(base, sitio + 3)
+                        i = i + 1
+                    sino
+                        si tipo = 1
+                            rojo = (rojo + ((b1 desplaza derecha 4) bits_y 3) + 254) resto 256
+                            verde = (verde + ((b1 desplaza derecha 2) bits_y 3) + 254) resto 256
+                            azul = (azul + (b1 bits_y 3) + 254) resto 256
+                            i = i + 1
+                        sino
+                            si tipo = 2
+                                si i + 1 >= fin
+                                    devuelve 6
+                                cambiante b2 es natural64 = leer(base, i + 1)
+                                cambiante dv es natural64 = b1 bits_y 63
+                                # dv - 32 en verde; y en rojo y azul, dv - 32 + (d - 8).
+                                rojo = (rojo + dv + ((b2 desplaza derecha 4) bits_y 15) + 216) resto 256
+                                verde = (verde + dv + 224) resto 256
+                                azul = (azul + dv + (b2 bits_y 15) + 216) resto 256
+                                i = i + 2
+                            sino
+                                tanda = b1 bits_y 63
+                                i = i + 1
+            cambiante h es natural64 = (rojo * 3 + verde * 5 + azul * 7 + alfa * 11) resto 64
+            cambiante celda es natural64 = sitio_tabla() + h * 4
+            pon8(base, celda, rojo)
+            pon8(base, celda + 1, verde)
+            pon8(base, celda + 2, azul)
+            pon8(base, celda + 3, alfa)
+        pon_pixel(base, k, azul, verde, rojo, alfa)
+        k = k + 1
+    devuelve 0
+
+# ===================================================================
+#  7. El programa
+# ===================================================================
+
+funcion convierte_bmp(bloque es natural64, base es natural64) devuelve natural64
+    n es natural64 = lee_fichero(bloque, 8027155558672130404, 123615100956532)
+    si n > max_entrada()
+        devuelve n - max_entrada()
+    cambiante e es natural64 = bmp_a_bico(base, n)
+    si e = 0
+        e = guarda_bico(bloque, base, 8027155558672130404, 27981893100269428)
+    devuelve e
+
+funcion convierte_qoi(bloque es natural64, base es natural64) devuelve natural64
+    n es natural64 = lee_fichero(bloque, 8027155558672130404, 115927361154932)
+    si n > max_entrada()
+        devuelve n - max_entrada()
+    cambiante e es natural64 = qoi_a_bico(base, n)
+    si e = 0
+        e = guarda_bico(bloque, base, 8027155558672130404, 27981893101252468)
+    devuelve e
+
+funcion principal devuelve entero32
+    palabra(et_bico())
+    salto()
+    bloque es natural64 = invoca_valor(mi_tarea, op_pedir_memoria, medida_del_bloque(), 0, 0)
+    si bloque = 0
+        devuelve 9
+    base es natural64 = invoca_valor(bloque, op_base_del_bloque, 0, 0, 0)
+    informa(et_bmp(), convierte_bmp(bloque, base))
+    informa(et_qoi(), convierte_qoi(bloque, base))
+    palabra(et_fin())
+    salto()
+    devuelve 0

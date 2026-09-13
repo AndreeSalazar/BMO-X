@@ -210,6 +210,23 @@ op_archivo_crear   = "0x11"
 op_arch_escribir   = "0x02"
 op_arch_cerrar     = "0x04"
 
+#  ** LEER UN FICHERO SIN BIBLIOTECA, y de golpe (2026-09-12).
+#
+#  Lo pide el conversor de imagenes (`ejemplos/bico.inti`). La mitad de
+#  ESCRIBIR ya estaba, y era de siete en siete bytes: para una imagen eso son
+#  miles de puertas. Estas dos van por BLOQUE, igual que `fread`/`fwrite` de REX:
+#
+#      op_arch_leer_en      sobre el fichero: (bloque, desde, cuantos) -> leidos
+#      op_arch_escribir_de  el espejo: del bloque al fichero
+#
+#  ** El destino no es un puntero: es la CAPABILITY del bloque y un
+#  desplazamiento dentro. El kernel comprueba con una resta que cabe en lo que
+#  entrego -- por eso un programa no puede pedirle que lea encima de otro.
+op_archivo_abrir     = "0x10"
+op_arch_tamano       = "0x03"
+op_arch_leer_en      = "0x06"
+op_arch_escribir_de  = "0x08"
+
 #  ** EL PERFIL EN TIEMPO REAL -- lo que el kernel ya mide y un programa puede
 #  PREGUNTAR (2026-09-12).
 #

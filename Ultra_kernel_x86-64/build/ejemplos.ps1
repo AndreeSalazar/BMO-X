@@ -429,6 +429,44 @@ function Compilar-Ejemplos {
     }
 }
 
+function Pon-U16($lista, $v) { $lista.AddRange([BitConverter]::GetBytes([uint16]$v)) }
+function Pon-U32($lista, $v) { $lista.AddRange([BitConverter]::GetBytes([uint32]$v)) }
+
+# Un BMP de 16x16, 24 bits, de ABAJO ARRIBA y con relleno a 4: la forma mas
+# comun, y la que obliga al conversor a dar la vuelta a las filas.
+function Nuevo-Bmp {
+    $w = 16; $h = 16
+    $fila = [int][math]::Floor((24 * $w + 31) / 32) * 4
+    $datos = $fila * $h
+    $b = New-Object System.Collections.Generic.List[byte]
+    $b.Add(66); $b.Add(77)
+    Pon-U32 $b (54 + $datos); Pon-U32 $b 0; Pon-U32 $b 54
+    Pon-U32 $b 40; Pon-U32 $b $w; Pon-U32 $b $h; Pon-U16 $b 1; Pon-U16 $b 24
+    Pon-U32 $b 0; Pon-U32 $b $datos; Pon-U32 $b 2835; Pon-U32 $b 2835; Pon-U32 $b 0; Pon-U32 $b 0
+    for ($y = $h - 1; $y -ge 0; $y--) {
+        for ($x = 0; $x -lt $w; $x++) { $b.Add([byte](16 * $x)); $b.Add([byte](16 * $y)); $b.Add(200) }
+        for ($p = 3 * $w; $p -lt $fila; $p++) { $b.Add(0) }
+    }
+    return $b.ToArray()
+}
+
+# Un QOI de 16x16: doce filas de color (RGB) y cuatro TRANSPARENTES con RUN,
+# para que el conversor pase por las dos formas y por el alfa a cero.
+function Nuevo-Qoi {
+    $w = 16; $h = 16
+    $b = New-Object System.Collections.Generic.List[byte]
+    $b.AddRange([byte[]](113, 111, 105, 102))
+    foreach ($v in @($w, $h)) { $x = [BitConverter]::GetBytes([uint32]$v); [array]::Reverse($x); $b.AddRange($x) }
+    $b.Add(4); $b.Add(0)
+    for ($y = 0; $y -lt 12; $y++) {
+        for ($x = 0; $x -lt $w; $x++) { $b.Add(254); $b.Add([byte](16 * $x)); $b.Add([byte](16 * $y)); $b.Add(128) }
+    }
+    $b.AddRange([byte[]](255, 0, 0, 0, 0))
+    $b.Add([byte](192 + 61)); $b.Add(192)
+    $b.AddRange([byte[]](0, 0, 0, 0, 0, 0, 0, 1))
+    return $b.ToArray()
+}
+
 function Nuevo-Bico {
     param([string[]]$filas)
     $lado = 16
@@ -478,10 +516,24 @@ try {
     # mesa no cuadrara con sus bytes. `.bex` se queda para los otros tres.
     # ** `run inti/pulso.ibex` (2026-09-12): el perfil en TIEMPO REAL. El kernel
     # lee los contadores del silicio y la sonda los PREGUNTA cada medio segundo.
+    # ** `run inti/bico.ibex` (2026-09-12): la primera HERRAMIENTA en INTI.
+    # Convierte datos/foto.bmp y datos/foto.qoi a BICO, y se generan aqui abajo.
     Compilar-Ejemplos @(
         @{ src = 'toolchain\lang\inti\sondas\cpu.inti'; out = 'cpu.ibex'; dir = 'inti' },
-        @{ src = 'toolchain\lang\inti\sondas\pulso.inti'; out = 'pulso.ibex'; dir = 'inti' }
+        @{ src = 'toolchain\lang\inti\sondas\pulso.inti'; out = 'pulso.ibex'; dir = 'inti' },
+        @{ src = 'toolchain\lang\inti\ejemplos\bico.inti'; out = 'bico.ibex'; dir = 'inti' }
     ) 'bmo-inti-x86-64' 'inti' 'ok:|error|aviso' $dataBase $repo
+
+    # -- Las dos imagenes que `bico.ibex` convierte ------------------------
+    #
+    # Se GENERAN y no se copian: un binario en el repo es un fichero que nadie
+    # puede leer en un diff. 16x16 las dos, con un degradado que se reconoce a
+    # simple vista -- si el conversor invirtiera las filas, se veria.
+    $imgDst = Join-Path $dataBase 'datos'
+    New-Item -ItemType Directory -Force $imgDst | Out-Null
+    [System.IO.File]::WriteAllBytes((Join-Path $imgDst 'foto.bmp'), (Nuevo-Bmp))
+    [System.IO.File]::WriteAllBytes((Join-Path $imgDst 'foto.qoi'), (Nuevo-Qoi))
+    Write-Host '    [datos] foto.bmp y foto.qoi (16x16, para inti/bico.ibex)' -ForegroundColor DarkGray
 
     # -- Meter los datos DENTRO del .bex ---------------------------
     #

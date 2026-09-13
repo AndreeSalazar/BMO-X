@@ -4234,3 +4234,70 @@ nombre; sin escribir seria un agujero sin nombre.
 [!] La 1 es la que descarta mas candidatas, y es la util. *"Los bufers se
 alinean a 64"* suena a regla y es del xHC. *"Toda transferencia cabe en el campo
 de cuenta de SU aparato"* vale para los tres, y por eso es R-DMA-7.
+
+## Ep. 79 -- INTI escribe sus primeros programas de verdad, y el emisor tenia tres agujeros de nacimiento
+
+**2026-09-12.** Un dia que empezo con el cubo reiniciando el PC y acabo con
+INTI convirtiendo imagenes. Cinco cosas, y tres son el mismo fallo con tres
+caras.
+
+### El reinicio del cubo (metal)
+
+Alt+Enter en `c/cubo.bex` **reinicio la maquina**: triple fallo. `tramp.rs` ya
+lo decia -- un obrero no tiene GS por-CPU, y cualquier excepcion en el es un
+reset. El despertar automatico de nucleos desde dentro de `tocar` junto por
+primera vez dos caminos que nunca habian corrido en metal. Apagado
+(`DESPERTAR_SOLO = false`, `75c0506b`) hasta que la prueba en orden
+(`smp all` -> `smp prueba` -> `smp orquesta` -> cubo) diga cual fue.
+
+> Una accion normal no puede poder reiniciar el PC.
+
+### `pulso.inti` corrio en el Ryzen (metal)
+
+INTI pregunta al kernel lo que el silicio solo le cuenta a el: `sensor 3`,
+**4,52 GHz** y **58,4 W** -- los mismos que `consumo`. Pero la sonda ensuciaba
+lo que media: el tick avanzaba 169 por muestra en vez de 500, `puertas` subia
+~201.300 por muestra, y el nucleo gastaba 8,3 W contra 6,8 en reposo. Esperaba
+CEDIENDO, y ceder sin nadie mas listo vuelve en el acto: **una sonda de vatios
+que se come 1,5 W se mide a si misma.**
+
+### *** Los tres agujeros del emisor, y ninguno se habria visto arrancando
+
+| | que hacia | lo destapo |
+|---|---|---|
+| 1 | `y`/`o` caian en un `_ => {}`: `a y b` devolvia `a` | un cero que salia en blanco en `pulso.inti` |
+| 2 | `espera_a` salia por INVOKE: pedia la operacion 0 al handle 0 y volvia | buscar por que la sonda no dormia con WAIT |
+| 3 | `0x85 \| (reg << 3)` sin REX.R: una variable hacia `r10` partia la instruccion | `bico.inti`: el emulador en `opcode 0xD0` |
+
+** Los tres llevaban ahi **desde que se escribio el emisor**, y los tres
+compilaban, corrian y hacian otra cosa. `cpu.inti` corrio en metal el 22-08 sin
+pisar ninguno: no combinaba condiciones, no esperaba, y pasaba constantes. **Un
+emulador verde dice que lo que se ejercito funciona, y nada mas.** Lo que los
+encontro no fue una prueba: fueron programas que HACIAN algo.
+
+El 3 se aislo con cuatro programas de cinco lineas en vez de leer 4.000 bytes:
+el que se cae es el culpable, y el `opcode` imposible ya decia que el `rip`
+estaba a mitad de instruccion.
+
+### El kernel aprende a decir NO
+
+`INFO` contestaba exito siempre y un campo que no existe valia 0 -- el mismo
+silencio que `cabina_info` ya habia arreglado tres funciones mas arriba. Ahora:
+no existe = 10, la memoria de OTROS procesos sin autoridad = 3 + bandera 16, y
+el valor sigue a 0 para que ningun panel cambie (`c43d0952`).
+
+### La primera herramienta en INTI: `bico.inti`
+
+BMP y QOI a BICO. **El sitio donde INTI le gana a C es leer lo que escribio
+otro**: toda medida del fichero se compara con lo que llego, y sus pruebas le
+dan ficheros cortados, comprimidos y de 3x60000 -- un codigo y ninguna salida.
+Sin probar en metal.
+
+### Y un numero que llevaba tres semanas viejo
+
+El panel `consumo` multiplicaba por **969 ciclos**: la puerta del 17-08. M0b la
+bajo a **675 ticks** el 09-09 y nadie cambio la constante. Y encima estaba mal
+de unidad: dividia ciclos entre la frecuencia del TSC, que cuenta ticks. Lo vio
+el dueno leyendo la pantalla.
+
+> Un numero copiado a mano tiene fecha aunque no la lleve escrita.

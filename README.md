@@ -523,6 +523,22 @@ run; the rest are 🟡 or ⚪ and the tracker says which. `INTI PLENO` -- text,
 lists, tables, exact decimal -- **is not built**, and the compiler refuses to
 emit a signed binary for it rather than emitting one that quietly returns zeros.
 
+### The first tool, and what writing it found (2026-09-12)
+
+`bico.inti` converts BMP and QOI images into BICO, the format the desktop
+paints. It is the job INTI is for: **reading bytes someone else wrote.** The
+famous image-library bugs are lying headers overflowing a buffer; here every
+size from the file is checked against what arrived, arithmetic traps instead of
+wrapping, and the only two unchecked (`crudo`) blocks are counted in the binary.
+Its tests feed it truncated, compressed and 3x60000-pixel files: each gets an
+error code and no output file.
+
+Writing real programs also surfaced **three silent emitter bugs, all present
+since day one**: `and`/`or` emitted nothing (`a and b` returned `a`); the wait
+call went through the wrong gate and spun instead of sleeping; and a variable
+loaded into `r8`-`r10` produced an instruction of the wrong length. Each one
+compiled, ran, and did something else. Each now has a test.
+
 > The design is **[INTI_MAESTRO.md](docs/maestro/INTI_MAESTRO.md)**; who executes
 > the cut is **[PLAN_EL_SILICIO.md](docs/plan/PLAN_EL_SILICIO.md)**; and
 > **[ESTADO.md](toolchain/lang/inti/ESTADO.md)** takes the three claims apart and

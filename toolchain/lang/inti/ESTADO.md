@@ -140,9 +140,16 @@ Las tres son decisiones, no deudas. Lo que seria deuda es no escribirlas.
 `un_programa_que_calcula_no_cruza_la_puerta`: se compila un programa con un
 bucle y aritmetica, y **la instruccion de la puerta no aparece en los bytes**.
 
-El numero que hay detras esta en el maestro y es el que decidio la arquitectura
-entera: **969 ciclos** cuesta cruzar la puerta, contra **20** una llamada. `2+2`
-no tiene ninguna autoridad que arbitrar.
+El numero que hay detras es el que decidio la arquitectura entera: cruzar la
+puerta cuesta **675 ticks** --una puerta pelada, medida en el Ryzen el
+2026-09-09 tras M0b, ver `docs/plan/PLAN_LA_PUERTA_SE_PARTE.md`-- contra ~20 de
+una llamada. `2+2` no tiene ninguna autoridad que arbitrar.
+
+⚠ Aqui ponia **969 ciclos**, que era la medida del 17-08 (792 ticks). M0b quito
+el cerrojo del planificador que pagaba TODA puerta y la bajo un 13,5%. Y la
+unidad importa: el TSC cuenta ticks, y un ciclo del nucleo a 4,5 GHz son ~1,22
+ticks -- mezclarlos fue el error del panel `consumo`, que dividia ciclos entre
+la frecuencia del TSC.
 
 ★★ Y la otra mitad, que es la que hace la frase interesante: **fuera del syscall
 no quiere decir sin acceso al sistema**. El mismo compilador emite un programa
