@@ -2,7 +2,7 @@
 
 ![INTI](../../../docs/arte/inti.png)
 
-> **INTI** -- el sol en quechua. Extension `.inti`, y sus binarios `.ibex`.
+> **INTI** -- el sol en quechua. Extension `.inti`, y sus binarios `.ibx`.
 >
 > 🟢 **Corre en el Ryzen** (22-08: `cpu.inti` con las reglas atrapando en
 > silicio; 12-09: `pulso.inti` leyendo 4,52 GHz y 58 W en tiempo real).
@@ -35,9 +35,9 @@ se prueba**. `cpu.inti` corrio en metal sin tocar ninguno de los tres caminos.
 
 | programa | que hace | `run` |
 |---|---|---|
-| [`sondas/cpu.inti`](sondas/cpu.inti) | lo que el CPU le cuenta a Ring 3, y las reglas atrapando | `inti/cpu.ibex` |
-| [`sondas/pulso.inti`](sondas/pulso.inti) | ⭐ el perfil del kernel en tiempo real (MHz, mW, obreros) y **el NO del kernel con su motivo** | `inti/pulso.ibex` |
-| [`ejemplos/bico.inti`](ejemplos/bico.inti) | ⭐ BMP/QOI -> BICO, contra ficheros rotos | `inti/bico.ibex` |
+| [`sondas/cpu.inti`](sondas/cpu.inti) | lo que el CPU le cuenta a Ring 3, y las reglas atrapando | `inti/cpu.ibx` |
+| [`sondas/pulso.inti`](sondas/pulso.inti) | ⭐ el perfil del kernel en tiempo real (MHz, mW, obreros) y **el NO del kernel con su motivo** | `inti/pulso.ibx` |
+| [`ejemplos/bico.inti`](ejemplos/bico.inti) | ⭐ BMP/QOI -> BICO, contra ficheros rotos | `inti/bico.ibx` |
 | [`ejemplos/png.inti`](ejemplos/png.inti) | escribe un PNG valido | -- |
 
 ## Que es, en una frase

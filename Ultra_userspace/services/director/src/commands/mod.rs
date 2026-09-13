@@ -229,11 +229,25 @@ pub(crate) fn looks_like_program(t: &[u8]) -> bool {
     if n < 4 {
         return false;
     }
+    // `.bex` y `.ibx` (INTI). Ver `scene::launcher::ends_in_bex`.
     let queue = &t[n - 4..];
     queue[0] == b'.'
-        && (queue[1] | 32) == b'b'
-        && (queue[2] | 32) == b'e'
+        && ((queue[1] | 32) == b'b' || (queue[1] | 32) == b'i')
+        && ((queue[2] | 32) == b'e' || (queue[2] | 32) == b'b')
         && (queue[3] | 32) == b'x'
+        && ((queue[1] | 32) == b'b') == ((queue[2] | 32) == b'e')
+}
+
+/// **La RUTA de una linea de lanzar**: sin el verbo delante y sin los
+/// argumentos detras (2026-09-13).
+///
+/// `run inti/musica.ibx datos/tema.mus` -> `inti/musica.ibx`. Lo que viaja al
+/// kernel es la linea ENTERA --el kernel parte en el primer espacio y el resto
+/// es del programa--, pero lo que el DIRECTOR abre para leer la cabecera o para
+/// nombrar el volcado es SOLO el fichero. Abrir la linea entera buscaba un
+/// fichero que no existe, y el programa perdia su ventana sin decir por que.
+pub(crate) fn solo_ruta(t: &[u8]) -> &[u8] {
+    t.split(|&c| c == b' ').find(|tok| looks_like_program(tok)).unwrap_or(t)
 }
 
 /// Parte la linea en verbo y resto.
@@ -479,7 +493,9 @@ pub(crate) fn parse(line: &[u8]) -> Command<'_> {
         // La puerta del que llega. `start` porque es la palabra que se
         // teclea sin pensar cuando uno no sabe que teclear.
         b"guia" | b"empezar" | b"start" => Command::Guia,
-        _ if looks_like_program(line) => Command::Launch(line),
+        // El VERBO y no la linea: `inti/musica.ibx datos/tema.mus` es un
+        // programa con argumentos, y la linea entera no acaba en `.ibx`.
+        _ if looks_like_program(verb) => Command::Launch(line),
         // Parece un archivo pero no es un programa. Antes esto caia en
         // `Launch` y el kernel contestaba "sin firma no hay ejecucion" -- un
         // mensaje CORRECTO que en este sitio se lee como si el sistema pidiera

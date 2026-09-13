@@ -116,7 +116,7 @@ tipos_que_cuestan = ["numero", "decimal"]
 #
 #  Una pieza que baja no basta. Una LLAMADA sin destino --un `call` a un simbolo
 #  que no existe-- produce un binario que carga y salta a la nada, y eso ninguna
-#  tabla de tipos lo ve. Por eso `main.rs` dejo de escribir el `.ibex` cuando
+#  tabla de tipos lo ve. Por eso `main.rs` dejo de escribir el `.ibx` cuando
 #  algo no llego a un byte: **son las manos desnudas del gate.**
 #
 #  ## Como se lee esta tabla

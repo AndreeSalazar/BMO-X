@@ -36,7 +36,7 @@ fn compila(fuente: &PathBuf) -> Vec<u8> {
         String::from_utf8_lossy(&s.stdout),
         String::from_utf8_lossy(&s.stderr)
     );
-    std::fs::read(fuente.with_extension("ibex")).expect("no hay `.bex`")
+    std::fs::read(fuente.with_extension("ibx")).expect("no hay `.bex`")
 }
 
 /// El fuente trae `usa monton`, que es lo unico que hoy mete piezas de verdad.
@@ -210,7 +210,7 @@ fn la_sonda_del_ryzen_emite_los_mismos_bytes_que_antes_de_p1() {
     // binario lleva una regla mas de verdad, y la diferencia esta contada:
     // `reglas emitidas` subio en el informe.
     //
-    // ** Y tiene una consecuencia que hay que decir: `cpu.ibex` ya no es el
+    // ** Y tiene una consecuencia que hay que decir: `cpu.ibx` ya no es el
     // fichero que corrio en el Ryzen el 22-08. Hace lo mismo y una cosa mas, y
     // la proxima medida se compara contra ESTE.
     //
@@ -230,7 +230,7 @@ fn la_sonda_del_ryzen_emite_los_mismos_bytes_que_antes_de_p1() {
     // cambia, o sea CONGELADO, y lo congelado en BMO-X **se presta en vez de
     // copiarse**. El dia que exista compilacion separada, este numero baja.
     //
-    // [!] Y la consecuencia de siempre: `cpu.ibex` vuelve a no ser el fichero
+    // [!] Y la consecuencia de siempre: `cpu.ibx` vuelve a no ser el fichero
     // que corrio en el Ryzen. La proxima medida se compara contra ESTE.
     //
     //     10.528  con el hueco de la firma reservado (2026-09-10)

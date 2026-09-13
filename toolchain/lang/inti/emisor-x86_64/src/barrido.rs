@@ -10,7 +10,7 @@
 //! *** Para eso hay que mirar el codigo y preguntar al reves: **por cada
 //! operacion que pide regla, esta la suya?** Y eso pide recorrerlo.
 //!
-//! ## Por que se puede recorrer un `.ibex` y no un binario cualquiera
+//! ## Por que se puede recorrer un `.ibx` y no un binario cualquiera
 //!
 //! Porque INTI emite **una sola seccion de codigo y ni un byte de datos
 //! dentro**. Un binario de C mete tablas de saltos y constantes entre las

@@ -88,7 +88,7 @@ el cociente solo se sale cuando el dividendo es el minimo Y el divisor es -1. Po
 eso `Instr::Comprueba` gano un `contra: Option<Valor>`, y es un `Option` para que
 las otras cuatro no tengan que rellenarlo con algo falso.
 
-⚠ **Lo que costo, medido**: `cpu.ibex` pasa de 8.752 a 8.856 bytes, +104. Y eso
+⚠ **Lo que costo, medido**: `cpu.ibx` pasa de 8.752 a 8.856 bytes, +104. Y eso
 tiene una consecuencia que hay que decir: **ese fichero ya no es el que corrio en
 el Ryzen el 22-08**. Hace lo mismo y una cosa mas, y la proxima medida se compara
 contra este.

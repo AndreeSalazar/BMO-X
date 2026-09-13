@@ -71,7 +71,7 @@ def medidos():
         return None
     for dp, _dn, fn in os.walk(STAGING):
         for n in sorted(fn):
-            if not (n.endswith(".bex") or n.endswith(".ibex")):
+            if not (n.endswith(".bex") or n.endswith(".ibx")):
                 continue
             ruta = os.path.join(dp, n)
             rel = os.path.relpath(ruta, STAGING).replace(os.sep, "/")

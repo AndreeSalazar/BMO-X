@@ -33,7 +33,7 @@
 #      Eso no es disciplina: es el lenguaje.
 #
 # ** Y lo que QUEDA sin comprobar esta contado: `leer` y `pon8` son los dos
-# unicos bloques `crudo`, y el informe del `.ibex` los cuenta. Toda la
+# unicos bloques `crudo`, y el informe del `.ibx` los cuenta. Toda la
 # confianza del programa esta en ellos -- y los dos solo tocan el bloque que el
 # kernel le dio a ESTE proceso.
 #

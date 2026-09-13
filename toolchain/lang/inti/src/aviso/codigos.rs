@@ -131,7 +131,7 @@ pub const PERFIL_MEZCLADO: Codigo = Codigo("E0076");
 /// simbolo que no existe: un binario que carga, salta a la nada, y se lleva la
 /// maquina por delante. **Ninguna tabla de tipos ve eso.**
 ///
-/// ** Hasta hoy era un `aviso:` por la salida de errores y el `.ibex` se
+/// ** Hasta hoy era un `aviso:` por la salida de errores y el `.ibx` se
 /// escribia igual. El gate de perfiles lo tapaba por accidente --como `pleno` no
 /// compilaba, nadie llegaba hasta aqui-- y al hacerlo atomico quedo a la vista.
 ///

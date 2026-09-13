@@ -699,26 +699,26 @@ decision, asi que ninguno puede desviarse de ella"*. Un formato hermano
 > **Declarar sin comprobar es propaganda. Comprobar sin declarar es adivinar.**
 > **Las dos juntas son un contrato.**
 
-### 8.3 La decision: C + B, y la extension es `.ibex`
+### 8.3 La decision: C + B, y la extension es `.ibx`
 
-`.ibex` y no `.i` **porque el linaje se ve en el nombre**: es un BEX, y lo hizo
+`.ibx` y no `.i` **porque el linaje se ve en el nombre**: es un BEX, y lo hizo
 INTI.
 
 Y la extension **no es decoracion: es el nombre de un veredicto.** Un fichero se
-llama `.ibex` solo si paso la comprobacion. Entonces `ls` dice cuales estan
+llama `.ibx` solo si paso la comprobacion. Entonces `ls` dice cuales estan
 sujetos al contrato, y un `.bex` de INTI que falla **no llega a llamarse
-`.ibex`**. B sin C es un sombrero; C sin B es invisible.
+`.ibx`**. B sin C es un sombrero; C sin B es invisible.
 
 ### 8.4 Los pasos, y donde estamos
 
 - [x] **S1 -- la mesa de katanas.** `Katanas 0x16`: por regla, codigo y offset
 - [x] **S2 -- la comprobacion.** La mesa contra los bytes, y el gate corta --
       `exige_katanas`
-- [x] **S3 -- `.ibex`.** La extension, y SOLO si pasa el contrato
+- [x] **S3 -- `.ibx`.** La extension, y SOLO si pasa el contrato
 - [x] **S4 -- DIRECTOR y el shell la reconocen**, y `build.ps1` la despliega
 - [x] **S5 -- el barrido lineal.** Cada operacion, con su regla al lado
 
-★★★ **EL CICLO ESTA CERRADO.** Un `.ibex` que llega al disco ha pasado, en
+★★★ **EL CICLO ESTA CERRADO.** Un `.ibx` que llega al disco ha pasado, en
 este orden y sin poder saltarse ninguno:
 
 ```text
