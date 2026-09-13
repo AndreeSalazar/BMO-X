@@ -278,6 +278,9 @@ pub struct Machine {
     /// [`Machine::poner_entrada`] y lo drena `TASK_OP_CONSOLE_READ`.
     entrada: Vec<u8>,
     entrada_cursor: usize,
+    /// Lo que iba detras de la ruta al lanzar (`TASK_OP_ARGUMENTOS`). Lo
+    /// siembra [`Machine::poner_argumentos`].
+    argumentos: Vec<u8>,
     /// El renglon donde se acumula una ruta byte a byte (`TASK_OP_RUTA`),
     /// igual que en el kernel: la superficie no acepta punteros.
     ruta: Vec<u8>,
@@ -367,6 +370,7 @@ pub struct Machine {
     audio_volumenes: Vec<u64>,
     /// Todo lo que sono, en orden: `(hz, ms)`.
     audio_partitura: Vec<(u64, u64)>,
+    tubo: sistema::TuboEmu,
     data_len: u64,
     zf: bool,
     sf: bool,
@@ -407,6 +411,7 @@ impl Machine {
             fallo_al_guardar: HashSet::new(),
             entrada: Vec::new(),
             entrada_cursor: 0,
+            argumentos: Vec::new(),
             ruta: Vec::new(),
             abiertos: Vec::new(),
             entrada_cedida: false,
@@ -429,6 +434,7 @@ impl Machine {
             audio_volumen: 50,
             audio_volumenes: Vec::new(),
             audio_partitura: Vec::new(),
+            tubo: sistema::TuboEmu::default(),
             data_len: 0,
             zf: false,
             sf: false,

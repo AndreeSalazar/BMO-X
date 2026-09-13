@@ -39,6 +39,31 @@ pub fn ejecutar_en(ruta: &[u8], consola: u64) -> Result<u64, u32> {
     }
 }
 
+/// **Mis argumentos** en `dst`: lo que iba detras de la ruta cuando me lanzaron
+/// (`run prog.bex datos/x.txt` -> `datos/x.txt`). Devuelve cuantos bytes.
+///
+/// `0` si no me dieron nada. Para lanzar CON argumentos no hace falta otra
+/// funcion: [`ejecutar`] con la linea entera, espacio incluido.
+pub fn argumentos(dst: &mut [u8]) -> usize {
+    let mut escritos = 0usize;
+    let mut trozo = 0u64;
+    while escritos < dst.len() {
+        let w = invoke(CURRENT_TASK, OP_ARGUMENTOS, trozo, 0, 0).value;
+        if w == 0 {
+            break;
+        }
+        for b in w.to_le_bytes() {
+            if b == 0 || escritos >= dst.len() {
+                return escritos;
+            }
+            dst[escritos] = b;
+            escritos += 1;
+        }
+        trozo += 1;
+    }
+    escritos
+}
+
 // -- La consola ----------------------------------------------------------
 
 /// La salida de los programas que este proceso lance.

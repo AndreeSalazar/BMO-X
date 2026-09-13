@@ -1,0 +1,528 @@
+# musica.inti -- EL REPRODUCTOR de BMO-X, escrito en INTI
+#
+# ===================================================================
+#  Que hace
+# ===================================================================
+#
+#     run inti/musica.ibx                     toca datos/tema.mus
+#     run inti/musica.ibx datos/otra.mus      toca la que le digas
+#
+# Lee una melodia escrita en TEXTO y la toca: por el audifono USB si hay tubo
+# --con muestras de verdad, una onda cuadrada a la frecuencia del aparato--, y
+# si no, por el altavoz del PC. Cada nota sale tambien por consola mientras
+# suena. Al acabar dice un codigo:
+#
+#     0  bien                          4  el sonido lo tiene otro programa
+#     1  no hay fichero                5  la partitura esta mal escrita
+#     2  la melodia pasa de 60 KiB     9  sin memoria
+#
+# ===================================================================
+#  El formato .mus -- una partitura que se escribe con el teclado
+# ===================================================================
+#
+#     ; comentario hasta el final de la linea
+#     T132            tempo, en negras por minuto (20..400; 120 si no se dice)
+#     MI5             una negra
+#     MI5:2           una corchea -- la figura va en DIECISEISAVOS
+#     SIB4  SOL#5     bemol con B, sostenido con #
+#     -:4             un silencio de negra
+#
+# Notas DO RE MI FA SOL LA SI, octavas 0..8 (LA4 = 440 Hz). Figuras como en
+# `<bmo/musica.h>`: 16 redonda, 8 blanca, 4 negra, 2 corchea, 1 semicorchea.
+# En dieciseisavos toda figura corriente es un entero, y aqui no hay coma.
+#
+# ===================================================================
+#  ** POR QUE EL TUBO Y NO SOLO EL ALTAVOZ
+# ===================================================================
+#
+# La MSI A320M no trae zumbador: `sonido_pitar` programa el puerto y no suena
+# NADA (`ring0/obj/audio.rs` lo dice). Un reproductor que solo pitara seria, en
+# esta maquina, un programa que escribe notas por consola. Lo que SI suena es el
+# audifono USB, y el kernel ya le daba a una app lo que hace falta: un bloque
+# SUYO que el aparato lee por DMA, sin copias y sin una puerta por muestra
+# (`dev/usb/audio.rs`, A4). Nadie lo usaba.
+#
+# ** Y la onda la calcula INTI, no el kernel. Sintetizar es aritmetica, y la
+# de INTI ATRAPA si desborda: un periodo mal calculado se para aqui en vez de
+# sonar como un chasquido que nadie sabe de donde sale.
+#
+# [!] Supone PCM de 16 bits, lo que declara un audifono de clase USB. Los canales
+# salen de `bytes por trama`: 192 bytes en 1 ms a 48 kHz son 4 por muestra, dos
+# canales de 16 bits. Si no da 2 o 4, el programa NO adivina: toca el altavoz.
+
+perfil llano
+usa bmo
+usa memoria
+
+# ===================================================================
+#  1. Medidas y consola
+# ===================================================================
+
+funcion max_texto devuelve natural64
+    devuelve 60000
+
+funcion medida_texto devuelve natural64
+    devuelve 65536
+
+# 4 MiB de muestras: 21 segundos a 48 kHz en estereo antes de volver a empezar
+# el bloque.
+funcion medida_pcm devuelve natural64
+    devuelve 4194304
+
+funcion palabra(w es natural64)
+    invoca(mi_tarea, op_consola_escribir, w, 0, 0)
+
+funcion salto
+    palabra(10)
+
+# Un numero en decimal, hasta siete cifras. Salen al reves y se apilan por el
+# byte bajo: la ultima que entra es la primera que se lee.
+funcion decimal(n es natural64)
+    cambiante x es natural64 = n
+    si x > 9999999
+        x = 9999999
+    cambiante w es natural64 = 48 + (x resto 10)
+    x = x entre 10
+    repite mientras x > 0
+        w = w * 256 + 48 + (x resto 10)
+        x = x entre 10
+    palabra(w)
+
+funcion informa(etiqueta es natural64, codigo es natural64)
+    palabra(etiqueta)
+    decimal(codigo)
+    salto()
+
+funcion et_musica devuelve natural64
+    devuelve ocho_bytes("musica  ")
+
+funcion et_mal devuelve natural64
+    devuelve ocho_bytes("mal en  ")
+
+funcion et_fin devuelve natural64
+    devuelve ocho_bytes("fin     ")
+
+# ===================================================================
+#  2. Bytes -- los DOS unicos bloques `crudo`
+# ===================================================================
+
+funcion leer(base es natural64, i es natural64) devuelve natural64
+    crudo
+        devuelve lee_natural8(base + i)
+
+funcion pon8(base es natural64, i es natural64, v es natural64)
+    crudo
+        escribe_natural8(base + i, v bits_y 255)
+
+# ===================================================================
+#  3. El fichero: la ruta sale de los ARGUMENTOS
+# ===================================================================
+
+# ** Un trozo de argumento ES un trozo de ruta (`task/argumentos.rs`): cada
+# palabra va derecha a `op_ruta`, sin copiarla. Sin argumentos, la de siempre.
+funcion pon_ruta
+    primero es natural64 = invoca_valor(mi_tarea, op_argumentos, 0, 0, 0)
+    si primero = 0
+        invoca(mi_tarea, op_ruta, ocho_bytes("datos/te"), 0, 0)
+        invoca(mi_tarea, op_ruta, ocho_bytes("ma.mus"), 0, 0)
+    sino
+        cambiante k es natural64 = 0
+        cambiante w es natural64 = primero
+        repite mientras w no es 0 y k < 16
+            invoca(mi_tarea, op_ruta, w, 0, 0)
+            k = k + 1
+            w = invoca_valor(mi_tarea, op_argumentos, k, 0, 0)
+
+# La melodia entera al bloque. Devuelve los bytes, o `max_texto() + codigo`.
+funcion lee_melodia(bloque es natural64) devuelve natural64
+    pon_ruta()
+    f es natural64 = invoca_valor(mi_tarea, op_archivo_abrir, 0, 0, 0)
+    si f = 0
+        devuelve max_texto() + 1
+    medida es natural64 = invoca_valor(f, op_arch_tamano, 0, 0, 0)
+    si medida > max_texto()
+        invoca(f, op_arch_cerrar, 0, 0, 0)
+        devuelve max_texto() + 2
+    cambiante hechos es natural64 = 0
+    cambiante sigue es natural64 = 1
+    repite mientras sigue = 1 y hechos < medida
+        cambiante leidos es natural64 = invoca_valor(f, op_arch_leer_en, bloque, hechos, medida - hechos)
+        si leidos = 0
+            sigue = 0
+        hechos = hechos + leidos
+    invoca(f, op_arch_cerrar, 0, 0, 0)
+    devuelve hechos
+
+# ===================================================================
+#  4. La partitura
+# ===================================================================
+#
+# `token` devuelve UN numero con cuatro campos, porque en `llano` una funcion
+# devuelve uno:
+#
+#     bits  0..15   por donde sigue la lectura
+#     bits 16..31   el valor: hercios de la nota, o el tempo
+#     bits 32..39   la figura, en dieciseisavos
+#     bits 40..     que es: 0 fin, 1 nota, 2 silencio, 3 tempo, 4 MAL
+#
+# El texto no pasa de 60.000 bytes y un valor no pasa de 6.000 (lo cortan las
+# cifras), asi que ningun campo pisa al de al lado.
+
+funcion empaca(i es natural64, dato es natural64, fig es natural64, tipo es natural64) devuelve natural64
+    devuelve i + dato * 65536 + fig * 4294967296 + tipo * 1099511627776
+
+funcion mayuscula(c es natural64) devuelve natural64
+    si c >= 97 y c <= 122
+        devuelve c - 32
+    devuelve c
+
+# Blancos y comentarios fuera. Un `;` se come la linea entera.
+funcion salta_blancos(t es natural64, i es natural64, n es natural64) devuelve natural64
+    cambiante k es natural64 = i
+    cambiante sigue es natural64 = 1
+    repite mientras sigue = 1 y k < n
+        c es natural64 = leer(t, k)
+        si c = 59
+            repite mientras k < n y leer(t, k) no es 10
+                k = k + 1
+        sino
+            si c <= 32
+                k = k + 1
+            sino
+                sigue = 0
+    devuelve k
+
+# Cifras seguidas desde `k`. Devuelve `sitio + valor * 65536`. Se para en 6.000
+# para que el valor quepa en su campo: un tempo de 99999 no existe.
+funcion cifras(t es natural64, k es natural64, n es natural64) devuelve natural64
+    cambiante v es natural64 = 0
+    cambiante j es natural64 = k
+    repite mientras j < n y leer(t, j) >= 48 y leer(t, j) <= 57 y v < 6000
+        v = v * 10 + leer(t, j) - 48
+        j = j + 1
+    devuelve j + v * 65536
+
+# La figura detras de `:`, o una negra si no hay. `sitio + fig * 65536`, y fig 0
+# es MAL ESCRITA: `:` sin cifras, mas de 64, o pegada a otra cosa (`LA4X`).
+funcion figura(t es natural64, j es natural64, n es natural64) devuelve natural64
+    cambiante fin es natural64 = j
+    cambiante fig es natural64 = 4
+    si j < n y leer(t, j) = 58
+        r es natural64 = cifras(t, j + 1, n)
+        fin = r bits_y 65535
+        fig = r desplaza derecha 16
+    si fin < n y leer(t, fin) > 32 y leer(t, fin) no es 59
+        fig = 0
+    si fig > 64
+        fig = 0
+    devuelve fin + fig * 65536
+
+# El nombre de la nota. Devuelve `sitio + (semitono + 1) * 65536`; un 0 arriba
+# es que ahi no hay nombre de nota.
+funcion semitono(t es natural64, i es natural64, n es natural64) devuelve natural64
+    si i + 1 >= n
+        devuelve i
+    a es natural64 = mayuscula(leer(t, i))
+    b es natural64 = mayuscula(leer(t, i + 1))
+    si a = 68 y b = 79
+        devuelve i + 2 + 65536
+    si a = 82 y b = 69
+        devuelve i + 2 + 3 * 65536
+    si a = 77 y b = 73
+        devuelve i + 2 + 5 * 65536
+    si a = 70 y b = 65
+        devuelve i + 2 + 6 * 65536
+    si a = 76 y b = 65
+        devuelve i + 2 + 10 * 65536
+    si a = 83 y b = 73
+        devuelve i + 2 + 12 * 65536
+    si a = 83 y b = 79 y i + 2 < n
+        si mayuscula(leer(t, i + 2)) = 76
+            devuelve i + 3 + 8 * 65536
+    devuelve i
+
+# La octava 8, en hercios redondeados. Las demas salen DIVIDIENDO: cada octava
+# abajo es la mitad, y redondear al final da los mismos numeros que la tabla de
+# `<bmo/musica.h>` (LA4 440, DO4 262, SOL#5 831).
+funcion octava8(s es natural64) devuelve natural64
+    si s = 0
+        devuelve 4186
+    si s = 1
+        devuelve 4435
+    si s = 2
+        devuelve 4699
+    si s = 3
+        devuelve 4978
+    si s = 4
+        devuelve 5274
+    si s = 5
+        devuelve 5588
+    si s = 6
+        devuelve 5920
+    si s = 7
+        devuelve 6272
+    si s = 8
+        devuelve 6645
+    si s = 9
+        devuelve 7040
+    si s = 10
+        devuelve 7459
+    devuelve 7902
+
+funcion hz_de(semi es natural64, oct es natural64) devuelve natural64
+    cambiante d es natural64 = 1
+    cambiante k es natural64 = oct
+    repite mientras k < 8
+        d = d * 2
+        k = k + 1
+    devuelve (octava8(semi) + (d entre 2)) entre d
+
+funcion mal(i es natural64) devuelve natural64
+    devuelve empaca(i, 0, 0, 4)
+
+funcion token(t es natural64, i0 es natural64, n es natural64) devuelve natural64
+    i es natural64 = salta_blancos(t, i0, n)
+    si i >= n
+        devuelve empaca(i, 0, 0, 0)
+    c es natural64 = mayuscula(leer(t, i))
+    si c = 84
+        r es natural64 = cifras(t, i + 1, n)
+        si (r bits_y 65535) = i + 1
+            devuelve mal(i)
+        devuelve empaca(r bits_y 65535, r desplaza derecha 16, 0, 3)
+    si c = 45
+        fs es natural64 = figura(t, i + 1, n)
+        si (fs desplaza derecha 16) = 0
+            devuelve mal(i)
+        devuelve empaca(fs bits_y 65535, 0, fs desplaza derecha 16, 2)
+    nombre es natural64 = semitono(t, i, n)
+    si (nombre desplaza derecha 16) = 0
+        devuelve mal(i)
+    cambiante j es natural64 = nombre bits_y 65535
+    # +11 y no -1: un bemol de DO baja por debajo de cero, y aqui no hay
+    # negativos. Se trabaja una octava arriba y se corrige despues.
+    cambiante s es natural64 = (nombre desplaza derecha 16) + 11
+    si j < n y mayuscula(leer(t, j)) = 66
+        s = s - 1
+        j = j + 1
+    sino
+        si j < n y leer(t, j) = 35
+            s = s + 1
+            j = j + 1
+    si j >= n
+        devuelve mal(i)
+    si leer(t, j) < 48 o leer(t, j) > 56
+        devuelve mal(i)
+    cambiante oct es natural64 = leer(t, j) - 48
+    j = j + 1
+    si s < 12
+        si oct = 0
+            devuelve mal(i)
+        oct = oct - 1
+        s = s + 12
+    si s >= 24
+        si oct = 8
+            devuelve mal(i)
+        oct = oct + 1
+        s = s - 12
+    fnota es natural64 = figura(t, j, n)
+    si (fnota desplaza derecha 16) = 0
+        devuelve mal(i)
+    devuelve empaca(fnota bits_y 65535, hz_de(s - 12, oct), fnota desplaza derecha 16, 1)
+
+# ===================================================================
+#  5. El altavoz: pitar BLOQUEA, y el kernel corta a 250 ms
+# ===================================================================
+
+funcion sostener(cap es natural64, hz es natural64, ms es natural64)
+    cambiante queda es natural64 = ms
+    repite mientras queda > 0
+        cambiante trozo es natural64 = queda
+        si trozo > 250
+            trozo = 250
+        invoca(cap, sonido_pitar, hz, trozo, 0)
+        queda = queda - trozo
+
+# Suena el 85% y calla el resto: sin ese hueco, dos notas iguales seguidas se
+# oyen como una larga. Es `bmo_nota` de `<bmo/musica.h>`, la misma cuenta.
+funcion altavoz(cap es natural64, hz es natural64, ms es natural64)
+    si hz = 0
+        sostener(cap, 0, ms)
+    sino
+        suena es natural64 = (ms * 85) entre 100
+        sostener(cap, hz, suena)
+        sostener(cap, 0, ms - suena)
+
+# ===================================================================
+#  6. El tubo: muestras de verdad, en un bloque que el aparato lee solo
+# ===================================================================
+
+funcion tubo(cap es natural64, sub es natural64, dato es natural64) devuelve natural64
+    devuelve invoca_valor(cap, sonido_tubo, sub, dato, 0)
+
+# Duerme hasta que el aparato haya leido hasta `meta`. WAIT de 5 ms y no un
+# giro: esperar al audio no puede costar un nucleo.
+funcion espera_leido(cap es natural64, meta es natural64)
+    cambiante vueltas es natural64 = 0
+    repite mientras tubo(cap, 10, 0) < meta y vueltas < 20000
+        espera_a(0, 0, 5000000)
+        vueltas = vueltas + 1
+
+# El bloque se lleno: se deja sonar lo escrito y se vuelve a ofrecer, que pone
+# las dos cuentas a cero. Devuelve el sitio nuevo: el principio.
+funcion vacia(cap es natural64, pcm es natural64, pos es natural64) devuelve natural64
+    invoca(cap, sonido_tubo, 9, pos, 0)
+    espera_leido(cap, pos)
+    invoca(cap, sonido_tubo, 8, pcm, 0)
+    devuelve 0
+
+# Una nota en muestras. `fmt` = frecuencia * 16 + bytes por muestra. Onda
+# cuadrada a +-3000 de 32767 (unos -20 dB: en un audifono, un cuadrado a tope
+# duele). Devuelve por donde va el bloque.
+funcion pcm_nota(cap es natural64, pcm es natural64, pos es natural64, hz es natural64, ms es natural64, fmt es natural64) devuelve natural64
+    hzm es natural64 = fmt entre 16
+    bps es natural64 = fmt resto 16
+    cambiante dur es natural64 = ms
+    si dur > 10000
+        dur = 10000
+    muestras es natural64 = (hzm * dur) entre 1000
+    cambiante p es natural64 = pos
+    si p + muestras * bps > medida_pcm()
+        p = vacia(cap, pcm, p)
+    suenan es natural64 = (muestras * 85) entre 100
+    cambiante k es natural64 = 0
+    repite mientras k < muestras
+        cambiante bajo es natural64 = 0
+        cambiante alto es natural64 = 0
+        si hz > 0 y k < suenan
+            # Media onda arriba, media abajo: en que medio periodo cae la muestra.
+            si (((k * hz * 2) entre hzm) resto 2) = 0
+                bajo = 184
+                alto = 11
+            sino
+                bajo = 72
+                alto = 244
+        cambiante c es natural64 = 0
+        repite mientras c < bps
+            pon8(pcm, p + c, bajo)
+            pon8(pcm, p + c + 1, alto)
+            c = c + 2
+        p = p + bps
+        k = k + 1
+    # Lo escrito se anuncia nota a nota: el aparato empieza a sonar mientras se
+    # calcula la siguiente, y sintetizar va mucho mas rapido que el tiempo real.
+    invoca(cap, sonido_tubo, 9, p, 0)
+    devuelve p
+
+# Devuelve `fmt`, o 0 si no hay tubo que sirva -- y entonces suena el altavoz.
+funcion prepara_tubo(cap es natural64, pcm es natural64) devuelve natural64
+    si tubo(cap, 0, 0) = 0
+        devuelve 0
+    hzm es natural64 = tubo(cap, 4, 0)
+    trama es natural64 = tubo(cap, 3, 0)
+    si hzm < 8000 o hzm > 192000 o trama = 0
+        devuelve 0
+    bps es natural64 = (trama * 1000) entre hzm
+    si bps no es 2 y bps no es 4
+        devuelve 0
+    si tubo(cap, 8, pcm) = 0
+        devuelve 0
+    devuelve hzm * 16 + bps
+
+# ===================================================================
+#  7. Tocar
+# ===================================================================
+
+funcion acota(tempo es natural64) devuelve natural64
+    si tempo < 20
+        devuelve 20
+    si tempo > 400
+        devuelve 400
+    devuelve tempo
+
+funcion ensena(hz es natural64, fig es natural64)
+    si hz = 0
+        palabra(ocho_bytes("  pausa "))
+    sino
+        palabra(ocho_bytes("  nota  "))
+        decimal(hz)
+        palabra(ocho_bytes(" Hz"))
+    palabra(ocho_bytes("  x"))
+    decimal(fig)
+    salto()
+
+funcion toca(cap es natural64, texto es natural64, n es natural64, pcm es natural64, fmt es natural64) devuelve natural64
+    cambiante i es natural64 = 0
+    cambiante tempo es natural64 = 120
+    cambiante pos es natural64 = 0
+    cambiante codigo es natural64 = 0
+    cambiante sigue es natural64 = 1
+    repite mientras sigue = 1
+        t es natural64 = token(texto, i, n)
+        tipo es natural64 = t desplaza derecha 40
+        i = t bits_y 65535
+        si tipo = 0
+            sigue = 0
+        sino
+            si tipo = 4
+                informa(et_mal(), i)
+                codigo = 5
+                sigue = 0
+            sino
+                si tipo = 3
+                    tempo = acota((t desplaza derecha 16) bits_y 65535)
+                sino
+                    fig es natural64 = (t desplaza derecha 32) bits_y 255
+                    hz es natural64 = (t desplaza derecha 16) bits_y 65535
+                    ms es natural64 = (15000 * fig) entre tempo
+                    ensena(hz, fig)
+                    si fmt = 0
+                        altavoz(cap, hz, ms)
+                    sino
+                        pos = pcm_nota(cap, pcm, pos, hz, ms, fmt)
+    si fmt no es 0
+        espera_leido(cap, pos)
+    devuelve codigo
+
+funcion principal devuelve entero32
+    palabra(et_musica())
+    salto()
+    texto es natural64 = invoca_valor(mi_tarea, op_pedir_memoria, medida_texto(), 0, 0)
+    si texto = 0
+        informa(et_fin(), 9)
+        devuelve 9
+    tbase es natural64 = invoca_valor(texto, op_base_del_bloque, 0, 0, 0)
+    n es natural64 = lee_melodia(texto)
+    si n > max_texto()
+        informa(et_fin(), n - max_texto())
+        devuelve 1
+    cap es natural64 = invoca_valor(mi_tarea, op_sonido_reclamar, 0, 0, 0)
+    si cap = 0
+        informa(et_fin(), 4)
+        devuelve 4
+    pcm es natural64 = invoca_valor(mi_tarea, op_pedir_memoria, medida_pcm(), 0, 0)
+    cambiante pbase es natural64 = 0
+    cambiante fmt es natural64 = 0
+    si pcm no es 0
+        pbase = invoca_valor(pcm, op_base_del_bloque, 0, 0, 0)
+        fmt = prepara_tubo(cap, pbase)
+    cambiante armado_por_mi es natural64 = 0
+    si fmt no es 0
+        palabra(ocho_bytes("tubo USB"))
+        salto()
+        # Solo se arma si nadie lo habia armado, y solo se desarma lo que se armo.
+        si tubo(cap, 7, 0) = 0
+            invoca(cap, sonido_tubo, 1, 0, 0)
+            armado_por_mi = 1
+    sino
+        palabra(ocho_bytes("altavoz "))
+        salto()
+    codigo es natural64 = toca(cap, tbase, n, pbase, fmt)
+    si fmt no es 0
+        invoca(cap, sonido_tubo, 13, 0, 0)
+        si armado_por_mi = 1
+            invoca(cap, sonido_tubo, 2, 0, 0)
+    invoca(cap, sonido_callar, 0, 0, 0)
+    invoca(mi_tarea, op_sonido_soltar, 0, 0, 0)
+    informa(et_fin(), codigo)
+    devuelve 0

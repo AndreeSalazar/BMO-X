@@ -451,6 +451,7 @@ pub fn revoke_all(pid: u32) {
     // tomaria sin quejarse, porque el prestamo no sabe que lleva pixeles dentro.
     crate::ring0::core::desmontaje::entra(15, pid);
     crate::ring0::task::family::process_died(pid);
+    crate::ring0::task::argumentos::process_died(pid);
     crate::ring0::core::desmontaje::entra(16, pid);
     let r = revoke_all_slots(pid);
     crate::ring0::core::desmontaje::sale();

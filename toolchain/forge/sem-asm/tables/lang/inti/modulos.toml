@@ -305,6 +305,42 @@ prestado_bytes       = "0x02"
 prestado_dueno       = "0x03"
 prestado_soltar      = "0x04"
 
+#  ** LOS ARGUMENTOS DEL PROGRAMA (2026-09-13).
+#
+#  `run inti/musica.ibx datos/tema.mus`: el kernel parte la linea en el primer
+#  espacio y el programa lee lo de detras de 8 en 8 bytes. `0` = se acabo.
+#
+#  ** Y un trozo de argumento ES un trozo de ruta: para abrir el fichero que te
+#  pasaron, cada palabra va derecha a `op_ruta`. Sin copiar, sin buferes.
+op_argumentos        = "0x33"
+
+#  ** EL SONIDO, sin biblioteca (2026-09-13). Lo pide el reproductor.
+#
+#      op_sonido_reclamar   sobre `mi_tarea`: el handle, o 0 si lo tiene otro
+#      sonido_pitar         sobre el handle: (hz, ms). Hz 0 = callar ese rato.
+#                           BLOQUEA y el kernel recorta a 250 ms: una nota larga
+#                           se toca a trozos
+#      sonido_callar        sobre el handle: ya
+#      op_sonido_soltar     sobre `mi_tarea`: devolverlo sin morir
+#
+#  Es EXCLUSIVO, como la pantalla: dos duenos en el mismo aparato no es
+#  mezclar, es ruido.
+op_sonido_reclamar   = "0x21"
+op_sonido_soltar     = "0x22"
+sonido_pitar         = "0x02"
+sonido_callar        = "0x04"
+#  ** EL TUBO del audifono USB: muestras de VERDAD, no pitidos. Todo va por el
+#  primer argumento (`sub`), y el bufer es un bloque TUYO que el aparato lee
+#  por DMA -- sin copias y sin puerta por muestra:
+#
+#      0 hay tubo?   1 armar   2 desarmar   3 bytes por trama (1 ms)
+#      4 frecuencia  7 armado?  8 ofrecer (VA del bloque)  9 escrito hasta
+#      10 leido      13 soltar el bufer
+#
+#  [!] En la MSI A320M el altavoz del PC NO suena (no hay zumbador): el tubo es
+#  lo unico que se OYE.
+sonido_tubo          = "0x05"
+
 #  ** LOS BITS -- el nombre es agnostico, la instruccion es de la maquina.
 #
 #  Peticion de Eddi (2026-08-19): *"una libreria de binarios literalmente, pero

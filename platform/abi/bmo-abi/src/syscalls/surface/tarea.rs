@@ -558,6 +558,17 @@ pub const TASK_OP_ATRIL: u64 = 0x31;
 /// obreros giran en `pause`, asi que no hay a quien avisar despues.
 pub const TASK_OP_TOCAR: u64 = 0x32;
 
+/// **MIS ARGUMENTOS**: lo que venia detras de la ruta en `OP_RUTA`, 8 bytes por
+/// trozo. `arg0` = numero de trozo; el valor `0` dice que se acabo.
+///
+/// `EJECUTAR` parte la linea en el PRIMER espacio: delante la ruta, detras el
+/// texto que el hijo lee aqui. Un texto de mas de 128 bytes no se recorta: el
+/// lanzamiento se niega con `ERROR_INVALID_ARGUMENT` antes de crear el proceso.
+///
+/// ** Un trozo de argumento es un trozo de ruta: quien recibe un nombre de
+/// fichero se lo pasa a `OP_RUTA` palabra a palabra, sin copiarlo.
+pub const TASK_OP_ARGUMENTOS: u64 = 0x33;
+
 /// Ocho bytes del nombre del hijo `arg0`; `arg1` numera el trozo.
 ///
 /// De ocho en ocho porque la superficie congelada no acepta punteros, y es el

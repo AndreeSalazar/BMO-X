@@ -26,12 +26,44 @@
 
 use super::*;
 
+/// **El tubo del audifono USB, modelado** (`AUDIO_OP_TUBO`). `hz == 0` = no
+/// hay tubo, que es lo que ve un programa en una maquina sin audifono.
+///
+/// [!] Aqui no hay reloj: `leido` contesta lo escrito en el acto, como si el
+/// aparato se lo hubiera tragado ya. Lo que se prueba es QUE escribe el
+/// programa y cuanto, no el ritmo del bus -- ese solo lo dice el metal.
+#[derive(Default)]
+pub(crate) struct TuboEmu {
+    hz: u64,
+    bytes_trama: u64,
+    armado: bool,
+    ofrecido: Option<u64>,
+    escrito: u64,
+}
+
 impl Machine {
+    /// Enchufa un audifono: el tubo contesta esta frecuencia y estos bytes por
+    /// trama de 1 ms.
+    pub fn poner_tubo(&mut self, hz: u64, bytes_trama: u64) {
+        self.tubo.hz = hz;
+        self.tubo.bytes_trama = bytes_trama;
+    }
+
+    /// `(VA del bloque ofrecido, bytes escritos, sigue armado)`.
+    pub fn tubo_estado(&self) -> (Option<u64>, u64, bool) {
+        (self.tubo.ofrecido, self.tubo.escrito, self.tubo.armado)
+    }
+
     /// Siembra lo que el terminal habria tecleado. El `\n` final hace falta:
     /// `read_line` espera verlo para dar la linea por cerrada, exactamente
     /// igual que en la maquina.
     pub fn poner_entrada(&mut self, texto: &str) {
         self.entrada.extend_from_slice(texto.as_bytes());
+    }
+
+    /// Siembra los argumentos: lo que en el kernel iria detras de la ruta.
+    pub fn poner_argumentos(&mut self, texto: &str) {
+        self.argumentos = texto.as_bytes().to_vec();
     }
 
     /// Siembra un archivo antes de ejecutar. Es el disco de la prueba.
@@ -180,9 +212,28 @@ impl Machine {
     /// `ring0/obj/audio.rs` -- sobre todo la que se nota: **el tope recorta**.
     fn audio_op(&mut self, op: u64, a0: u64, a1: u64) -> u64 {
         use bmo_abi::syscalls::surface::{
-            DEVICE_SPEAKER, AUDIO_OP_DEVICES, AUDIO_OP_SILENCE, AUDIO_OP_BEEP, AUDIO_OP_VOLUME,
+            DEVICE_SPEAKER, AUDIO_OP_DEVICES, AUDIO_OP_SILENCE, AUDIO_OP_BEEP, AUDIO_OP_TUBO,
+            AUDIO_OP_VOLUME,
         };
         match op {
+            // Las mismas preguntas que `ring0/obj/audio.rs`, por el primer
+            // argumento. Sin tubo, todas contestan 0 -- tambien "ofrecer".
+            AUDIO_OP_TUBO if self.tubo.hz == 0 => 0,
+            AUDIO_OP_TUBO => match a0 {
+                0 => 1,
+                1 => { self.tubo.armado = true; 1 }
+                2 => { self.tubo.armado = false; 1 }
+                3 => self.tubo.bytes_trama,
+                4 => self.tubo.hz,
+                7 => self.tubo.armado as u64,
+                8 => { self.tubo.ofrecido = Some(a1); self.tubo.escrito = 0; 1 }
+                9 => { self.tubo.escrito = a1; 1 }
+                10 => self.tubo.escrito,
+                // Soltar. La VA se RECUERDA a proposito: es lo que deja a la
+                // prueba ir a mirar las muestras despues de que el programa acabe.
+                13 => 1,
+                _ => 0,
+            },
             // Solo el altavoz. HDA sigue sin existir, y decir aqui que si lo
             // hay seria darle al programa una respuesta que el Ryzen no da.
             AUDIO_OP_DEVICES => DEVICE_SPEAKER,
@@ -510,7 +561,7 @@ impl Machine {
     pub(super) fn do_syscall(&mut self) {
         use bmo_abi::syscalls::surface::{
             CURRENT_TASK, NR_INVOKE, TASK_OP_ARCHIVO_ABRIR, TASK_OP_ARCHIVO_CREAR,
-            TASK_OP_AUDIO_CLAIM, TASK_OP_AUDIO_RELEASE, TASK_OP_CONSOLE_READ,
+            TASK_OP_ARGUMENTOS, TASK_OP_AUDIO_CLAIM, TASK_OP_AUDIO_RELEASE, TASK_OP_CONSOLE_READ,
             TASK_OP_CONSOLE_WRITE, TASK_OP_EXIT, TASK_OP_INPUT_CLAIM, TASK_OP_MEMORIA_PEDIR,
             TASK_OP_RUTA, TASK_OP_YIELD,
         };
@@ -593,6 +644,16 @@ impl Machine {
                     }
                     let v = ((n as u64) << 56) | u64::from_le_bytes(w);
                     self.finalizar_syscall(v);
+                    return;
+                }
+                // Los argumentos, de 8 en 8 y con un cero al acabar: igual que
+                // `task/argumentos.rs`.
+                op if op == TASK_OP_ARGUMENTOS => {
+                    let mut w = [0u8; 8];
+                    for (k, b) in w.iter_mut().enumerate() {
+                        *b = self.argumentos.get(call.arg0 as usize * 8 + k).copied().unwrap_or(0);
+                    }
+                    self.finalizar_syscall(u64::from_le_bytes(w));
                     return;
                 }
                 op if op == TASK_OP_ARCHIVO_ABRIR => {

@@ -283,6 +283,10 @@ pub(crate) const TASK_OP_ES_GESTO: u64 = 0x2A;
 /// `bmo_abi::...::TASK_OP_HIJO`. Solo BUSCA lo ya concedido en `EJECUTAR`.
 pub(crate) const TASK_OP_HIJO: u64 = 0x2B;
 
+/// **Mis argumentos**, 8 bytes por trozo: `arg0` = numero de trozo, `0` = se
+/// acabo. Espejo de `bmo_abi::...::TASK_OP_ARGUMENTOS`. Ver `task/argumentos.rs`.
+pub(crate) const TASK_OP_ARGUMENTOS: u64 = 0x33;
+
 /// **ARMAR Y SONDEAR LA RED desde donde vive el dueno.** `arg0` = `RED_OP_*`.
 ///
 /// ## *** POR QUE ESTA OPERACION EXISTE (2026-08-24)

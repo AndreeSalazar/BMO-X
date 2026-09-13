@@ -97,6 +97,12 @@ const ESPEJO: &[(&str, &str, &str)] = &[
     ("prestado_bytes", "obj/loan.rs", "OP_BYTES"),
     ("prestado_dueno", "obj/loan.rs", "OP_DUENO"),
     ("prestado_soltar", "obj/loan.rs", "OP_SOLTAR"),
+    ("op_argumentos", "syscall/ops.rs", "TASK_OP_ARGUMENTOS"),
+    ("op_sonido_reclamar", "syscall/ops.rs", "TASK_OP_AUDIO_CLAIM"),
+    ("op_sonido_soltar", "syscall/ops.rs", "TASK_OP_AUDIO_RELEASE"),
+    ("sonido_pitar", "obj/audio.rs", "AUDIO_OP_BEEP"),
+    ("sonido_callar", "obj/audio.rs", "AUDIO_OP_SILENCE"),
+    ("sonido_tubo", "obj/audio.rs", "AUDIO_OP_TUBO"),
 ];
 
 #[test]

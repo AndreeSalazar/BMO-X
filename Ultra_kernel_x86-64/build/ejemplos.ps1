@@ -5,7 +5,7 @@
 # Porque es lo que MAS CRECE de todo el build: cada lenguaje nuevo trae su
 # tabla, su llamada a `Compilar-Ejemplos` y su Step. La lista de subidas de
 # techo de L6a tiene una entrada de `build.ps1` por cada uno --INTI, el
-# `.ibex`, la sonda-- y todas predijeron la siguiente. Sacarlo aqui es lo que
+# `.ibx`, la sonda-- y todas predijeron la siguiente. Sacarlo aqui es lo que
 # hace que anadir un lenguaje deje de engordar el fichero que lo orquesta todo.
 #
 # Dentro: el reparto del volumen por categorias (`sys cobol c ada inti datos`),
@@ -504,27 +504,30 @@ try {
     Compilar-Ejemplos $cEjemplos 'bmo-c-front' 'c' 'ok:|error' $dataBase $repo
 
     Step 'Building INTI probes...'
-    # ** `run inti/cpu.ibex`. Por el MISMO helper que los otros tres: si INTI
+    # ** `run inti/cpu.ibx`. Por el MISMO helper que los otros tres: si INTI
     # necesitara un camino propio al disco, seria que no es un frontend mas. Y es
     # el fallo que este bloque ya tenia escrito de C -- *compila y no se
     # despliega* -- repetido con INTI, cuyo binario vivia fuera del espejo.
     #
-    # ** `.ibex` desde el 2026-08-22, y no es un cambio de gusto: es el MISMO
+    # ** `.ibx` desde el 2026-08-22, y no es un cambio de gusto: es el MISMO
     # formato --lo carga el mismo cargador y lo lee el mismo gate-- con un nombre
-    # que dice a que se ha comprometido. Un `.ibex` en el disco declara su
+    # que dice a que se ha comprometido. Un `.ibx` en el disco declara su
     # perfil, sus piezas y su mesa de katanas, y no habria llegado aqui si esa
     # mesa no cuadrara con sus bytes. `.bex` se queda para los otros tres.
-    # ** `run inti/pulso.ibex` (2026-09-12): el perfil en TIEMPO REAL. El kernel
+    # ** `run inti/pulso.ibx` (2026-09-12): el perfil en TIEMPO REAL. El kernel
     # lee los contadores del silicio y la sonda los PREGUNTA cada medio segundo.
-    # ** `run inti/bico.ibex` (2026-09-12): la primera HERRAMIENTA en INTI.
+    # ** `run inti/bico.ibx` (2026-09-12): la primera HERRAMIENTA en INTI.
     # Convierte datos/foto.bmp y datos/foto.qoi a BICO, y se generan aqui abajo.
     Compilar-Ejemplos @(
-        @{ src = 'toolchain\lang\inti\sondas\cpu.inti'; out = 'cpu.ibex'; dir = 'inti' },
-        @{ src = 'toolchain\lang\inti\sondas\pulso.inti'; out = 'pulso.ibex'; dir = 'inti' },
-        @{ src = 'toolchain\lang\inti\ejemplos\bico.inti'; out = 'bico.ibex'; dir = 'inti' }
+        @{ src = 'toolchain\lang\inti\sondas\cpu.inti'; out = 'cpu.ibx'; dir = 'inti' },
+        @{ src = 'toolchain\lang\inti\sondas\pulso.inti'; out = 'pulso.ibx'; dir = 'inti' },
+        @{ src = 'toolchain\lang\inti\ejemplos\bico.inti'; out = 'bico.ibx'; dir = 'inti' },
+        # ** `run inti/musica.ibx [datos/x.mus]` (2026-09-13): el REPRODUCTOR.
+        # Suena por el audifono USB (el altavoz de esta placa no suena).
+        @{ src = 'toolchain\lang\inti\ejemplos\musica.inti'; out = 'musica.ibx'; dir = 'inti' }
     ) 'bmo-inti-x86-64' 'inti' 'ok:|error|aviso' $dataBase $repo
 
-    # -- Las dos imagenes que `bico.ibex` convierte ------------------------
+    # -- Las dos imagenes que `bico.ibx` convierte ------------------------
     #
     # Se GENERAN y no se copian: un binario en el repo es un fichero que nadie
     # puede leer en un diff. 16x16 las dos, con un degradado que se reconoce a
@@ -533,7 +536,11 @@ try {
     New-Item -ItemType Directory -Force $imgDst | Out-Null
     [System.IO.File]::WriteAllBytes((Join-Path $imgDst 'foto.bmp'), (Nuevo-Bmp))
     [System.IO.File]::WriteAllBytes((Join-Path $imgDst 'foto.qoi'), (Nuevo-Qoi))
-    Write-Host '    [datos] foto.bmp y foto.qoi (16x16, para inti/bico.ibex)' -ForegroundColor DarkGray
+    Write-Host '    [datos] foto.bmp y foto.qoi (16x16, para inti/bico.ibx)' -ForegroundColor DarkGray
+    # La melodia que `musica.ibx` toca si no le dan otra. Es TEXTO: esta en el
+    # repo y se lee en un diff.
+    Copy-Item (Join-Path $repo 'toolchain\lang\inti\ejemplos\tema.mus') (Join-Path $imgDst 'tema.mus') -Force
+    Write-Host '    [datos] tema.mus (Vivaldi, para inti/musica.ibx)' -ForegroundColor DarkGray
 
     # -- Meter los datos DENTRO del .bex ---------------------------
     #

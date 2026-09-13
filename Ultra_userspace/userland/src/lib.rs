@@ -195,6 +195,10 @@ pub const OP_MI_PADRE: u32 = 0x26;
 /// `EJECUTAR` ya concedio: quien no lo lanzo no encuentra nada.
 pub const OP_HIJO: u32 = 0x2B;
 
+/// **Mis argumentos**: lo que iba detras de la ruta al lanzarme. Ver
+/// [`crate::proceso::argumentos`].
+pub const OP_ARGUMENTOS: u32 = 0x33;
+
 /// Operaciones sobre un handle de hijo. Ver `obj/tarea.rs` en el kernel.
 pub const TAREA_OP_VIVE: u32 = 0x01;
 pub const TAREA_OP_TID: u32 = 0x02;

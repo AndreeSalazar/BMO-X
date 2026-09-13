@@ -82,6 +82,8 @@ pub mod task {
     /// **Quien lanzo a quien.** Un pid y nada mas: lo justo para que una app
     /// pueda ofrecerle su superficie al que la puso en pantalla.
     pub mod family;
+    /// **Lo que va detras de la ruta.** `run prog.ibx datos/x` y el hijo lo lee.
+    pub mod argumentos;
     pub mod launch;
     /// De donde salio cada proceso, para que pueda leer su propia caja.
     pub mod package;
