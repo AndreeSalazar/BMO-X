@@ -194,6 +194,71 @@ op_archivo_crear   = "0x11"
 op_arch_escribir   = "0x02"
 op_arch_cerrar     = "0x04"
 
+#  ** EL PERFIL EN TIEMPO REAL -- lo que el kernel ya mide y un programa puede
+#  PREGUNTAR (2026-09-12).
+#
+#  Eddi: *"que Rust prepare la base y que INTI hable en perfil en tiempo real y
+#  pueda exponer todo lo que pasa"*.
+#
+#  Y el reparto sale solo de la regla de siempre, sin decidir nada nuevo:
+#
+#      LEER un contador del silicio   Ring 0, en Rust. Desde Ring 3 es una
+#                                     excepcion, no un valor lento
+#      PREGUNTARLO                    la puerta, por valor, un numero por vez
+#      CONTARLO                       INTI
+#
+#  O sea que INTI no aprende a leer esos registros: aprende a PREGUNTAR a quien
+#  los lee. Y eso es mejor, no un apano -- el kernel resta dos lecturas y
+#  divide por el tiempo, y un programa que leyera el registro crudo tendria que
+#  saber hacerlo para CADA silicio.
+#
+#  ** El CERO es "no se sabe", nunca "no gasta". Por eso `info_sensores` va la
+#  primera: dice que puede medir este silicio (bit 0 frecuencia, bit 1 consumo)
+#  antes de que nadie lea un cero como si fuera un dato.
+#
+#  ** Y las medidas por DIFERENCIA (frecuencia y milivatios) guardan UNA lectura
+#  anterior para todo el sistema. Si el panel del escritorio tambien pregunta,
+#  cada uno ve un intervalo mas corto: el numero sigue siendo cierto, pero es de
+#  menos tiempo. Dicho aqui para que nadie lo descubra comparando dos pantallas.
+#
+#  Numeros de `ring0/core/report.rs` y `syscall/ops.rs`. Hay una prueba que los
+#  compara con el fuente del kernel: `tests/espejo_del_kernel.rs`.
+op_info              = "0x13"
+op_ceder             = "0x03"
+info_tsc_hz          = "0x05"
+info_cpu_hilos       = "0x06"
+info_ticks           = "0x0B"
+info_smp_vivos       = "0x1B"
+info_cpu_hz_real     = "0x20"
+info_cpu_mw_paquete  = "0x21"
+info_cpu_mw_nucleo   = "0x22"
+info_cpu_sensores    = "0x23"
+info_puertas         = "0x2F"
+
+#  ** PRESTAR Y TOMAR -- la memoria que viaja sin copiarse, desde INTI.
+#
+#  Las mismas cuatro piezas que `<bmo/prestado.h>` le da a C, y con los mismos
+#  numeros: un prestamo entre un programa de C y uno de INTI no pasa por ningun
+#  lenguaje, pasa por el kernel. Ninguno de los dos sabe en que esta escrito el
+#  otro.
+#
+#      op_ofrecer        sobre TU bloque: (desde, bytes, tid de destino)
+#      op_tomar          sobre `mi_tarea`: lo que haya para mi, o 0
+#      op_mi_padre       el unico TID que un programa sabe sin preguntar
+#      prestado_*        sobre el handle que devolvio `op_tomar`
+#
+#  ** OJO: prestar va a un TID CONCRETO, y hoy un programa solo conoce el de su
+#  padre. Dos apps hermanas --un cubo en C y una sonda en INTI, lanzadas las dos
+#  desde el escritorio-- NO se pueden nombrar la una a la otra. La punta corta
+#  no es prestar: es A QUIEN. Ver `<bmo/prestado.h>`, que ya lo decia.
+op_ofrecer           = "0x03"
+op_tomar             = "0x1C"
+op_mi_padre          = "0x26"
+prestado_base        = "0x01"
+prestado_bytes       = "0x02"
+prestado_dueno       = "0x03"
+prestado_soltar      = "0x04"
+
 #  ** LOS BITS -- el nombre es agnostico, la instruccion es de la maquina.
 #
 #  Peticion de Eddi (2026-08-19): *"una libreria de binarios literalmente, pero
