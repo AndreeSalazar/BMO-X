@@ -4,12 +4,12 @@
 # la respuesta honesta no es "se expone todo": es **el hueco es este numero, y
 # no puede crecer**.
 #
-# ** El denominador sale de `FRONTERA_REX.txt`, no del ABI entero. Un
+# ** El denominador sale de `VALKYRIE-ABI/FRONTERA.txt`, no del ABI entero. Un
 # porcentaje contra las constantes enteras contaria como pendiente cosas que
 # nunca van a estar -- y eso no es una medida, es una excusa que se ve bien.
 #
 # El numero va solo en la primera linea util. Se resella con `--sellar`.
 #
 # [!] Lo que esto NO mide: si la cabecera es BUENA. Mide que exista.
-98
-# de 194 constantes del ABI que son de app; la frontera deja fuera 137
+100
+# de 222 constantes del ABI que son de app; la frontera deja fuera 137
