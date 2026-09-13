@@ -671,4 +671,35 @@ mod pruebas {
         let enorme = Encargo { destino: 1, origen: 1, total: u64::MAX / 2, dato: 3 };
         assert_eq!(bytes_de(Parte::Expandir, &enorme), None);
     }
+
+    fn valor_de_rex(nombre: &str) -> u64 {
+        let h = include_str!("../../../../toolchain/forge/sem-asm/tables/bmo/orquesta.h");
+        let linea = h
+            .lines()
+            .find(|l| l.starts_with("#define ") && l.split_whitespace().nth(1) == Some(nombre))
+            .unwrap_or_else(|| panic!("{nombre} no esta en bmo/orquesta.h"));
+        let crudo = linea.split_whitespace().nth(2).unwrap();
+        match crudo.strip_prefix("0x") {
+            Some(h) => u64::from_str_radix(h, 16).unwrap(),
+            None => crudo.parse().unwrap(),
+        }
+    }
+
+    /// ** EL ESPEJO ATADO: los numeros de parte y de campo que C lee en
+    /// `<bmo/orquesta.h>` son los del catalogo. Si uno cambia y el otro no, un
+    /// programa de C pediria una parte distinta de la que cree.
+    #[test]
+    fn los_numeros_son_los_de_rex() {
+        assert_eq!(valor_de_rex("BMO_PARTE_LLENAR"), Parte::Llenar as u64);
+        assert_eq!(valor_de_rex("BMO_PARTE_EXPANDIR"), Parte::Expandir as u64);
+        assert_eq!(valor_de_rex("BMO_PARTE_ESCALAR"), Parte::Escalar as u64);
+        // Los campos, en el orden que el kernel lee en `atril::poner`.
+        assert_eq!(valor_de_rex("BMO_ATRIL_DESTINO"), 0);
+        assert_eq!(valor_de_rex("BMO_ATRIL_ORIGEN"), 1);
+        assert_eq!(valor_de_rex("BMO_ATRIL_TOTAL"), 2);
+        assert_eq!(valor_de_rex("BMO_ATRIL_DATO"), 3);
+        // Y el empaquetado de C es el de `Escala::empaquetar`: 16 + 16 + 16.
+        let h = include_str!("../../../../toolchain/forge/sem-asm/tables/bmo/orquesta.h");
+        assert!(h.contains("<< 16") && h.contains("<< 32"), "el empaquetado de C cambio");
+    }
 }
