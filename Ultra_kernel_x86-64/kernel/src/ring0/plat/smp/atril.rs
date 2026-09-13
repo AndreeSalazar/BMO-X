@@ -66,7 +66,7 @@
 
 use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
-use bmo_orquesta::{cuantos_atriles, se_puede_tocar, Encargo, Parte, Rango};
+use bmo_orquesta::{bytes_de, cuantos_atriles, se_puede_tocar, Encargo, Escala, Parte, Rango};
 
 // == EL ATRIL, publicado antes de la ronda =================================
 static DESTINO: AtomicU64 = AtomicU64::new(0);
@@ -182,6 +182,38 @@ fn expandir(mia: u32, partes: u32) {
     }
 }
 
+/// **ESCALAR**: la imagen entera, al factor entero que cabe, centrada y con
+/// negro alrededor. La geometria NO se calcula aqui: es `bmo_orquesta::Escala`,
+/// probada en el anfitrion con los numeros del cubo del Ryzen.
+///
+/// Se reparten las FILAS del destino. Cada una sabe de que fila de la imagen
+/// sale sin mirar a las demas, asi que dos atriles no escriben nunca la misma.
+///
+/// [!] Si `Escala::de` dijera que no aqui, el obrero no escribe: el juez ya lo
+/// acepto en `tocar` con estos mismos numeros, asi que solo pasaria si el atril
+/// cambiara a mitad -- y un obrero no escribe con numeros que no cuadran.
+fn escalar(mia: u32, partes: u32) {
+    let dst = F_DESTINO.load(Ordering::SeqCst);
+    let src = F_ORIGEN.load(Ordering::SeqCst);
+    let alto = F_TOTAL.load(Ordering::SeqCst);
+    let dato = F_DATO.load(Ordering::SeqCst);
+    let Ok(g) = Escala::de(dato, alto) else { return };
+    let r = Rango::de(mia as u64, partes as u64, alto);
+    let s = espejo(src);
+    let d = espejo(dst);
+    for y in r.desde..r.hasta {
+        let fila = y * g.dst_ancho;
+        let fuente = g.fila_fuente(y).map(|sy| sy * g.src_ancho);
+        for x in 0..g.dst_ancho {
+            let p = match (fuente, g.columna_fuente(x)) {
+                (Some(f), Some(sx)) => unsafe { s.add((f + sx) as usize).read_volatile() },
+                _ => 0,
+            };
+            unsafe { d.add((fila + x) as usize).write_volatile(p) };
+        }
+    }
+}
+
 /// Por que no se pudo tocar. Sale por la puerta como un numero.
 pub const NO_HAY_ORQUESTA: u64 = u64::MAX;
 
@@ -215,9 +247,15 @@ pub fn tocar(pid: u32, parte_num: u64, pedidos: u64) -> u64 {
     // recortada, devuelve `None`. Por eso una app no puede nombrar memoria
     // ajena -- no es que se le prohiba, es que **la funcion que traduce no sabe
     // hacerlo**.
-    let bytes_dst = match parte {
-        Parte::Expandir => e.total.saturating_mul(e.dato).saturating_mul(4),
-        _ => e.total.saturating_mul(4),
+    // ** Los tamanos los dice `bmo_orquesta::bytes_de`, probado en el
+    // anfitrion, y no una rama por parte aqui: una parte nueva que se olvidara
+    // de la suya traduciria de menos, y eso no falla -- deja escribir mas alla
+    // de lo comprobado. Y ya no SATURA: un tamano que no cabe en 64 bits se
+    // rechaza en vez de convertirse en `u64::MAX`.
+    let Some((bytes_dst, bytes_src)) = bytes_de(parte, &e) else {
+        vaciar();
+        crate::ring0::cabina::fault("orquesta", "el encargo no cabe en 64 bits", parte_num);
+        return NO_HAY_ORQUESTA;
     };
     let f_dst = match crate::ring0::obj::memory::fisica_de(pid, e.destino, bytes_dst) {
         Some(f) => f,
@@ -230,7 +268,7 @@ pub fn tocar(pid: u32, parte_num: u64, pedidos: u64) -> u64 {
     let f_src = if e.origen == 0 {
         0
     } else {
-        match crate::ring0::obj::memory::fisica_de(pid, e.origen, e.total * 4) {
+        match crate::ring0::obj::memory::fisica_de(pid, e.origen, bytes_src) {
             Some(f) => f,
             None => {
                 vaciar();
@@ -266,6 +304,7 @@ pub fn tocar(pid: u32, parte_num: u64, pedidos: u64) -> u64 {
     let faena: super::crew::Faena = match parte {
         Parte::Llenar => llenar,
         Parte::Expandir => expandir,
+        Parte::Escalar => escalar,
         Parte::Nada => unreachable!("el juez ya lo rechazo"),
     };
     // `repartir` cuenta al BSP como una parte, asi que los obreros son uno menos.
@@ -288,6 +327,6 @@ pub fn tocar(pid: u32, parte_num: u64, pedidos: u64) -> u64 {
 /// aqui, el `match` de `tocar` no compila --Rust obliga-- pero al reves si
 /// colaria. Esto lo cierra: el numero de partes escritas es contrato.
 const _: () = {
-    assert!(bmo_orquesta::PARTES_ESCRITAS == 3, "el catalogo crecio y el despacho no");
+    assert!(bmo_orquesta::PARTES_ESCRITAS == 4, "el catalogo crecio y el despacho no");
     assert!(CAMPOS == 4, "un campo mas en el encargo es un campo mas en `poner`");
 };

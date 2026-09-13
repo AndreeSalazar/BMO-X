@@ -86,11 +86,17 @@ pub enum Parte {
     /// motivo la puerta: en DOOM son 10.590 us por fotograma repartidos entre
     /// 200 filas que **no se tocan entre ellas**.
     Expandir = 2,
+    /// Llevar una imagen ENTERA a un destino mayor, con el factor entero mas
+    /// grande que cabe, centrada, y negro alrededor. Es el `presenta` del cubo y
+    /// el escalado de DOOM dicho una vez: en el Ryzen, el cubo a 1918x1011 pasa
+    /// de ~83 ms a 98-152 ms por fotograma, y la diferencia es ESCALAR. Ver
+    /// [`Escala`].
+    Escalar = 3,
 }
 
 /// Cuantas partes hay escritas, contando `Nada`. El guardian del kernel compara
 /// contra esto.
-pub const PARTES_ESCRITAS: u32 = 3;
+pub const PARTES_ESCRITAS: u32 = 4;
 
 impl Parte {
     /// **El numero que llego por la puerta, si es una parte de verdad.**
@@ -106,6 +112,7 @@ impl Parte {
             0 => Some(Parte::Nada),
             1 => Some(Parte::Llenar),
             2 => Some(Parte::Expandir),
+            3 => Some(Parte::Escalar),
             _ => None,
         }
     }
@@ -117,6 +124,7 @@ impl Parte {
             Parte::Nada => "nada",
             Parte::Llenar => "llenar",
             Parte::Expandir => "expandir",
+            Parte::Escalar => "escalar",
         }
     }
 }
@@ -221,6 +229,13 @@ pub enum Rechazo {
     /// mediria cero y el bucle no escribiria nada mientras el llamador cree que
     /// si.
     EscalaImposible,
+    /// `Escalar` a un destino MAS PEQUENO que la imagen en algun eje. Escalar
+    /// hacia abajo es otra parte --que pixel se descarta es una decision-- y
+    /// recortar sin decirlo seria entregar media imagen como si fuera entera.
+    DestinoMenor,
+    /// Algun tamano de `Escalar` es cero, pasa de 16 bits, o el `dato` trae
+    /// bits por encima de los tres campos que empaqueta. Ver [`Escala::de`].
+    TamanoImposible,
 }
 
 /// **Se puede tocar esto?** El juez, entero, y sin tocar un solo byte.
@@ -246,6 +261,134 @@ pub fn se_puede_tocar(parte: Parte, e: &Encargo) -> Result<(), Rechazo> {
                 return Err(Rechazo::EscalaImposible);
             }
             Ok(())
+        }
+        Parte::Escalar => {
+            if e.origen == 0 {
+                return Err(Rechazo::FaltaElOrigen);
+            }
+            Escala::de(e.dato, e.total).map(|_| ())
+        }
+    }
+}
+
+/// ** **LA GEOMETRIA DE `Escalar`**, entera y sin tocar un byte.
+///
+/// ```text
+///    factor   el entero mas grande que cabe en los DOS ejes
+///    x0, y0   el centrado: (destino - imagen*factor) / 2
+///    fuera    lo que queda alrededor va a negro
+/// ```
+///
+/// Es exactamente el `presenta` de `cubo_C.c`, y esta aqui para que el kernel no
+/// tenga su propia copia de la cuenta: dos copias de una geometria se separan en
+/// cuanto alguien toca una, y el sintoma es un borde de un pixel, no un error.
+///
+/// ## Como viaja por el atril
+///
+/// Un encargo tiene cuatro campos y a `Escalar` le hacen falta cinco numeros.
+/// Asi que el alto del destino va en `total` --que es lo que se REPARTE: filas--
+/// y los otros tres se empaquetan en `dato` con [`Escala::empaquetar`]:
+///
+/// ```text
+///    bits  0..16   ancho de la imagen
+///    bits 16..32   alto de la imagen
+///    bits 32..48   ancho del destino
+///    bits 48..64   CERO, o se rechaza
+/// ```
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Escala {
+    pub src_ancho: u64,
+    pub src_alto: u64,
+    pub dst_ancho: u64,
+    pub dst_alto: u64,
+    pub factor: u64,
+    pub x0: u64,
+    pub y0: u64,
+}
+
+impl Escala {
+    /// Los tres tamanos que no caben en `total`, en un solo numero.
+    pub fn empaquetar(src_ancho: u64, src_alto: u64, dst_ancho: u64) -> u64 {
+        (src_ancho & 0xFFFF) | (src_alto & 0xFFFF) << 16 | (dst_ancho & 0xFFFF) << 32
+    }
+
+    /// **Desempaquetar y juzgar.** `dst_alto` es el `total` del encargo.
+    ///
+    /// [!] Los bits 48..64 tienen que ser cero. Ignorarlos haria que un `dato`
+    /// con basura arriba se aceptara como uno bueno: el `[riesgo] SILENCIO` de la
+    /// cabecera, con otro campo.
+    pub fn de(dato: u64, dst_alto: u64) -> Result<Escala, Rechazo> {
+        let src_ancho = dato & 0xFFFF;
+        let src_alto = (dato >> 16) & 0xFFFF;
+        let dst_ancho = (dato >> 32) & 0xFFFF;
+        if dato >> 48 != 0 || dst_alto > 0xFFFF {
+            return Err(Rechazo::TamanoImposible);
+        }
+        if src_ancho == 0 || src_alto == 0 || dst_ancho == 0 || dst_alto == 0 {
+            return Err(Rechazo::TamanoImposible);
+        }
+        if dst_ancho < src_ancho || dst_alto < src_alto {
+            return Err(Rechazo::DestinoMenor);
+        }
+        let fx = dst_ancho / src_ancho;
+        let fy = dst_alto / src_alto;
+        let factor = if fx < fy { fx } else { fy };
+        Ok(Escala {
+            src_ancho,
+            src_alto,
+            dst_ancho,
+            dst_alto,
+            factor,
+            x0: (dst_ancho - src_ancho * factor) / 2,
+            y0: (dst_alto - src_alto * factor) / 2,
+        })
+    }
+
+    /// De que fila de la imagen sale la fila `y` del destino. `None` = negro.
+    pub fn fila_fuente(&self, y: u64) -> Option<u64> {
+        if y < self.y0 {
+            return None;
+        }
+        let d = y - self.y0;
+        if d >= self.src_alto * self.factor {
+            return None;
+        }
+        Some(d / self.factor)
+    }
+
+    /// De que columna de la imagen sale la columna `x` del destino.
+    pub fn columna_fuente(&self, x: u64) -> Option<u64> {
+        if x < self.x0 {
+            return None;
+        }
+        let d = x - self.x0;
+        if d >= self.src_ancho * self.factor {
+            return None;
+        }
+        Some(d / self.factor)
+    }
+}
+
+/// ** **CUANTOS BYTES toca cada parte**: `(destino, origen)`.
+///
+/// El kernel los necesita para traducir --`fisica_de` comprueba que el rango
+/// entero es del que pide--, y hasta hoy los calculaba EL, con una rama por
+/// parte. Una parte nueva que se olvidara de su rama traduciria un tamano
+/// equivocado, y un tamano de menos no falla: deja que un obrero escriba mas alla
+/// de lo que se comprobo. Aqui se prueba.
+///
+/// `None` si el tamano no cabe en 64 bits o la parte no toca nada.
+pub fn bytes_de(parte: Parte, e: &Encargo) -> Option<(u64, u64)> {
+    match parte {
+        Parte::Nada => None,
+        Parte::Llenar => Some((e.total.checked_mul(4)?, 0)),
+        Parte::Expandir => Some((
+            e.total.checked_mul(e.dato)?.checked_mul(4)?,
+            e.total.checked_mul(4)?,
+        )),
+        Parte::Escalar => {
+            let g = Escala::de(e.dato, e.total).ok()?;
+            Some((g.dst_ancho * g.dst_alto * 4, g.src_ancho * g.src_alto * 4))
         }
     }
 }
@@ -291,7 +434,7 @@ pub const MINIMO_POR_ATRIL: u64 = 8;
 /// alguien anade una parte y no sube el numero, el kernel --que compara contra
 /// el-- creeria que la ultima no existe. Aqui rompe el build.
 const _: () = {
-    assert!(PARTES_ESCRITAS == 3);
+    assert!(PARTES_ESCRITAS == 4);
 };
 
 #[cfg(test)]
@@ -366,7 +509,8 @@ mod pruebas {
     #[test]
     fn una_parte_que_no_existe_se_rechaza() {
         assert_eq!(Parte::de_numero(2), Some(Parte::Expandir));
-        assert_eq!(Parte::de_numero(3), None);
+        assert_eq!(Parte::de_numero(3), Some(Parte::Escalar));
+        assert_eq!(Parte::de_numero(4), None);
         assert_eq!(Parte::de_numero(99), None);
         assert_eq!(Parte::de_numero(u64::MAX), None);
     }
@@ -422,5 +566,109 @@ mod pruebas {
             suma += n;
         }
         assert_eq!(suma, 200, "las doscientas filas, ni una mas ni una menos");
+    }
+
+    /// *** EL CUBO DEL RYZEN: 360x360 a 1918x1011, con la cuenta de `presenta`.
+    ///
+    /// Los numeros salen de la formula de `cubo_C.c` escrita en el test, no
+    /// tecleados: `(1918 - 360*2) / 2` y `(1011 - 360*2) / 2`.
+    #[test]
+    fn escalar_centra_como_el_cubo() {
+        let dato = Escala::empaquetar(360, 360, 1918);
+        let g = Escala::de(dato, 1011).unwrap();
+        let factor = core::cmp::min(1918 / 360, 1011 / 360);
+        assert_eq!(g.factor, factor);
+        assert_eq!(g.x0, (1918 - 360 * factor) / 2);
+        assert_eq!(g.y0, (1011 - 360 * factor) / 2);
+        // El borde de arriba es negro, la primera fila de la imagen dura `factor`.
+        assert_eq!(g.fila_fuente(g.y0 - 1), None);
+        assert_eq!(g.fila_fuente(g.y0), Some(0));
+        assert_eq!(g.fila_fuente(g.y0 + factor - 1), Some(0));
+        assert_eq!(g.fila_fuente(g.y0 + factor), Some(1));
+        assert_eq!(g.fila_fuente(g.y0 + 360 * factor - 1), Some(359));
+        assert_eq!(g.fila_fuente(g.y0 + 360 * factor), None);
+        assert_eq!(g.columna_fuente(g.x0 - 1), None);
+        assert_eq!(g.columna_fuente(g.x0 + 360 * factor - 1), Some(359));
+        assert_eq!(g.columna_fuente(g.x0 + 360 * factor), None);
+    }
+
+    /// Componer con Escala REPARTIDO entre n atriles da la MISMA imagen que con
+    /// uno, y cada pixel de origen aparece exactamente factor^2 veces.
+    #[test]
+    fn escalar_repartido_da_la_misma_imagen_y_cada_pixel_su_factor() {
+        let (sw, sh, dw, dh) = (3u64, 2u64, 10u64, 7u64);
+        let src: [u32; 6] = [11, 12, 13, 21, 22, 23];
+        let g = Escala::de(Escala::empaquetar(sw, sh, dw), dh).unwrap();
+        let componer = |partes: u64| {
+            let mut dst = [0xFFFF_FFFFu32; 70];
+            for mio in 0..partes {
+                let r = Rango::de(mio, partes, dh);
+                for y in r.desde..r.hasta {
+                    for x in 0..dw {
+                        let p = match (g.fila_fuente(y), g.columna_fuente(x)) {
+                            (Some(fy), Some(fx)) => src[(fy * sw + fx) as usize],
+                            _ => 0,
+                        };
+                        dst[(y * dw + x) as usize] = p;
+                    }
+                }
+            }
+            dst
+        };
+        let uno = componer(1);
+        for partes in 2..8 {
+            assert_eq!(componer(partes), uno, "con {partes} atriles sale otra imagen");
+        }
+        assert!(!uno.contains(&0xFFFF_FFFF), "algun pixel del destino no lo escribio nadie");
+        for v in src {
+            let veces = uno.iter().filter(|&&p| p == v).count() as u64;
+            assert_eq!(veces, g.factor * g.factor, "el pixel {v}");
+        }
+    }
+
+    /// Las dos negativas nuevas, y que las viejas siguen valiendo para Escalar.
+    #[test]
+    fn el_juez_de_escalar() {
+        let bueno = Escala::empaquetar(360, 360, 1918);
+        let sin_origen = Encargo { destino: 0x2000, origen: 0, total: 1011, dato: bueno };
+        assert_eq!(se_puede_tocar(Parte::Escalar, &sin_origen), Err(Rechazo::FaltaElOrigen));
+
+        let pequeno = Encargo {
+            destino: 0x2000,
+            origen: 0x1000,
+            total: 300,
+            dato: bueno,
+        };
+        assert_eq!(se_puede_tocar(Parte::Escalar, &pequeno), Err(Rechazo::DestinoMenor));
+
+        let cero = Encargo { destino: 0x2000, origen: 0x1000, total: 1011, dato: 0 };
+        assert_eq!(se_puede_tocar(Parte::Escalar, &cero), Err(Rechazo::TamanoImposible));
+
+        let basura = Encargo {
+            destino: 0x2000,
+            origen: 0x1000,
+            total: 1011,
+            dato: bueno | (1 << 50),
+        };
+        assert_eq!(se_puede_tocar(Parte::Escalar, &basura), Err(Rechazo::TamanoImposible));
+
+        let ok = Encargo { destino: 0x2000, origen: 0x1000, total: 1011, dato: bueno };
+        assert_eq!(se_puede_tocar(Parte::Escalar, &ok), Ok(()));
+    }
+
+    /// Lo que el kernel traduce, por parte. Y un tamano que no cabe en 64 bits
+    /// es `None`, no un numero pequeno.
+    #[test]
+    fn bytes_de_cada_parte() {
+        let e = Encargo { destino: 1, origen: 1, total: 10, dato: 7 };
+        assert_eq!(bytes_de(Parte::Llenar, &e), Some((10 * 4, 0)));
+        assert_eq!(bytes_de(Parte::Expandir, &e), Some((10 * 7 * 4, 10 * 4)));
+        assert_eq!(bytes_de(Parte::Nada, &e), None);
+
+        let cubo = Encargo { destino: 1, origen: 1, total: 1011, dato: Escala::empaquetar(360, 360, 1918) };
+        assert_eq!(bytes_de(Parte::Escalar, &cubo), Some((1918 * 1011 * 4, 360 * 360 * 4)));
+
+        let enorme = Encargo { destino: 1, origen: 1, total: u64::MAX / 2, dato: 3 };
+        assert_eq!(bytes_de(Parte::Expandir, &enorme), None);
     }
 }
