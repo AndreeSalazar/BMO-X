@@ -127,50 +127,52 @@ funcion linea(etiqueta es natural64, dato es natural64)
     salto()
 
 # ===================================================================
-#  2. LAS ETIQUETAS -- ocho letras ASCII, little-endian, en decimal
+#  2. LAS ETIQUETAS -- ocho letras, y el compilador hace la cuenta
 # ===================================================================
 #
-# ** Calculadas con un programa y no a mano. `-- fin -` da el mismo numero que
-# en `cpu.inti`, que es la comprobacion de que el empaquetado es el mismo.
+# ** Hasta el 2026-09-12 aqui habia numeros de 64 bits --`2336349395032767080`--
+# calculados con Python fuera del arbol. Nadie podia leerlos y cambiar una letra
+# pedia salir del repo. `ocho_bytes` los pliega al compilar: el binario lleva el
+# MISMO numero (lo fija `pruebas/ocho.rs`) y el fuente se lee.
 
 funcion et_pulso devuelve natural64
-    devuelve 3273962363785588013
+    devuelve ocho_bytes("--pulso-")
 
 funcion et_sensor devuelve natural64
-    devuelve 2314976031471986035
+    devuelve ocho_bytes("sensor  ")
 
 funcion et_tick devuelve natural64
-    devuelve 2314885532081154420
+    devuelve ocho_bytes("tick    ")
 
 funcion et_hz devuelve natural64
-    devuelve 2336349395032767080
+    devuelve ocho_bytes("hz real ")
 
 funcion et_pkg devuelve natural64
-    devuelve 2314963919608764269
+    devuelve ocho_bytes("mW pkg  ")
 
 funcion et_nucl devuelve natural64
-    devuelve 2336351662708381549
+    devuelve ocho_bytes("mW nucl ")
 
 funcion et_vivos devuelve natural64
-    devuelve 2314885888631794038
+    devuelve ocho_bytes("vivos   ")
 
 funcion et_puertas devuelve natural64
-    devuelve 2338319784298771824
+    devuelve ocho_bytes("puertas ")
 
 funcion et_fin devuelve natural64
-    devuelve 3251720329925504301
+    devuelve ocho_bytes("-- fin -")
 
 funcion et_el_jefe devuelve natural64
-    devuelve 4207882012605836389
+    devuelve ocho_bytes("el jefe:")
 
 funcion et_inexist devuelve natural64
-    devuelve 2338621003340803689
+    devuelve ocho_bytes("inexist ")
 
 funcion et_sin_perm devuelve natural64
-    devuelve 7886477429734009203
+    devuelve ocho_bytes("sin perm")
 
 funcion et_bandera devuelve natural64
-    devuelve 2333271861756846434
+    devuelve ocho_bytes("bandera ")
 
 # ===================================================================
 #  ** CUANDO EL JEFE DICE QUE NO, Y POR QUE (2026-09-12)

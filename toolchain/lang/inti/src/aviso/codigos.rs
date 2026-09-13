@@ -270,6 +270,7 @@ pub const TODOS: &[Codigo] = &[
     SIN_MEDIDA,
     CAMPO_SIN_TIPO,
     FLOTANTE_SIN_BITS,
+    TEXTO_NO_CABE_EN_OCHO,
     // `necesita`
     NECESITA_DESCONOCIDA,
     UNIDAD_DESCONOCIDA,
@@ -399,3 +400,11 @@ pub const CAMPO_SIN_TIPO: Codigo = Codigo("E0122");
 /// Y hay una salida escrita: quien quiera los bits DE VERDAD los pide por su
 /// nombre, y entonces esta pidiendo un entero, que es lo que son.
 pub const FLOTANTE_SIN_BITS: Codigo = Codigo("E0123");
+
+/// `ocho_bytes(...)` sin un texto escrito de 1 a 8 letras ASCII.
+///
+/// ** Se pliega AL COMPILAR, asi que lo que no se puede plegar no es un fallo
+/// de ejecucion: es un fuente que pide algo imposible. Un texto de nueve letras
+/// cortado a ocho seria un numero plausible y equivocado -- justo lo que el
+/// codigo existe para no dar.
+pub const TEXTO_NO_CABE_EN_OCHO: Codigo = Codigo("E0124");

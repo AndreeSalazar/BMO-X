@@ -371,6 +371,19 @@ impl Descenso<'_> {
                 // puede ser tambien el de una funcion -- lo impide que los
                 // tipos vayan en mayuscula y estos no son tipos de usuario, son
                 // filas de `medidas.toml`.
+                // ** Y antes que la conversion: `ocho_bytes("...")` NO ES UNA
+                // LLAMADA. Se pliega aqui a su numero (2026-09-12) y al emisor le
+                // llega una constante. Si el texto no cabia, `revision` ya lo
+                // acuso con E0124 y esto no se alcanza.
+                if let Expr::Nombre(n, _) = &**que {
+                    if n == crate::tablas::OCHO_BYTES && argumentos.len() == 1 {
+                        if let Expr::Texto(t, _) = &argumentos[0].valor {
+                            if let Some(w) = crate::tablas::ocho_bytes_de(t) {
+                                return Valor::Const(Const::Entero(w as _));
+                            }
+                        }
+                    }
+                }
                 if let Expr::Nombre(n, sitio) = &**que {
                     if self.plano.es_conversion(n) && argumentos.len() == 1 {
                         let hacia = if self.plano.convierte_a_flotante(n) {

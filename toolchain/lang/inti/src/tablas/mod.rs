@@ -80,6 +80,39 @@ pub struct Modulos {
     instrucciones: HashSet<String>,
 }
 
+/// **`ocho_bytes("hz real ")`: un texto CORTO hecho numero, al compilar.**
+///
+/// *** Existe para quitar un parche (2026-09-12). Las sondas de INTI escribian
+/// sus etiquetas y sus rutas como numeros de 64 bits --`2336349395032767080`--
+/// calculados con un programa de Python aparte. Nadie podia leerlos, y cambiar
+/// una letra pedia salir del arbol. Ahora se escribe el texto y el compilador
+/// hace la cuenta.
+///
+/// El nombre vive aqui, en la generacion mas baja que lo necesita: lo miran el
+/// analisis (`disposicion::revision`, que acusa `E0124`) y el descenso (`ir`,
+/// que pliega). Dos hermanos agarrados a una constante que vive dentro de uno
+/// serian una pieza con dos nombres -- la regla que mudo `Modulos` aqui.
+pub const OCHO_BYTES: &str = "ocho_bytes";
+
+/// Los bytes de `t` empaquetados en un `natural64`: el PRIMERO en el byte BAJO.
+///
+/// `None` si no son de 1 a 8 letras ASCII. **Una sola implementacion** para el
+/// que acusa y el que pliega: si fueran dos, un dia uno aceptaria lo que el otro
+/// no sabe plegar.
+///
+/// ** El orden no es de ninguna maquina: es la Regla 10 de `REGLAS.md`, que fija
+/// el orden de los bytes del lenguaje. Por eso esto puede vivir en el frontend
+/// agnostico.
+pub fn ocho_bytes_de(t: &str) -> Option<u64> {
+    let b = t.as_bytes();
+    if b.is_empty() || b.len() > 8 || !b.is_ascii() {
+        return None;
+    }
+    let mut w = [0u8; 8];
+    w[..b.len()].copy_from_slice(b);
+    Some(u64::from_le_bytes(w))
+}
+
 impl Modulos {
     pub fn por_defecto() -> Self {
         Self::desde_texto(INCRUSTADOS)

@@ -446,6 +446,7 @@ fn lo_escrito(m: &Machine) -> Vec<String> {
 //     sonda        el instrumento del Ryzen, calibrado
 //     pulso        el perfil en tiempo real: pregunta lo que dice y lo escribe
 //     logica       `y` y `o`: el valor de dos condiciones, corriendo
+//     ocho         un texto corto hecho numero al compilar
 //
 //  ** El andamio se queda AQUI --`emitido`, `ejecuta`, `arranca`-- porque lo usan
 //  los ocho. Un fichero de pruebas que ademas tiene que traerse su forma de
@@ -462,6 +463,7 @@ mod metal;
 mod monton;
 mod necesita;
 mod objetos;
+mod ocho;
 mod pulso;
 mod reglas;
 mod signo;

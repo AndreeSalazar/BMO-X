@@ -105,32 +105,36 @@ funcion hex(v es natural64)
 #
 # El nombre de cada una dice lo que imprime.
 
+#
+# ** Desde el 2026-09-12 con `ocho_bytes`: aqui habia numeros de 64 bits
+# escritos a mano. El binario lleva el mismo numero -- lo fija `pruebas/ocho.rs`.
+
 funcion et_vendor devuelve natural64
-    devuelve 3251728056521338157
+    devuelve ocho_bytes("-- cpu -")
 
 funcion et_tsc devuelve natural64
-    devuelve 2314885530822865780
+    devuelve ocho_bytes("tsc     ")
 
 funcion et_bits devuelve natural64
-    devuelve 2314885532216486242
+    devuelve ocho_bytes("bits    ")
 
 funcion et_atom devuelve natural64
-    devuelve 8314035691561383009
+    devuelve ocho_bytes("atomicas")
 
 funcion et_xcr0 devuelve natural64
-    devuelve 2314885531092280184
+    devuelve ocho_bytes("xcr0    ")
 
 funcion et_azar devuelve natural64
-    devuelve 2314885532198468193
+    devuelve ocho_bytes("azar    ")
 
 funcion et_ruido devuelve natural64
-    devuelve 2314885871266526578
+    devuelve ocho_bytes("ruido   ")
 
 funcion et_reglas devuelve natural64
-    devuelve 2314977070736172402
+    devuelve ocho_bytes("reglas  ")
 
 funcion et_fin devuelve natural64
-    devuelve 3251720329925504301
+    devuelve ocho_bytes("-- fin -")
 
 # ===================================================================
 #  3. LO QUE EL PROCESADOR CONTESTA
@@ -372,8 +376,8 @@ funcion pon_ruta(trozo es natural64)
 # ** Los dos numeros son la ruta en ASCII, empaquetada. En `llano` no hay `texto`
 # y esto es lo que cuesta: el precio de no tener runtime debajo.
 funcion abre_el_informe devuelve natural64
-    pon_ruta(8098368684913748271)
-    pon_ruta(500237086325)
+    pon_ruta(ocho_bytes("/inti/cp"))
+    pon_ruta(ocho_bytes("u.txt"))
     devuelve invoca_valor(mi_tarea, op_archivo_crear, 0, 0, 0)
 
 # Mete `n` bytes de `w`. Siete como mucho.

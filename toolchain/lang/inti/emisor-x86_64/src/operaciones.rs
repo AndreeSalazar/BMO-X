@@ -228,6 +228,21 @@ pub(crate) fn flotante(out: &mut Vec<u8>, op: Op) {
         // Los bits, el resto y el cociente entero no existen aqui, y no se
         // emite nada **porque `disposicion` ya los denuncio con E0123**. Este
         // camino solo se recorre en un programa que no va a llegar a ejecutarse.
-        _ => {}
+        //
+        // *** Con NOMBRE y sin `_` (2026-09-12), como `binaria`. El comodin de
+        // alli se trago los desplazamientos y `y`/`o`; este era el ultimo del
+        // emisor. Un operador nuevo del arbol ya no puede caer aqui en silencio:
+        // no compila hasta que alguien diga que hace con un flotante.
+        Op::Entre
+        | Op::Resto
+        | Op::Elevado
+        | Op::EsUn
+        | Op::Y
+        | Op::O
+        | Op::BitsY
+        | Op::BitsO
+        | Op::BitsXor
+        | Op::DesplazaIzquierda
+        | Op::DesplazaDerecha => {}
     }
 }
