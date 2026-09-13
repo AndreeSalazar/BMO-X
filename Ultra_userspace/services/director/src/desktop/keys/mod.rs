@@ -237,6 +237,14 @@ pub(crate) fn edges(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Gathered) {
             .actual()
             .filter(|&v| dsk.win.abierta(v))
             .unwrap_or(Ventana::Run);
+        // ** SOLTAR ALT ENCIMA DE UNA APP LA TRAE (2026-09-12). Aqui no se
+        // hacia nada con una app --su rama del `match` de abajo esta vacia,
+        // porque sus pixeles los pega `compose`--, asi que una app MINIMIZADA
+        // recibia el foco y seguia escondida: el teclado se iba a algo que no
+        // se veia. Se trae antes de pintar, por el mismo camino que su ficha.
+        if let Ventana::App(i) = top_now {
+            dsk.table.traer(i as usize, &p);
+        }
         // ** EL `match` NO LLEVA `_`, Y ESO ES LA MITAD DEL ARREGLO.
         //
         // Llevaba uno --`_ => {}`-- y ademas cada rama iba con guarda, asi

@@ -66,9 +66,13 @@ const TESTIGO_W: u32 = 168;
 /// colocadas por su largo real. Dos cosas en el mismo sitio es una que tapa a la
 /// otra, y la tapada seria justo el aviso del dia en que la entrada no se pudo
 /// reclamar.
-const TESTIGO_RANURA: u32 = 3;
-/// La misma ranura, para quien se pinta a su derecha. Ver `scene::pulso`.
-pub(crate) const RANURA: u32 = TESTIGO_RANURA;
+///
+/// ** Y DESDE EL 2026-09-12 NO ES FIJA: va detras de las fichas de las apps
+/// (`scene::FICHA_APPS`), que hasta hoy no existian. Con DOOM abierto el testigo
+/// se corre una ficha. La usan tambien quienes se pintan a su derecha.
+pub(crate) fn ranura() -> u32 {
+    super::FICHA_APPS + super::apps_en_barra()
+}
 
 /// Verde apagado: sano se ve, pero no llama. Un verde brillante permanente
 /// convierte la barra en un arbol de navidad y entrena al ojo a no mirarla.
@@ -258,7 +262,7 @@ fn pintar(p: &bmo::Pantalla, luz: Luz) {
         Luz::Bien => (LUZ_BIEN, "TECLADO", None),
     };
 
-    let (x, y, _, h) = chip_box(TESTIGO_RANURA);
+    let (x, y, _, h) = chip_box(ranura());
     if x + TESTIGO_W >= p.ancho {
         // En una pantalla estrecha no cabe, y se prefiere no pintarlo a pintarlo
         // encima de otra cosa: una luz a medias en el sitio equivocado es peor
