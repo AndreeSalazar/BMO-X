@@ -234,6 +234,9 @@ fn pie(p: &bmo::Pantalla, c: &DataWindow, z: &Zona) {
     // funcion que no se anuncia no es discreta, es una funcion que no esta.
     let y = z.y + 5 + bmo::GLIFO_ALTO + 5;
     match c.seal {
+        // Lo que no se pudo abrir, con su motivo, va antes que la ayuda: es la
+        // respuesta a lo que se acaba de pedir.
+        _ if c.aviso.is_some() => p.texto(z.x, y, c.aviso.unwrap_or(""), 0x00F0_D070),
         Seal::Asking => p.texto(
             z.x, y,
             "S OTRA VEZ para SELLAR (escribe en el disco)   otra tecla cancela",

@@ -33,6 +33,9 @@ pub(crate) mod switcher;
 /// El gato que sale cuando alguien teclea Linux aqui.
 pub(crate) mod nya;
 pub(crate) mod data;
+/// CON QUE SE ABRE CADA COSA: la tabla de tipos que leen el explorador y la
+/// biblioteca. Anadir un tipo es una fila (2026-09-13).
+pub(crate) mod asociaciones;
 /// LA PESTANA `numeros`: como esta el almacen. Salio de `data.rs` por L6a, y
 /// el corte se eligio por nombres libres: no comparte nada con el explorador.
 pub(crate) mod numeros;

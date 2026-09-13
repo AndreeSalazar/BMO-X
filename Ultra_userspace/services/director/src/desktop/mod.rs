@@ -35,6 +35,8 @@ pub(crate) mod boot;
 /// cabecera: el corte se eligio por lo que la pieza ES, no por la cuenta.
 pub(crate) mod tick;
 pub(crate) mod calc;
+/// LANZAR DESDE CUALQUIER SITIO: una ranura que `_start` vacia (2026-09-13).
+pub(crate) mod abrir;
 pub(crate) mod keys;
 pub(crate) mod mouse;
 pub(crate) mod paint;

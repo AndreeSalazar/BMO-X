@@ -267,7 +267,13 @@ if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
                 // con TAB y sigues en `/cobol/10`. Devolverlo a la
                 // raiz al salir convertiria las dos pestanas en
                 // dos programas.
+                // ** Y LA BIBLIOTECA, que se RECORRE al entrar (2026-09-13):
+                // pintar solo mira lo leido. Ver `scene::data::biblioteca`.
                 View::Obra => {
+                    dsk.win.data.bib_entrar();
+                    View::Biblioteca
+                }
+                View::Biblioteca => {
                     // ** La historia se RELEE al entrar, no al pintar.
                     //
                     // Cuesta un bloque por version. Releerla en cada
@@ -321,6 +327,28 @@ if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
                 if dsk.win.data.hist_sel < dsk.win.data.hist_from {
                     dsk.win.data.hist_from = dsk.win.data.hist_sel;
                 }
+            }
+        }
+        // ** LA BIBLIOTECA: flechas por la rejilla, ENTRAR abre, letras filtran.
+        _ if dsk.win.data.view == View::Biblioteca => {
+            use crate::scene::asociaciones::Clase;
+            let cols = dsk.win.data.bib_cols() as isize;
+            match c {
+                0x82 => dsk.win.data.bib_mover(-1),
+                0x83 => dsk.win.data.bib_mover(1),
+                0x80 => dsk.win.data.bib_mover(-cols),
+                0x81 => dsk.win.data.bib_mover(cols),
+                0x87 => dsk.win.data.bib_mover(-cols * 3),
+                0x88 => dsk.win.data.bib_mover(cols * 3),
+                b'\r' | b'\n' => {
+                    dsk.win.data.bib_abrir();
+                }
+                b'0' => dsk.win.data.bib_filtrar(None),
+                b'r' | b'R' => dsk.win.data.bib_entrar(),
+                _ => match Clase::VISIBLES.iter().find(|k| k.tecla() == c.to_ascii_uppercase()) {
+                    Some(&k) => dsk.win.data.bib_filtrar(Some(k)),
+                    None => served = false,
+                },
             }
         }
         _ if dsk.win.data.view == View::Numbers => served = false,
@@ -377,7 +405,7 @@ if dsk.win.data_open && dsk.win.focus.es_para(Ventana::Data) {
                 // se acababa: la tecla no hacia nada y parecia que la lista
                 // estuviera muerta. Un archivo no tiene dentro donde bajar,
                 // pero SI tiene dentro que ver -- y es la misma intencion.
-                dsk.win.data.ver_senalado();
+                dsk.win.data.abrir_senalado();
             }
         }
         // RETROCESO / IZQUIERDA: subir al padre.

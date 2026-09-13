@@ -157,6 +157,12 @@ pub(crate) struct DataWindow {
     /// una arrastrara la otra a una fila sin relacion.
     pub(crate) hist_from: usize,
     pub(crate) hist_sel: usize,
+    /// Lo que no se pudo abrir, y por que (`asociaciones::Abre::Falta`). Se
+    /// ensena en el pie hasta la siguiente accion.
+    pub(crate) aviso: Option<&'static str>,
+    /// La tarjeta elegida de la biblioteca, y su primera fila visible.
+    pub(crate) bib_sel: usize,
+    pub(crate) bib_from: usize,
 }
 
 /// **El estado del sellado, que es lo unico de esta ventana que ESCRIBE.**
@@ -222,6 +228,10 @@ pub(crate) enum View {
     ///
     /// El reparto del ancho vive en `scene::zonas`, no aqui.
     Obra,
+    /// ** LA BIBLIOTECA (2026-09-13): todo lo que hay en DATOS agrupado por lo
+    /// que ES -- apps, imagenes, audio, texto. El explorador contesta *donde
+    /// esta*; esta contesta *que tengo*. Ver [`biblioteca`].
+    Biblioteca,
     /// ** LA HISTORIA del volumen: la cadena de versiones hacia atras.
     ///
     /// Es la tercera pregunta, y distinta de las otras dos: `[numeros]` dice
@@ -257,6 +267,9 @@ impl DataWindow {
             menu: Menu::nuevo(),
             hist_from: 0,
             hist_sel: 0,
+            aviso: None,
+            bib_sel: 0,
+            bib_from: 0,
         }
     }
 
@@ -390,12 +403,13 @@ impl DataWindow {
         ((util / bmo::GLIFO_ALTO) as usize).max(1)
     }
 
-    /// **Abre el fichero senalado en el visor.** `false` si no era un fichero.
+    /// **Abre el fichero senalado SEGUN LO QUE ES.** `false` si no era un fichero.
     ///
-    /// ** Se pregunta por el TIPO y no se prueba a abrir: un directorio se abre
-    /// igual como ruta, y el visor ensenaria sus entradas crudas como si fueran
-    /// texto. Eso no es ver un fichero, es ensenar el formato por dentro.
-    pub(crate) fn ver_senalado(&mut self) -> bool {
+    /// ** Se pregunta por el TIPO del nodo y no se prueba a abrir: un directorio
+    /// se abre igual como ruta, y el visor ensenaria sus entradas crudas como si
+    /// fueran texto. Y desde el 2026-09-13 tambien por el tipo del FICHERO: un
+    /// `.bex` se lanza, un `.mus` lo toca el reproductor. Ver [`Self::abrir_ruta`].
+    pub(crate) fn abrir_senalado(&mut self) -> bool {
         if self.sel >= fuente::hijos() as usize {
             return false;
         }
@@ -409,7 +423,107 @@ impl DataWindow {
         }
         let mut nom = [0u8; 64];
         let m = fuente::hijo_nombre(self.sel as u64, &mut nom);
-        self.visor.abrir(&ruta[..k], &nom[..m])
+        self.abrir_ruta(&ruta[..k], &nom[..m])
+    }
+
+    /// **"Abrir con"**: `ruta` segun lo que dice `scene::asociaciones`.
+    ///
+    /// Lanzar no se hace aqui --exige la pantalla por valor, que es de `_start`--
+    /// sino que se PIDE (`desktop::abrir`). Lo que no se puede abrir deja su
+    /// motivo en `aviso` en vez de fallar callado.
+    pub(crate) fn abrir_ruta(&mut self, ruta: &[u8], nombre: &[u8]) -> bool {
+        use crate::scene::asociaciones::{de, Abre};
+        self.aviso = None;
+        let abre = de(nombre).1;
+        // El kernel no lanza desde `efi:`, y aunque pudiera: esa particion es
+        // para mirar. Se dice en vez de pedir un lanzamiento que va a fallar.
+        if ruta.starts_with(b"efi:") && abre != Abre::Visor {
+            self.aviso = Some("EFI es la particion de arranque: aqui solo se mira");
+            return true;
+        }
+        let pedido = match abre {
+            Abre::Visor => return self.visor.abrir(ruta, nombre),
+            Abre::Programa => crate::desktop::abrir::pedir(&[ruta]),
+            Abre::Con(app) => crate::desktop::abrir::pedir(&[app, ruta]),
+            Abre::Falta(motivo) => {
+                self.aviso = Some(motivo);
+                return true;
+            }
+        };
+        if !pedido {
+            self.aviso = Some("la ruta no cabe en una linea de lanzar (128 bytes)");
+        }
+        true
+    }
+
+    // -- La biblioteca: su estado vive aqui, lo leido en `biblioteca` --------
+
+    /// Donde se pinta: el cuerpo entero, sin arbol ni grafo que repartir.
+    pub(crate) fn bib_zona(&self) -> super::zonas::Zona {
+        let z = Zonas::repartir(&self.chrome, false);
+        super::zonas::Zona { x: z.miga.x, y: z.miga.y, w: z.miga.w, h: z.pie.y.saturating_sub(z.miga.y) }
+    }
+
+    /// Al ENTRAR en la vista: se recorre el disco una vez. Pintar no lo toca.
+    pub(crate) fn bib_entrar(&mut self) {
+        biblioteca::releer();
+        self.bib_sel = 0;
+        self.bib_from = 0;
+        self.aviso = None;
+    }
+
+    pub(crate) fn bib_cols(&self) -> usize {
+        biblioteca::rejilla(&self.bib_zona()).cols
+    }
+
+    /// Mueve la eleccion y arrastra la ventana de filas con ella.
+    pub(crate) fn bib_mover(&mut self, delta: isize) {
+        self.aviso = None;
+        let total = biblioteca::visibles();
+        if total == 0 {
+            self.bib_sel = 0;
+            self.bib_from = 0;
+            return;
+        }
+        self.bib_sel = (self.bib_sel as isize + delta).clamp(0, total as isize - 1) as usize;
+        let r = biblioteca::rejilla(&self.bib_zona());
+        let fila = self.bib_sel / r.cols;
+        if fila < self.bib_from {
+            self.bib_from = fila;
+        } else if fila >= self.bib_from + r.filas {
+            self.bib_from = fila + 1 - r.filas;
+        }
+    }
+
+    pub(crate) fn bib_filtrar(&mut self, f: Option<crate::scene::asociaciones::Clase>) {
+        biblioteca::poner_filtro(f);
+        self.bib_sel = 0;
+        self.bib_from = 0;
+        self.aviso = None;
+    }
+
+    pub(crate) fn bib_en(&self, px: u32, py: u32) -> Option<usize> {
+        if self.view != View::Biblioteca || self.chrome.minimized || self.visor.abierto {
+            return None;
+        }
+        biblioteca::en(&self.bib_zona(), self.bib_from, px, py)
+    }
+
+    /// Un clic en la tarjeta `k`. `true` si es el SEGUNDO de un doble clic.
+    pub(crate) fn bib_clic(&mut self, k: usize) -> bool {
+        self.bib_sel = k;
+        self.aviso = None;
+        self.doble.hit(k)
+    }
+
+    /// Abre la tarjeta elegida, por el MISMO camino que el explorador.
+    pub(crate) fn bib_abrir(&mut self) -> bool {
+        let mut r = [0u8; 128];
+        let (n, desde) = biblioteca::ruta(self.bib_sel, &mut r);
+        if n == 0 {
+            return false;
+        }
+        self.abrir_ruta(&r[..n], &r[desde..n])
     }
 
     /// **Sobre que pestana de VOLUMEN cayo el puntero**, si sobre alguna. La
@@ -441,6 +555,7 @@ impl DataWindow {
         self.consola.abierta = false;
         self.consola.activa = false;
         self.seal = Seal::Idle;
+        self.aviso = None;
     }
 
     pub(crate) fn fila_rejilla_en(&self, px: u32, py: u32) -> Option<usize> {
@@ -705,6 +820,9 @@ pub(crate) use visor::Visor;
 /// **La FUENTE**: que volumen contesta -- ESTRATOS, DATOS o EFI (2026-09-13).
 pub(crate) mod fuente;
 
+/// **La BIBLIOTECA**: lo que hay en DATOS, por clase y en tarjetas (2026-09-13).
+pub(crate) mod biblioteca;
+
 /// **Repinta SOLO la consola del pie.**
 ///
 /// El hermano barato de [`paint`], y existe por un numero: teclear una letra
@@ -741,25 +859,49 @@ pub(crate) fn paint(p: &bmo::Pantalla, c: &DataWindow) {
     let px = px + 2 * bmo::GLIFO_ANCHO;
     // Las pestanas: la activa lleva su subrayado. Un corchete pintado de otro
     // color se pierde en una foto; una linea debajo no.
-    let (c1, c2, c3) = match c.view {
-        View::Numbers => (INK, INK_DIM, INK_DIM),
-        View::Obra => (INK_DIM, INK, INK_DIM),
-        View::Historial => (INK_DIM, INK_DIM, INK),
+    let (c1, c2, c3, c4) = match c.view {
+        View::Numbers => (INK, INK_DIM, INK_DIM, INK_DIM),
+        View::Obra => (INK_DIM, INK, INK_DIM, INK_DIM),
+        View::Biblioteca => (INK_DIM, INK_DIM, INK, INK_DIM),
+        View::Historial => (INK_DIM, INK_DIM, INK_DIM, INK),
     };
     let fin1 = p.texto(px, c.chrome.y + 8, "numeros", c1);
     let px2 = fin1 + 2 * bmo::GLIFO_ANCHO;
     let fin2 = p.texto(px2, c.chrome.y + 8, "explorador", c2);
     let px3 = fin2 + 2 * bmo::GLIFO_ANCHO;
-    let fin3 = p.texto(px3, c.chrome.y + 8, "historial", c3);
+    let fin3 = p.texto(px3, c.chrome.y + 8, "biblioteca", c3);
+    let px4 = fin3 + 2 * bmo::GLIFO_ANCHO;
+    let fin4 = p.texto(px4, c.chrome.y + 8, "historial", c4);
     let (sx, sw) = match c.view {
         View::Numbers => (px, fin1 - px),
         View::Obra => (px2, fin2 - px2),
-        View::Historial => (px3, fin3 - px3),
+        View::Biblioteca => (px3, fin3 - px3),
+        View::Historial => (px4, fin4 - px4),
     };
     p.rect(sx, c.chrome.y + 8 + bmo::GLIFO_ALTO + 2, sw, 2, DATA_TITLE);
 
     if c.view == View::Obra {
         obra(p, c);
+        return;
+    }
+    if c.view == View::Biblioteca {
+        let z = c.bib_zona();
+        // El visor ocupa el sitio de las tarjetas, igual que en el explorador
+        // ocupa el de la rejilla: abrir un texto es cambiar lo que hay ahi.
+        if c.visor.abierto {
+            visor::paint(p, &z, &c.visor);
+        } else {
+            biblioteca::paint(p, &z, c.bib_from, c.bib_sel);
+        }
+        let y = c.chrome.y + c.chrome.height - bmo::GLIFO_ALTO - 8;
+        match c.aviso {
+            Some(a) => p.texto(tx, y, a, 0x00F0_D070),
+            None => p.texto(
+                tx, y,
+                "ENTRAR abre  flechas mueven  0 A I M T filtran  R vuelve a mirar  TAB sigue",
+                INK_DIM,
+            ),
+        };
         return;
     }
     if c.view == View::Historial {

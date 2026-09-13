@@ -380,5 +380,7 @@ pub(crate) fn dispatch(
             return Some((target, n));
         }
     }
-    None
+    // ** Y lo que otra ventana pidio lanzar -- el explorador, la biblioteca --
+    // sale por la MISMA puerta que un `run` tecleado. Ver `desktop::abrir`.
+    crate::desktop::abrir::tomar()
 }

@@ -160,6 +160,15 @@ pub(crate) fn on_pointer(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Golpe) -> boo
                     // es justo lo que un panel de arbol compra sobre la miga de
                     // pan.
                     let z = scene::zonas::Zonas::repartir(&dsk.win.data.chrome, dsk.win.data.consola.abierta);
+                    // ** LA BIBLIOTECA: un clic elige la tarjeta, dos la abren.
+                    if let Some(k) = dsk.win.data.bib_en(pos.x, pos.y) {
+                        if dsk.win.data.bib_clic(k) {
+                            dsk.win.data.bib_abrir();
+                        }
+                        scene::data::paint(&p, &dsk.win.data);
+                        dsk.win.top_before = Ventana::Data;
+                        servido = true;
+                    }
                     if dsk.win.data.view == scene::data::View::Obra {
                         // ** LAS PESTANAS DE VOLUMEN, antes que nada: estan en
                         // la miga, que no es de ningun otro panel.
@@ -217,7 +226,7 @@ pub(crate) fn on_pointer(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Golpe) -> boo
                                 if scene::data::fuente::entrar(i as u64) {
                                     dsk.win.data.to_top();
                                 } else {
-                                    dsk.win.data.ver_senalado();
+                                    dsk.win.data.abrir_senalado();
                                 }
                             }
                             scene::data::paint(&p, &dsk.win.data);
