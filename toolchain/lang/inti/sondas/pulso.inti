@@ -44,10 +44,11 @@
 #     vivos     cuantos obreros hay en pie
 #     puertas   cuantas veces se ha cruzado la puerta del sistema
 #
-# ** OJO, y se dice aqui para que no se descubra comparando dos pantallas: la
-# frecuencia y los milivatios se miden POR DIFERENCIA con la pregunta anterior
-# de CUALQUIERA. Si el panel del escritorio tambien pregunta, esta sonda ve
-# intervalos mas cortos. El numero sigue siendo cierto; es de menos tiempo.
+# ** La frecuencia y los milivatios se calculan AQUI, restando lecturas de esta
+# sonda (2026-09-12). El kernel da contadores que solo crecen --microjulios
+# desde el arranque, MPERF y APERF-- y cada programa guarda su lectura anterior.
+# Hasta ese dia los media el kernel "desde la pregunta anterior de CUALQUIERA",
+# y esta sonda y el panel del escritorio se robaban el intervalo.
 #
 # ===================================================================
 #  ** LO QUE ENSENO LA PRIMERA VEZ EN EL RYZEN (2026-09-12)
@@ -237,11 +238,29 @@ funcion espera_ms(cuantos es natural64)
         pasados = pregunta(info_ticks) - antes
         vueltas = vueltas + 1
 
-funcion muestra
-    linea(et_tick(), pregunta(info_ticks))
-    linea(et_hz(), pregunta(info_cpu_hz_real))
-    linea(et_pkg(), pregunta(info_cpu_mw_paquete))
-    linea(et_nucl(), pregunta(info_cpu_mw_nucleo))
+# **A que fue el nucleo entre dos lecturas.** `0` si la ventana de MPERF es
+# demasiado corta para decir nada -- un evento del planificador moveria el
+# numero un 50%.
+#
+# ** `(tsc_hz entre 1000) * da entre (dm entre 1000)` y no `tsc_hz * da / dm`:
+# 3.700.000.000 por dos mil millones no cabe en 64 bits, y aqui eso ATRAPA en
+# vez de dar la vuelta. Dividir antes pierde tres cifras que no se ven.
+funcion hz_entre(tsc_hz es natural64, da es natural64, dm es natural64) devuelve natural64
+    si dm < 100000
+        devuelve 0
+    devuelve (tsc_hz entre 1000) * da entre (dm entre 1000)
+
+# **Milivatios**: microjulios por milisegundo, sin convertir nada.
+funcion mw_entre(uj es natural64, ms es natural64) devuelve natural64
+    si ms = 0
+        devuelve 0
+    devuelve uj entre ms
+
+funcion ensena(tick es natural64, hz es natural64, mw_pkg es natural64, mw_nucl es natural64)
+    linea(et_tick(), tick)
+    linea(et_hz(), hz)
+    linea(et_pkg(), mw_pkg)
+    linea(et_nucl(), mw_nucl)
     linea(et_vivos(), pregunta(info_smp_vivos))
     linea(et_puertas(), pregunta(info_puertas))
     salto()
@@ -252,11 +271,29 @@ funcion principal devuelve entero32
     linea(et_sensor(), pregunta(info_cpu_sensores))
     salto()
     el_jefe_dice()
-    cambiante n es natural64 = 0
-    repite mientras n < 20
+    # ** LAS LECTURAS DE ESTA SONDA: la anterior y la de ahora. Todos son
+    # contadores que solo crecen, asi que las restas no pueden quedar negativas.
+    tsc_hz es natural64 = pregunta(info_tsc_hz)
+    cambiante t0 es natural64 = pregunta(info_ticks)
+    cambiante p0 es natural64 = pregunta(info_cpu_uj_paquete)
+    cambiante c0 es natural64 = pregunta(info_cpu_uj_nucleo)
+    cambiante m0 es natural64 = pregunta(info_cpu_mperf)
+    cambiante a0 es natural64 = pregunta(info_cpu_aperf)
+    cambiante vuelta es natural64 = 0
+    repite mientras vuelta < 20
         espera_ms(500)
-        muestra()
-        n = n + 1
+        t1 es natural64 = pregunta(info_ticks)
+        p1 es natural64 = pregunta(info_cpu_uj_paquete)
+        c1 es natural64 = pregunta(info_cpu_uj_nucleo)
+        m1 es natural64 = pregunta(info_cpu_mperf)
+        a1 es natural64 = pregunta(info_cpu_aperf)
+        ensena(t1, hz_entre(tsc_hz, a1 - a0, m1 - m0), mw_entre(p1 - p0, t1 - t0), mw_entre(c1 - c0, t1 - t0))
+        t0 = t1
+        p0 = p1
+        c0 = c1
+        m0 = m1
+        a0 = a1
+        vuelta = vuelta + 1
     palabra(et_fin())
     salto()
     devuelve 0

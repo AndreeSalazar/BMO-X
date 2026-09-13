@@ -41,6 +41,7 @@ dependencies = [
  "bmo-dibujo",
  "bmo-golpe",
  "bmo-input",
+ "bmo-juicio",
  "bmo-ritmo",
  "bmo-rtc",
  "bmo-userland",

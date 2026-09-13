@@ -270,8 +270,8 @@ pub(crate) fn edges(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Gathered) {
                 Ventana::Estructura => scene::estructura::paint(&p, &dsk.win.estructura),
                 // Las vitales son VISTAS: se repintan cada vez que les
                 // toca turno, que es lo que las diferencia de `info`.
-                Ventana::Cpu => scene::vitals::paint(&p, &dsk.win.cpu, dsk.tick.loops_per_second),
-                Ventana::Mem => scene::vitals::paint(&p, &dsk.win.mem, dsk.tick.loops_per_second),
+                Ventana::Cpu => scene::vitals::paint(&p, &dsk.win.cpu, dsk.tick.loops_per_second, dsk.tick.consumo.ultimo),
+                Ventana::Mem => scene::vitals::paint(&p, &dsk.win.mem, dsk.tick.loops_per_second, dsk.tick.consumo.ultimo),
                 Ventana::Sound => scene::sound::paint(
                     &p,
                     &dsk.win.sound,

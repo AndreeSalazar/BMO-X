@@ -52,6 +52,9 @@
 
 #![cfg_attr(not(test), no_std)]
 
+/// Frecuencia y vatios POR LECTOR, de contadores que solo crecen (2026-09-12).
+pub mod consumo;
+
 /// Los dos numeros que el kernel declara por fila, tal y como viajan
 /// empaquetados: `meta << 32 | techo`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

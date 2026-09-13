@@ -76,6 +76,17 @@ impl Tick {
         self.quarter = now.wrapping_sub(self.quarter_at) >= self.ciclos_de(QUARTER_MS);
         if self.quarter {
             self.quarter_at = now;
+            // ** EL MUESTREO, una vez por cuarto de segundo y en UN sitio. Cuatro
+            // puertas por cuarto --dieciseis por segundo, contra las ~3.700 que
+            // ya da el bucle-- y a cambio el escritorio es un solo lector.
+            let l = bmo_juicio::consumo::Lectura {
+                uj_paquete: bmo::info(bmo::INFO_CPU_UJ_PAQUETE),
+                uj_nucleo: bmo::info(bmo::INFO_CPU_UJ_NUCLEO),
+                mperf: bmo::info(bmo::INFO_CPU_MPERF),
+                aperf: bmo::info(bmo::INFO_CPU_APERF),
+                tsc: now,
+            };
+            self.consumo.muestra(l, self.tsc_hz);
         }
         if now.wrapping_sub(self.sample_at) >= self.tsc_hz {
             self.loops_per_second = self.loops.wrapping_sub(self.sample_loops);

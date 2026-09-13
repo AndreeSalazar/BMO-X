@@ -110,6 +110,20 @@ pub fn disponible() -> bool {
     unsafe { HAY }
 }
 
+/// ** LOS CONTADORES CRUDOS: `(MPERF, APERF)` tal cual, o `(0, 0)` si este CPU
+/// no los tiene (2026-09-12).
+///
+/// Son la pieza que sustituye a [`medir`] para todo lector nuevo: los dos son de
+/// 64 bits y solo suben, asi que cada lector guarda su lectura anterior y resta
+/// (`bmo_juicio::consumo`). [`medir`] se queda para el campo viejo, que comparte
+/// UNA lectura anterior entre todos los que preguntan.
+pub fn crudos() -> (u64, u64) {
+    if !unsafe { HAY } {
+        return (0, 0);
+    }
+    unsafe { (rdmsr(MSR_MPERF), rdmsr(MSR_APERF)) }
+}
+
 /// **La frecuencia efectiva desde la ultima vez que se pregunto**, en Hz.
 ///
 /// `0` si no se puede medir todavia: o el CPU no lo soporta, o es la primera

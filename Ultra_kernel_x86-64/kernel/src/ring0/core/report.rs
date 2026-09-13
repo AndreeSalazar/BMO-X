@@ -145,6 +145,19 @@ const INFO_CPU_MW_NUCLEO_ACTUAL: u64 = 0x22;
 /// numero es de verdad cero. Un panel que no distingue "no se" de "cero" hace
 /// que sus dos casos se lean igual, y uno de los dos es una mentira.
 const INFO_CPU_SENSORES: u64 = 0x23;
+/// ** LOS CONTADORES QUE SOLO CRECEN (2026-09-12). Sustituyen a `HZ_REAL` y a
+/// los `MW_*` para todo lector nuevo: aquellos guardan UNA lectura anterior
+/// para todo el sistema, y dos lectores se robaban el intervalo. Con estos,
+/// cada lector resta los suyos (`bmo_juicio::consumo`). `0` = no se sabe.
+///
+/// Microjulios del paquete desde el arranque, sin vueltas: los acumula el tick.
+const INFO_CPU_UJ_PAQUETE: u64 = 0x69;
+/// Microjulios del nucleo que contesta (el BSP), desde el arranque.
+const INFO_CPU_UJ_NUCLEO: u64 = 0x6A;
+/// `MPERF` del BSP, crudo: sube al ritmo del reloj de referencia.
+const INFO_CPU_MPERF: u64 = 0x6B;
+/// `APERF` del BSP, crudo: sube al ritmo real del nucleo.
+const INFO_CPU_APERF: u64 = 0x6C;
 
 // -- ** QUIEN ESTA COMIENDO: la vista de administrador de tareas -------------
 //
@@ -409,6 +422,10 @@ pub fn campo(n: u64) -> Option<u64> {
             if crate::ring0::cpu::power::disponible() { b |= 2; }
             b
         }
+        INFO_CPU_UJ_PAQUETE => crate::ring0::cpu::power::energia_uj().0,
+        INFO_CPU_UJ_NUCLEO => crate::ring0::cpu::power::energia_uj().1,
+        INFO_CPU_MPERF => crate::ring0::cpu::frequency::crudos().0,
+        INFO_CPU_APERF => crate::ring0::cpu::frequency::crudos().1,
         // La topologia esta cacheada desde `init_bmo_cpu`: aqui no se vuelve a
         // preguntar al CPUID. Un panel que se repinta no debe costar CPUID.
         // == LA RED ==================================================

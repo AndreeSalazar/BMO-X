@@ -187,7 +187,7 @@ pub(crate) fn report_consumo(s: &mut Output, t: &crate::desktop::Tick) {
     // costaba once nucleos al 100%, asi que "1 de 12" era lo prudente y no una
     // carencia. Ahora la barra vacia SI es una carencia -- y por eso se dibuja.
     fila_barra(s, b"en pie", vivos + 1, hilos, b"hilos");
-    let hz = bmo::info(bmo::INFO_CPU_HZ_REAL);
+    let hz = t.consumo.ultimo.map_or(0, |m| m.hz_nucleo);
     if hz > 0 {
         fila(s, b"reloj ahora", hz / 1_000_000, b"MHz", b"medido por MPERF/APERF");
     }
@@ -236,10 +236,13 @@ pub(crate) fn report_consumo(s: &mut Output, t: &crate::desktop::Tick) {
         fila(s, b"bsp siestas", bmo::info(bmo::INFO_BSP_REPOSOS), b"",
              b"cuantas veces; ~1000/s en reposo = el tick lo despierta");
     }
-    let mw = bmo::info(bmo::INFO_CPU_MW_PAQUETE);
+    // ** De lo que midio el UNICO lector del escritorio (`Tick::consumo`), y no
+    // de otra pregunta al kernel: esa otra pregunta le robaba el intervalo al
+    // panel y a cualquier programa que estuviera midiendo (2026-09-12).
+    let mw = t.consumo.ultimo.map_or(0, |m| m.mw_paquete);
     if mw > 0 {
         fila_mili(s, b"gasta paquete", mw, b"W", b"los nucleos + fabric + memoria + L3");
-        let mwn = bmo::info(bmo::INFO_CPU_MW_NUCLEO_ACTUAL);
+        let mwn = t.consumo.ultimo.map_or(0, |m| m.mw_nucleo);
         if mwn > 0 {
             fila_mili(s, b"gasta nucleo", mwn, b"W", b"solo ESTE");
         }
@@ -366,7 +369,7 @@ pub(crate) fn report_consumo(s: &mut Output, t: &crate::desktop::Tick) {
 }
 
 #[inline(never)]
-pub(crate) fn report_cpu(s: &mut Output) {
+pub(crate) fn report_cpu(s: &mut Output, consumo: Option<bmo_juicio::consumo::Consumo>) {
     let mut buf = [0u8; 64];
 
     section(s, b"procesador");
@@ -453,7 +456,7 @@ pub(crate) fn report_cpu(s: &mut Output) {
     // [!] Es una MEDIDA: sale de restar dos lecturas de MPERF/APERF, asi que el
     // numero es la velocidad **desde la ultima vez que se pregunto**. Pedir
     // `info` dos veces seguidas mide el rato entre las dos.
-    let actual = bmo::info(bmo::INFO_CPU_HZ_REAL);
+    let actual = consumo.map_or(0, |m| m.hz_nucleo);
     label(s, b"ahora");
     if actual == 0 {
         // Cero no es cero hercios: es "no se puede medir". Decirlo con palabras
@@ -493,8 +496,8 @@ pub(crate) fn report_cpu(s: &mut Output) {
     // Hasta hoy la seccion 5 de AXION_MAESTRO.md decia que once obreros girando
     // consumen "como si trabajaran": una afirmacion sin numero al lado. Con esta
     // fila, `smp stop` tiene un antes y un despues.
-    let mw = bmo::info(bmo::INFO_CPU_MW_PAQUETE);
-    let mwn = bmo::info(bmo::INFO_CPU_MW_NUCLEO_ACTUAL);
+    let mw = consumo.map_or(0, |m| m.mw_paquete);
+    let mwn = consumo.map_or(0, |m| m.mw_nucleo);
     label(s, b"gasta");
     if mw == 0 {
         s.with_ink(INK_ECHO);
@@ -640,12 +643,12 @@ pub(crate) fn report_memory(s: &mut Output) {
 }
 
 #[inline(never)]
-pub(crate) fn report_system(s: &mut Output) {
+pub(crate) fn report_system(s: &mut Output, consumo: Option<bmo_juicio::consumo::Consumo>) {
     s.with_ink(INK_ECHO);
     s.text(b"  BMO-X - informe del sistema\n");
     s.with_ink(INK_PLAIN);
 
-    report_cpu(s);
+    report_cpu(s, consumo);
     report_memory(s);
 
     section(s, b"tareas");

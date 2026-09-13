@@ -62,32 +62,45 @@ fn dieciseis_cifras_no_dejan_hueco() {
     assert_eq!(lo_escrito(&m), vec!["tick    ", "12345678", "90123456", "\n"]);
 }
 
-/// ** PREGUNTA POR LA PUERTA, Y POR LO QUE DICE.
+/// ** ENSENA LO QUE LE DAN, y pregunta solo lo que no se resta.
 ///
-/// `muestra` tiene que cruzar `INFO` con cada selector de la tabla, sobre
-/// `mi_tarea`. Un selector cambiado no falla al compilar: pregunta por el campo
-/// de al lado y recibe un numero que parece bueno.
+/// Desde el 2026-09-12 la frecuencia y los vatios los calcula la sonda restando
+/// sus propias lecturas; `ensena` recibe los numeros hechos y solo pregunta los
+/// dos que no son contadores: obreros vivos y puertas.
 #[test]
-fn una_muestra_pregunta_los_seis_campos_por_info() {
-    let m = arranca(&con_principal("    muestra()\n"));
+fn ensena_escribe_lo_que_le_dan_y_pregunta_vivos_y_puertas() {
+    let m = arranca(&con_principal("    ensena(1, 2, 3, 4)\n"));
     let preguntas: Vec<u64> = m
         .syscalls
         .iter()
         .filter(|s| s.capability == 0xFFFF_FFFF_FFFF_FFFE && s.operation == 0x13)
         .map(|s| s.arg0)
         .collect();
-    assert_eq!(
-        preguntas,
-        vec![0x0B, 0x20, 0x21, 0x22, 0x1B, 0x2F],
-        "tick, hz real, mW paquete, mW nucleo, vivos, puertas -- en ese orden"
-    );
-    // Seis lineas de cuatro palabras, y un salto que separa la muestra.
+    assert_eq!(preguntas, vec![0x1B, 0x2F], "vivos y puertas, en ese orden");
     let dice = lo_escrito(&m);
     assert_eq!(dice.len(), 6 * 4 + 1);
-    for fila in dice[..24].chunks(4) {
-        assert_eq!(fila[2], "       0", "{} deberia decir 0 en el emulador", fila[0]);
-        assert_eq!(fila[3], "\n", "{} tiene que terminar su linea", fila[0]);
+    for (fila, esperado) in dice[..16].chunks(4).zip(["       1", "       2", "       3", "       4"]) {
+        assert_eq!(fila[2], esperado, "{}", fila[0]);
+        assert_eq!(fila[3], "\n");
     }
+}
+
+/// ** LA RESTA DE LA SONDA, con los numeros del Ryzen: medio segundo a 4,52 GHz
+/// y 58 W. Es la cuenta que antes hacia el kernel para todos a la vez.
+#[test]
+fn la_sonda_resta_sus_propias_lecturas() {
+    let m = arranca(&con_principal(
+        "    linea(et_hz(), hz_entre(3700000000, 2260000000, 1850000000))\n    linea(et_pkg(), mw_entre(29000000, 500))\n    linea(et_nucl(), hz_entre(3700000000, 5, 99999))\n",
+    ));
+    assert_eq!(
+        lo_escrito(&m),
+        vec![
+            "hz real ", "      45", "20000000", "\n",
+            "mW pkg  ", "        ", "   58000", "\n",
+            "mW nucl ", "        ", "       0", "\n",
+        ],
+        "4,52 GHz, 58 W, y una ventana de MPERF demasiado corta dice 0"
+    );
 }
 
 /// *** ESPERAR ES DORMIR, NO GIRAR -- lo que el Ryzen ensenyo la primera vez.

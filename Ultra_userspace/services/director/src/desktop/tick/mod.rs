@@ -313,6 +313,13 @@ pub(crate) struct Tick {
     sample_loops: u32,
     /// When the current quarter second started, in cycles.
     quarter_at: u64,
+    /// ** EL UNICO LECTOR DE FRECUENCIA Y VATIOS DEL ESCRITORIO (2026-09-12).
+    ///
+    /// Muestrea los contadores que solo crecen una vez por cuarto de segundo y
+    /// guarda lo que sale. Las vitales y los informes leen de aqui: antes cada
+    /// uno cruzaba la puerta por su cuenta y le robaba el intervalo al otro --
+    /// y a cualquier programa que midiera a la vez.
+    pub consumo: bmo_juicio::consumo::Muestreo,
     /// The reference clock, asked **once** in the life of the process.
     ///
     /// `INFO_TSC_HZ` never changes, and asking it every pass would put a 969
@@ -389,6 +396,7 @@ impl Tick {
             sample_at: 0,
             sample_loops: 0,
             quarter_at: 0,
+            consumo: bmo_juicio::consumo::Muestreo::nuevo(),
             tsc_hz: 0,
         }
     }

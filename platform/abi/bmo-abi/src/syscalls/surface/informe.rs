@@ -233,6 +233,24 @@ pub const INFO_CPU_MW_PAQUETE: u64 = 0x21;
 /// repartido -- la seccion 5 de `AXION_MAESTRO.md` antes que esto.
 pub const INFO_CPU_MW_NUCLEO_ACTUAL: u64 = 0x22;
 
+/// ** LOS CONTADORES QUE SOLO CRECEN (2026-09-12).
+///
+/// `INFO_CPU_HZ_REAL` y los dos `MW_*` de arriba se miden "desde la ultima
+/// consulta" con UNA lectura anterior para todo el sistema: si dos programas
+/// preguntan, cada uno ve el intervalo del otro. Estos cuatro no guardan nada de
+/// nadie -- solo suben -- y cada lector resta los suyos. La resta, probada, esta
+/// en `bmo_juicio::consumo`. `0` = no se sabe.
+///
+/// Microjulios del paquete desde el arranque. El kernel acumula las vueltas del
+/// registro de 32 bits una vez por segundo.
+pub const INFO_CPU_UJ_PAQUETE: u64 = 0x69;
+/// Microjulios del nucleo que contesta (el BSP), desde el arranque.
+pub const INFO_CPU_UJ_NUCLEO: u64 = 0x6A;
+/// `MPERF` del BSP, crudo y de 64 bits.
+pub const INFO_CPU_MPERF: u64 = 0x6B;
+/// `APERF` del BSP, crudo y de 64 bits. Frecuencia = TSC_HZ x dAPERF / dMPERF.
+pub const INFO_CPU_APERF: u64 = 0x6C;
+
 // [!] AQUI VIVIA `INFO_CPU_MW_NUCLEOS`, y su borrado es la leccion.
 //
 // Se renombro a `INFO_CPU_MW_NUCLEO_ACTUAL` porque el plural mentia, y se dejo

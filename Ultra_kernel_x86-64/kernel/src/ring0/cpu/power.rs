@@ -1,7 +1,8 @@
 //! **Cuanto consume esta maquina, en milivatios.**
 //!
 //! [carril]  VERDE     lee los contadores de energia
-//! [consumo] NADA      lee RAPL cuando alguien pregunta
+//! [consumo] LATE      una vez por segundo, desde el tick: acumula la energia
+//!                     (tres `rdmsr`) para no perder vueltas del contador
 //!
 //! Escalon 2 de la seccion 9 de `docs/maestro/AXION_MAESTRO.md`, y el que convierte una
 //! frase de AXION en una medida:
@@ -55,6 +56,25 @@ static mut EXP: u8 = 0;
 /// Los ultimos milivatios calculados: `(paquete, nucleo)`.
 static mut ULTIMO: (u64, u64) = (0, 0);
 
+/// ** LOS ACUMULADOS (2026-09-12): energia desde el arranque, en UNIDADES del
+/// chip, sin dar la vuelta.
+///
+/// Son la pieza que sustituye a `PREV_*` para todo lector nuevo: el kernel no
+/// guarda "lo ultimo que alguien pregunto", guarda un contador que solo sube, y
+/// cada lector resta el suyo (`bmo_juicio::consumo`).
+///
+/// ** Y hay que ACUMULAR, no solo leer: el registro es de 32 bits y a ~65 W da
+/// la vuelta cada ~16 minutos. Si nadie lo mira en dos vueltas, se pierde una.
+/// Por eso `acumular` corre desde el tick una vez por segundo, pase lo que pase.
+///
+/// [!] Sin cerrojo, y es seguro por construccion: los dos que escriben son el
+/// tick (una interrupcion, con IF a cero) y la puerta de `INFO` (un syscall, con
+/// IF a cero por `SFMASK`), y los dos corren en el BSP. No pueden solaparse.
+static mut ACUM_PKG: u64 = 0;
+static mut ACUM_NUC: u64 = 0;
+static mut CRUDO_PKG: u32 = 0;
+static mut CRUDO_NUC: u32 = 0;
+
 /// **Pregunta si este CPU sabe decir lo que gasta, y se apunta la respuesta.**
 ///
 /// Una vez, en el arranque. Ver [`crate::ring0::cpu::frequency::init`]: mismo
@@ -71,6 +91,8 @@ pub fn init() {
             PREV_PKG = e.paquete;
             PREV_NUC = e.nucleo;
             PREV_TSC = crate::ring0::task::scheduler::rdtsc();
+            CRUDO_PKG = e.paquete;
+            CRUDO_NUC = e.nucleo;
             // La unidad se DICE. Es el unico hecho que se le pregunto al chip, y
             // si algun dia los vatios salen raros, este numero es lo primero que
             // hay que mirar -- un exponente distinto son vatios distintos por un
@@ -89,6 +111,42 @@ pub fn init() {
 /// Lo soporta esta maquina?
 pub fn disponible() -> bool {
     unsafe { HAY }
+}
+
+/// **Suma lo que avanzo el registro desde la ultima vez.** Lo llama el tick
+/// cada segundo y [`energia_uj`] antes de contestar. Ver `ACUM_PKG`.
+pub fn acumular() {
+    if !unsafe { HAY } {
+        return;
+    }
+    let Some(leer) = lector() else { return };
+    let Some(e) = leer() else { return };
+    unsafe {
+        // `wrapping_sub` da bien UNA vuelta. Dos entre lecturas no se pueden
+        // ver desde aqui -- por eso el tick llama cada segundo y no cada hora.
+        ACUM_PKG += e.paquete.wrapping_sub(CRUDO_PKG) as u64;
+        ACUM_NUC += e.nucleo.wrapping_sub(CRUDO_NUC) as u64;
+        CRUDO_PKG = e.paquete;
+        CRUDO_NUC = e.nucleo;
+    }
+}
+
+/// **Microjulios desde el arranque**: `(paquete, nucleo)`. `(0, 0)` = no se sabe.
+///
+/// Un contador que solo sube: el consumo de un rato es la RESTA de dos lecturas,
+/// y la hace quien pregunta. Dos lectores ya no se roban el intervalo.
+pub fn energia_uj() -> (u64, u64) {
+    if !unsafe { HAY } {
+        return (0, 0);
+    }
+    acumular();
+    let (pkg, nuc, exp) = unsafe { (ACUM_PKG, ACUM_NUC, EXP) };
+    if exp >= 64 {
+        return (0, 0);
+    }
+    // `u128`: unidades por un millon desborda 64 bits en ~50 dias a 65 W.
+    let uj = |u: u64| ((u as u128 * 1_000_000) >> exp) as u64;
+    (uj(pkg), uj(nuc))
 }
 
 /// **Milivatios desde la ultima vez que se pregunto**: `(paquete, nucleo)`.

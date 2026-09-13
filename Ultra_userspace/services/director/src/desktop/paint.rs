@@ -390,10 +390,10 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
     // ya lo mide, y el cuarto de segundo lo pone ahora el reloj de referencia.
     if (dsk.win.cpu_open || dsk.win.mem_open) && dsk.tick.quarter {
         if dsk.win.cpu_open {
-            scene::vitals::paint(&p, &dsk.win.cpu, dsk.tick.loops_per_second);
+            scene::vitals::paint(&p, &dsk.win.cpu, dsk.tick.loops_per_second, dsk.tick.consumo.ultimo);
         }
         if dsk.win.mem_open {
-            scene::vitals::paint(&p, &dsk.win.mem, dsk.tick.loops_per_second);
+            scene::vitals::paint(&p, &dsk.win.mem, dsk.tick.loops_per_second, dsk.tick.consumo.ultimo);
         }
     }
 
