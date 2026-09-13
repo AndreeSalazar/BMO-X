@@ -215,6 +215,7 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         dsk.win.data_open,
         dsk.win.data.chrome.minimized,
         dsk.win.cabina_open,
+        dsk.table.estado_fichas(),
     );
     if taskbar_state != dsk.win.taskbar_state_before {
         dsk.win.taskbar_state_before = taskbar_state;
@@ -250,6 +251,33 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
             dsk.win.cabina_open && dsk.win.top_before == Ventana::Cabina,
             !dsk.win.cabina_open,
         );
+        // -- ** LAS FICHAS DE LAS APPS (2026-09-12) --
+        //
+        // Una por app abierta, detras de CABINA. Sin ellas, minimizar una app
+        // era perderla: DOOM minimizado no tenia ficha ni volvia con Alt+Tab.
+        //
+        // Si cambia CUANTAS hay, los instrumentos se corren: se borra la tira
+        // entera desde la primera ficha de app hasta el borde, y los
+        // instrumentos se vuelven a pintar en su sitio nuevo con
+        // `olvidar_la_barra` de abajo. Sin el borrado quedaria el testigo viejo
+        // asomando detras del nuevo.
+        let (fichas, n) = dsk.table.fichas();
+        if n as u32 != scene::apps_en_barra() {
+            let (fx, fy, _, fh) = scene::chip_box(scene::FICHA_APPS);
+            p.rect(fx, fy, p.ancho.saturating_sub(fx), fh, TASKBAR);
+            scene::poner_apps_en_barra(n as u32);
+        }
+        for (k, &hueco) in fichas[..n].iter().enumerate() {
+            let v = Ventana::App(hueco as u8);
+            scene::paint_chip(
+                &p,
+                scene::FICHA_APPS + k as u32,
+                v.nombre(),
+                0x0060_A5FA,
+                dsk.win.focus.actual() == Some(v),
+                dsk.table.minimizada(hueco),
+            );
+        }
         // El testigo del USB vive en la misma barra, en la ranura siguiente a
         // CABINA. Repintar las fichas no lo toca --esta despues-- pero SI lo
         // tapa lo que repinta la barra entera, y de ahi se vuelve por aqui:

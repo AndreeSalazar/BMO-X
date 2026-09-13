@@ -97,7 +97,7 @@ pub(crate) fn refrescar(p: &bmo::Pantalla, v: &bmo::Volcado) {
     if !cambio(unsafe { &mut *core::ptr::addr_of_mut!(HUELLA) }, firma(v)) {
         return;
     }
-    let (x0, y, _, h) = chip_box(super::testigo::RANURA);
+    let (x0, y, _, h) = chip_box(super::testigo::ranura());
     let x = x0 + TRAS_PULSO;
     // Misma regla que el pulso y el testigo: si no cabe, no se pinta. Pintar
     // encima de otra cosa es peor que no pintar.

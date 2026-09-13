@@ -29,8 +29,20 @@ pub(crate) fn on_pointer(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Golpe) {
     // se olvida de mis clics"*, y con razon: un control que a veces
     // responde y a veces no es peor que uno que no esta.
     if button && !dsk.tick.button_before && pos.y < TASKBAR_H {
-        if let Some(i) = scene::chip_at(pos.x, pos.y, 3) {
-            if i == 1 && dsk.win.data_open {
+        let (fichas, n) = dsk.table.fichas();
+        if let Some(i) = scene::chip_at(pos.x, pos.y, scene::FICHA_APPS + n as u32) {
+            if i >= scene::FICHA_APPS {
+                // ** LA FICHA DE UNA APP (2026-09-12): la trae --este minimizada
+                // o detras--, le da el foco y la pone delante. Es la misma regla
+                // que las otras fichas: una ficha hace SIEMPRE lo mismo.
+                let hueco = fichas[(i - scene::FICHA_APPS) as usize];
+                if dsk.table.traer(hueco, &p) {
+                    let v = Ventana::App(hueco as u8);
+                    dsk.win.focus.open(v);
+                    dsk.win.focus.clic_en(v);
+                    dsk.win.taskbar_dirty = true;
+                }
+            } else if i == 1 && dsk.win.data_open {
                 // Estaba minimizada o no, da igual: acaba visible,
                 // encajada, con el foco y delante.
                 dsk.win.data.chrome.minimized = false;

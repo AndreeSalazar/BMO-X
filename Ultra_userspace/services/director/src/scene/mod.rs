@@ -329,6 +329,35 @@ pub(crate) fn chip_at(px: u32, py: u32, count: u32) -> Option<u32> {
     None
 }
 
+/// ** DONDE EMPIEZAN LAS FICHAS DE LAS APPS: justo detras de CABINA (2026-09-12).
+///
+/// Hasta hoy la barra tenia tres fichas FIJAS -- Ejecutar, ESTRATOS y CABINA --
+/// y una app no tenia ninguna. Minimizar DOOM lo hacia desaparecer: ni ficha,
+/// y Alt+Tab lo nombraba "App 1" pero soltarlo encima no lo traia. El dueno:
+/// *"al minimizar no encontre la app, ni en Alt+Tab, es como que se desaparecio"*.
+///
+/// Van ANTES que los instrumentos (el testigo del USB y los que se pintan a su
+/// derecha), y esos se corren: una ventana perdida es peor que un instrumento
+/// que no cabe, y los instrumentos ya saben encogerse o callarse.
+pub(crate) const FICHA_APPS: u32 = 3;
+
+/// Cuantas fichas de apps hay pintadas ahora. Lo pone quien las pinta y lo
+/// leen los instrumentos para saber donde empieza su ranura.
+///
+/// ** Un atomico y no un argumento, a proposito: los instrumentos se pintan
+/// desde cuatro sitios y cada uno se llama por su cuenta. Pasarles el numero
+/// seria tocar cuatro firmas para leer una cifra que solo cambia al abrir o
+/// cerrar una app. Un escritor (`paint.rs`), varios lectores.
+static APPS_EN_BARRA: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+
+pub(crate) fn apps_en_barra() -> u32 {
+    APPS_EN_BARRA.load(core::sync::atomic::Ordering::Relaxed)
+}
+
+pub(crate) fn poner_apps_en_barra(n: u32) {
+    APPS_EN_BARRA.store(n, core::sync::atomic::Ordering::Relaxed);
+}
+
 /// Pinta una ficha. `color` es el de su ventana -- el mismo idioma que el punto
 /// de su barra de titulo, para que se sepa cual es sin leerla.
 pub(crate) fn paint_chip(

@@ -59,7 +59,7 @@ const ANCHO_CORTO: u32 = 150;
 
 /// **Pintar lo ya decidido.** Aqui no se pregunta nada: llega resuelto.
 pub(crate) fn pintar(p: &bmo::Pantalla, d: &Dictamen) {
-    let (x0, y, _, h) = chip_box(super::super::testigo::RANURA);
+    let (x0, y, _, h) = chip_box(super::super::testigo::ranura());
     let x = x0 + TRAS_TESTIGO;
     // ** SE ENCOGE ANTES DE CALLARSE. Ver la cabecera: el orden de lo que se
     // sacrifica no es de gusto, es de para que existe la caja.

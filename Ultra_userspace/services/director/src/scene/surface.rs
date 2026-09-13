@@ -1020,4 +1020,56 @@ impl Table {
     pub(crate) fn get_mut(&mut self, i: usize) -> Option<&mut Surface> {
         self.sup.get_mut(i)?.as_mut()
     }
+
+    /// ** LAS FICHAS DE LA BARRA: los huecos ocupados, EN ORDEN y SIN AGUJEROS
+    /// (2026-09-12). La ficha `k` es la app `fichas[k]`. Sin agujeros porque
+    /// cerrar la primera no puede dejar un hueco vacio en la barra con las otras
+    /// detras. Lo usan quien pinta y quien recibe el clic: la misma lista.
+    pub(crate) fn fichas(&self) -> ([usize; MAX], usize) {
+        let mut lista = [0usize; MAX];
+        let mut n = 0;
+        for (i, s) in self.sup.iter().enumerate() {
+            if s.is_some() {
+                lista[n] = i;
+                n += 1;
+            }
+        }
+        (lista, n)
+    }
+
+    /// Que hay y que esta minimizado, en un byte: los 4 bits bajos dicen que
+    /// hueco esta ocupado y los 4 altos cual esta minimizado. Es lo que la barra
+    /// compara con el fotograma anterior para saber si repintarse.
+    pub(crate) fn estado_fichas(&self) -> u8 {
+        let mut b = 0u8;
+        for (i, s) in self.sup.iter().enumerate() {
+            if let Some(s) = s {
+                b |= 1 << i;
+                if s.chrome.minimized {
+                    b |= 1 << (i + 4);
+                }
+            }
+        }
+        b
+    }
+
+    pub(crate) fn minimizada(&self, i: usize) -> bool {
+        self.sup.get(i).and_then(|s| s.as_ref()).is_some_and(|s| s.chrome.minimized)
+    }
+
+    /// ** TRAER la app `i`: deja de estar minimizada, se encaja en el panel y se
+    /// repinta ENTERA -- marco y pixeles. `true` si habia tal app.
+    ///
+    /// Lo llaman la ficha de la barra y el soltar de Alt+Tab, y por eso vive
+    /// aqui: dos caminos que traen una ventana de dos formas distintas son dos
+    /// ventanas que vuelven distintas.
+    pub(crate) fn traer(&mut self, i: usize, p: &bmo::Pantalla) -> bool {
+        let Some(s) = self.get_mut(i) else {
+            return false;
+        };
+        s.chrome.minimized = false;
+        s.chrome.fit(p);
+        s.repaint_all();
+        true
+    }
 }

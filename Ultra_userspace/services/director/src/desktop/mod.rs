@@ -169,7 +169,9 @@ pub(crate) struct Windows {
     pub top_before: Ventana,
     pub visible: bool,
     pub taskbar_dirty: bool,
-    pub taskbar_state_before: (bool, Ventana, bool, bool, bool),
+    /// El ultimo `u8` son las APPS (`Table::estado_fichas`): sin el, minimizar o
+    /// abrir una app no repintaba la barra, y su ficha no existia.
+    pub taskbar_state_before: (bool, Ventana, bool, bool, bool, u8),
     pub switcher_painted: bool,
     /// Si la ventanita del gato esta pintada. La borra quien la pinto: ver
     /// `scene::nya`.
@@ -198,7 +200,7 @@ impl Windows {
             top_before: Ventana::Run,
             visible: true,
             taskbar_dirty: true,
-            taskbar_state_before: (false, Ventana::Run, false, false, false),
+            taskbar_state_before: (false, Ventana::Run, false, false, false, 0),
             switcher_painted: false,
             nya_painted: false,
             alt_before: false,

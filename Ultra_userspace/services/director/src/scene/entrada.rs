@@ -109,7 +109,7 @@ pub(crate) fn refrescar(p: &bmo::Pantalla) {
         return;
     }
 
-    let (x0, y, _, h) = chip_box(super::testigo::RANURA);
+    let (x0, y, _, h) = chip_box(super::testigo::ranura());
     let x = x0 + TRAS_VOLCADO;
     // Misma regla que sus tres vecinos: si no cabe, no se pinta. Pintar encima
     // de otra cosa es peor que no pintar.
