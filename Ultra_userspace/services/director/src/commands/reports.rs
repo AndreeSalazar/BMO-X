@@ -149,12 +149,20 @@ pub(crate) fn report_consumo(s: &mut Output, t: &crate::desktop::Tick) {
     // 16-08 y este bucle nunca pregunto. Ver `Tick::trafico_x10`.
     fila_mili(s, b"trafico", (t.trafico_x10 as u64) * 100, b"p/vuelta",
               b"[!] de TODA la maquina, no solo de aqui: con una app corriendo");
-    // El precio de una puerta esta MEDIDO --969 ciclos, no ticks-- y con el
-    // trafico se convierte en lo unico que se puede comparar con un vatio:
-    // que parte del CPU se va en cruzarla.
-    let ciclos_vuelta = (t.trafico_x10 as u64) * 969 / 10;
-    fila(s, b"en puertas", ciclos_vuelta, b"c/vuelta",
-         b"trafico x 969, que es lo que cuesta una puerta MEDIDA");
+    // El precio de una puerta esta MEDIDO, y con el trafico se convierte en
+    // lo unico que se puede comparar con un vatio: que parte del CPU se va en
+    // cruzarla.
+    //
+    // *** Aqui ponia 969 CICLOS hasta el 2026-09-12, y estaba mal dos veces.
+    // Era la medida del 17-08 (792 ticks), y M0b la bajo el 09-09 a 675 al
+    // quitar el cerrojo del planificador de toda puerta (Ep. 70). Y eran
+    // CICLOS divididos mas abajo por la frecuencia del TSC, que cuenta TICKS:
+    // mezclaba dos relojes y el ppm salia un 22% alto. En ticks, la cuenta de
+    // abajo es exacta sin convertir nada.
+    const PUERTA_TICKS: u64 = 675;
+    let ticks_vuelta = (t.trafico_x10 as u64) * PUERTA_TICKS / 10;
+    fila(s, b"en puertas", ticks_vuelta, b"t/vuelta",
+         b"trafico x 675 ticks: una puerta pelada MEDIDA (M0b, 09-09)");
     let hz_t = bmo::info(bmo::INFO_TSC_HZ);
     // [!] AQUI HABIA UNA BARRA, Y EN EL METAL SALIO "del cpu 2169076 ... 0%".
     //
@@ -163,7 +171,7 @@ pub(crate) fn report_consumo(s: &mut Output, t: &crate::desktop::Tick) {
     // Una barra que siempre sale vacia no ensena nada; un numero sin unidad
     // ensena algo falso. Partes por millon de UN nucleo se leen enteras.
     if hz_t > 0 && t.loops_per_second > 0 {
-        let ppm = (ciclos_vuelta * t.loops_per_second as u64)
+        let ppm = (ticks_vuelta * t.loops_per_second as u64)
             .saturating_mul(1_000_000) / hz_t;
         fila(s, b"de un nucleo", ppm, b"ppm",
              b"partes por millon: 10.000 ppm son un 1 %");
