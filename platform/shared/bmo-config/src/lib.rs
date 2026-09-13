@@ -198,6 +198,58 @@ impl Estilo {
         inf
     }
 
+    /// **El mismo estilo, como texto que [`Estilo::aplicar`] vuelve a leer igual.**
+    /// Lo usa el editor de aspecto para GUARDAR. Devuelve los bytes escritos; lo
+    /// que no quepa en `dst` se corta, y quien llama tiene que darle sitio (con
+    /// 1 KiB sobra).
+    pub fn escribir(&self, dst: &mut [u8]) -> usize {
+        struct W<'a> {
+            d: &'a mut [u8],
+            n: usize,
+        }
+        impl W<'_> {
+            fn pega(&mut self, s: &[u8]) {
+                for &b in s {
+                    if self.n < self.d.len() {
+                        self.d[self.n] = b;
+                        self.n += 1;
+                    }
+                }
+            }
+            fn color(&mut self, clave: &[u8], c: u32) {
+                self.pega(clave);
+                self.pega(b" = #");
+                for i in (0..6).rev() {
+                    self.pega(&[b"0123456789ABCDEF"[((c >> (i * 4)) & 0xF) as usize]]);
+                }
+                self.pega(b"\n");
+            }
+            fn si_no(&mut self, clave: &[u8], v: bool) {
+                self.pega(clave);
+                self.pega(if v { b" = si\n" } else { b" = no\n" });
+            }
+        }
+        let mut w = W { d: dst, n: 0 };
+        w.pega(b"# director.cfg -- guardado por el editor de aspecto (`aspecto` en Ejecutar)\n");
+        w.color(b"fondo_arriba", self.fondo_arriba);
+        w.color(b"fondo_abajo", self.fondo_abajo);
+        w.color(b"acento", self.acento);
+        w.color(b"barra_fondo", self.barra_fondo);
+        w.color(b"barra_borde", self.barra_borde);
+        w.si_no(b"barra_flotante", self.barra_flotante);
+        w.pega(b"barra_hueco = ");
+        let h = self.barra_hueco.min(99);
+        if h >= 10 {
+            w.pega(&[b'0' + (h / 10) as u8]);
+        }
+        w.pega(&[b'0' + (h % 10) as u8, b'\n']);
+        w.si_no(b"cpu", self.cpu);
+        w.si_no(b"memoria", self.memoria);
+        w.si_no(b"vatios", self.vatios);
+        w.si_no(b"reloj", self.reloj);
+        w.n
+    }
+
     fn poner(&mut self, clave: &[u8], v: &[u8]) -> Result<(), Motivo> {
         let col = || color(v).ok_or(Motivo::Color);
         let sn = || si_no(v).ok_or(Motivo::SiNo);
@@ -316,6 +368,24 @@ mod pruebas {
             assert_eq!(color(malo), None, "{:?}", core::str::from_utf8(malo));
         }
         assert_eq!(color(b"0xFFaa00"), Some(0x00FF_AA00));
+    }
+
+    /// ** LO QUE GUARDA EL EDITOR SE VUELVE A LEER IGUAL: sin esto, guardar el
+    /// aspecto y reiniciar podria devolver otro escritorio.
+    #[test]
+    fn lo_escrito_se_lee_igual() {
+        let mut e = BASE;
+        e.acento = 0x00C0_84FC;
+        e.barra_flotante = false;
+        e.barra_hueco = 11;
+        e.vatios = false;
+        let mut buf = [0u8; 1024];
+        let n = e.escribir(&mut buf);
+        let mut leido = Estilo { acento: 0, barra_hueco: 0, ..BASE };
+        let inf = leido.aplicar(&buf[..n]);
+        assert_eq!(inf.fallos(), &[], "{}", String::from_utf8_lossy(&buf[..n]));
+        assert_eq!(leido, e);
+        assert_eq!(inf.aplicadas, 11, "las once claves, todas");
     }
 
     #[test]

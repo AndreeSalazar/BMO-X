@@ -55,6 +55,8 @@ pub(crate) enum Command<'a> {
     Help,
     /// Ensena o esconde la calculadora.
     Calculator,
+    /// El editor de aspecto: `aspecto` (2026-09-13). Ver `desktop::aspecto`.
+    Aspecto,
     /// `sella` escrito AQUI, donde ya no vive: la orden se mudo a la ventana de
     /// ESTRATOS (F12, tecla `S`) y esto lleva la nota con la direccion nueva.
     SealMoved,
@@ -324,6 +326,7 @@ pub(crate) fn parse(line: &[u8]) -> Command<'_> {
             if rest.is_empty() { Command::Help } else { Command::Launch(rest) }
         }
         b"calc" | b"calculadora" => Command::Calculator,
+        b"aspecto" | b"estilo" => Command::Aspecto,
         // * El numero que decide si hace falta una GPU. Ver `Volcado`.
         b"perf" | b"pinta" => Command::PaintCost,
         // * `sella` -- Y ANTES ERAN DOS PALABRAS, POR UN MIEDO MAL PUESTO.

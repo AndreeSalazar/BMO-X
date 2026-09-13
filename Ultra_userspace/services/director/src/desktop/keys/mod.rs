@@ -337,6 +337,12 @@ pub(crate) fn dispatch(
     g: &Gathered,
 ) -> Option<([u8; PATH_MAX], usize)> {
     for &c in &g.keys[..g.nt] {
+        // ** EL EDITOR DE ASPECTO se queda con TODAS las teclas mientras esta
+        // abierto: sus flechas no son del historial de Ejecutar. ESC lo cierra.
+        if crate::desktop::aspecto::activo() {
+            crate::desktop::aspecto::on_key(dsk, p, c);
+            continue;
+        }
         if shortcuts::on_key(dsk, p, c, g.alt_alone, g.m) == Key::Taken {
             continue;
         }

@@ -37,6 +37,9 @@ pub(crate) mod tick;
 pub(crate) mod calc;
 /// LANZAR DESDE CUALQUIER SITIO: una ranura que `_start` vacia (2026-09-13).
 pub(crate) mod abrir;
+/// EL EDITOR DE ASPECTO: `aspecto` en Ejecutar, en vivo y guardado en
+/// `sys/director.cfg` (2026-09-13).
+pub(crate) mod aspecto;
 pub(crate) mod keys;
 pub(crate) mod mouse;
 pub(crate) mod paint;

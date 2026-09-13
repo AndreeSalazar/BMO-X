@@ -44,6 +44,11 @@ pub(crate) fn estilo() -> &'static Estilo {
     unsafe { &*addr_of!(ESTILO) }
 }
 
+/// Cambia el estilo en vivo. Lo usa el editor de aspecto; quien llame repinta.
+pub(crate) fn poner(e: Estilo) {
+    unsafe { *addr_of_mut!(ESTILO) = e };
+}
+
 /// Lee `sys/director.cfg`. Si no esta, se queda lo de siempre: no tener fichero
 /// no es un fallo, es no haber cambiado nada.
 pub(crate) fn cargar() {

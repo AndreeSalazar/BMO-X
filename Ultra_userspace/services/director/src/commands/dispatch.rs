@@ -48,6 +48,11 @@ pub(crate) fn dispatch(dsk: &mut Desktop, p: &bmo::Pantalla, cmd: Command) -> Af
         Command::NotLinux(verb) => shell::not_linux(dsk, p, verb),
         Command::PaintCost => shell::paint_cost(dsk, p),
         Command::Calculator => shell::calculator(dsk, p),
+        Command::Aspecto => {
+            dsk.field.n = 0;
+            crate::desktop::aspecto::abrir(dsk, p);
+            After::Settle
+        }
         Command::Clear => shell::clear(dsk, p),
         Command::Help => shell::help(dsk, p),
         Command::Guia => guia::guia(dsk, p),
