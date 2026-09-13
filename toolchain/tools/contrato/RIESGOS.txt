@@ -11,13 +11,24 @@
 # El numero va solo en la primera linea util. Lo de abajo es el inventario, y es
 # comentario: esta para leerlo, no para juzgarlo.
 
-21
+92
+# AJENO              Ultra_kernel_x86-64/kernel/src/ring0/cabina/caida.rs
 # SILENCIO           Ultra_kernel_x86-64/kernel/src/ring0/core/autopsy.rs
+# ESPEJO SILENCIO    Ultra_kernel_x86-64/kernel/src/ring0/core/desmontaje.rs
 #                    Ultra_kernel_x86-64/kernel/src/ring0/core/gato/masks.rs
 # AJENO SILENCIO     Ultra_kernel_x86-64/kernel/src/ring0/core/purga.rs
+# SILENCIO           Ultra_kernel_x86-64/kernel/src/ring0/dev/disk/centinela.rs
+#                    Ultra_kernel_x86-64/kernel/src/ring0/dev/portero/mod.rs
+# AJENO SILENCIO     Ultra_kernel_x86-64/kernel/src/ring0/dev/portero/roja.rs
+# SILENCIO           Ultra_kernel_x86-64/kernel/src/ring0/dev/portero/verde.rs
+# SILENCIO           Ultra_kernel_x86-64/kernel/src/ring0/dev/usb/portero.rs
 # ESPEJO             Ultra_kernel_x86-64/kernel/src/ring0/mm/phys/amarilla.rs
 # ESPEJO             Ultra_kernel_x86-64/kernel/src/ring0/mm/phys/mod.rs
 # ESPEJO             Ultra_kernel_x86-64/kernel/src/ring0/mm/phys/roja.rs
+# ESPEJO             Ultra_kernel_x86-64/kernel/src/ring0/mm/titular/amarilla.rs
+# ESPEJO SILENCIO    Ultra_kernel_x86-64/kernel/src/ring0/mm/titular/mod.rs
+# SILENCIO           Ultra_kernel_x86-64/kernel/src/ring0/mm/titular/roja.rs
+#                    Ultra_kernel_x86-64/kernel/src/ring0/mm/titular/verde.rs
 # ESPEJO             Ultra_kernel_x86-64/kernel/src/ring0/mm/vmm/amarilla.rs
 # AJENO ESPEJO       Ultra_kernel_x86-64/kernel/src/ring0/mm/vmm/mod.rs
 # AJENO              Ultra_kernel_x86-64/kernel/src/ring0/mm/vmm/roja.rs
@@ -27,9 +38,69 @@
 # SILENCIO ESPEJO    Ultra_kernel_x86-64/kernel/src/ring0/plat/faults/amarilla.rs
 # AJENO              Ultra_kernel_x86-64/kernel/src/ring0/plat/faults/roja.rs
 #                    Ultra_kernel_x86-64/kernel/src/ring0/plat/faults/verde.rs
+# ESPEJO             Ultra_kernel_x86-64/kernel/src/ring0/plat/perfil_placa.rs
+# ESPEJO SILENCIO    Ultra_kernel_x86-64/kernel/src/ring0/plat/smp/atril.rs
+# SILENCIO           Ultra_kernel_x86-64/kernel/src/ring0/plat/smp/dormir.rs
+# SILENCIO ESPEJO    Ultra_kernel_x86-64/kernel/src/ring0/plat/smp/ficha.rs
 # AJENO              Ultra_kernel_x86-64/kernel/src/ring0/task/admitir.rs
 # AJENO              Ultra_kernel_x86-64/kernel/src/ring0/task/scheduler/roja.rs
 #                    Ultra_kernel_x86-64/kernel/src/ring0/task/scheduler/verde.rs
+# AJENO SILENCIO     Ultra_userspace/services/director/src/commands/reports.rs
+# ESPEJO             Ultra_userspace/services/director/src/commands/tabla.rs
+# RELOJ SILENCIO     Ultra_userspace/services/director/src/desktop/tick/amarilla.rs
+# RELOJ SILENCIO     Ultra_userspace/services/director/src/desktop/tick/mod.rs
+# RELOJ AJENO        Ultra_userspace/services/director/src/desktop/tick/roja.rs
+# SILENCIO RELOJ     Ultra_userspace/services/director/src/scene/pulso/amarilla.rs
+# SILENCIO RELOJ     Ultra_userspace/services/director/src/scene/pulso/mod.rs
+#                    Ultra_userspace/services/director/src/scene/pulso/verde.rs
+# ESPEJO SILENCIO    Ultra_userspace/userland/src/pantalla/amarilla.rs
+# AJENO SILENCIO     Ultra_userspace/userland/src/pantalla/roja.rs
+# ESPEJO             Ultra_userspace/userland/src/pantalla/verde.rs
+# AJENO ESPEJO       Ultra_userspace/userland/src/paquete.rs
+# UNICO              platform/abi/bmo-abi/src/fundamentals/allocator/mod.rs
+# AJENO              platform/abi/bmo-abi/src/fundamentals/buffer/mod.rs
+# SILENCIO           platform/abi/bmo-abi/src/fundamentals/capability/mod.rs
+# ESPEJO             platform/abi/bmo-abi/src/fundamentals/convert/mod.rs
+# ESPEJO             platform/abi/bmo-abi/src/fundamentals/error/mod.rs
+# SILENCIO           platform/abi/bmo-abi/src/fundamentals/fmt/mod.rs
+# ESPEJO UNICO       platform/abi/bmo-abi/src/fundamentals/handle/kind.rs
+# UNICO              platform/abi/bmo-abi/src/fundamentals/handle/mod.rs
+# SILENCIO           platform/abi/bmo-abi/src/fundamentals/handle/opaque.rs
+# UNICO              platform/abi/bmo-abi/src/fundamentals/handle/ops.rs
+# AJENO              platform/abi/bmo-abi/src/fundamentals/memory/mod.rs
+# SILENCIO           platform/abi/bmo-abi/src/fundamentals/option/mod.rs
+# SILENCIO           platform/abi/bmo-abi/src/fundamentals/primitives/bool.rs
+# SILENCIO           platform/abi/bmo-abi/src/fundamentals/primitives/floats.rs
+# ESPEJO             platform/abi/bmo-abi/src/fundamentals/primitives/ints.rs
+# ESPEJO             platform/abi/bmo-abi/src/fundamentals/primitives/mod.rs
+# SILENCIO           platform/abi/bmo-abi/src/fundamentals/result/mod.rs
+# SILENCIO           platform/abi/bmo-abi/src/fundamentals/status/code.rs
+# ESPEJO             platform/abi/bmo-abi/src/fundamentals/status/error.rs
+# SILENCIO           platform/abi/bmo-abi/src/fundamentals/status/mod.rs
+# AJENO              platform/abi/bmo-abi/src/fundamentals/string/mod.rs
+# RELOJ              platform/abi/bmo-abi/src/fundamentals/sync/mod.rs
+# AJENO              platform/drivers/gpu/rdna4/src/psp.rs
+# SILENCIO           platform/drivers/net/src/anillo.rs
 # SILENCIO           platform/drivers/net/src/lib.rs
+# SILENCIO           platform/drivers/storage/ahci/src/arranque.rs
+# SILENCIO           platform/drivers/storage/ahci/src/comando.rs
+# SILENCIO           platform/drivers/storage/ahci/src/controller.rs
+# SILENCIO           platform/drivers/usb/xhci/src/enumerar.rs
+# SILENCIO           platform/drivers/usb/xhci/src/lib.rs
+# SILENCIO           platform/drivers/usb/xhci/src/transferencia.rs
+# AJENO              platform/shared/bmo-dma-forma/src/lib.rs
+# SILENCIO           platform/shared/bmo-dma-juicio/src/lib.rs
 # ESPEJO             platform/shared/bmo-fisica-juicio/src/lib.rs
-# ESPEJO SILENCIO   toolchain/lang/c/src/tipos.rs
+# ESPEJO SILENCIO    platform/shared/bmo-orquesta/src/lib.rs
+# AJENO              toolchain/lang/c/src/codegen/bex.rs
+# ESPEJO             toolchain/lang/c/src/codegen/decidir/imagen.rs
+# SILENCIO ESPEJO    toolchain/lang/c/src/codegen/decidir/plegado.rs
+# ESPEJO             toolchain/lang/c/src/codegen/disposicion.rs
+# ESPEJO SILENCIO    toolchain/lang/c/src/codegen/emitir/direccion.rs
+# ESPEJO             toolchain/lang/c/src/codegen/emitir/mod.rs
+# AJENO              toolchain/lang/c/src/codegen/emitir/orden.rs
+# SILENCIO           toolchain/lang/c/src/codegen/emitir/valor.rs
+# ESPEJO SILENCIO    toolchain/lang/c/src/tipos.rs
+# ESPEJO             toolchain/tools/bmo-firmar/src/bex.rs
+# UNICO              toolchain/tools/bmo-firmar/src/llave.rs
+# ESPEJO             toolchain/tools/bmo-firmar/src/main.rs
