@@ -160,6 +160,55 @@ funcion et_puertas devuelve natural64
 funcion et_fin devuelve natural64
     devuelve 3251720329925504301
 
+funcion et_el_jefe devuelve natural64
+    devuelve 4207882012605836389
+
+funcion et_inexist devuelve natural64
+    devuelve 2338621003340803689
+
+funcion et_sin_perm devuelve natural64
+    devuelve 7886477429734009203
+
+funcion et_bandera devuelve natural64
+    devuelve 2333271861756846434
+
+# ===================================================================
+#  ** CUANDO EL JEFE DICE QUE NO, Y POR QUE (2026-09-12)
+# ===================================================================
+#
+# Eddi: *"hola jefe, me das los informes? ... pero si el jefe dice NO"*.
+#
+# Hasta hoy el kernel no decia NO nunca: un campo que no existe valia 0, que es
+# lo mismo que un contador a cero. Ahora hay dos noes, y viajan en el CODIGO:
+#
+#     `invoca`         el codigo: 32 bits de motivo, y encima las banderas
+#     `invoca_valor`   el valor, que en un NO es 0
+#
+#     inexist   10     `error_no_existe`: el kernel no tiene ese campo
+#     sin perm   3     `error_sin_permiso`: es la memoria de OTROS procesos
+#     bandera   16     `bandera_falta_capability`: y te falta autoridad
+#
+# ** `sin perm` sale 0 --un SI-- si la sonda la lanza el `run` del shell de
+# Ring 0, que tiene autoridad de lanzar. Desde el escritorio, 3. Los dos son la
+# respuesta correcta, y por eso se imprime el numero en vez de "fallo".
+
+funcion codigo_de(r es natural64) devuelve natural64
+    devuelve r bits_y 4294967295
+
+funcion banderas_de(r es natural64) devuelve natural64
+    devuelve r desplaza derecha 32
+
+funcion el_jefe_dice
+    palabra(et_el_jefe())
+    salto()
+    # 254 no es ningun campo: el kernel llega a 0x68.
+    no_existe es natural64 = invoca(mi_tarea, op_info, 254, 0, 0)
+    linea(et_inexist(), codigo_de(no_existe))
+    de_otros es natural64 = invoca(mi_tarea, op_info, info_mem_quien_pid, 0, 0)
+    linea(et_sin_perm(), codigo_de(de_otros))
+    linea(et_bandera(), banderas_de(de_otros))
+    salto()
+
 # ===================================================================
 #  3. MEDIR -- durmiendo, no girando
 # ===================================================================
@@ -200,6 +249,7 @@ funcion principal devuelve entero32
     salto()
     linea(et_sensor(), pregunta(info_cpu_sensores))
     salto()
+    el_jefe_dice()
     cambiante n es natural64 = 0
     repite mientras n < 20
         espera_ms(500)

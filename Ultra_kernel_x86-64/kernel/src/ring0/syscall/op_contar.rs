@@ -45,8 +45,33 @@ pub(super) fn cabina_texto(arg0: u64, arg1: u64) -> BmoStatus {
         BmoStatus::ok_value(crate::ring0::cabina::texto(evento, cual, arg1))
 }
 
+//// ** SI ES SI, NO ES NO, Y EL NO SE ENTIENDE (L6i) -- desde el 2026-09-12.
+////
+//// Hasta hoy contestaba EXITO siempre, y un campo que no existe valia 0. Ahora
+//// hay DOS noes, cada uno con su codigo, y el valor a cero en los dos -- asi
+//// los paneles que solo leen el valor siguen igual:
+////
+////    el campo no existe          NO SOPORTADO
+////    es de OTROS procesos y      PERMISO DENEGADO + FALTA CAPABILITY
+////    no tienes autoridad
+////
+//// ** La autoridad es LANZAR, y no una tercera: quien lanza procesos es quien
+//// los administra -- el escritorio, y el `run` del shell de Ring 0. Una app
+//// lanzada desde Ring 3 no ve cuanto comen las demas. `task/autoridad.rs`
+//// pide, antes de inventar un bit nuevo, preguntar si la operacion no tiene ya
+//// dueno: aqui lo tiene.
 pub(super) fn info(arg0: u64, _arg1: u64) -> BmoStatus {
-        BmoStatus::ok_value(crate::ring0::core::report::campo(arg0))
+        use crate::ring0::core::report;
+        use crate::ring0::task::autoridad;
+        if report::es_de_otros(arg0)
+            && !autoridad::tiene(scheduler::current_pid(), autoridad::LANZAR)
+        {
+            return BmoStatus::err_with_flags(cap::ERROR_PERMISSION_DENIED, cap::FLAG_NEEDS_CAP);
+        }
+        match report::campo(arg0) {
+            Some(v) => BmoStatus::ok_value(v),
+            None => unsupported(),
+        }
 }
 
 pub(super) fn info_texto(arg0: u64, arg1: u64) -> BmoStatus {
