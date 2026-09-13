@@ -171,6 +171,15 @@ pub(crate) fn gather(dsk: &mut Desktop, e: &bmo::Entrada) -> Gathered {
 /// tap fires on RELEASE, and only if no character arrived in between.
 pub(crate) fn edges(dsk: &mut Desktop, p: &bmo::Pantalla, g: &Gathered) {
 
+    // -- El gato se cierra con la siguiente tecla o clic --
+    //
+    // Aqui, lo primero, y SIN quedarse la pulsacion: quien teclea despues de
+    // leerlo ya esta escribiendo la orden buena, y comerse esa letra seria
+    // castigarle por haberlo leido. Ver `scene::nya`.
+    if dsk.win.nya_painted && (g.nt > 0 || (g.pos.botones != 0 && !dsk.tick.button_before)) {
+        scene::nya::borrar(dsk, p);
+    }
+
     // -- Alt+Tab: el conmutador --
     //
     // La pila se reordena al SOLTAR, no en cada Tab: eso es lo que hace
