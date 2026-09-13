@@ -139,27 +139,36 @@ pub(crate) fn net(dsk: &mut Desktop, _p: &bmo::Pantalla, what: &[u8]) -> After {
     // Ring 3 PIDE y el kernel DECIDE -- la misma forma que el disco. Ninguna
     // operacion de esa puerta puede transmitir: `CR.TE` se queda apagado.
     if what == b"rx" {
+        // ** EL CERO QUE SALIO EN EL RYZEN (2026-09-13), con 16 tramas cogidas.
+        //
+        // Esto ensenaba lo que devolvia `sondear()`, y `RED_OP_ARMAR` YA SONDEA
+        // dentro: se lleva las tramas nuevas antes de que llegue esta pregunta.
+        // Asi que salia "tramas en esta vuelta: 0" y "el anillo se acaba de
+        // armar" con el receptor armado desde hacia minutos. Ahora se cuenta el
+        // TOTAL antes y despues: la resta es lo que llego desde la ultima vez
+        // que alguien miro, la haya contado quien la haya contado.
+        let antes = bmo::info(bmo::INFO_NET_RX_TRAMAS);
         match bmo::red::armar() {
             bmo::red::Armado::Ok => {
-                let n = bmo::red::sondear();
+                bmo::red::sondear();
+                let total = bmo::info(bmo::INFO_NET_RX_TRAMAS);
                 dsk.out.grid.with_ink(INK_GOOD);
-                dsk.out.grid.text(b"  receptor ARMADO
-");
+                dsk.out.grid.text(b"  receptor ARMADO\n");
                 dsk.out.grid.with_ink(INK_PLAIN);
-                dsk.out.grid.text(b"  tramas en esta vuelta: ");
-                dsk.out.grid.dec(n);
-                dsk.out.grid.text(b"
-");
-                if n == 0 {
-                    // ** CERO EN LA PRIMERA VUELTA ES LO ESPERADO, y decirlo es
-                    // lo que impide que el minuto siguiente se gaste buscando un
+                dsk.out.grid.text(b"  nuevas desde la ultima mirada: ");
+                dsk.out.grid.dec(total.saturating_sub(antes));
+                dsk.out.grid.text(b"\n  cogidas en total: ");
+                dsk.out.grid.dec(total);
+                dsk.out.grid.text(b" tramas, ");
+                dsk.out.grid.dec(bmo::info(bmo::INFO_NET_RX_BYTES));
+                dsk.out.grid.text(b" bytes\n");
+                if total == 0 {
+                    // ** CERO EN TOTAL justo al armar es LO ESPERADO, y decirlo
+                    // es lo que impide gastar el minuto siguiente buscando un
                     // fallo en un driver que funciona.
-                    dsk.out.grid.with_ink(INK_PLAIN);
-                    dsk.out.grid.text(b"  cero de momento es normal: el anillo se acaba de armar.
-");
-                    dsk.out.grid.text(b"  vuelve a escribir `net rx` en unos segundos.
-");
-                    dsk.out.grid.with_ink(INK_PLAIN);
+                    dsk.out.grid.text(b"  ninguna todavia: vuelve a escribir `red rx` en unos segundos.\n");
+                } else if total == antes {
+                    dsk.out.grid.text(b"  nada nuevo desde la ultima mirada: la red esta callada ahora.\n");
                 }
             }
             // ** Cada motivo por separado, porque mandan a mirar sitios

@@ -117,23 +117,31 @@ pub(crate) fn report_net(s: &mut Output, what: &[u8]) {
     // receptor no llegan tramas, y sin tramas no hay ARP, ni IP, ni TCP. Toda
     // la escalera de red estaba bloqueada por una linea que no existia.
     if what == b"rx" {
+        // ** Se cuenta el TOTAL antes y despues, y no lo que devuelve
+        // `sondear()`: `RED_OP_ARMAR` ya sondea dentro y se lleva las tramas
+        // nuevas, asi que el Ryzen ensenaba 0 con 16 cogidas (2026-09-13). La
+        // misma correccion que `commands::system::net`.
+        let antes = frames_rx;
         match bmo::red::armar() {
             bmo::red::Armado::Ok => {
-                let n = bmo::red::sondear();
+                bmo::red::sondear();
+                let total = bmo::info(bmo::INFO_NET_RX_TRAMAS);
                 label(s, b"receptor");
                 s.text(b"ARMADO");
                 s.byte(b'\n');
-                label(s, b"esta vuelta");
-                s.dec(n);
-                s.text(b" tramas");
-                if n == 0 {
-                    // ** Cero en la primera vuelta es LO ESPERADO, y decirlo
+                label(s, b"nuevas");
+                s.dec(total.saturating_sub(antes));
+                s.text(b" tramas desde la ultima mirada   (total ");
+                s.dec(total);
+                s.text(b")\n");
+                if total == 0 {
+                    // ** Cero EN TOTAL justo al armar es LO ESPERADO, y decirlo
                     // evita la tarde que se pierde buscando un bug en un driver
                     // que funciona. Es la leccion escrita del paso 1.
-                    s.text(b"   (normal: el anillo se acaba de armar)");
+                    s.text(b"    ninguna todavia: vuelve a escribir `red rx` en unos segundos\n");
+                } else if total == antes {
+                    s.text(b"    nada nuevo desde la ultima mirada: la red esta callada ahora\n");
                 }
-                s.byte(b'\n');
-                s.text(b"    vuelve a escribir `red rx` en unos segundos\n");
             }
             // [!] Sin cable NO es un fallo del anillo, y por eso tiene su
             // propio motivo: no van a llegar tramas por correcto que sea todo
@@ -224,7 +232,7 @@ pub(crate) fn report_net(s: &mut Output, what: &[u8]) {
 
     // 3. Estamos escuchando? 4. Llega algo?
     label(s, b"receptor");
-    if armed { s.text(b"ARMADO"); } else { s.text(b"apagado   (net rx en Ring 0)"); }
+    if armed { s.text(b"ARMADO"); } else { s.text(b"apagado   (escribe `red rx` para armarlo)"); }
     s.byte(b'\n');
 
     label(s, b"cogidas");
