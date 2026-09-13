@@ -27,6 +27,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-ritmo"
+version = "0.1.0"
+
+[[package]]
 name = "bmo-rtc"
 version = "1.0.0"
 
@@ -37,6 +41,7 @@ dependencies = [
  "bmo-dibujo",
  "bmo-golpe",
  "bmo-input",
+ "bmo-ritmo",
  "bmo-rtc",
  "bmo-userland",
 ]

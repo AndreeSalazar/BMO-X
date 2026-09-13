@@ -178,6 +178,10 @@ pub(crate) struct Surface {
     /// uno que ya se dijo -- y, cuando la app contesta con OTRO tamano (DOOM
     /// escala a enteros), para no volver a pedirselo en bucle.
     configurado: (u32, u32, u8),
+    /// ** E0 DEL PLAN DE RITMO (2026-09-12): los dos relojes de esta ventana.
+    /// La app publica, este proceso presenta, y `bmo-ritmo` dice quien espera a
+    /// quien. Lo lee `perf`. Ver `docs/maestro/INTI_Y_LA_GPU.md` sec. 6.
+    pub(crate) ritmo: bmo_ritmo::Ritmo,
 }
 
 impl Surface {
@@ -212,6 +216,7 @@ impl Surface {
             seq_oculta: cab.sequence,
             acusada: false,
             configurado: (cab.width, cab.height, 0),
+            ritmo: bmo_ritmo::Ritmo::nuevo(),
         };
         s.marcar_tomada(&cab);
         Some(s)
@@ -316,6 +321,7 @@ impl Surface {
         // Se apunta DESPUES de pegar. Al reves, un fotograma que se quedara a
         // medias por un recorte se daria por pintado y no volveria a intentarse.
         self.stuck = cab.sequence;
+        self.ritmo.presento();
         true
     }
 
@@ -911,11 +917,29 @@ impl Table {
     /// que solo cambio una superficie no se contara como "va a pintar", la app
     /// dibujaria **encima del cursor** y el puntero desapareceria bajo su
     /// ventana. Cuesta una lectura por ventana.
-    pub(crate) fn has_new(&self) -> bool {
-        self.sup.iter().flatten().any(|s| {
-            !s.chrome.minimized
-                && Header::read(s.base, s.bytes).is_some_and(|c| c.sequence != s.stuck)
-        })
+    ///
+    /// ** Y ES LA MIRADA DE E0 (2026-09-12): se llamaba `has_new` y era `&self`.
+    /// Ahora cuenta, en cada ventana, lo que el DIRECTOR vio en esta vuelta --
+    /// algo nuevo, nada, o un salto de varios -- y ese es el UNICO sitio donde
+    /// se cuenta. Contar en `compose` no servia: solo corre cuando se pinta, y
+    /// las miradas vacias (el DIRECTOR esperando a la app) no se verian nunca.
+    ///
+    /// [!] Recorre TODAS, sin cortar en la primera con algo nuevo: un `any`
+    /// dejaria sin mirar a las de detras, y su cuenta saldria mentirosa.
+    pub(crate) fn mirar(&mut self) -> bool {
+        let mut hay = false;
+        for s in self.sup.iter_mut().flatten() {
+            if s.chrome.minimized {
+                // Lo que publique mientras no se mira NO son fotogramas perdidos.
+                s.ritmo.se_oculta();
+                continue;
+            }
+            if let Some(c) = Header::read(s.base, s.bytes) {
+                s.ritmo.miro(c.sequence);
+                hay |= c.sequence != s.stuck;
+            }
+        }
+        hay
     }
 
     /// **Retira las ventanas cuya app murio** y devuelve cuantas, dejando sus
