@@ -44,13 +44,16 @@ pub(crate) fn nothing(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
 /// En la salida queda UNA linea, para que la orden siga en el historial y en
 /// `save`; el gato, las burlas por verbo y a donde ir viven en la ventanita.
 pub(crate) fn not_linux(dsk: &mut Desktop, p: &bmo::Pantalla, verb: &[u8]) -> After {
+    let familia = crate::scene::nya::burla(verb).familia;
     dsk.out.grid.with_ink(INK_ECHO);
     dsk.out.grid.text(b"  ");
     dsk.out.grid.text(verb);
-    dsk.out.grid.text(b": esto no es Linux -- te lo cuenta el gato :3\n");
+    dsk.out.grid.text(b": esto no es ");
+    dsk.out.grid.text(familia.nombre());
+    dsk.out.grid.text(b" -- te lo cuenta el gato :3\n");
     dsk.out.grid.with_ink(INK_PLAIN);
     crate::scene::nya::mostrar(dsk, p, verb);
-    paint_status(&p, &dsk.run_box, "esto no es Linux :3", INK_DIM);
+    paint_status(&p, &dsk.run_box, familia.estado(), INK_DIM);
     dsk.tick.repaint_field = true;
     After::Settle
 }
