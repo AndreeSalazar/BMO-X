@@ -5,9 +5,9 @@
 //! silicio, y la puerta de `INFO` contesta 0 -- que es "no se sabe".
 //!
 //! ** Asi que aqui no se prueban los numeros del Ryzen: se prueba que la sonda
-//! PREGUNTA lo que dice preguntar y ESCRIBE lo que le contestan. Si el
-//! formateador estuviera mal, un 4.600.000.000 Hz saldria como otra cosa y la
-//! culpa pareceria del procesador.
+//! PREGUNTA lo que dice preguntar, ESCRIBE lo que le contestan, y DUERME en vez
+//! de girar. Si el formateador estuviera mal, un 4.600.000.000 Hz saldria como
+//! otra cosa y la culpa pareceria del procesador.
 //!
 //! Igual que `sonda.rs`: con EL FICHERO DE VERDAD, cortado antes de su
 //! `principal`, y no con una copia de sus funciones.
@@ -36,14 +36,14 @@ fn con_principal(cuerpo: &str) -> String {
 }
 
 /// **LA CALIBRACION**: cuatro mil seiscientos millones de hercios salen en
-/// decimal, alineados a la derecha, con espacios delante.
+/// decimal, alineados a la derecha, con espacios delante -- y la linea TERMINA.
 #[test]
 fn el_pulso_escribe_hercios_en_decimal() {
     let m = arranca(&con_principal("    linea(et_hz(), 4600000000)\n"));
     assert_eq!(
         lo_escrito(&m),
-        vec!["hz real ", "      46", "00000000"],
-        "diez cifras en dieciseis: seis espacios delante"
+        vec!["hz real ", "      46", "00000000", "\n"],
+        "diez cifras en dieciseis: seis espacios delante, y un salto detras"
     );
 }
 
@@ -52,14 +52,14 @@ fn el_pulso_escribe_hercios_en_decimal() {
 #[test]
 fn el_cero_sale_como_cero_y_no_como_nada() {
     let m = arranca(&con_principal("    linea(et_pkg(), 0)\n"));
-    assert_eq!(lo_escrito(&m), vec!["mW pkg  ", "        ", "       0"]);
+    assert_eq!(lo_escrito(&m), vec!["mW pkg  ", "        ", "       0", "\n"]);
 }
 
 /// Las dieciseis cifras llenas, sin un espacio: el borde de arriba.
 #[test]
 fn dieciseis_cifras_no_dejan_hueco() {
     let m = arranca(&con_principal("    linea(et_tick(), 1234567890123456)\n"));
-    assert_eq!(lo_escrito(&m), vec!["tick    ", "12345678", "90123456"]);
+    assert_eq!(lo_escrito(&m), vec!["tick    ", "12345678", "90123456", "\n"]);
 }
 
 /// ** PREGUNTA POR LA PUERTA, Y POR LO QUE DICE.
@@ -81,19 +81,38 @@ fn una_muestra_pregunta_los_seis_campos_por_info() {
         vec![0x0B, 0x20, 0x21, 0x22, 0x1B, 0x2F],
         "tick, hz real, mW paquete, mW nucleo, vivos, puertas -- en ese orden"
     );
-    // Y como el emulador no tiene silicio, cada respuesta es "no se sabe".
+    // Seis lineas de cuatro palabras, y un salto que separa la muestra.
     let dice = lo_escrito(&m);
-    assert_eq!(dice.len(), 18, "seis lineas de tres palabras");
-    for fila in dice.chunks(3) {
+    assert_eq!(dice.len(), 6 * 4 + 1);
+    for fila in dice[..24].chunks(4) {
         assert_eq!(fila[2], "       0", "{} deberia decir 0 en el emulador", fila[0]);
+        assert_eq!(fila[3], "\n", "{} tiene que terminar su linea", fila[0]);
     }
+}
+
+/// *** ESPERAR ES DORMIR, NO GIRAR -- lo que el Ryzen ensenyo la primera vez.
+///
+/// Con `ceder`, cada muestra cruzaba ~200.000 puertas. Aqui el emulador no tiene
+/// reloj: `INFO_TICKS` contesta 0 siempre, asi que `espera_ms` agota su tope de
+/// veinte vueltas -- y lo que se comprueba es que cada vuelta es UN `WAIT` con
+/// el plazo en nanosegundos, y no un giro.
+#[test]
+fn esperar_medio_segundo_es_un_wait_con_su_plazo() {
+    let m = arranca(&con_principal("    espera_ms(500)\n"));
+    let esperas: Vec<_> = m.syscalls.iter().filter(|s| s.nr == 2).collect();
+    assert_eq!(esperas.len(), 20, "el tope de vueltas, con el reloj parado");
+    for w in &esperas {
+        assert_eq!(w.capability, 0, "sin nada que esperar: solo el plazo");
+        assert_eq!(w.arg0, 500_000_000, "500 ms en nanosegundos");
+    }
+    let todas = m.syscalls.len();
+    assert!(todas < 50, "{} puertas para medio segundo: eso es girar", todas);
 }
 
 /// ** La sonda entera compila, arranca, y no deja nada mudo.
 ///
-/// No se EJECUTA entera aqui a proposito: espera medio segundo veinte veces, y
-/// en el emulador el reloj no avanza -- la espera se sale por su tope de
-/// vueltas, que es justo para lo que esta, pero son millones de instrucciones.
+/// No se EJECUTA entera aqui a proposito: son veinte muestras de seis numeros de
+/// dieciseis cifras, y el formateo solo ya se prueba arriba.
 #[test]
 fn la_sonda_del_pulso_compila_entera() {
     let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

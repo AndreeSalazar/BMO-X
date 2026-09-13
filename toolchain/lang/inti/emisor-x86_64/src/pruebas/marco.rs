@@ -297,6 +297,34 @@ fn los_nombres_de_la_puerta_salen_de_la_tabla() {
     assert!(!t.abre_la_puerta("lee_reloj"), "eso es metal, no la puerta");
 }
 
+/// *** `espera_a` CRUZA POR WAIT, NO POR INVOKE (2026-09-12).
+///
+/// Salia con el numero de INVOKE, como todo nombre de `[bmo]`. El kernel lo
+/// leia como "haz la operacion 0 sobre el handle 0", contestaba handle invalido
+/// y volvia en el acto: el programa creia dormir y giraba. Lo destapo
+/// `pulso.inti` quemando 1,5 W en el Ryzen mientras media vatios.
+///
+/// ** Y las dos mitades: `espera_a` por WAIT, y `invoca` sigue por INVOKE. Un
+/// arreglo que mandara todo por WAIT pasaria la primera y romperia el sistema.
+#[test]
+fn espera_a_cruza_por_wait_y_invoca_sigue_por_invoke() {
+    let f = "\
+perfil llano
+usa bmo
+
+funcion principal devuelve entero32
+    espera_a(0, 0, 250000000)
+    invoca(mi_tarea, 0x06, 72, 0, 0)
+    devuelve 0
+";
+    let m = arranca(f);
+    assert_eq!(m.syscalls[0].nr, 2, "espera_a es WAIT");
+    assert_eq!(m.syscalls[0].capability, 0);
+    assert_eq!(m.syscalls[0].arg0, 250_000_000, "el plazo va en el tercero");
+    assert_eq!(m.syscalls[1].nr, 0, "invoca sigue siendo INVOKE");
+    assert_eq!(m.syscalls[1].operation, 0x06);
+}
+
 /// Y el `.bex` de un programa entero pasa el gate.
 #[test]
 fn el_bex_de_un_programa_con_arranque_pasa_el_gate() {

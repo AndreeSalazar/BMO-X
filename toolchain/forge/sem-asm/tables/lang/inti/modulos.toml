@@ -54,6 +54,22 @@ invoca_valor  = "valor"
 espera_a      = "codigo"
 mi_paquete    = "valor"
 
+#  ** POR QUE PUERTA CRUZA CADA UNO. Tampoco es una nota: el compilador lo lee.
+#
+#  BMO-X tiene DOS llamadas congeladas: INVOKE (haz esto) y WAIT (despiertame
+#  cuando pase esto). Un nombre que no esta aqui cruza por INVOKE.
+#
+#  *** Esta seccion nacio de un fallo mudo (2026-09-12): el emisor cargaba el
+#  numero de INVOKE para TODOS los nombres de `[bmo]`, asi que `espera_a` no
+#  esperaba -- le pedia al kernel una operacion sobre el handle 0, el kernel
+#  contestaba "handle invalido" y volvia en el acto. Compilaba, corria, y el
+#  programa giraba creyendo que dormia. Nadie lo habia usado nunca.
+#
+#  Que numero es "espera" en esta maquina no se dice aqui: eso es del ABI, y el
+#  emisor lo toma de `bmo_abi`, que el contrato ya compara con el kernel.
+[cruza]
+espera_a      = "espera"
+
 # ===================================================================
 #  ** LA MEMORIA -- leer y escribir una direccion
 # ===================================================================
@@ -224,7 +240,6 @@ op_arch_cerrar     = "0x04"
 #  Numeros de `ring0/core/report.rs` y `syscall/ops.rs`. Hay una prueba que los
 #  compara con el fuente del kernel: `tests/espejo_del_kernel.rs`.
 op_info              = "0x13"
-op_ceder             = "0x03"
 info_tsc_hz          = "0x05"
 info_cpu_hilos       = "0x06"
 info_ticks           = "0x0B"

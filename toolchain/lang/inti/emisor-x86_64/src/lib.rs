@@ -70,7 +70,7 @@ use bmo_abi::dynobj::texto as dynobj_texto;
 use bmo_abi::bef::relocations::{Relocation, RelocationKind};
 use bmo_abi::bef::sections::SectionKind;
 use bmo_abi::bef::writer::{BefBuilder, BefSection};
-use bmo_abi::syscalls::surface::NR_INVOKE;
+use bmo_abi::syscalls::surface::{NR_INVOKE, NR_WAIT};
 use bmo_inti_front::ir::{
     Clase, ClaseCongelada, Comprobacion, Const, FuncionIr, Instr, Local, ModuloIr, Valor,
 };
