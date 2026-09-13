@@ -122,7 +122,7 @@ fn paint_cat(p: &bmo::Pantalla, x0: u32, y0: u32, escala: u32) {
             // Los ojos ganan al trazo: son el unico sitio con color y es lo
             // primero que mira quien mira un gato.
             let color = if bit(&gato::EYES, i) {
-                ACCENT
+                acento()
             } else if bit(&gato::STROKE, i) {
                 INK
             } else {
@@ -165,7 +165,7 @@ pub(crate) fn paint(
 
     // Una banda de acento a la izquierda, de arriba abajo. Sujeta la
     // composicion y cuesta un rectangulo.
-    p.rect(0, 0, 6, p.alto, ACCENT);
+    p.rect(0, 0, 6, p.alto, acento());
 
     // -- * LA MAQUETA: el gato a la izquierda, el informe a la derecha --
     //
@@ -191,7 +191,7 @@ pub(crate) fn paint(
     let width = bmo::Pantalla::ancho_escala("BMO-X", 6);
     p.texto_escala(x, y, "BMO-X", INK, 6);
     // Subrayado exacto bajo el titulo: el ancho se pregunta, no se estima.
-    p.rect(x, y + 16 * 6 + 8, width, 3, ACCENT);
+    p.rect(x, y + 16 * 6 + 8, width, 3, acento());
     y += 16 * 6 + 22;
 
     // * METAKERNEL, y no es una etiqueta bonita: es lo que hace.
@@ -204,7 +204,7 @@ pub(crate) fn paint(
     p.texto(x, y, "BMO METAKERNEL", SPLASH_DIM);
     y += bmo::GLIFO_ALTO + 16;
 
-    p.texto(x, y, "RING 3   -   el userspace toma la maquina", ACCENT);
+    p.texto(x, y, "RING 3   -   el userspace toma la maquina", acento());
     y += bmo::GLIFO_ALTO + 34;
 
     // -- Lo que se acaba de ceder --

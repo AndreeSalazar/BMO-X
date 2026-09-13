@@ -13,7 +13,7 @@ use bmo_userland as bmo;
 
 use super::Key;
 use crate::desktop::{Desktop, Ventana};
-use crate::scene::{self, paint_status, ACCENT};
+use crate::scene::{self, paint_status, acento};
 use crate::{erase_window, uncover};
 
 pub(crate) fn on_key(
@@ -58,7 +58,7 @@ if alt_alone && (c == b'm' || c == b'M') {
         // Cambiarlo sin el conmutador abierto tambien tiene que
         // verse: un modo que cambia en silencio se descubre
         // cuando el teclado ya se fue a otra ventana.
-        paint_status(&p, &dsk.run_box, dsk.win.focus.modo().nombre_largo(), ACCENT);
+        paint_status(&p, &dsk.run_box, dsk.win.focus.modo().nombre_largo(), acento());
     }
     return Key::Taken;
 }

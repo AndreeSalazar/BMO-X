@@ -7,20 +7,21 @@
 //! entienda sale en la consola de Ejecutar con su linea. La lectura y sus reglas
 //! viven en `bmo-config`, probadas contra ficheros rotos.
 //!
-//! [!] No todo el escritorio lee de aqui todavia: el acento de las VENTANAS
-//! sigue siendo la constante `ACCENT`. Lo que ya es configurable es el fondo, la
-//! barra y sus widgets. Se dice aqui para que nadie cambie `acento` y crea que el
-//! fichero no funciona.
+//! ** El acento lo leen TODAS las ventanas desde el 2026-09-13 (`scene::acento`):
+//! la barra, Ejecutar, las apps, la seleccion del F12 y el conmutador. El fondo,
+//! la barra y sus widgets tambien. Lo que NO lee de aqui: los colores propios de
+//! cada ventana (el verde de ESTRATOS, el ambar de CABINA), que dicen QUE ventana
+//! es y no son un tema.
 
 use bmo_config::{Estilo, Informe};
 use bmo_userland as bmo;
 use core::ptr::{addr_of, addr_of_mut};
 
 use super::output::Output;
-use super::{ACCENT, BG_BOTTOM, BG_TOP, TASKBAR, TASKBAR_LINE};
+use super::{ACCENT_BASE, BG_BOTTOM, BG_TOP, TASKBAR, TASKBAR_LINE};
 
 pub(crate) const POR_DEFECTO: Estilo = Estilo {
-    acento: ACCENT,
+    acento: ACCENT_BASE,
     fondo_arriba: BG_TOP,
     fondo_abajo: BG_BOTTOM,
     barra_fondo: TASKBAR,

@@ -27,7 +27,7 @@ use bmo_userland as bmo;
 use super::{BLINK, Desktop, Ventana};
 use crate::scene::calc::paint_calc;
 use crate::scene::output::paint_output;
-use crate::scene::{self, paint_field, paint_status, ACCENT, INK_BAD};
+use crate::scene::{self, paint_field, paint_status, acento, INK_BAD};
 use crate::{erase_window, uncover};
 
 /// **La terminal pinto: las apps que la tapan se vuelven a pegar.**
@@ -222,7 +222,7 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         dsk.win.taskbar_dirty = true;
     }
     if dsk.win.taskbar_dirty && dsk.tick.will_paint && !fs {
-        scene::paint_chip(&p, 0, "Ejecutar", ACCENT, dsk.win.visible && dsk.win.top_before == Ventana::Run, !dsk.win.visible);
+        scene::paint_chip(&p, 0, "Ejecutar", acento(), dsk.win.visible && dsk.win.top_before == Ventana::Run, !dsk.win.visible);
         if dsk.win.data_open {
             scene::paint_chip(
                 &p, 1, "ESTRATOS", 0x0034_D399,

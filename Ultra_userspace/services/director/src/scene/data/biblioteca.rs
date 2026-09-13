@@ -253,7 +253,7 @@ fn cabecera(p: &bmo::Pantalla, z: &Zona) {
         let mut b = [0u8; 10];
         let nb = decimal(cuantas as u64, &mut b);
         let w = (nombre.len() as u32 + nb as u32 + 5) * bmo::GLIFO_ANCHO;
-        rounded_rect(p, x, ty - 5, w, bmo::GLIFO_ALTO + 10, if activo { SEL_NEON } else { DATA_EDGE });
+        rounded_rect(p, x, ty - 5, w, bmo::GLIFO_ALTO + 10, if activo { sel_neon() } else { DATA_EDGE });
         rounded_rect(p, x + 1, ty - 4, w - 2, bmo::GLIFO_ALTO + 8, if activo { SEL_FONDO } else { NODE_BG });
         let cx = p.texto_bytes(x + bmo::GLIFO_ANCHO, ty, &[tecla], INK_DIM);
         p.rect(cx + 4, ty + bmo::GLIFO_ALTO / 2 - 3, 6, 6, color);
@@ -273,7 +273,7 @@ fn cabecera(p: &bmo::Pantalla, z: &Zona) {
 
 fn tarjeta(p: &bmo::Pantalla, x: u32, y: u32, it: &Item, elegida: bool) {
     rounded_rect(p, x + 2, y + 3, CARD_W, CARD_H, SHADOW_NODE);
-    rounded_rect(p, x, y, CARD_W, CARD_H, if elegida { SEL_NEON } else { DATA_EDGE });
+    rounded_rect(p, x, y, CARD_W, CARD_H, if elegida { sel_neon() } else { DATA_EDGE });
     // ** El borde de la elegida es de DOS pixeles, como el de la ventana activa
     // de Hyprland: uno solo se pierde en una foto de la pantalla.
     let g = if elegida { 2 } else { 1 };

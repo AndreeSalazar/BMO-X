@@ -430,6 +430,6 @@ pub(crate) fn paint_output(p: &bmo::Pantalla, c: &RunBox, s: &Output) {
     // se confunde con una que se quedo colgada.
     if s.view > 0 {
         let x = c.out_x + (OUT_COLS as u32 - 18) * bmo::GLIFO_ANCHO;
-        p.texto(x, c.out_y, "-- historial --", ACCENT);
+        p.texto(x, c.out_y, "-- historial --", acento());
     }
 }

@@ -185,7 +185,18 @@ pub(crate) const TASKBAR_TOP: u32 = 0x001C_2334;
 /// Un grupo pegado a otro se lee como un solo bloque de texto. Con esto, el
 /// pulso, el volcado y la entrada se ven como TRES cosas, que es lo que son.
 pub(crate) const SEPARADOR: u32 = 0x001E_2636;
-pub(crate) const ACCENT: u32 = tema_gen::ACCENT;
+/// El acento de `tema.maqueta`: el valor de PARTIDA. Lo que se pinta usa
+/// [`acento`], que lee `sys/director.cfg` (2026-09-13).
+pub(crate) const ACCENT_BASE: u32 = tema_gen::ACCENT;
+
+/// **El acento de ahora**: el del estilo, que el editor de aspecto cambia en vivo.
+///
+/// Era la constante `acento()`, y por eso cambiar `acento` en el `.cfg` solo movia
+/// la barra: las ventanas lo llevaban grabado al compilar. Una funcion y no una
+/// constante es lo que deja que TODO el escritorio cambie de color a la vez.
+pub(crate) fn acento() -> u32 {
+    estilo::estilo().acento
+}
 
 pub(crate) const TASKBAR_H: u32 = 40;
 
@@ -670,7 +681,7 @@ pub(crate) fn scene_color(c: &RunBox, visible: bool, x: u32, y: u32, height: u32
         // corrida un pixel -- y esa clase de diferencia es justo por lo que la
         // barra de titulo dejo de pintarse aqui a mano.
         if y == c.y + TITLE_H - 1 {
-            return ACCENT;
+            return acento();
         }
         if y < c.y + TITLE_H {
             return BOX_TITLE;
@@ -716,11 +727,11 @@ pub(crate) fn paint_run_box(p: &bmo::Pantalla, c: &RunBox) {
     // del mismo escritorio acaban comportandose distinto sin que nadie lo
     // decida. Ahora la terminal se pinta como CABINA, como datos y como sonido,
     // y lo que se arregle en el marco le llega sola.
-    c.chrome.paint_chrome(p, BOX_EDGE, BOX_BG, BOX_TITLE, ACCENT);
+    c.chrome.paint_chrome(p, BOX_EDGE, BOX_BG, BOX_TITLE, acento());
 
     // El punto de la izquierda: el mismo lenguaje que la marca de la barra de
     // arriba. Dos sitios, un solo idioma.
-    p.rect(c.x + 16, c.y + 10, 8, 8, ACCENT);
+    p.rect(c.x + 16, c.y + 10, 8, 8, acento());
     p.texto(c.x + 32, c.y + 7, "Ejecutar", INK);
     p.texto(c.x + 32 + 10 * bmo::GLIFO_ANCHO, c.y + 7, "BMO-X", INK_DIM);
 
@@ -774,7 +785,7 @@ pub(crate) fn paint_run_box(p: &bmo::Pantalla, c: &RunBox) {
     // y todos los escritorios de Linux modernos, y por este motivo.
     p.rect(c.field_x - 1, c.field_y - 1, c.field_w + 2, c.field_h + 2, BOX_EDGE);
     p.rect(c.field_x, c.field_y, c.field_w, c.field_h, FIELD_BG);
-    p.rect(c.field_x, c.field_y + c.field_h, c.field_w, 2, ACCENT);
+    p.rect(c.field_x, c.field_y + c.field_h, c.field_w, 2, acento());
 }
 
 /// El contenido del campo: la ruta y el cursor de escritura.
@@ -813,7 +824,7 @@ pub(crate) fn paint_field(p: &bmo::Pantalla, c: &RunBox, path: &[u8], cur: usize
             c.texto_y,
             2,
             bmo::GLIFO_ALTO,
-            ACCENT,
+            acento(),
         );
     }
 }

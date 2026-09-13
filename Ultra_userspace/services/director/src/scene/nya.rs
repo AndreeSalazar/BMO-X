@@ -216,7 +216,7 @@ pub(crate) fn mostrar(dsk: &mut Desktop, p: &bmo::Pantalla, verb: &[u8]) {
 
     // El titulo, y la raya que lo separa.
     let ty = y + MARGEN;
-    p.texto(x + MARGEN, ty, "BMO-X // METAKERNEL // LEY 24 // SO: NONE", ACCENT);
+    p.texto(x + MARGEN, ty, "BMO-X // METAKERNEL // LEY 24 // SO: NONE", acento());
     let raya = ty + FILA + MARGEN / 2;
     p.rect(x + 1, raya, w - 2, 1, N_LINEA);
 
@@ -245,7 +245,7 @@ pub(crate) fn mostrar(dsk: &mut Desktop, p: &bmo::Pantalla, verb: &[u8]) {
     p.texto(bx, cuerpo + FILA, "\"", INK_DIM);
 
     let ex = p.texto(tx, cuerpo + FILA * 2, "Explicacion: ", INK_DIM);
-    p.texto(ex, cuerpo + FILA * 2, bu.explica, ACCENT);
+    p.texto(ex, cuerpo + FILA * 2, bu.explica, acento());
 
     // El pie, pequeno y apagado.
     p.texto(

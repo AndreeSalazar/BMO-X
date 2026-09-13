@@ -711,15 +711,17 @@ const SEL_FONDO: u32 = 0x0015_2A45;
 /// una sombra. Lo que hace que se vea SELECCIONADO es el borde vivo, igual que
 /// el subrayado de la pestana activa -- una linea de color se ve en una foto y
 /// un relleno de color no.
-const SEL_NEON: u32 = ACCENT;
+fn sel_neon() -> u32 {
+    acento()
+}
 
 /// Pinta el realce de lo seleccionado: relleno y filo.
 fn realce(p: &bmo::Pantalla, x: u32, y: u32, w: u32, h: u32) {
     p.rect(x, y, w, h, SEL_FONDO);
-    p.rect(x, y, w, 1, SEL_NEON);
-    p.rect(x, y + h - 1, w, 1, SEL_NEON);
-    p.rect(x, y, 1, h, SEL_NEON);
-    p.rect(x + w - 1, y, 1, h, SEL_NEON);
+    p.rect(x, y, w, 1, sel_neon());
+    p.rect(x, y + h - 1, w, 1, sel_neon());
+    p.rect(x, y, 1, h, sel_neon());
+    p.rect(x + w - 1, y, 1, h, sel_neon());
 }
 
 /// **Un color por clase, y el mismo en toda la ventana.** Es el punto 2 de la
@@ -761,7 +763,7 @@ fn node_box(
     // seleccion. El mismo azul que la rejilla, para que mirar el mismo nodo en
     // los dos paneles no de dos respuestas.
     let (edge, cuerpo) = if pointed_at {
-        (SEL_NEON, SEL_FONDO)
+        (sel_neon(), SEL_FONDO)
     } else {
         (DATA_EDGE, NODE_BG)
     };
@@ -915,7 +917,7 @@ pub(crate) fn paint(p: &bmo::Pantalla, c: &DataWindow) {
             c.hist_sel,
             DATA_EDGE,
             NODE_BG,
-            SEL_NEON,
+            sel_neon(),
             SEL_FONDO,
         );
         let y = c.chrome.y + c.chrome.height - bmo::GLIFO_ALTO - 8;

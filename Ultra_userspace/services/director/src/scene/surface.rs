@@ -420,8 +420,8 @@ impl Surface {
     }
 
     pub(crate) fn paint_chrome(&self, p: &bmo::Pantalla) {
-        self.chrome.paint_chrome(p, BOX_EDGE, BOX_BG, BOX_TITLE, ACCENT);
-        p.rect(self.chrome.x + 10, self.chrome.y + 10, 8, 8, ACCENT);
+        self.chrome.paint_chrome(p, BOX_EDGE, BOX_BG, BOX_TITLE, acento());
+        p.rect(self.chrome.x + 10, self.chrome.y + 10, 8, 8, acento());
         // El titulo es el TID, porque es lo unico que el DIRECTOR sabe de esta
         // app con certeza: el nombre lo pondria quien la lanzo, y lanzar y
         // componer son dos cosas distintas. Ver el paso 3 del plan.

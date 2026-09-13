@@ -96,7 +96,7 @@ pub(crate) fn paint(p: &bmo::Pantalla, lista: &[u8], pointed_at: usize, modo: &s
     // comporta distinto de lo que esperabas. Y con el la tecla que lo cambia:
     // un modo que se lee pero no se toca invita a pensar que esta averiado.
     let mx = p.texto(x + 14, fy + 4, "modo: ", INK_DIM);
-    let mx = p.texto(mx, fy + 4, modo, ACCENT);
+    let mx = p.texto(mx, fy + 4, modo, acento());
     p.texto(mx, fy + 4, "   (Alt+M)", INK_DIM);
     fy += ROW_H;
 

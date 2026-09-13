@@ -56,7 +56,7 @@
 use bmo_userland as bmo;
 
 use super::double_click::DoubleClick;
-use super::{ACCENT, BG_TOP, INK};
+use super::{acento, BG_TOP, INK};
 
 /// Cuantas apps caben en el escritorio. Doce es lo que entra en una fila y
 /// media a 1080p; pasado eso hace falta una rejilla con scroll, y eso es otra
@@ -279,7 +279,7 @@ pub fn paint_una(p: &bmo::Pantalla, l: &Launcher, i: usize) {
     let app = &l.apps[i];
     if l.sel == Some(i) {
         p.rect(cx + 2, cy - 4, CELL_W - 4, CELL_H - 8, SEL_BG);
-        p.rect(cx + 2, cy - 4, CELL_W - 4, 1, ACCENT);
+        p.rect(cx + 2, cy - 4, CELL_W - 4, 1, acento());
     }
     // El icono, centrado en la celda.
     let ix = cx + (CELL_W - ICON_PX) / 2;
