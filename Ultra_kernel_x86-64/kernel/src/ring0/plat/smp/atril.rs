@@ -75,6 +75,26 @@ use bmo_orquesta::{
 /// con `smp stop` gana siempre.
 static YA_SE_INTENTO: AtomicBool = AtomicBool::new(false);
 
+/// ** **EL DESPERTAR AUTOMATICO ESTA APAGADO**, y no por la politica: por el
+/// metal (2026-09-12).
+///
+/// El primer arranque con el cubo pidiendo ESCALAR REINICIO LA MAQUINA al pulsar
+/// Alt+Enter. Un reinicio sin pantalla azul es un TRIPLE FALLO, y la cabecera de
+/// `tramp.rs` ya lo dejaba escrito: *"un AP que toma una excepcion esta muerto
+/// de una forma fea -- `#UD` dentro del manejador, doble fallo, triple fallo"*.
+///
+/// Ese gesto juntaba por primera vez en el Ryzen DOS cosas que nunca habian
+/// corrido alli: los obreros durmiendo en `MWAITX` despertados por `smp all`, y
+/// el camino del atril (`smp orquesta` no se ha ejecutado nunca en metal). Y las
+/// juntaba SIN AVISAR, dentro de un Alt+Enter.
+///
+/// *** Una accion normal no puede poder reiniciar el PC. Hasta que la
+/// secuencia de `docs/metal` diga cual de las dos es, los nucleos solo se
+/// levantan A MANO (`smp all`), que es donde un reinicio es una prueba y no una
+/// sorpresa. La politica y sus filas siguen en `bmo-orquesta`: esto es un
+/// interruptor, no un borrado.
+const DESPERTAR_SOLO: bool = false;
+
 // == EL ATRIL, publicado antes de la ronda =================================
 static DESTINO: AtomicU64 = AtomicU64::new(0);
 static ORIGEN: AtomicU64 = AtomicU64::new(0);
@@ -299,7 +319,9 @@ pub fn tocar(pid: u32, parte_num: u64, pedidos: u64) -> u64 {
     // `bmo_orquesta::conviene_despertar`, probado en el anfitrion; aqui solo se
     // obedece y se DICE en CABINA, porque despertar cambia el estado del
     // hardware y eso no puede ser silencioso ni cuando sale bien.
-    if conviene_despertar(e.total, vivos as u64, pedidos, YA_SE_INTENTO.load(Ordering::SeqCst)) {
+    if DESPERTAR_SOLO
+        && conviene_despertar(e.total, vivos as u64, pedidos, YA_SE_INTENTO.load(Ordering::SeqCst))
+    {
         YA_SE_INTENTO.store(true, Ordering::SeqCst);
         let (despiertos, esperados) = super::despertar(u32::MAX, |_| {});
         crate::ring0::cabina::info("orquesta", "una app pidio: nucleos despertados", despiertos as u64);
