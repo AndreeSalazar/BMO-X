@@ -60,8 +60,38 @@ fn bloque() -> Option<&'static bmo::Memoria> {
     }
 }
 
+// == ** LAS IMAGENES (2026-09-13) ============================================
+//
+// Eddi: *"dale con el visor de imagenes"*. BICO, BMP y QOI se descifran en
+// `bmo-imagen` --probado en el anfitrion contra ficheros ROTOS-- y aqui solo se
+// traen los bytes y se pintan. El visor de texto no cambia.
+//
+// Dos bloques mas, pedidos la PRIMERA vez que se abre una imagen y no antes:
+// quien no mira imagenes no paga 8 MiB.
+
+/// Lo mas grande que se abre como imagen.
+const IMG_TOPE: u64 = 4 * 1024 * 1024;
+/// Los pixeles: `LADO_MAX` al cuadrado, cuatro bytes cada uno.
+const IMG_PIXELES: u64 = (bmo_imagen::LADO_MAX as u64) * (bmo_imagen::LADO_MAX as u64) * 4;
+
+static mut IMG_FICHERO: Option<bmo::Memoria> = None;
+static mut IMG_BUFER: Option<bmo::Memoria> = None;
+
+fn pedido(slot: *mut Option<bmo::Memoria>, bytes: u64) -> Option<&'static bmo::Memoria> {
+    unsafe {
+        if (*slot).is_none() {
+            *slot = bmo::Memoria::request(bytes);
+        }
+        (*slot).as_ref()
+    }
+}
+
 /// Lo que se esta mirando, o nada.
 pub(crate) struct Visor {
+    /// Si es una imagen que se pudo descifrar: sus medidas.
+    imagen: Option<bmo_imagen::Medidas>,
+    /// Si no se pudo abrir como imagen: por que.
+    fallo: Option<&'static str>,
     pub(crate) abierto: bool,
     nombre: [u8; 64],
     nombre_len: usize,
@@ -74,6 +104,8 @@ pub(crate) struct Visor {
 
 impl Visor {
     pub(crate) const VACIO: Self = Self {
+        imagen: None,
+        fallo: None,
         abierto: false,
         nombre: [0; 64],
         nombre_len: 0,
@@ -95,6 +127,8 @@ impl Visor {
         self.desde = 0;
         self.leidos = 0;
         self.mide = 0;
+        self.imagen = None;
+        self.fallo = None;
         let k = nombre.len().min(self.nombre.len());
         self.nombre[..k].copy_from_slice(&nombre[..k]);
         self.nombre_len = k;
@@ -107,6 +141,14 @@ impl Visor {
         // cabe, y para eso hace falta que la vista exista. Lo que no hace es
         // leer ni pintar medio fichero.
         self.abierto = true;
+        // Una imagen se reconoce por lo que la TABLA dice que es, no probando a
+        // descifrar cualquier fichero: un texto que empezara por "BM" no es un
+        // mapa de bits.
+        use crate::scene::asociaciones::{de, Clase};
+        if de(nombre).0 == Clase::Imagen {
+            self.abrir_imagen(&a);
+            return true;
+        }
         if self.mide > TOPE {
             return true;
         }
@@ -131,6 +173,33 @@ impl Visor {
         // su HANDLE, que es justo lo que hace innecesario tocar el puntero.
         self.leidos = a.leer_en(m, 0, self.mide) as usize;
         true
+    }
+
+    /// Trae los bytes y los descifra. Lo que falle queda en `fallo`, con motivo.
+    fn abrir_imagen(&mut self, a: &bmo::Archivo) {
+        if self.mide > IMG_TOPE {
+            self.fallo = Some("la imagen pasa de 4 MiB: no se abre a medias");
+            return;
+        }
+        let (Some(fichero), Some(bufer)) = (
+            pedido(core::ptr::addr_of_mut!(IMG_FICHERO), IMG_TOPE),
+            pedido(core::ptr::addr_of_mut!(IMG_BUFER), IMG_PIXELES),
+        ) else {
+            self.fallo = Some("sin memoria para la imagen");
+            return;
+        };
+        let n = a.leer_en(fichero, 0, self.mide) as usize;
+        // SAFETY: `n` bytes que el kernel acaba de escribir en un bloque de este
+        // proceso; el bufer de pixeles mide IMG_PIXELES y el base es de pagina,
+        // o sea alineado a 4.
+        let bytes = unsafe { core::slice::from_raw_parts(fichero.base() as *const u8, n) };
+        let pixeles = unsafe {
+            core::slice::from_raw_parts_mut(bufer.base() as *mut u32, (IMG_PIXELES / 4) as usize)
+        };
+        match bmo_imagen::decodificar(bytes, pixeles) {
+            Ok(m) => self.imagen = Some(m),
+            Err(e) => self.fallo = Some(e.motivo()),
+        }
     }
 
     pub(crate) fn cerrar(&mut self) {
@@ -177,6 +246,63 @@ impl Visor {
     }
 }
 
+/// **La imagen, ajustada y centrada**, sobre un tablero que deja ver lo
+/// transparente.
+///
+/// ```text
+///    cabe         se AMPLIA por un entero (hasta x8): pixeles nitidos, sin
+///                 inventar colores que la imagen no tiene
+///    no cabe      se REDUCE tomando una muestra cada `d`: la vista entera,
+///                 y la cabecera sigue diciendo las medidas de verdad
+/// ```
+///
+/// ** Se marca la caja UNA vez y los puntos van sin marcar: marcar por pixel
+/// copia 272 bytes de contabilidad cada vez (ver `Pantalla::punto_ya_marcado`).
+fn pintar_imagen(p: &bmo::Pantalla, z: &Zona, y: u32, m: &bmo_imagen::Medidas) {
+    let Some(bufer) = (unsafe { (*core::ptr::addr_of!(IMG_BUFER)).as_ref() }) else { return };
+    let (w, h) = (m.ancho, m.alto);
+    let area_w = z.w.saturating_sub(16).max(1);
+    let area_h = z.abajo().saturating_sub(y + 8).max(1);
+    let (num, den) = if w <= area_w && h <= area_h {
+        ((area_w / w).min(area_h / h).clamp(1, 8), 1)
+    } else {
+        (1, ((w + area_w - 1) / area_w).max((h + area_h - 1) / area_h))
+    };
+    let (dw, dh) = (w * num / den, h * num / den);
+    let x0 = z.x + (z.w - dw) / 2;
+    let y0 = y + (area_h - dh) / 2;
+
+    // El tablero: lo que es transparente tiene que VERSE transparente. Sobre un
+    // fondo liso un pixel saltado y uno negro son iguales.
+    const CUADRO: u32 = 8;
+    let mut ty = 0;
+    while ty < dh {
+        let mut tx = 0;
+        while tx < dw {
+            let claro = ((tx / CUADRO) + (ty / CUADRO)) % 2 == 0;
+            p.rect(x0 + tx, y0 + ty, CUADRO.min(dw - tx), CUADRO.min(dh - ty), if claro { 0x0030_3438 } else { 0x0024_272B });
+            tx += CUADRO;
+        }
+        ty += CUADRO;
+    }
+
+    p.marcar(x0, y0, dw, dh);
+    // SAFETY: el bufer mide IMG_PIXELES y `decodificar` escribio `w*h` en el.
+    let px = unsafe { core::slice::from_raw_parts(bufer.base() as *const u32, (w * h) as usize) };
+    for dy in 0..dh {
+        let fila = ((dy * den / num) * w) as usize;
+        for dx in 0..dw {
+            let c = px[fila + (dx * den / num) as usize];
+            if c >> 24 != 0 {
+                p.punto_ya_marcado(x0 + dx, y0 + dy, c & 0x00FF_FFFF);
+            }
+        }
+    }
+    // Un marco fino: separa la imagen del tablero del fondo de la ventana.
+    p.rect(x0.saturating_sub(1), y0.saturating_sub(1), dw + 2, 1, DATA_EDGE);
+    p.rect(x0.saturating_sub(1), y0 + dh, dw + 2, 1, DATA_EDGE);
+}
+
 /// **Pinta el visor en `z`.** Va donde iria la rejilla.
 pub(crate) fn paint(p: &bmo::Pantalla, z: &Zona, v: &Visor) {
     if !z.hay() || !v.abierto {
@@ -199,10 +325,34 @@ pub(crate) fn paint(p: &bmo::Pantalla, z: &Zona, v: &Visor) {
     let n = crate::text::decimal(v.mide, &mut num);
     let x = p.texto(x + bmo::GLIFO_ANCHO, y, "  ", INK_DIM);
     let x = p.texto_bytes(x, y, &num[..n], INK_DIM);
-    p.texto(x, y, " B   ESC vuelve", INK_DIM);
+    let x = p.texto(x, y, " B", INK_DIM);
+    // Una imagen dice sus medidas y su formato en la cabecera.
+    let x = match v.imagen {
+        Some(m) => {
+            let x = p.texto(x, y, "   ", INK_DIM);
+            let n = crate::text::decimal(m.ancho as u64, &mut num);
+            let x = p.texto_bytes(x, y, &num[..n], INK);
+            let x = p.texto(x, y, "x", INK_DIM);
+            let n = crate::text::decimal(m.alto as u64, &mut num);
+            let x = p.texto_bytes(x, y, &num[..n], INK);
+            p.texto(x + bmo::GLIFO_ANCHO, y, m.formato.nombre(), DATA_TITLE)
+        }
+        None => x,
+    };
+    p.texto(x, y, "   ESC vuelve", INK_DIM);
     y += alto + 4;
     p.rect(z.x, y, z.w, 1, DATA_EDGE);
     y += 4;
+
+    if let Some(motivo) = v.fallo {
+        p.texto(z.x + 4, y, "no se pudo abrir como imagen:", INK_BAD);
+        p.texto(z.x + 4, y + alto + 2, motivo, INK_DIM);
+        return;
+    }
+    if let Some(m) = v.imagen {
+        pintar_imagen(p, z, y, &m);
+        return;
+    }
 
     if v.mide > TOPE {
         p.texto(z.x + 4, y, "no cabe en el visor.", INK_BAD);

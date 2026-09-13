@@ -11,6 +11,10 @@ name = "bmo-golpe"
 version = "0.1.0"
 
 [[package]]
+name = "bmo-imagen"
+version = "0.1.0"
+
+[[package]]
 name = "bmo-input"
 version = "0.1.0"
 
@@ -40,6 +44,7 @@ version = "0.1.0"
 dependencies = [
  "bmo-dibujo",
  "bmo-golpe",
+ "bmo-imagen",
  "bmo-input",
  "bmo-juicio",
  "bmo-ritmo",

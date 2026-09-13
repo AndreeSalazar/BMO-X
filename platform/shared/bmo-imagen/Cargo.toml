@@ -1,0 +1,11 @@
+[package]
+name = "bmo-imagen"
+version = "0.1.0"
+edition = "2021"
+description = "De los bytes de un fichero a pixeles (BICO, BMP, QOI) sin creerse lo que el fichero dice de si mismo. Lo usa el visor del DIRECTOR."
+license = "Apache-2.0"
+
+# Sin dependencias y `no_std`: existe para poder PROBARSE en el anfitrion contra
+# ficheros rotos. Un decodificador que solo se prueba en el metal se prueba con
+# las imagenes buenas, que son justo las que no hacen dano.
+[dependencies]

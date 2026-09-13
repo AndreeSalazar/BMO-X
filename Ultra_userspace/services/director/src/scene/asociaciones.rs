@@ -83,17 +83,17 @@ struct Tipo {
     abre: Abre,
 }
 
-const SIN_VISOR: &str = "todavia no hay visor de imagenes: falta [superficie] en INTI";
-
 const TIPOS: &[Tipo] = &[
     Tipo { ext: b"bex", clase: Clase::App, abre: Abre::Programa },
     Tipo { ext: b"ibx", clase: Clase::App, abre: Abre::Programa },
     // ** El reproductor recibe la ruta por los ARGUMENTOS (`task/argumentos.rs`).
     Tipo { ext: b"mus", clase: Clase::Audio, abre: Abre::Con(b"inti/musica.ibx") },
     Tipo { ext: b"wav", clase: Clase::Audio, abre: Abre::Falta("WAV: el tubo USB esta, falta leer el formato") },
-    Tipo { ext: b"bic", clase: Clase::Imagen, abre: Abre::Falta(SIN_VISOR) },
-    Tipo { ext: b"bmp", clase: Clase::Imagen, abre: Abre::Falta(SIN_VISOR) },
-    Tipo { ext: b"qoi", clase: Clase::Imagen, abre: Abre::Falta(SIN_VISOR) },
+    // ** Las tres que `bmo-imagen` sabe descifrar: al visor, que pinta la imagen
+    // y no sus bytes (2026-09-13).
+    Tipo { ext: b"bic", clase: Clase::Imagen, abre: Abre::Visor },
+    Tipo { ext: b"bmp", clase: Clase::Imagen, abre: Abre::Visor },
+    Tipo { ext: b"qoi", clase: Clase::Imagen, abre: Abre::Visor },
     Tipo { ext: b"png", clase: Clase::Imagen, abre: Abre::Falta("PNG: falta el descompresor (inflate)") },
     Tipo { ext: b"jpg", clase: Clase::Imagen, abre: Abre::Falta("JPG: falta el decodificador (Huffman + IDCT)") },
     Tipo { ext: b"txt", clase: Clase::Texto, abre: Abre::Visor },

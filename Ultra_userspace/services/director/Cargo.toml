@@ -29,3 +29,5 @@ bmo-ritmo = { path = "../../../platform/shared/bmo-ritmo" }
 # LA RESTA de frecuencia y vatios entre dos lecturas de contadores que solo
 # crecen. El DIRECTOR es UN lector y guarda la suya.
 bmo-juicio = { path = "../../../platform/shared/bmo-juicio" }
+# El visor de imagenes: decodifica fuera, probado contra ficheros rotos.
+bmo-imagen = { path = "../../../platform/shared/bmo-imagen" }
