@@ -1,0 +1,22 @@
+; tema.mus -- Vivaldi, "La primavera" (Op. 8 n.1, 1725), el ritornello
+;
+; Dominio publico: la obra tiene trescientos anios y esta transcripcion de la
+; linea del primer violin es propia (la misma que `c/vivaldi.bex`).
+;
+; Lo toca `run inti/musica.ibx`. Figuras en dieciseisavos: sin `:` es una
+; negra, `:2` una corchea.
+
+T132
+
+MI5  MI5:2 MI5:2    MI5  MI5:2 MI5:2
+MI5  SOL#5:2 SI5:2  SI5  LA5:2 SOL#5:2
+LA5  LA5:2 LA5:2    LA5  LA5:2 LA5:2
+LA5  SI5:2 LA5:2    SOL#5 FA#5:2 MI5
+
+-:4
+
+; y el eco, como en la partitura
+MI5  MI5:2 MI5:2    MI5  MI5:2 MI5:2
+MI5  SOL#5:2 SI5:2  SI5  LA5:2 SOL#5:2
+LA5  LA5:2 LA5:2    LA5  LA5:2 LA5:2
+LA5  SI5:2 LA5:2    SOL#5 FA#5:2 MI5:8

@@ -119,11 +119,8 @@ pub(crate) const DEFAULT_DUMP: &[u8] = b"datos/salida.txt";
 /// el archivo -- fallaria al cerrar, en silencio, que es justo lo que se acaba
 /// de arreglar.
 fn dump_name(target: &[u8], dst: &mut [u8; 32]) -> usize {
-    // El verbo `run` delante, si lo lleva: `run cobol/1/hola.bex`.
-    let path = match target.iter().rposition(|&c| c == b' ') {
-        Some(i) => &target[i + 1..],
-        None => target,
-    };
+    // Sin el verbo delante (`run cobol/1/hola.bex`) y sin los argumentos detras.
+    let path = commands::solo_ruta(target);
     let cut = path.iter().rposition(|&c| c == b'/' || c == b'\\');
     let base = match cut {
         Some(i) => &path[i + 1..],
@@ -1019,7 +1016,7 @@ pub extern "C" fn _start() -> ! {
                 // compositor, no en los dedos del usuario.
                 // `presta` sigue existiendo para forzarlo a
                 // mano, pero ya no hace falta saberselo.
-                if wants_screen(target) {
+                if wants_screen(commands::solo_ruta(target)) {
                     // R-APP8: con la pantalla prestada no se ve NINGUNA
                     // ventana, y el DIRECTOR no dara vueltas para decirlo.
                     // Se deja escrito antes de irse y se deshace al volver.

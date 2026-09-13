@@ -235,6 +235,7 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
                 .unwrap_or(0);
             BmoStatus::ok_value(tid as u64)
         }
+        TASK_OP_ARGUMENTOS => BmoStatus::ok_value(crate::ring0::task::argumentos::trozo(scheduler::current_pid(), arg0)),
         TASK_OP_ARCHIVO_CREAR => op_abrir::archivo_crear(arg0, arg1),
         TASK_OP_CONSOLA_CREAR => op_abrir::consola_crear(arg0, arg1),
         // Discover the caller's seeded estuary capability for index arg0.
@@ -483,10 +484,8 @@ fn invoke_current_task(operation: u64, arg0: u64, arg1: u64) -> BmoStatus {
             // *** NINGUNA. Aqui esta la delegacion, cerrada: un proceso de Ring 3
             // lanza, y lo que lanza NO hereda lo que el tiene. La autoridad no
             // viaja porque no hay ninguna operacion que la mueva.
-            let informe = crate::ring0::task::launch::ruta(
-                ruta_tomar(pid),
-                autoridad::NINGUNA,
-            );
+            // ** Y lo que va detras del primer espacio, al hijo: `task/argumentos.rs`.
+            let informe = crate::ring0::task::argumentos::lanzar(ruta_tomar(pid), autoridad::NINGUNA);
             match informe.res {
                 Ok(tid) => {
                     if let (Some(idx), Some(hijo)) = (consola_idx, informe.pid) {
