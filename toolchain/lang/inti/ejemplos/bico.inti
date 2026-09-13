@@ -89,16 +89,16 @@ funcion informa(etiqueta es natural64, codigo es natural64)
     salto()
 
 funcion et_bico devuelve natural64
-    devuelve 2337196035897568557
+    devuelve ocho_bytes("-- bico ")
 
 funcion et_bmp devuelve natural64
-    devuelve 2314885530823716194
+    devuelve ocho_bytes("bmp     ")
 
 funcion et_qoi devuelve natural64
-    devuelve 2314885530823257969
+    devuelve ocho_bytes("qoi     ")
 
 funcion et_fin devuelve natural64
-    devuelve 2314885530823584102
+    devuelve ocho_bytes("fin     ")
 
 # ===================================================================
 #  2. Leer y escribir bytes -- los DOS unicos bloques `crudo`
@@ -371,21 +371,21 @@ funcion qoi_a_bico(base es natural64, n es natural64) devuelve natural64
 # ===================================================================
 
 funcion convierte_bmp(bloque es natural64, base es natural64) devuelve natural64
-    n es natural64 = lee_fichero(bloque, 8027155558672130404, 123615100956532)
+    n es natural64 = lee_fichero(bloque, ocho_bytes("datos/fo"), ocho_bytes("to.bmp"))
     si n > max_entrada()
         devuelve n - max_entrada()
     cambiante e es natural64 = bmp_a_bico(base, n)
     si e = 0
-        e = guarda_bico(bloque, base, 8027155558672130404, 27981893100269428)
+        e = guarda_bico(bloque, base, ocho_bytes("datos/fo"), ocho_bytes("tob.bic"))
     devuelve e
 
 funcion convierte_qoi(bloque es natural64, base es natural64) devuelve natural64
-    n es natural64 = lee_fichero(bloque, 8027155558672130404, 115927361154932)
+    n es natural64 = lee_fichero(bloque, ocho_bytes("datos/fo"), ocho_bytes("to.qoi"))
     si n > max_entrada()
         devuelve n - max_entrada()
     cambiante e es natural64 = qoi_a_bico(base, n)
     si e = 0
-        e = guarda_bico(bloque, base, 8027155558672130404, 27981893101252468)
+        e = guarda_bico(bloque, base, ocho_bytes("datos/fo"), ocho_bytes("toq.bic"))
     devuelve e
 
 funcion principal devuelve entero32

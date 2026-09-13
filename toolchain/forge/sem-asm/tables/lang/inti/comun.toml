@@ -63,6 +63,11 @@ suma_circular = "suma que da la vuelta a proposito, en vez de atrapar"
 resta_circular = "resta que da la vuelta a proposito"
 entre_medias  = "encaja un numero entre un minimo y un maximo"
 
+#  ** Un texto CORTO hecho numero, AL COMPILAR (2026-09-12). Vale en `llano`
+#  porque no reserva nada: no llega ni a ser una llamada, el compilador escribe
+#  la constante. Quita los numeros de 64 bits escritos a mano de las sondas.
+ocho_bytes    = "hasta 8 letras ASCII empaquetadas en un natural64, al compilar"
+
 # ===================================================================
 #  Los del perfil PLENO
 # ===================================================================

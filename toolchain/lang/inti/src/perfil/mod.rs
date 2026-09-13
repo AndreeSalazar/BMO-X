@@ -579,6 +579,17 @@ impl<'c> Vigia<'c> {
                 for a in argumentos {
                     self.expresion(&a.valor);
                 }
+                // ** `ocho_bytes` se acusa AQUI y no en `disposicion::revision`
+                // (2026-09-12). Alli fue primero, y `tests/linaje.rs` lo paro:
+                // habria sido el SEPTIMO fichero mirando `tablas`, un modulo de
+                // trabajo con tope de seis. Este analisis ya la mira, asi que la
+                // acusacion entra sin agarrar a nadie nuevo.
+                if let Expr::Nombre(n, _) = &**que {
+                    if n == crate::tablas::OCHO_BYTES {
+                        let unico = if argumentos.len() == 1 { Some(&argumentos[0].valor) } else { None };
+                        self.mira_ocho_bytes(unico, e.sitio());
+                    }
+                }
             }
             Expr::Indice { que, indice, .. } => {
                 self.expresion(que);
@@ -597,6 +608,37 @@ impl<'c> Vigia<'c> {
             Expr::Nombre(n, sitio) => self.quiza_pide_crudo(n, *sitio),
             _ => {}
         }
+    }
+
+    /// `ocho_bytes` pide UN texto escrito en el fuente, de 1 a 8 letras ASCII.
+    ///
+    /// ** Es de este analisis porque contesta su pregunta: *que puede escribir
+    /// este fuente*. Plegar al compilar solo puede con lo que esta escrito; lo
+    /// que no, no es un fallo de ejecucion: es pedir algo imposible.
+    fn mira_ocho_bytes(&mut self, arg: Option<&Expr>, sitio: Sitio) {
+        if let Some(Expr::Texto(t, _)) = arg {
+            if crate::tablas::ocho_bytes_de(t).is_some() {
+                return;
+            }
+        }
+        self.acusa(
+            Aviso::nuevo(
+                codigos::TEXTO_NO_CABE_EN_OCHO,
+                "`ocho_bytes` pide UN texto entre comillas, de 1 a 8 letras ASCII.",
+                sitio,
+            )
+            .con_habia(
+                "Se empaqueta al compilar, letra a letra, en los ocho bytes de un \
+                 `natural64`. Uno mas largo no cabe; una letra de fuera de ASCII ocupa \
+                 mas bytes de los que se ven; y un texto que no esta escrito en el \
+                 fuente todavia no existe cuando se compila."
+                    .to_string(),
+            )
+            .con_hacer(
+                "parte el texto en trozos de hasta 8 letras: `ocho_bytes(\"datos/fo\")` y \
+                 `ocho_bytes(\"to.bmp\")`",
+            ),
+        );
     }
 
     /// El nombre toca el metal y no esta dentro de un `crudo`.

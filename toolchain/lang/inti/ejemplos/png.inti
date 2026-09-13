@@ -77,8 +77,8 @@ funcion pon_ruta(trozo_de_ruta es natural64)
     invoca(mi_tarea, op_ruta, trozo_de_ruta, 0, 0)
 
 funcion abre devuelve natural64
-    pon_ruta(8027718465759373615)
-    pon_ruta(113724026151276)
+    pon_ruta(ocho_bytes("/inti/ho"))
+    pon_ruta(ocho_bytes("la.png"))
     devuelve invoca_valor(mi_tarea, op_archivo_crear, 0, 0, 0)
 
 # La puerta acepta SIETE bytes por vez: el byte alto lleva la cuenta.
@@ -134,6 +134,11 @@ funcion principal devuelve entero32
     pon8(p, 7, 10)
     cambiante en es natural64 = 8
 
+    # [!] Los nombres de trozo (`IHDR`, `IDAT`, `IEND`) siguen siendo NUMEROS, y
+    # no es un olvido: PNG los guarda BIG-ENDIAN y `pon32` los escribe asi.
+    # `ocho_bytes` empaqueta al reves --el primer byte abajo, Regla 10--, y usarlo
+    # aqui escribiria "RDHI" y un PNG que ningun lector abre.
+    #
     # -- IHDR: ancho, alto, 8 bits, color 2 (RGB), y tres ceros
     pon32(p, en + 8, lado)
     pon32(p, en + 12, lado)
