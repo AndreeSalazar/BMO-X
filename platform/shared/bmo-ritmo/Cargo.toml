@@ -1,0 +1,11 @@
+[package]
+name = "bmo-ritmo"
+version = "0.1.0"
+edition = "2021"
+description = "E0 del plan de ritmo: dos relojes (el que publica un fotograma y el que lo presenta), contados, y quien de los dos marca el paso."
+license = "Apache-2.0"
+
+# Sin dependencias, por lo mismo que `bmo-golpe`: existe para poder PROBARSE en
+# el anfitrion. Contar fotogramas es aritmetica sobre dos numeros, y la
+# aritmetica no se prueba dentro de un `.bex`.
+[dependencies]

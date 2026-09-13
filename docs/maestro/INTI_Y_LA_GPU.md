@@ -299,6 +299,15 @@ puerta -- el mismo patron que el buzon.
                                               puntos de encuentro
 ```
 
+✅ **E0 HECHO el 2026-09-12, sin metal.** `platform/shared/bmo-ritmo` cuenta
+por ventana publicados, vistos, perdidos y esperas, y dice quien marca el paso
+(8 filas en el anfitrion: una app lenta, un DIRECTOR lento, parejos, minimizar
+que NO cuenta como perder, la vuelta del u32 y el salto absurdo). El DIRECTOR
+mira en `Table::mirar`, una vez por vuelta y en su propia linea: dentro del `||`
+de `main.rs` no se evaluaba cuando habia otra actividad. Se lee con `perf`.
+⏳ Falta la foto: `perf` con DOOM abierto, con el cubo, y con DOOM minimizado un
+rato -- en ese ultimo, `perdidos` tiene que seguir quieto.
+
 ★★ **E0, E1 y E2 se hacen con la maquina que hay y se prueban con DOOM y el
 cubo**, que ya son productores reales. Y cuando llegue E3, la tarjeta no trae un
 modelo nuevo de sincronizacion: trae un participante mas en uno que ya se midio.

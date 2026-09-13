@@ -66,6 +66,10 @@ members = [
     # del compositor por lo mismo que el juez de las medidas: aqui se PRUEBA.
     # Paso 2c.1 de `docs/plan/PLAN_DIRECTOR.md`.
     "platform/shared/bmo-golpe",
+    # EL RITMO: dos relojes (la app que publica, el DIRECTOR que presenta) y
+    # quien marca el paso. E0 de `docs/maestro/INTI_Y_LA_GPU.md` sec. 6, y
+    # vive aqui por la misma razon que la resta: aqui se PRUEBA.
+    "platform/shared/bmo-ritmo",
     # El JUEZ de las medidas de ciclos. Vive aqui y no dentro del `.bex` que
     # mide por la misma razon que la politica de foco vive en `bmo-input`: aqui
     # se puede PROBAR. Un `.bex` es `no_main` para un target sin sistema

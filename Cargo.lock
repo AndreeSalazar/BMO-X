@@ -380,6 +380,10 @@ name = "bmo-prestamo-juicio"
 version = "0.1.0"
 
 [[package]]
+name = "bmo-ritmo"
+version = "0.1.0"
+
+[[package]]
 name = "bmo-rpc-demo"
 version = "0.1.0"
 dependencies = [

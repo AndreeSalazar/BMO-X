@@ -23,3 +23,6 @@ bmo-dibujo = { path = "../../../platform/shared/bmo-dibujo" }
 # LA RESTA que convierte un clic de pantalla en un clic de la app. Fuera del
 # `.bex` por la misma razon que el foco: aqui no corre un test, alli si.
 bmo-golpe = { path = "../../../platform/shared/bmo-golpe" }
+# EL RITMO: cuantos fotogramas publica cada app, cuantos se ven, cuantos se
+# pierden, y quien marca el paso. Fuera por lo mismo: alli se prueba.
+bmo-ritmo = { path = "../../../platform/shared/bmo-ritmo" }

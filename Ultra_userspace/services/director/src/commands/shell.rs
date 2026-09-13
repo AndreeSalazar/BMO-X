@@ -106,6 +106,40 @@ pub(crate) fn paint_cost(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     dsk.out.grid.text(b"    la caja de sucio ya recorta esto: una GPU solo\n");
     dsk.out.grid.text(b"    compra algo si estos numeros son grandes.\n");
     dsk.out.grid.with_ink(INK_PLAIN);
+    // ** E0 DEL PLAN DE RITMO (2026-09-12): los dos relojes de cada ventana.
+    //
+    // La app PUBLICA fotogramas; el DIRECTOR los PRESENTA. Si miro sin nada
+    // nuevo, esperaba a la app; si la secuencia salto mas de uno, la app fue
+    // mas deprisa y esos no se vieron. Es CPU contra GPU de un juego, con la
+    // app haciendo de CPU. Ver `docs/maestro/INTI_Y_LA_GPU.md` sec. 6.
+    dsk.out.grid.text(b"  ritmo (desde que se abrio cada ventana)\n");
+    let mut alguna = false;
+    for s in dsk.table.iter_mut() {
+        alguna = true;
+        let r = s.ritmo;
+        dsk.out.grid.text(b"    tid ");
+        let k = decimal(s.tid as u64, &mut d);
+        dsk.out.grid.text(&d[..k]);
+        for (nombre, valor) in [
+            (&b"  publicados "[..], r.publicados),
+            (&b"  vistos "[..], r.presentados),
+            (&b"  perdidos "[..], r.perdidos),
+            (&b"  esperas "[..], r.vacias),
+        ] {
+            dsk.out.grid.text(nombre);
+            let k = decimal(valor, &mut d);
+            dsk.out.grid.text(&d[..k]);
+        }
+        dsk.out.grid.text(b"\n      marca el paso: ");
+        dsk.out.grid.text(r.quien_marca().texto());
+        if r.reinicios > 0 {
+            dsk.out.grid.text(b"  [!] la app reinicio su secuencia");
+        }
+        dsk.out.grid.text(b"\n");
+    }
+    if !alguna {
+        dsk.out.grid.text(b"    no hay ventanas de apps abiertas\n");
+    }
     paint_status(&p, &dsk.run_box, "listo", INK_DIM);
     dsk.field.n = 0;
     After::Settle

@@ -959,10 +959,15 @@ pub extern "C" fn _start() -> ! {
         // 250 ms y no llegaba nunca a sus 500 vueltas quietas: compilaba y no
         // hacia lo que decia. Ahora son dos preguntas, y el reposo solo
         // escucha a la primera.
+        // ** E0 (2026-09-12): la mirada va en SU linea y no al final del `||`.
+        // Ahi solo se evaluaba si lo de delante era falso, asi que con la
+        // rejilla sucia o una ventana naciendo, esta vuelta no contaba para el
+        // ritmo de ninguna app. Cuesta lo mismo que antes en casi toda vuelta.
+        let hay_nuevo = dsk.table.mirar();
         dsk.tick.actividad = dsk.out.grid.dirty
             || born
             || dead > 0
-            || dsk.table.has_new();
+            || hay_nuevo;
         dsk.tick.will_paint = dsk.tick.actividad || dsk.tick.quarter;
 
         // -- LA ENTRADA, en dos mitades que no se pueden mezclar --
