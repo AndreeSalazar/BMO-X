@@ -39,6 +39,10 @@
 #![cfg_attr(not(test), no_std)]
 #![forbid(unsafe_code)]
 
+/// **El prestamo y su castigo**: si la antena se pasa de lista, se corta y espera
+/// hasta aclararse. Seccion 9 del plan.
+pub mod cuarentena;
+
 pub const VERSION: &[u8] = b"ANTENA/1";
 /// El puerto de la antena. Alto, sin dueno conocido, y facil de recordar.
 pub const PUERTO: u16 = 7117;

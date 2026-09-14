@@ -414,3 +414,122 @@ ecosistema entero ya; el nativo da Python sin nadie al lado.
 - [ ] **V3.0 -- la tarjeta.** Solo despues de E4 (IOMMU) de
       `docs/plan/PLAN_RED_TX.md`. **Como se sabe:** `placa` dice AMD-Vi, y la
       tarjeta vive en un dominio propio con su corral mapeado y nada mas.
+
+---
+
+# 9. LAS METAS, REDEFINIDAS: la antena mastica, BMO-X presta (2026-09-14, noche)
+
+Eddi: *"cuando el celular funcione se convierte en ANTENA para tener apps tipicas
+como Google, porque mi celular MASTICA TODO y mi BMO-X es el core principal de
+potencia real. Es la primera vez que Linux ES ANTENA -- Android es Linux. Y que
+mi BMO-X le PRESTE su parte, pero si intenta pasarse de listo, BMO-X le corta y
+se reinicia hasta aclarar"*.
+
+## Lo que se aclara primero: el cable USB NO va primero
+
+El camino por el ROUTER ya funciona en metal: BMO-X tiene IP (DHCP), hace ping al
+router y a Internet. El movil por WiFi esta en esa misma red. **Lo que de verdad
+falta para que se hablen es TCP en BMO-X** (G5 de `docs/plan/PLAN_RED_TX.md`), no
+el cable. El cable USB (S3b) es COMODIDAD -- "conecto y ya" -- y es lo que mas
+kernel pide: va en paralelo y no bloquea nada.
+
+Por eso ESTRATOS no ensena el movil al enchufarlo, y es correcto: el movil ofrece
+MTP y ADB, que son la LLAVE del movil y estan negados (seccion 7). BMO-X nunca va
+a "abrir" el movil como un pendrive; el movil le HABLA por red.
+
+## El reparto
+
+```text
+   la ANTENA (Linux: Android lo es)        BMO-X (el core)
+   ------------------------------------    ------------------------------------
+   la web, Google, codecs, apps, Python    la pantalla, el teclado, el disco con
+   MASTICA: convierte a formatos simples   historial (ESTRATOS), la potencia
+   es LISTA, y por eso no se fia de ella   es CELOSO: decide, presta y corta
+```
+
+## Las apps "tipicas" (Google y compania)
+
+[!] BMO-X no ejecuta apps de Android, ni lo intentara: seria meter POSIX y el
+mundo Android por la puerta de atras. Hay dos caminos, y el barato va primero:
+
+```text
+   VERBOS (C)    la antena usa la app o la web y devuelve el RESULTADO masticado:
+                 BUSCA <texto> -> lineas de resultados; PAGINA -> texto. Barato
+   ESPEJO (S6)   la pantalla del movil como video y el teclado de vuelta: la app
+                 entera, tal cual. Caro (seccion 5) y el ultimo
+```
+
+## EL PRESTAMO: BMO-X presta, y corta si la antena se pasa de lista
+
+**Lo que presta** son SERVICIOS CON NOMBRE, nunca "ejecuta lo que te mande":
+contratos y formatos, no cerebros ajenos dentro de BMO-X.
+
+```text
+   ALMACEN    el movil guarda en ESTRATOS: copia con historial y firma, que el
+              movil no tiene. Lo mas util que un Ryzen le da a un telefono
+   CALCULO    trabajos de una lista de BMO-X (un hash, una firma; mas adelante
+              INTI), con los datos que manda la antena, nunca su codigo
+   PANTALLA   lo que ya es: ensenar lo que la antena mastico
+```
+
+Cada prestamo lleva **CUPO** fijado por BMO-X antes de empezar (tiempo de CPU y
+bytes), UN trabajo a la vez, y **prioridad de fondo**: lo que Eddi tiene delante
+gana siempre.
+
+**Pasarse de lista**, dicho uno por uno: hablar fuera del protocolo, pasarse del
+cupo, pedir un servicio que no se presta, pedir otro trabajo con uno en marcha,
+traer un trabajo sin firma.
+
+**Cortar y reiniciar hasta aclarar:**
+
+```text
+   falta 1..4   se corta la conexion y la puerta queda cerrada 1, 2, 4, 8 s
+                (x2 cada vez, techo 5 min)
+   falta 5      DESTERRADA: solo vuelve si el dueno lo dice en BMO-X
+   aclarar      una conversacion entera sin faltas borra UNA falta
+```
+
+** "Reiniciar" es la SESION, nunca la maquina. Si una falta reiniciara BMO-X, la
+antena tendria un boton para apagarte el PC: le bastaria con portarse mal.
+
+## Las metas en orden, y por que ese orden
+
+```text
+   A  la antena madura sola     el movil sirve y Windows recibe. Separa problemas:
+                                si A va, lo que falle despues es de BMO-X
+   B  BMO-X pide                TCP (G5), el reproductor (S1a, S1), S4, S5. Es el
+                                cuello de todo: sin TCP no hay nada que hablar
+   C  la antena mastica mas     BUSCA, PAGINA, IMAGEN, SONIDO (V2.1) y Python (P1)
+   D  BMO-X presta              ALMACEN y CALCULO, con la ley del castigo
+   E  cable y lejos             S3b (USB directo), S6 (espejo), V2 y V3
+```
+
+## Los escalones nuevos
+
+- [ ] **A1 -- la antena contesta a Windows.** La guia paso a paso es
+      `toolchain/tools/antena/GUIA_MOVIL.md`. **Como se sabe:** `cliente.py` en
+      Windows recibe la LISTA y un `prueba.mpg` de 10 s que VLC reproduce.
+
+- [x] **PR0 -- la ley del castigo, pura y con banco.** HECHO el 2026-09-14 en
+      `platform/shared/bmo-antena/src/cuarentena.rs`: `Cuarentena` (faltas,
+      espera doblada, destierro, perdon del dueno) y `Cupo`. **Como se sabe:**
+      `cargo test -p bmo-antena`, seis pruebas de la ley.
+
+- [ ] **PR1 -- la ley, cableada.** La app de S4 lleva una `Cuarentena` por
+      antena y la ensena en CABINA con el texto de la falta; `antena perdona` en
+      el DIRECTOR es la unica salida del destierro. **Como se sabe:** una antena
+      que manda una linea basura aparece en CABINA con "hablo fuera del
+      protocolo" y no puede volver a saludar en 1 s.
+
+- [ ] **PR2 -- PRESTA ALMACEN.** Un verbo `GUARDA <nombre> <bytes>` en
+      `platform/shared/bmo-antena`, con cupo de bytes, que escribe en ESTRATOS.
+      **Como se sabe:** una foto del movil aparece en ESTRATOS y `historial` la
+      ensena.
+
+- [ ] **PR3 -- PRESTA CALCULO.** `CALCULA <trabajo>` solo con nombres de la lista
+      de BMO-X y cupo de CPU. **Como se sabe:** un trabajo que se pasa del cupo
+      se corta y cuenta como falta.
+
+- [ ] **V2.2 -- BUSCA.** El verbo de busqueda en `platform/shared/bmo-antena`,
+      respuesta en lineas de texto. **Como se sabe:** `cliente.py` recibe los
+      resultados de una busqueda hecha por la antena.
