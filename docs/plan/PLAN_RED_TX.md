@@ -130,7 +130,9 @@ son cinco clases de linea.
       el 2026-09-14.
       Si dice `FALLA en la TARJETA`, se mira
       `Ultra_kernel_x86-64/kernel/src/ring0/red/salida.rs`.
-- [ ] **G2 -- tener IP.** DHCP en Ring 3 sobre el buzon (UDP 67/68):
+- [x] **G2 -- tener IP.** HECHO en el Ryzen el 2026-09-14: `red ip` dijo
+      `CONCEDIDA` (dos horas de concesion, con router, mascara y DNS) y
+      `red perfil` ensena la IP propia. DHCP en Ring 3 sobre el buzon (UDP 67/68):
       `platform/shared/bmo-pila/src/dhcp.rs` (el protocolo y el cliente, con
       banco contra servidores de mentira) y la orden `red ip` en
       `Ultra_userspace/services/director/src/commands/red_ip.rs`, en codigo el

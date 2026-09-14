@@ -7,8 +7,8 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   222 casillas ABIERTAS en 30 planes
-   150 hechas
+   221 casillas ABIERTAS en 30 planes
+   151 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -107,14 +107,14 @@
 - [ ] S3 -- EL PRIMER CLIENTE: INTI. Porque puede declarar el alias. Y
 - ... y 6 mas
 
-## [`PLAN_RED_TX.md`](PLAN_RED_TX.md) -- 9 abiertas, 6 hechas
+## [`PLAN_RED_TX.md`](PLAN_RED_TX.md) -- 8 abiertas, 7 hechas
 
 *PLAN RED TX -- transmitir, con el DMA contado y el cable detras de un grifo*
 
 - [ ] E4 -- el muro: IOMMU, si la placa lo da. Foto de placa (la operacion
 - [ ] E5 -- la pila encima: un ping que contesta. platform/shared/bmo-pila
 - [ ] E6 -- firmas: cifrado autenticado sobre UDP. ChaCha20-Poly1305 y
-- ... y 6 mas
+- ... y 5 mas
 
 ## [`PLAN_VATIOS.md`](PLAN_VATIOS.md) -- 8 abiertas, 4 hechas
 
