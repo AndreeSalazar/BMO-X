@@ -68,33 +68,15 @@ struct Tarea {
     intentos: u8,
     respuesta: [u8; 512],
     largo_respuesta: usize,
+    // ** el diagnostico: lo que se dejo en el buzon y la foto del kernel al empezar
+    dejadas: u64,
+    salieron0: u64,
+    negadas0: u64,
+    dadas0: u64,
+    devueltas0: u64,
 }
 
-static mut TAREA: Tarea = Tarea {
-    fase: QUIETO,
-    dns: false,
-    destino: [0; 4],
-    salto: [0; 4],
-    mac: [0; 6],
-    inicio_ms: 0,
-    ultimo_ms: 0,
-    enviados: 0,
-    recibidos: 0,
-    esperando: false,
-    enviado_ciclos: 0,
-    llego_ciclos: 0,
-    llego_seq: 0,
-    min_us: u64::MAX,
-    max_us: 0,
-    suma_us: 0,
-    id: 0,
-    puerto: 0,
-    nombre: [0; dns::NOMBRE_MAX + 1],
-    largo_nombre: 0,
-    intentos: 0,
-    respuesta: [0; 512],
-    largo_respuesta: 0,
-};
+static mut TAREA: Tarea = quieta();
 static mut NODO: Option<Nodo> = None;
 
 fn tarea() -> &'static mut Tarea {
@@ -178,6 +160,7 @@ pub(crate) fn ping(s: &mut Output, resto: &[u8]) {
     let Some(salto) = preparar(s, destino) else { return };
     let t = tarea();
     *t = Tarea { fase: RESOLVIENDO, dns: false, destino, salto, inicio_ms: ahora_ms(), ..quieta() };
+    fotografiar(t);
     s.text(b"  [ping] quien tiene ");
     ip_texto(s, salto);
     s.text(b"? (ARP con nuestra IP)\n");
@@ -213,6 +196,7 @@ pub(crate) fn dns(s: &mut Output, resto: &[u8]) {
         ..quieta()
     };
     t.nombre[..t.largo_nombre].copy_from_slice(&resto[..t.largo_nombre]);
+    fotografiar(t);
     s.text(b"  [dns] pregunto a ");
     ip_texto(s, k.dns);
     s.text(b" por ");
@@ -245,7 +229,80 @@ const fn quieta() -> Tarea {
         intentos: 0,
         respuesta: [0; 512],
         largo_respuesta: 0,
+        dejadas: 0,
+        salieron0: 0,
+        negadas0: 0,
+        dadas0: 0,
+        devueltas0: 0,
     }
+}
+
+/// **La foto del kernel al empezar**: lo que el grifo y la tarjeta llevan hasta
+/// ahora. Al fallar se resta, y la resta dice DONDE se quedo la trama.
+fn fotografiar(t: &mut Tarea) {
+    let e = bmo::red::estado();
+    t.salieron0 = e & 0xFF_FFFF;
+    t.negadas0 = (e >> 24) & 0xFF_FFFF;
+    let (dadas, devueltas) = bmo::red::vuelos();
+    t.dadas0 = dadas;
+    t.devueltas0 = devueltas;
+    t.dejadas = 0;
+}
+
+/// Deja una trama en el buzon y la cuenta.
+fn enviar(t: &mut Tarea, trama: &[u8]) -> bool {
+    let ok = bmo::red::enviar(trama).is_ok();
+    if ok {
+        t.dejadas += 1;
+    }
+    ok
+}
+
+/// *** EL DIAGNOSTICO, cuando algo no contesta (2026-09-14).
+///
+/// La foto de ese dia: el ping al router contesto, y despues el ping a Internet,
+/// el DNS y hasta el ARP se quedaron mudos. Con cuatro restas se sabe en que
+/// eslabon se quedo la trama, en vez de adivinarlo:
+///
+/// ```text
+///    dejadas > salieron         el kernel no las saco del buzon
+///    negadas subio              el grifo dijo que no
+///    dadas > devueltas          la tarjeta se las quedo
+///    todo cuadra                salieron al cable: el silencio es del otro lado
+/// ```
+fn diagnostico(s: &mut Output, t: &Tarea) {
+    let e = bmo::red::estado();
+    let salieron = (e & 0xFF_FFFF).saturating_sub(t.salieron0);
+    let negadas = ((e >> 24) & 0xFF_FFFF).saturating_sub(t.negadas0);
+    let ultimo_no = (e >> 48) & 0xFF;
+    let (dadas, devueltas) = bmo::red::vuelos();
+    let (dadas, devueltas) = (dadas.saturating_sub(t.dadas0), devueltas.saturating_sub(t.devueltas0));
+    s.text(b"  [diagnostico] dejadas en el buzon ");
+    s.dec(t.dejadas);
+    s.text(b" | salieron por el grifo ");
+    s.dec(salieron);
+    s.text(b" | negadas ");
+    s.dec(negadas);
+    s.text(b" | la tarjeta devolvio enviadas ");
+    s.dec(devueltas);
+    s.text(b" de ");
+    s.dec(dadas);
+    s.byte(b'\n');
+    s.with_ink(INK_ERR);
+    if salieron + negadas < t.dejadas {
+        s.text(b"  -> el KERNEL no saco del buzon todas: el latido no las recogio (anillo de salida lleno o latido parado)\n");
+    } else if negadas > 0 {
+        s.text(b"  -> el GRIFO nego ");
+        s.dec(negadas);
+        s.text(b" (ultimo motivo ");
+        s.dec(ultimo_no);
+        s.text(b"): F11 dice por que\n");
+    } else if dadas > devueltas {
+        s.text(b"  -> la TARJETA se quedo tramas sin enviar: el transmisor\n");
+    } else {
+        s.text(b"  -> todo salio al cable: el silencio es del OTRO lado (no contesta o no reenvia)\n");
+    }
+    s.with_ink(INK_PLAIN);
 }
 
 /// **Con un ping en marcha, el buzon se mira cada vuelta.** Lo llama el bucle.
@@ -268,7 +325,7 @@ pub(crate) fn oir(trama: &[u8]) {
         // Alguien pregunta por NUESTRA IP (el router, antes de contestar): se le
         // contesta, o la respuesta al ping no sabria a donde ir.
         Ok(Hecho::Contestar(largo)) => {
-            let _ = bmo::red::enviar(&salida[..largo]);
+            enviar(t, &salida[..largo]);
         }
         Ok(Hecho::Eco { origen, id, secuencia }) => {
             if t.fase == PINGANDO && t.esperando && origen == t.destino && id == ID_PING && secuencia == t.enviados {
@@ -327,13 +384,14 @@ pub(crate) fn latir(s: &mut Output) {
                 return;
             }
             if let Ok(Some(largo)) = n.preguntar(t.salto, ahora, &mut buf) {
-                let _ = bmo::red::enviar(&buf[..largo]);
+                enviar(t, &buf[..largo]);
             }
             if ahora.saturating_sub(t.inicio_ms) >= ESPERA_ARP_MS {
                 s.with_ink(INK_ERR);
                 s.text(quien);
                 s.text(b"nadie contesto por ARP en 6 s\n");
                 s.with_ink(INK_PLAIN);
+                diagnostico(s, t);
                 terminar();
             }
         }
@@ -364,12 +422,15 @@ pub(crate) fn latir(s: &mut Output) {
             if !t.esperando && (t.ultimo_ms == 0 || ahora.saturating_sub(t.ultimo_ms) >= 1_000) {
                 if t.enviados == ECOS {
                     resumen_ping(s, t);
+                    if t.recibidos < t.enviados {
+                        diagnostico(s, t);
+                    }
                     terminar();
                     return;
                 }
                 let seq = t.enviados + 1;
                 match n.eco(&mut buf, t.mac, t.destino, ID_PING, seq, b"BMO-X ping, sin prisa") {
-                    Ok(largo) if bmo::red::enviar(&buf[..largo]).is_ok() => {
+                    Ok(largo) if enviar(t, &buf[..largo]) => {
                         t.enviados = seq;
                         t.enviado_ciclos = bmo::ciclos();
                         t.llego_ciclos = 0;
@@ -395,14 +456,18 @@ pub(crate) fn latir(s: &mut Output) {
                     s.with_ink(INK_ERR);
                     s.text(b"  [dns] el servidor no contesto en 6 s\n");
                     s.with_ink(INK_PLAIN);
+                    diagnostico(s, t);
                     terminar();
                     return;
                 }
                 let mut msg = [0u8; 300];
-                let enviado = dns::preguntar(&mut msg, t.id, &t.nombre[..t.largo_nombre])
-                    .and_then(|m| n.udp(&mut buf, t.mac, t.destino, t.puerto, dns::PUERTO, &msg[..m]))
-                    .ok()
-                    .is_some_and(|largo| bmo::red::enviar(&buf[..largo]).is_ok());
+                let enviado = match dns::preguntar(&mut msg, t.id, &t.nombre[..t.largo_nombre]) {
+                    Ok(m) => match n.udp(&mut buf, t.mac, t.destino, t.puerto, dns::PUERTO, &msg[..m]) {
+                        Ok(largo) => enviar(t, &buf[..largo]),
+                        Err(_) => false,
+                    },
+                    Err(_) => false,
+                };
                 if !enviado {
                     s.text(b"  [dns] la pregunta no entro en el buzon\n");
                     terminar();
@@ -430,7 +495,10 @@ fn resumen_ping(s: &mut Output, t: &Tarea) {
         s.text(b" / max ");
         ms(s, t.max_us);
         s.text(b" ms\n");
-        s.text(b"  (incluye el latido de 4 ms del kernel en cada sentido)\n");
+        // *** 15,960 / 15,961 / 15,960 / 15,997 en el Ryzen (2026-09-14): cuatro
+        // numeros casi iguales no son una red, son un reloj. Se dice.
+        s.text(b"  (mide sobre todo a BMO-X: la trama espera al latido para salir y otra vez\n");
+        s.text(b"   para leerse; un router por cable suele contestar en menos de 1 ms)\n");
         s.with_ink(INK_GOOD);
         s.text(b"  G3 hecho: la pila propia hace ping y le contestan.\n");
         s.with_ink(INK_PLAIN);
