@@ -1,13 +1,13 @@
 <!-- GENERADO por toolchain/tools/planes. No se edita a mano. -->
 
-# LO QUE FALTA -- las casillas abiertas de los 33 planes
+# LO QUE FALTA -- las casillas abiertas de los 34 planes
 
 > Generado por `toolchain/tools/planes`. **El build comprueba que
 > este fichero y los planes dicen lo mismo**, asi que no puede
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   220 casillas ABIERTAS en 30 planes
+   227 casillas ABIERTAS en 31 planes
    152 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
@@ -159,6 +159,15 @@
 - [ ] E4 -- el muro: IOMMU, si la placa lo da. Foto de placa (la operacion
 - [ ] E5 -- la pila encima: un ping que contesta. platform/shared/bmo-pila
 - [ ] E6 -- firmas: cifrado autenticado sobre UDP. ChaCha20-Poly1305 y
+- ... y 4 mas
+
+## [`PLAN_SATELITE.md`](PLAN_SATELITE.md) -- 7 abiertas, 0 hechas
+
+*PLAN SATELITE -- el movil es la ANTENA, BMO-X es la pantalla*
+
+- [ ] S0 -- lo que tiene que estar antes. G5 de docs/plan/PLAN_RED_TX.md:
+- [ ] S1 -- el reproductor LOCAL. Una app .bex en BMO C con pl_mpeg
+- [ ] S2 -- el protocolo ANTENA/1, escrito y con banco. Un crate puro,
 - ... y 4 mas
 
 ## [`PLAN_DOOM.md`](PLAN_DOOM.md) -- 6 abiertas, 3 hechas
