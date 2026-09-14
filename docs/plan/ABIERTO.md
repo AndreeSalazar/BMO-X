@@ -1,14 +1,14 @@
 <!-- GENERADO por toolchain/tools/planes. No se edita a mano. -->
 
-# LO QUE FALTA -- las casillas abiertas de los 32 planes
+# LO QUE FALTA -- las casillas abiertas de los 33 planes
 
 > Generado por `toolchain/tools/planes`. **El build comprueba que
 > este fichero y los planes dicen lo mismo**, asi que no puede
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   213 casillas ABIERTAS en 29 planes
-   144 hechas
+   218 casillas ABIERTAS en 30 planes
+   146 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -213,6 +213,15 @@
 - [ ] 1. ARRANCAR Y LEER. Reproducir --matar Ring 3, volver a entrar-- y
 - [ ] 2. EL JUEZ, en su crate. platform/shared/bmo-pila-juicio: *"se
 - [ ] 3. reap PREGUNTA AL JUEZ en vez de mirar solo su rsp. El cambio
+- ... y 2 mas
+
+## [`PLAN_RED_TX.md`](PLAN_RED_TX.md) -- 5 abiertas, 2 hechas
+
+*PLAN RED TX -- transmitir, con el DMA contado y el cable detras de un grifo*
+
+- [ ] E2 -- el RX cuenta sus vuelos en el titular, sin transmitir. Hoy
+- [ ] E3 -- transmitir detras del grifo. CR.TE, TNPDS, TCR y la campana
+- [ ] E4 -- el muro: IOMMU, si la placa lo da. Foto de placa (la operacion
 - ... y 2 mas
 
 ## [`PLAN_DIRECTOR_CENSO.md`](PLAN_DIRECTOR_CENSO.md) -- 4 abiertas, 11 hechas

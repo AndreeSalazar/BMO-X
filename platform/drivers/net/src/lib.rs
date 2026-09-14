@@ -65,6 +65,11 @@
 /// parte de un driver que se equivoca SIN dar un fallo.
 pub mod anillo;
 
+/// **TRANSMITIR**: el corral de salida, los vuelos y el GRIFO. E1 de
+/// `docs/plan/PLAN_RED_TX.md`: todo lo que se equivoca sin fallo, probado aqui
+/// antes de que el kernel encienda `CR.TE`.
+pub mod tx;
+
 /// Seis bytes. El nombre existe para que una firma no diga `[u8; 6]` y deje al
 /// que lee adivinando si son bytes de MAC o de otra cosa.
 pub type Mac = [u8; 6];
