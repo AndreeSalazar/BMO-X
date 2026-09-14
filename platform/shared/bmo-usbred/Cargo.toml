@@ -1,0 +1,10 @@
+[package]
+name = "bmo-usbred"
+version = "0.1.0"
+edition = "2021"
+description = "La red por USB de un movil (anclaje): que es cada interfaz por su clase, y los mensajes RNDIS. Puro, probado en el anfitrion."
+license = "Apache-2.0"
+
+# Sin dependencias. Lo lee el portero del kernel para NOMBRAR lo que llega, y
+# sera la mitad probada del driver de S3b en PLAN_CLOUD_LOCAL.
+[dependencies]

@@ -100,12 +100,37 @@ pantalla tal cual.
       v1 -s 20` deja un `prueba.mpg` que se reproduce en Windows.
 
 - [ ] **S3b -- el movil por CABLE USB, sin router.** El movil en "anclaje por
-      USB" se presenta como una tarjeta de red USB (RNDIS o NCM, segun el
-      modelo). BMO-X tendria que aprender esa clase en su pila USB
-      (`Ultra_kernel_x86-64/kernel/src/ring0/dev/usb`): transferencias bulk y el
-      formato de trama de NCM/RNDIS. Se decide DESPUES de S4: el adaptador USB-C
-      a Ethernet (seccion 5) da el mismo cable hoy, sin tocar el kernel.
-      **Como se sabe:** `red perfil` ensena una segunda tarjeta, la del movil.
+      USB" se presenta como una tarjeta de red USB: RNDIS (casi todos los
+      Android) o NCM. Es el unico escalon que toca el kernel, y va por partes.
+      Pedido por Eddi el 2026-09-14 con su HONOR X7a enchufado. **Como se sabe:**
+      `red perfil` ensena una segunda tarjeta, la del movil.
+
+- [ ] **S3b.0 -- BMO-X dice QUE llego.** En codigo el 2026-09-14: el portero
+      (`Ultra_kernel_x86-64/kernel/src/ring0/dev/usb/portero.rs`) nombra cada
+      interfaz con `platform/shared/bmo-usbred` (`clase.rs`) en vez de "no es
+      HID". **Como se sabe:** con el movil en el Ryzen y el anclaje por USB
+      encendido, F11 dice `llego una RED POR USB (RNDIS...)` o `(NCM)`: esa foto
+      decide cual de los dos drivers se escribe.
+
+- [ ] **S3b.1 -- los mensajes, probados sin movil.** En codigo el 2026-09-14:
+      `platform/shared/bmo-usbred/src/rndis.rs` (INITIALIZE, la MAC, el filtro y
+      la cabecera de 44 de cada trama, con `DataOffset` contado desde su propio
+      campo). **Como se sabe:** `cargo test -p bmo-usbred` en verde, con 20.000
+      transferencias mutadas.
+
+- [ ] **S3b.2 -- BULK en el xHCI.** `platform/drivers/usb/xhci/src/transferencia.rs`
+      sabe control, interrupcion de entrada e isocrono de salida; faltan los
+      endpoints BULK de entrada y salida (tipos 2 y 6 del contexto). **Como se
+      sabe:** un pendrive contesta a un INQUIRY de almacenamiento, que es BULK y
+      no necesita ningun movil.
+
+- [ ] **S3b.3 -- el driver RNDIS.** En `Ultra_kernel_x86-64/kernel/src/ring0/dev/usb`,
+      con el control encapsulado por el endpoint 0 y las tramas por BULK.
+      **Como se sabe:** el movil contesta a INITIALIZE y da su MAC.
+
+- [ ] **S3b.4 -- la segunda tarjeta en el GATE RED.** `ring0/red` hoy conoce
+      una sola NIC (la RTL8168); el pase y el grifo tendrian que elegir por cual
+      salir. **Como se sabe:** `red ip` pide IP al movil por el cable USB.
 
 - [ ] **S4 -- BMO-X pide y ve.** La app de S1 lee de la conexion en vez del
       disco, con la IP de la antena en `director.cfg` del disco de BMO (nunca en

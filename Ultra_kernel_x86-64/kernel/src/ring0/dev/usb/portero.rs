@@ -169,8 +169,19 @@ pub(super) fn apunta(
     if admitido(veredicto) {
         crate::ring0::cabina::info("portero", motivo(veredicto), papeles);
     } else {
-        crate::ring0::cabina::warn("portero", motivo(veredicto), papeles);
+        crate::ring0::cabina::warn("portero", motivo_con_nombre(veredicto, clase, subclase, proto), papeles);
     }
+}
+
+/// **"No es HID" no dice QUE es** (2026-09-14). Con el movil de Eddi enchufado,
+/// la frase de siempre habria salido para su red USB, su MTP y su ADB: tres
+/// renglones iguales. `bmo_usbred` les pone nombre, y a una red por USB le dice
+/// que le falta (BULK en el xHCI).
+fn motivo_con_nombre(veredicto: u8, clase: u8, subclase: u8, proto: u8) -> &'static str {
+    if veredicto == uhid::VEREDICTO_NO_ES_HID {
+        return bmo_usbred::clase::que_es(clase, subclase, proto).texto();
+    }
+    motivo(veredicto)
 }
 
 /// Entro o no. Las dos unicas respuestas que significan *"esta funcionando"*.

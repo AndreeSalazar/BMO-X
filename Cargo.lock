@@ -281,6 +281,7 @@ dependencies = [
  "bmo-trim",
  "bmo-uaudio",
  "bmo-uhid",
+ "bmo-usbred",
  "bmo-xhci",
  "boot-context",
  "cabina-core",
@@ -459,6 +460,10 @@ dependencies = [
  "bmo-input",
  "bmo-xhci",
 ]
+
+[[package]]
+name = "bmo-usbred"
+version = "0.1.0"
 
 [[package]]
 name = "bmo-verify"

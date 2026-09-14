@@ -88,6 +88,9 @@ members = [
     # EL CLOUD LOCAL: el protocolo ANTENA/1 entre BMO-X y el movil que hace de
     # antena. Ver PLAN_CLOUD_LOCAL, S2.
     "platform/shared/bmo-antena",
+    # La RED POR USB de un movil: que es cada interfaz, y los mensajes RNDIS.
+    # Ver PLAN_CLOUD_LOCAL, S3b.
+    "platform/shared/bmo-usbred",
     # El JUEZ de las medidas de ciclos. Vive aqui y no dentro del `.bex` que
     # mide por la misma razon que la politica de foco vive en `bmo-input`: aqui
     # se puede PROBAR. Un `.bex` es `no_main` para un target sin sistema

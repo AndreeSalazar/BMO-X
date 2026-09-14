@@ -7,7 +7,7 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   228 casillas ABIERTAS en 31 planes
+   233 casillas ABIERTAS en 31 planes
    152 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
@@ -43,6 +43,15 @@
 - [ ] P2.3 -- el kernel publica el TIEMPO DE CPU de una tarea. Hoy
 - [ ] P2.4 -- envejecimiento en choose_next, y SOLO si P2.1+P2.2 no bastan.
 - ... y 11 mas
+
+## [`PLAN_CLOUD_LOCAL.md`](PLAN_CLOUD_LOCAL.md) -- 13 abiertas, 0 hechas
+
+*PLAN CLOUD LOCAL -- el movil es la ANTENA, BMO-X es la pantalla*
+
+- [ ] S0 -- lo que tiene que estar antes. G5 de docs/plan/PLAN_RED_TX.md:
+- [ ] S1 -- el reproductor LOCAL. Una app .bex en BMO C con pl_mpeg
+- [ ] S2 -- el protocolo ANTENA/1, escrito y con banco. En codigo el
+- ... y 10 mas
 
 ## [`PLAN_EL_ASISTENTE.md`](PLAN_EL_ASISTENTE.md) -- 13 abiertas, 2 hechas
 
@@ -106,15 +115,6 @@
 - [ ] S2 -- LA TABLA DE REGISTROS COMO DATO, no como codigo. x86-64 nombra
 - [ ] S3 -- EL PRIMER CLIENTE: INTI. Porque puede declarar el alias. Y
 - ... y 6 mas
-
-## [`PLAN_CLOUD_LOCAL.md`](PLAN_CLOUD_LOCAL.md) -- 8 abiertas, 0 hechas
-
-*PLAN CLOUD LOCAL -- el movil es la ANTENA, BMO-X es la pantalla*
-
-- [ ] S0 -- lo que tiene que estar antes. G5 de docs/plan/PLAN_RED_TX.md:
-- [ ] S1 -- el reproductor LOCAL. Una app .bex en BMO C con pl_mpeg
-- [ ] S2 -- el protocolo ANTENA/1, escrito y con banco. En codigo el
-- ... y 5 mas
 
 ## [`PLAN_VATIOS.md`](PLAN_VATIOS.md) -- 8 abiertas, 4 hechas
 

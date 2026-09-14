@@ -76,6 +76,9 @@ bmo-net = { path = "../../platform/drivers/net" }
 # EL GATE RED: el juicio del pase, la forma del buzon y el radar. Puro y probado
 # en el anfitrion; el kernel solo junta los hechos y mueve las paginas.
 bmo-puerta-red = { path = "../../platform/shared/bmo-puerta-red" }
+# Que ES cada interfaz USB por su clase: el portero la nombra en vez de decir
+# "no es HID". Y mas adelante, los mensajes RNDIS del movil en anclaje.
+bmo-usbred = { path = "../../platform/shared/bmo-usbred" }
 # Lo que la PLACA cuenta de si misma. La interpretacion de una cabecera ACPI se
 # prueba en el anfitrion; aqui solo se leen direcciones fisicas.
 bmo-firmware = { path = "../../platform/shared/bmo-firmware" }
