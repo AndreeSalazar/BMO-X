@@ -646,6 +646,7 @@ pub(super) fn red(arg0: u64, _arg1: u64) -> BmoStatus {
             BmoStatus::ok_value(habia as u64)
         }
         RED_OP_ESTADO => BmoStatus::ok_value(net::puerta::estado()),
+        RED_OP_VUELOS => BmoStatus::ok_value(net::puerta::vuelos()),
         _ => unsupported(),
     }
 }

@@ -343,6 +343,8 @@ pub(crate) const RED_OP_ABRIR: u64 = 0x03;
 pub(crate) const RED_OP_CERRAR: u64 = 0x04;
 /// El estado empaquetado de `puerta::estado`.
 pub(crate) const RED_OP_ESTADO: u64 = 0x05;
+/// `(despegues << 32) | aterrizajes`: si la tarjeta DEVOLVIO lo que se le dio.
+pub(crate) const RED_OP_VUELOS: u64 = 0x06;
 
 /// Lo que contesta `RED_OP_ARMAR`.
 pub(crate) const RED_ARMADO_OK: u64 = 0;

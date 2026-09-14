@@ -342,6 +342,17 @@ pub fn estado() -> u64 {
         | (sal & 0xFF_FFFF)
 }
 
+/// `(despegues << 32) | aterrizajes` del anillo de salida. Ver `salida::vuelos`.
+///
+/// ** Lo recoge tambien sin pase: una trama que la tarjeta suelta despues de
+/// cerrar tiene que contar como enviada, o la foto diria que no salio.
+pub fn vuelos() -> u64 {
+    let _c = Cerrojo::tomar();
+    salida::recoger(crate::ring0::reloj::ticks());
+    let (d, a) = salida::vuelos();
+    ((d & 0xFFFF_FFFF) << 32) | (a & 0xFFFF_FFFF)
+}
+
 /// El sondeo de siempre, cuando NO hay pase. Con pase, las tramas son del buzon
 /// y las recoge el latido: sondear aqui se las comeria.
 pub fn sondear_sin_pase() -> u32 {

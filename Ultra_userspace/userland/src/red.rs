@@ -41,6 +41,7 @@ pub const RED_OP_SONDEAR: u64 = 0x02;
 pub const RED_OP_ABRIR: u64 = 0x03;
 pub const RED_OP_CERRAR: u64 = 0x04;
 pub const RED_OP_ESTADO: u64 = 0x05;
+pub const RED_OP_VUELOS: u64 = 0x06;
 /// Donde el kernel deja el buzon del pase.
 pub const RED_BUZON_VA: u64 = 0x0000_0002_0000_0000;
 
@@ -135,6 +136,12 @@ pub fn cerrar() {
     if h != 0 {
         invoke(CURRENT_TASK, OP_RED, RED_OP_CERRAR, h, 0);
     }
+}
+
+/// `(despegues, aterrizajes)`: dadas a la tarjeta, y devueltas ENVIADAS por ella.
+pub fn vuelos() -> (u64, u64) {
+    let v = invoke(CURRENT_TASK, OP_RED, RED_OP_VUELOS, 0, 0).value;
+    (v >> 32, v & 0xFFFF_FFFF)
 }
 
 /// El estado empaquetado: ver `RED_OP_ESTADO` en el ABI.

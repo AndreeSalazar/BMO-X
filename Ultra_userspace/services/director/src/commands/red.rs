@@ -324,6 +324,37 @@ static PREGUNTADA: AtomicU32 = AtomicU32::new(0);
 static RESPUESTA_MAC: AtomicU64 = AtomicU64::new(0);
 static RESPUESTAS: AtomicU64 = AtomicU64::new(0);
 static RECIBIDAS: AtomicU64 = AtomicU64::new(0);
+/// **Quien habla ARP en este cable**: las cuatro primeras IP de origen distintas.
+///
+/// ** La foto del 13-09 dijo `sin respuesta todavia` con 56 tramas en el buzon.
+/// Un router pregunta por ARP todo el rato, asi que su IP ya estaba ahi dentro:
+/// si no es la que se pregunto, el fallo no es el cable, es la IP.
+static VECINOS: [AtomicU32; 4] = [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0)];
+
+fn apuntar_vecino(ip: u32) {
+    if ip == 0 {
+        return;
+    }
+    for v in &VECINOS {
+        let hay = v.load(Ordering::Relaxed);
+        if hay == ip {
+            return;
+        }
+        if hay == 0 {
+            v.store(ip, Ordering::Relaxed);
+            return;
+        }
+    }
+}
+
+fn ip_texto(s: &mut Output, ip: u32) {
+    for k in 0..4 {
+        s.dec(((ip >> ((3 - k) * 8)) & 0xFF) as u64);
+        if k < 3 {
+            s.byte(b'.');
+        }
+    }
+}
 
 /// **Vacia el buzon.** Lo llama el bucle cuatro veces por segundo. Sin syscall.
 pub(crate) fn drenar() {
@@ -334,6 +365,9 @@ pub(crate) fn drenar() {
     for _ in 0..16 {
         let Some(n) = bmo::red::recibir(&mut t) else { break };
         RECIBIDAS.fetch_add(1, Ordering::Relaxed);
+        if n >= 42 && t[12] == 0x08 && t[13] == 0x06 {
+            apuntar_vecino(u32::from_be_bytes([t[28], t[29], t[30], t[31]]));
+        }
         // ARP (0x0806), respuesta (oper 2), y de la IP por la que se pregunto.
         if n >= 42 && t[12] == 0x08 && t[13] == 0x06 && t[20] == 0 && t[21] == 2 {
             let spa = u32::from_be_bytes([t[28], t[29], t[30], t[31]]);
@@ -459,9 +493,35 @@ fn pase(s: &mut Output) {
         s.text(b")");
     }
     s.byte(b'\n');
+    // *** LA PREGUNTA DE E3: la tarjeta la SOLTO? Salir del grifo no es salir
+    // al cable; volver de la tarjeta, si.
+    let (dadas, devueltas) = bmo::red::vuelos();
+    label(s, b"tarjeta");
+    s.dec(devueltas);
+    s.text(b" de ");
+    s.dec(dadas);
+    s.text(b" devueltas ENVIADAS");
+    if dadas > devueltas {
+        s.text(b"\n    [!] la tarjeta NO ha soltado alguna: no salio al cable (transmisor)\n");
+    } else if dadas > 0 {
+        s.text(b"\n    la tarjeta las envio: salieron al cable\n");
+    } else {
+        s.byte(b'\n');
+    }
     label(s, b"buzon");
     s.dec(RECIBIDAS.load(Ordering::Relaxed));
     s.text(b" tramas recogidas sin syscall\n");
+    if VECINOS[0].load(Ordering::Relaxed) != 0 {
+        label(s, b"hablan ARP");
+        for v in &VECINOS {
+            let ip = v.load(Ordering::Relaxed);
+            if ip != 0 {
+                ip_texto(s, ip);
+                s.text(b"  ");
+            }
+        }
+        s.text(b"\n    el router suele ser la que acaba en .1 o .254 de esas\n");
+    }
     let ip = PREGUNTADA.load(Ordering::Relaxed);
     if ip != 0 {
         label(s, b"ARP");

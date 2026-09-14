@@ -496,6 +496,9 @@ pub const RED_OP_ABRIR: u64 = 0x03;
 pub const RED_OP_CERRAR: u64 = 0x04;
 /// `(abierto << 63) | (motivo << 56) | (ultimo no << 48) | (negadas << 24) | salieron`.
 pub const RED_OP_ESTADO: u64 = 0x05;
+/// `(despegues << 32) | aterrizajes` del anillo de salida: tramas dadas a la
+/// tarjeta y tramas que la tarjeta devolvio ENVIADAS.
+pub const RED_OP_VUELOS: u64 = 0x06;
 /// Donde queda el buzon del pase en el proceso. 7 paginas.
 pub const RED_BUZON_VA: u64 = 0x0000_0002_0000_0000;
 

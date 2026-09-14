@@ -174,6 +174,14 @@ pub fn cupo() -> u32 {
     unsafe { (*core::ptr::addr_of!(GRIFO)).cupo() }
 }
 
+/// `(despegues, aterrizajes)`: tramas dadas a la tarjeta y tramas que la tarjeta
+/// DEVOLVIO enviadas. **La diferencia es la pregunta de E3**: si una despega y no
+/// aterriza nunca, el grifo la dejo salir y la tarjeta no la puso en el cable.
+pub fn vuelos() -> (u64, u64) {
+    let v = unsafe { &*core::ptr::addr_of!(VUELOS) };
+    (v.despegues, v.aterrizajes)
+}
+
 /// `(salieron, negadas, codigo del ultimo no)`.
 pub fn contadores() -> (u64, u64, u32) {
     let g = unsafe { &*core::ptr::addr_of!(GRIFO) };
