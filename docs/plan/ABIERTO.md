@@ -7,7 +7,7 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   233 casillas ABIERTAS en 31 planes
+   235 casillas ABIERTAS en 31 planes
    152 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
@@ -26,6 +26,15 @@
 - [ ] 1.2 (S) La misma comprobacion en EXIT: una salida limpia tambien
 - ... y 14 mas
 
+## [`PLAN_CLOUD_LOCAL.md`](PLAN_CLOUD_LOCAL.md) -- 15 abiertas, 0 hechas
+
+*PLAN CLOUD LOCAL -- el movil es la ANTENA, BMO-X es la pantalla*
+
+- [ ] S0 -- lo que tiene que estar antes. G5 de docs/plan/PLAN_RED_TX.md:
+- [ ] S1a -- LEER de ESTRATOS. Medido el 2026-09-14 en
+- [ ] S1b -- la Biblioteca ensena lo de ESTRATOS. Hoy
+- ... y 12 mas
+
 ## [`PLAN_EL_GUARDIAN.md`](PLAN_EL_GUARDIAN.md) -- 15 abiertas, 0 hechas
 
 *PLAN EL GUARDIAN -- BMO-X como aparato, no como invitado*
@@ -43,15 +52,6 @@
 - [ ] P2.3 -- el kernel publica el TIEMPO DE CPU de una tarea. Hoy
 - [ ] P2.4 -- envejecimiento en choose_next, y SOLO si P2.1+P2.2 no bastan.
 - ... y 11 mas
-
-## [`PLAN_CLOUD_LOCAL.md`](PLAN_CLOUD_LOCAL.md) -- 13 abiertas, 0 hechas
-
-*PLAN CLOUD LOCAL -- el movil es la ANTENA, BMO-X es la pantalla*
-
-- [ ] S0 -- lo que tiene que estar antes. G5 de docs/plan/PLAN_RED_TX.md:
-- [ ] S1 -- el reproductor LOCAL. Una app .bex en BMO C con pl_mpeg
-- [ ] S2 -- el protocolo ANTENA/1, escrito y con banco. En codigo el
-- ... y 10 mas
 
 ## [`PLAN_EL_ASISTENTE.md`](PLAN_EL_ASISTENTE.md) -- 13 abiertas, 2 hechas
 

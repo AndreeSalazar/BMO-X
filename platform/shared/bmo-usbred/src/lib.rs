@@ -29,4 +29,6 @@
 #![forbid(unsafe_code)]
 
 pub mod clase;
+/// TODO NEGADO por defecto: la categoria de cada aparato y lo que se le deja.
+pub mod politica;
 pub mod rndis;

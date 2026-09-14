@@ -63,6 +63,12 @@ pub enum Rechazo {
     Tamano,
     Version,
     Corto,
+    /// Una linea que no toca en este momento de la conversacion.
+    Orden,
+    /// Demasiadas lineas sin llegar a un video.
+    Charla,
+    /// La conversacion ya se cerro por un rechazo anterior.
+    Cerrada,
 }
 
 impl Rechazo {
@@ -78,6 +84,9 @@ impl Rechazo {
             Rechazo::Tamano => "un tamano impar, pequeno o mayor que 1280x720",
             Rechazo::Version => "otra version del protocolo",
             Rechazo::Corto => "no cabe en el bufer",
+            Rechazo::Orden => "una linea que no toca ahora: la antena se sale del protocolo",
+            Rechazo::Charla => "demasiadas lineas sin llegar a un video",
+            Rechazo::Cerrada => "la conversacion ya se cerro por un rechazo",
         }
     }
 }
@@ -269,6 +278,129 @@ impl Lineas {
     }
 }
 
+// ===================================================================
+//  *** LA CONVERSACION: el orden tambien es lista blanca (2026-09-14)
+// ===================================================================
+//
+// Eddi: *"MAS ESTRICTO ANTENA"*. Leer bien cada linea no basta: una antena que
+// manda un VIDEO sin que se pidiera, o cuarenta ENTRADAS a una LISTA de tres,
+// escribe lineas validas en el momento equivocado. Esto lleva la cuenta:
+//
+// ```text
+//    Inicio -- pedir HOLA --> Saludo -- oir HOLA --> Charla
+//    Charla -- pedir LISTA --> Lista -- oir LISTA n, y n ENTRADA --> Charla
+//    Charla -- pedir PIDE  --> Pidiendo -- oir VIDEO --> Video (bytes)
+//                                       -- oir NO    --> Charla
+// ```
+//
+// ** UN rechazo CIERRA la conversacion entera: despues todo es `Cerrada`. Una
+// antena que se sale del protocolo una vez no tiene segunda oportunidad en la
+// misma conexion -- se cuelga y se vuelve a llamar.
+
+/// Lineas que caben en una conversacion antes de un video: la lista entera, el
+/// saludo y unos pocos NO.
+pub const LINEAS_MAX: u32 = LISTA_MAX + 8;
+/// Lo mas que se acepta de un video en vivo: 4 GiB, horas a 1,5 Mbit/s.
+pub const VIDEO_MAX: u64 = 4 << 30;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fase {
+    Inicio,
+    Saludo,
+    Charla,
+    Lista { faltan: u32, anunciada: bool },
+    Pidiendo,
+    Video { declarados: u64, recibidos: u64 },
+    Cerrada,
+}
+
+/// **Una conversacion con la antena.** Una por conexion.
+pub struct Conversacion {
+    fase: Fase,
+    lineas: u32,
+}
+
+impl Default for Conversacion {
+    fn default() -> Self {
+        Self::nueva()
+    }
+}
+
+impl Conversacion {
+    pub const fn nueva() -> Self {
+        Self { fase: Fase::Inicio, lineas: 0 }
+    }
+
+    pub fn fase(&self) -> Fase {
+        self.fase
+    }
+
+    fn cerrar<T>(&mut self, r: Rechazo) -> Result<T, Rechazo> {
+        self.fase = Fase::Cerrada;
+        Err(r)
+    }
+
+    /// **Antes de mandar un pedido.** `Err` = no toca, y no se manda.
+    pub fn pedir(&mut self, p: &Pedido) -> Result<(), Rechazo> {
+        self.fase = match (self.fase, p) {
+            (Fase::Cerrada, _) => return Err(Rechazo::Cerrada),
+            (Fase::Inicio, Pedido::Hola) => Fase::Saludo,
+            (Fase::Charla, Pedido::Lista) => Fase::Lista { faltan: 0, anunciada: false },
+            (Fase::Charla, Pedido::Pide(id)) if id_valido(id) => Fase::Pidiendo,
+            _ => return Err(Rechazo::Orden),
+        };
+        Ok(())
+    }
+
+    /// **Una linea de la antena.** Solo vale la que toca; cualquier otra cierra.
+    pub fn oir<'a>(&mut self, linea: &'a [u8]) -> Result<Respuesta<'a>, Rechazo> {
+        if self.fase == Fase::Cerrada {
+            return Err(Rechazo::Cerrada);
+        }
+        self.lineas += 1;
+        if self.lineas > LINEAS_MAX {
+            return self.cerrar(Rechazo::Charla);
+        }
+        let r = match leer(linea) {
+            Ok(r) => r,
+            Err(e) => return self.cerrar(e),
+        };
+        let siguiente = match (self.fase, r) {
+            (Fase::Saludo, Respuesta::Hola { .. }) => Fase::Charla,
+            (Fase::Lista { anunciada: false, .. }, Respuesta::Lista { cuantas: 0 }) => Fase::Charla,
+            (Fase::Lista { anunciada: false, .. }, Respuesta::Lista { cuantas }) => Fase::Lista { faltan: cuantas, anunciada: true },
+            (Fase::Lista { anunciada: false, .. }, Respuesta::No { .. }) => Fase::Charla,
+            (Fase::Lista { anunciada: true, faltan }, Respuesta::Entrada { .. }) => {
+                if faltan == 1 {
+                    Fase::Charla
+                } else {
+                    Fase::Lista { faltan: faltan - 1, anunciada: true }
+                }
+            }
+            (Fase::Pidiendo, Respuesta::Video { bytes, .. }) => Fase::Video { declarados: bytes, recibidos: 0 },
+            (Fase::Pidiendo, Respuesta::No { .. }) => Fase::Charla,
+            _ => return self.cerrar(Rechazo::Orden),
+        };
+        self.fase = siguiente;
+        Ok(r)
+    }
+
+    /// **Llegaron `n` bytes de video.** Solo en `Video`, y sin pasarse de lo
+    /// declarado (o de `VIDEO_MAX` si es en vivo).
+    pub fn bytes(&mut self, n: usize) -> Result<(), Rechazo> {
+        let Fase::Video { declarados, recibidos } = self.fase else {
+            return self.cerrar(Rechazo::Orden);
+        };
+        let total = recibidos.saturating_add(n as u64);
+        let tope = if declarados == 0 { VIDEO_MAX } else { declarados };
+        if total > tope {
+            return self.cerrar(Rechazo::Largo);
+        }
+        self.fase = Fase::Video { declarados, recibidos: total };
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -380,5 +512,85 @@ mod pruebas {
             m.truncate(azar() % (m.len() + 1));
             let _ = leer(&m);
         }
+    }
+
+    fn charlando() -> Conversacion {
+        let mut c = Conversacion::nueva();
+        c.pedir(&Pedido::Hola).unwrap();
+        c.oir(b"HOLA ANTENA/1 movil").unwrap();
+        c
+    }
+
+    #[test]
+    fn la_conversacion_buena_entera() {
+        let mut c = charlando();
+        c.pedir(&Pedido::Lista).unwrap();
+        c.oir(b"LISTA 2").unwrap();
+        c.oir(b"ENTRADA v1 uno").unwrap();
+        assert_eq!(c.pedir(&Pedido::Pide(b"v1")), Err(Rechazo::Orden), "aun falta una entrada");
+        c.oir(b"ENTRADA v2 dos").unwrap();
+        assert_eq!(c.fase(), Fase::Charla);
+        c.pedir(&Pedido::Pide(b"v2")).unwrap();
+        c.oir(b"VIDEO 1000 mpeg1 640x360").unwrap();
+        c.bytes(600).unwrap();
+        c.bytes(400).unwrap();
+        assert_eq!(c.bytes(1), Err(Rechazo::Largo), "ni un byte mas de lo declarado");
+        assert_eq!(c.fase(), Fase::Cerrada);
+    }
+
+    /// *** Lineas VALIDAS en el momento equivocado: cierran.
+    #[test]
+    fn lo_que_no_se_pidio_cierra() {
+        let mut c = charlando();
+        assert_eq!(c.oir(b"VIDEO 0 mpeg1 640x360"), Err(Rechazo::Orden), "un video sin PIDE");
+        assert_eq!(c.oir(b"HOLA ANTENA/1 otra"), Err(Rechazo::Cerrada), "y despues ya nada");
+        assert_eq!(c.pedir(&Pedido::Lista), Err(Rechazo::Cerrada));
+
+        let mut c = charlando();
+        c.pedir(&Pedido::Lista).unwrap();
+        c.oir(b"LISTA 1").unwrap();
+        c.oir(b"ENTRADA v1 uno").unwrap();
+        assert_eq!(c.oir(b"ENTRADA v2 de mas"), Err(Rechazo::Orden), "una entrada de mas");
+
+        let mut c = Conversacion::nueva();
+        assert_eq!(c.oir(b"HOLA ANTENA/1 movil"), Err(Rechazo::Orden), "un saludo que nadie pidio");
+    }
+
+    #[test]
+    fn una_linea_rota_cierra_y_el_no_deja_seguir() {
+        let mut c = charlando();
+        c.pedir(&Pedido::Pide(b"v9")).unwrap();
+        c.oir(b"NO no hay video con ese id").unwrap();
+        assert_eq!(c.fase(), Fase::Charla, "un NO no cierra: se puede pedir otro");
+        c.pedir(&Pedido::Lista).unwrap();
+        assert_eq!(c.oir(b"LISTA 999"), Err(Rechazo::Numero));
+        assert_eq!(c.fase(), Fase::Cerrada, "pero una linea rota si");
+    }
+
+    #[test]
+    fn la_antena_que_no_para_de_hablar() {
+        let mut c = charlando();
+        let mut cerrada = false;
+        for _ in 0..(LINEAS_MAX + 4) {
+            if c.pedir(&Pedido::Pide(b"v1")).is_err() {
+                cerrada = true;
+                break;
+            }
+            if c.oir(b"NO otra vez no").is_err() {
+                cerrada = true;
+                break;
+            }
+        }
+        assert!(cerrada, "mas de {LINEAS_MAX} lineas sin video cierran");
+        assert_eq!(c.fase(), Fase::Cerrada);
+    }
+
+    #[test]
+    fn un_video_en_vivo_tiene_techo() {
+        let mut c = charlando();
+        c.pedir(&Pedido::Pide(b"v1")).unwrap();
+        c.oir(b"VIDEO 0 mpeg1 640x360").unwrap();
+        c.bytes(usize::MAX >> 1).unwrap_err();
+        assert_eq!(c.fase(), Fase::Cerrada);
     }
 }

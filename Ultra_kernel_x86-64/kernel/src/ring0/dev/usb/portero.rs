@@ -178,8 +178,10 @@ pub(super) fn apunta(
 /// renglones iguales. `bmo_usbred` les pone nombre, y a una red por USB le dice
 /// que le falta (BULK en el xHCI).
 fn motivo_con_nombre(veredicto: u8, clase: u8, subclase: u8, proto: u8) -> &'static str {
+    // ** Y desde el mismo dia, con su CATEGORIA y lo que se le deja: la politica
+    // de `bmo_usbred` (TODO NEGADO por defecto) pone la frase.
     if veredicto == uhid::VEREDICTO_NO_ES_HID {
-        return bmo_usbred::clase::que_es(clase, subclase, proto).texto();
+        return bmo_usbred::politica::frase(bmo_usbred::clase::que_es(clase, subclase, proto));
     }
     motivo(veredicto)
 }

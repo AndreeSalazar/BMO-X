@@ -79,6 +79,22 @@ pantalla tal cual.
       16 ms: `red ping` dice el real desde el 2026-09-14). **Como se sabe:** una
       conexion TCP abre, pasa bytes y cierra limpia contra la antena de S3.
 
+- [ ] **S1a -- LEER de ESTRATOS.** Medido el 2026-09-14 en
+      `Ultra_userspace/userland/src/estratos.rs`: Ring 3 puede ESCRIBIR un
+      fichero grande (`crear_desde`, `copiar` desde FAT32 de cualquier tamano)
+      pero **no hay operacion para LEER su contenido**. Falta la espejo de
+      `crear_desde`: el kernel deja N bytes del fichero, desde un desplazamiento,
+      en un bloque `KIND_MEMORIA` del proceso -- dos llamadas para cualquier
+      tamano, sin punteros de Ring 3. **Como se sabe:** un `.mpg` de 20 MiB
+      copiado a ESTRATOS con `copiar` se lee entero y su suma coincide con la
+      del original en FAT32.
+
+- [ ] **S1b -- la Biblioteca ensena lo de ESTRATOS.** Hoy
+      `Ultra_userspace/services/director/src/scene/data/biblioteca.rs` solo
+      recorre DATOS (FAT32). Los videos viven en ESTRATOS (seccion 6), asi que la
+      Biblioteca los lista de ahi y dice de que volumen es cada uno. **Como se
+      sabe:** el `.mpg` copiado sale en la Biblioteca marcado como de ESTRATOS.
+
 - [ ] **S1 -- el reproductor LOCAL.** Una app `.bex` en BMO C con pl_mpeg
       (licencia MIT, un solo fichero) que abre un `.mpg` del disco y lo pinta en
       su ventana, con el audio por el tubo. Sin red: primero se prueba que BMO-X
@@ -205,4 +221,77 @@ pero calienta y gasta bateria: mejor enchufado.
    el codificador               Android no trae MPEG-1: o se lleva uno en software
                                 (FFmpeg compilado con el NDK: pesa y calienta) o
                                 BMO-X aprende H.264, que es otro decodificador
+```
+
+---
+
+# 6. POR QUE ADMINISTRA ESTRATOS, Y FAT32 SOLO ES LA PUERTA
+
+Eddi: *"que ESTRATOS sea el que administra los archivos, y que BMO-X diga por
+que"*. Los dos volumenes estan en el mismo disco y NO hacen lo mismo:
+
+```text
+                  ESTRATOS (el de BMO-X)            FAT32 (DATOS)
+   escribir       copia lo que cambia: el arbol     sobreescribe: lo de antes
+                  de ayer sigue entero               se pierde
+   versiones      `historial`, `vuelve N`, marcas    ninguna
+   firmas         `:firma` por fichero               ninguna
+   quien lo lee   solo BMO-X                         BMO-X y Windows
+   su papel       ADMINISTRA: aqui vive lo que       la PUERTA: por aqui entra y
+                  importa                            sale lo que viene de Windows
+```
+
+** Por eso un video de la antena o de Windows **entra por FAT32 y se queda en
+ESTRATOS**: se copia una vez (`copiar`, que ya no tiene techo de tamano) y a
+partir de ahi tiene historial, no se pisa por accidente y se puede firmar.
+FAT32 es donde lo dejas; ESTRATOS es donde vive.
+
+[!] Lo que hoy frena ese reparto, dicho: leer el contenido desde Ring 3 (S1a) y
+que la Biblioteca mire ESTRATOS (S1b). Y el tope de **36 entradas por carpeta**
+de ESTRATOS: una carpeta de videos pasa de ahi enseguida, asi que se reparten en
+subcarpetas hasta que el 1.3 de
+`platform/drivers/storage/estratos/ESTRATOS.md` lo levante.
+
+---
+
+# 7. EL AISLAMIENTO: USB y ANTENA, por categoria y por que
+
+Eddi: *"intenta aislar TODO en USB, como siempre en categoria y por que, pero
+MAS ESTRICTO ANTENA"*.
+
+## USB -- REGLA 0: TODO NEGADO
+
+La politica vive en `platform/shared/bmo-usbred/src/politica.rs` (con banco que
+recorre las 256 clases) y el portero la dice en F11 al enchufar:
+
+```text
+   MANOS    teclado y raton        entra solo
+   SONIDO   audio USB              solo cuando se pide
+   RED      RNDIS / NCM / ECM      NUNCA sola: orden explicita, UNA a la vez, su
+                                   corral prestado en el titular del DMA
+   PASO     hubs                   solo el paso
+   ALMACEN  discos                 NEGADO (el dia que haya driver: solo lectura)
+   MOVIL    MTP y ADB              NEGADO SIEMPRE: la puerta a sus ficheros y shell
+   OJOS     camaras                NEGADO
+   OPACO    lo que no dice que es  NEGADO
+```
+
+** El movil de la antena, enchufado por USB, **no le da nada a BMO-X salvo su
+red**, y ni eso sin orden. Su MTP y su ADB estan negados aunque el dueno los
+pida: no son una red, son la llave del movil.
+
+## ANTENA -- estricta por los dos lados
+
+```text
+   BMO-X (`bmo-antena`, `Conversacion`)   el ORDEN tambien es lista blanca: una
+                                          linea valida en el momento equivocado
+                                          cierra la conversacion; 72 lineas sin
+                                          video, cierra; un byte de mas del
+                                          video declarado, cierra
+   la antena (`antena.py`)                UNA IP, UNA conexion, UN video; saludo
+                                          en 10 s y charla en 120; 72 lineas;
+                                          lo que no es ANTENA/1 se cuelga sin
+                                          contestar; solo ficheros de DENTRO de
+                                          su carpeta; y ffmpeg solo lee
+                                          ficheros (`-protocol_whitelist`)
 ```
