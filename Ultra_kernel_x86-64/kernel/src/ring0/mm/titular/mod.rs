@@ -389,6 +389,17 @@ static mut PEOR_SILENCIO: [u64; 16] = [0; 16];
 /// subir, porque el plazo todavia no se ha medido y vale cero.
 static mut CADUCADOS: u64 = 0;
 
+/// **LOS PRESTAMOS: tramos que un aparato tiene MIENTRAS ESTA ARMADO**, sin una
+/// respuesta que esperar (E2 de `docs/plan/PLAN_RED_TX.md`, 2026-09-13).
+///
+/// `(base, paginas, aparato)`; `paginas == 0` es un hueco libre. Cuatro, porque
+/// hoy presta UNO (el corral de recepcion de la NIC) y el de transmision sera
+/// el segundo. Las paginas llevan el aparato en el nibble alto, igual que un
+/// vuelo -- asi que pisados y choques se detectan igual --, pero NO suben
+/// `VUELOS_DE` ni dan noticias: un anillo esperando trafico esta OCIOSO, no
+/// callado, y contarlo como silencio envenenaria el plazo de R-DMA-8.
+static mut PRESTAMOS: [(u64, u64, u8); 4] = [(0, 0, 0); 4];
+
 mod amarilla;
 mod roja;
 mod verde;
@@ -398,8 +409,9 @@ mod verde;
 // dentro no puede costarle una linea a quien llama: si costara, la particion
 // se estaria pagando con el diff de otro.
 pub use amarilla::{marcar, puede_soltar, titular_de, Veredicto};
-pub use roja::{aterrizo, caducados, en_vuelo, en_vuelo_de, APARATO_AHCI,
-               APARATO_GPU, APARATO_NIC, APARATO_XHCI, PLAZO_SIN_MEDIR};
+pub use roja::{aterrizo, caducados, devolver_tramo, en_vuelo, en_vuelo_de, prestar_tramo,
+               NoPresta, APARATO_AHCI, APARATO_GPU, APARATO_NIC, APARATO_XHCI,
+               PLAZO_SIN_MEDIR};
 pub use verde::{cubiertos, neutros, peor_silencio, vuelos};
 
 

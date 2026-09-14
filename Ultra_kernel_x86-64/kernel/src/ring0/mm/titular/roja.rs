@@ -28,7 +28,7 @@
 //! R-DMA-4. La que le falta a la casa --el PLAZO, R-DMA-8-- se cablea aqui.
 
 use super::{indice, tabla, CADUCADOS, EN_VUELO_CHOQUES, EN_VUELO_VIVOS,
-            PEOR_SILENCIO, ULTIMA_NOTICIA, VUELOS_DE};
+            PAGE, PEOR_SILENCIO, PRESTAMOS, ULTIMA_NOTICIA, VUELOS_DE};
 
 
 // == LOS APARATOS, NUMERADOS -- y el orden NO es de gusto ==================
@@ -300,6 +300,14 @@ pub fn aterrizo(phys: u64, aparato: u8, cuando: u64) -> bool {
         unsafe { EN_VUELO_CHOQUES = EN_VUELO_CHOQUES.wrapping_add(1) };
         return false;
     }
+    if prestado(phys) {
+        // ** UN PRESTAMO NO ATERRIZA POR TRAMA. Se devuelve ENTERO con
+        // `devolver_tramo`. Aterrizar una pagina suelta de un prestamo dejaria
+        // `vivos` bajando con el aparato todavia dueno del tramo -- la mentira
+        // exacta de la cabecera, por otra puerta. Se cuenta con los choques.
+        unsafe { EN_VUELO_CHOQUES = EN_VUELO_CHOQUES.wrapping_add(1) };
+        return false;
+    }
     tabla()[i] = antes & 0x0F;
     unsafe {
         EN_VUELO_VIVOS = EN_VUELO_VIVOS.saturating_sub(1);
@@ -370,4 +378,104 @@ pub fn en_vuelo_de(phys: u64) -> Option<u8> {
         0 => None,
         a => Some(a),
     }
+}
+
+
+// == *** UN PRESTAMO NO ES UN VUELO (E2 de PLAN_RED_TX, 2026-09-13) ==========
+//
+// ** Un VUELO es una peticion con respuesta: el disco lee un tramo y avisa. Un
+// PRESTAMO es un anillo que el aparato puede escribir EN CUALQUIER MOMENTO
+// mientras esta armado -- la recepcion de la NIC, que espera trafico que a lo
+// mejor no llega en una hora.
+//
+// ```text
+//                     nibble   vivos   VUELOS_DE   noticias   caduca
+//    vuelo            SI       SI      SI          SI         SI (R-DMA-8)
+//    prestamo         SI       SI      NO          NO         NO
+// ```
+//
+// *** Si el anillo se contara como vuelos, la red callada seria un SILENCIO
+// creciendo con trabajo abierto: el mismo error de los 2,47 s del disco
+// ("ocioso no es callado"), y el plazo de TODOS saldria de ese numero.
+//
+// [!] Lo que un prestamo SI conserva es lo que protege: el nibble. Un marco
+// prestado que cambia de titular es un PISADO (`marcar`), y prestar una pagina
+// que otro aparato tiene es un CHOQUE (R-DMA-4).
+
+/// Por que no se pudo prestar un tramo. Uno por motivo.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum NoPresta {
+    /// Aparato 0 o mayor que 15, o un tramo sin paginas.
+    Malo,
+    /// Alguna pagina cae fuera del espejo: no hay donde apuntarla.
+    FueraDelEspejo,
+    /// Alguna pagina ya la tiene OTRO aparato (R-DMA-4).
+    Choque,
+    /// Ya hay cuatro prestamos vivos.
+    SinHueco,
+}
+
+fn prestado(phys: u64) -> bool {
+    let prestamos = unsafe { PRESTAMOS };
+    prestamos.iter().any(|&(base, paginas, _)| paginas != 0 && phys >= base && phys < base + paginas * PAGE)
+}
+
+/// **PRESTA `paginas` paginas desde `base` a `aparato`**, mientras este armado.
+///
+/// ** Primero se comprueban TODAS y despues se marcan. Marcar a medias y
+/// fallar en la quinta dejaria un tramo que nadie puede devolver entero.
+pub fn prestar_tramo(base: u64, paginas: u64, aparato: u8) -> Result<(), NoPresta> {
+    if aparato == 0 || aparato > 15 || paginas == 0 {
+        return Err(NoPresta::Malo);
+    }
+    let prestamos = unsafe { PRESTAMOS };
+    let hueco = prestamos.iter().position(|p| p.1 == 0).ok_or(NoPresta::SinHueco)?;
+    for k in 0..paginas {
+        let i = indice(base + k * PAGE).ok_or(NoPresta::FueraDelEspejo)?;
+        let quien = (tabla()[i] & 0xF0) >> 4;
+        if quien != 0 && quien != aparato {
+            unsafe { EN_VUELO_CHOQUES = EN_VUELO_CHOQUES.wrapping_add(1) };
+            return Err(NoPresta::Choque);
+        }
+    }
+    let mut nuevas = 0u64;
+    for k in 0..paginas {
+        if let Some(i) = indice(base + k * PAGE) {
+            let antes = tabla()[i];
+            if antes & 0xF0 == 0 {
+                nuevas += 1;
+            }
+            tabla()[i] = (antes & 0x0F) | (aparato << 4);
+        }
+    }
+    unsafe {
+        EN_VUELO_VIVOS += nuevas;
+        PRESTAMOS[hueco] = (base, paginas, aparato);
+    }
+    Ok(())
+}
+
+/// **DEVUELVE entero el prestamo que empieza en `base`.** `false` si no hay
+/// ninguno de ese aparato ahi -- y entonces no se toca nada.
+pub fn devolver_tramo(base: u64, aparato: u8) -> bool {
+    let prestamos = unsafe { PRESTAMOS };
+    let Some(h) = prestamos.iter().position(|p| p.1 != 0 && p.0 == base && p.2 == aparato) else {
+        return false;
+    };
+    let paginas = prestamos[h].1;
+    let mut vueltas = 0u64;
+    for k in 0..paginas {
+        if let Some(i) = indice(base + k * PAGE) {
+            let antes = tabla()[i];
+            if (antes & 0xF0) >> 4 == aparato {
+                tabla()[i] = antes & 0x0F;
+                vueltas += 1;
+            }
+        }
+    }
+    unsafe {
+        EN_VUELO_VIVOS = EN_VUELO_VIVOS.saturating_sub(vueltas);
+        PRESTAMOS[h] = (0, 0, 0);
+    }
+    true
 }

@@ -354,6 +354,28 @@ pub fn rx_start() -> bool {
         }
     };
 
+    // *** E2 de `docs/plan/PLAN_RED_TX.md`: EL CORRAL SE PRESTA, ANTES DE TOCAR
+    // LA TARJETA (2026-09-13).
+    //
+    // ** Hasta hoy la NIC escribia en su corral sin que el titular del DMA lo
+    // supiera: `en vuelo` decia 0 con el receptor armado. Ahora cada pagina del
+    // corral lleva `APARATO_NIC` en su nibble mientras la tarjeta puede escribir.
+    // Es un PRESTAMO y no un vuelo: ver la nota de `mm/titular/roja.rs`.
+    //
+    // [!] Si alguna pagina la tiene OTRO aparato, NO SE ARMA. Es R-DMA-4, y el
+    // momento de cazarlo es antes de que la tarjeta sepa donde mirar.
+    if let Err(e) = crate::ring0::mm::titular::prestar_tramo(arena, paginas, crate::ring0::mm::titular::APARATO_NIC) {
+        let cual = match e {
+            crate::ring0::mm::titular::NoPresta::Malo => 1,
+            crate::ring0::mm::titular::NoPresta::FueraDelEspejo => 2,
+            crate::ring0::mm::titular::NoPresta::Choque => 3,
+            crate::ring0::mm::titular::NoPresta::SinHueco => 4,
+        };
+        crate::ring0::cabina::fault("red", "el corral NO se pudo prestar (1=malo 2=fuera del espejo 3=CHOQUE 4=sin hueco)", cual);
+        return false;
+    }
+    crate::ring0::cabina::count("red", "corral PRESTADO a la NIC en el titular, paginas", paginas);
+
     unsafe {
         PLANO = Some(plan);
         RX_NEXT = 0;
@@ -373,6 +395,7 @@ pub fn rx_start() -> bool {
                     // anillo a medio armar, que es un anillo que la tarjeta
                     // recorre igual.
                     crate::ring0::cabina::fault("red", "el plano rechazo un descriptor que deberia existir", i as u64);
+                    crate::ring0::mm::titular::devolver_tramo(arena, crate::ring0::mm::titular::APARATO_NIC);
                     PLANO = None;
                     return false;
                 }
@@ -405,6 +428,9 @@ pub fn rx_start() -> bool {
             spins += 1;
             if spins > 1_000_000 {
                 crate::ring0::cabina::fault("red", "la NIC no termina su reset", spins as u64);
+                // El anillo no se armo: el prestamo vuelve. Un prestamo vivo sin
+                // anillo seria una tarjeta que el titular cree escribiendo.
+                crate::ring0::mm::titular::devolver_tramo(arena, crate::ring0::mm::titular::APARATO_NIC);
                 PLANO = None;
                 return false;
             }

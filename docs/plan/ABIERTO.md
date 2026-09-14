@@ -219,7 +219,7 @@
 
 *PLAN RED TX -- transmitir, con el DMA contado y el cable detras de un grifo*
 
-- [ ] E2 -- el RX cuenta sus vuelos en el titular, sin transmitir. Hoy
+- [ ] E2 -- el corral de RX se PRESTA en el titular, sin transmitir. Codigo
 - [ ] E3 -- transmitir detras del grifo. CR.TE, TNPDS, TCR y la campana
 - [ ] E4 -- el muro: IOMMU, si la placa lo da. Foto de placa (la operacion
 - ... y 2 mas

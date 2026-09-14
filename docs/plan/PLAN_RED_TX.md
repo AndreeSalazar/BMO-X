@@ -44,13 +44,18 @@
 
 # 2. LOS ESCALONES QUE FALTAN
 
-- [ ] **E2 -- el RX cuenta sus vuelos en el titular, sin transmitir.** Hoy
-      `rx_start` pone el corral como `Titular::Neutro` pero **ningun descriptor
-      pasa por `en_vuelo`/`aterrizo`** de `Ultra_kernel_x86-64/kernel/src/ring0/mm/titular/roja.rs`
-      (solo lo usa el audio USB). Cada descriptor entregado despega con
-      `APARATO_NIC`, cada trama recogida aterriza.
-      **Como se sabe que salio:** `save` en el Ryzen con `red rx` armado dice
-      `en vuelo 16`, `choques 0`, y el aparato mas mudo puede ser el 2.
+- [ ] **E2 -- el corral de RX se PRESTA en el titular, sin transmitir.** Codigo
+      el 2026-09-13, falta la foto. Hasta hoy `rx_start` ponia el corral como
+      `Titular::Neutro` pero el titular no sabia que la NIC escribia ahi. Ahora
+      `prestar_tramo` de `Ultra_kernel_x86-64/kernel/src/ring0/mm/titular/roja.rs`
+      marca sus 9 paginas con `APARATO_NIC` ANTES de tocar la tarjeta, y
+      `devolver_tramo` las devuelve si armar falla.
+      ** Es un PRESTAMO y no un vuelo: un anillo esperando trafico esta ocioso,
+      no callado, y contarlo como silencio envenenaria el plazo de R-DMA-8
+      (`NEUTRO/DMA/REGLAS.txt`, punto 3).
+      **Como se sabe que salio:** `save` en el Ryzen, con `red rx` armado, dice
+      `en vuelo 9 marcos`, `choques 0` y `pisados 0` -- y el "mas mudo" NO pasa a
+      ser la red.
 
 - [ ] **E3 -- transmitir detras del grifo.** `CR.TE`, `TNPDS`, `TCR` y la campana
       `TPPOLL.NPQ` de `platform/drivers/net/src/tx.rs`, en

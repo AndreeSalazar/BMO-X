@@ -133,6 +133,22 @@ LAS OCHO
      con la cuenta en alto. Es un perro guardian, y es lo que hace el hardware
      desde siempre.
 
+  3. UN PRESTAMO NO ES UN VUELO (2026-09-13, E2 de docs/plan/PLAN_RED_TX.md)
+
+     Un VUELO espera respuesta: el disco lee y avisa. Un PRESTAMO es un anillo
+     que el aparato puede escribir en cualquier momento mientras esta armado --
+     la recepcion de la NIC, que espera trafico que a lo mejor no llega.
+
+       vuelo      nibble  vivos  VUELOS_DE  noticias  caduca
+       prestamo   nibble  vivos  --         --        --
+
+     Contar el anillo como vuelos haria de una red CALLADA un silencio con
+     trabajo abierto: el error de los 2,47 s del disco, y el plazo de todos
+     saldria de ahi. El prestamo conserva lo que protege -- el nibble, asi que
+     un PISADO y un CHOQUE se ven igual -- y se devuelve ENTERO
+     (`mm::titular::prestar_tramo` / `devolver_tramo`); `aterrizo` se niega a
+     aterrizar una pagina prestada.
+
   [!] Y `mm` NO PREGUNTA LA HORA: el que programa el descriptor trae el
   `cuando`, y aqui ese numero es OPACO. Si `mm` leyera el reloj aparecerian una
   flecha nueva --memoria -> planificador-- y al reves de como se apoyan. Es la
