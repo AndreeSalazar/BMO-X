@@ -645,9 +645,10 @@ row below is **work on top of something that already runs**, except the last one
 
 | | | blocked by |
 |---|---|---|
-| 🟡 | **Receive an Ethernet frame** -- the ring is written, the NIC is profiled and its MAC was read on metal | one boot |
+| 🟢 | **Talk to the LAN and to the internet** -- receives, transmits behind a one-time gate with a 4 ms radar, gets its own IP by DHCP, and `ping` is answered by the router and by a server on the internet (2026-09-14) | done on metal |
 | 🟡 | **Give the 12 cores work from Ring 3** -- the door is built (`ATRIL` / `TOCAR`, two operations, a closed catalogue of parts) and the kernel side already measured **11,52x** | one boot: `smp orquesta` has never been executed |
-| ⚪ | **A LAN that works and is measured** -- `ping`, files, banking terminals against a local server | the transmit ring, then a TCP stack |
+| 🟡 | **A LAN that works and is measured** -- `ping` works; DNS, files and banking terminals against a local server come next | DNS answers, then TCP on the metal |
+| ⚪ | **Cloud local** -- your phone does the web and BMO-X shows it (see below) | TCP on the metal, then a local MPEG-1 player |
 | ⚪ | **Sound** -- volume already reaches the USB headset by control transfer | isochronous transfers in xHCI |
 | ⚪ | **A local assistant**, running as a Ring 3 app over your own files | `exp`, and the core door |
 | ⛔ | **Anything over the internet** | **cryptography** -- and that is the ceiling |
@@ -694,6 +695,39 @@ machine gives without buying anything) and
 > 1.103, xHCI is 1.871. Where a number has not been measured, this repository
 > says *not measured* rather than guessing. That is not modesty; a guess written
 > down becomes a fact three months later.
+
+---
+
+## Cloud local: the phone is the antenna
+
+YouTube will not run on BMO-X, and the reason is not the kernel. A video site
+needs HTTPS, a JavaScript engine, a modern codec and synchronized audio, and each
+of those is months of work. **Cloud local** moves all four out of the machine:
+
+```text
+   ANTENNA (an Android phone, or any PC)                 BMO-X
+   the web, TLS, JavaScript, the codec   -- home LAN --> MPEG-1 + MP2 640x360 over TCP,
+   converted live to MPEG-1 + MP2           plain        drawn with pl_mpeg in a window
+```
+
+It is Steam Link turned around: for the web the phone is the powerful machine and
+BMO-X is the screen. No PCIe, no driver for somebody else's GPU, and no POSIX
+smuggled in -- the dirty work stays outside, on a device that already does it.
+
+- **On the phone:** Termux, Python and ffmpeg. The first mode needs no app: the
+  antenna is [`toolchain/tools/antena/antena.py`](toolchain/tools/antena/antena.py),
+  and [`cliente.py`](toolchain/tools/antena/cliente.py) tests it from a PC before
+  BMO-X speaks TCP.
+- **On BMO-X:** TCP on the metal, the `ANTENA/1` protocol
+  ([`platform/shared/bmo-antena`](platform/shared/bmo-antena), tested on the host)
+  and a local MPEG-1 player.
+- **What it refuses to promise:** the channel is not encrypted, so it is for one
+  home LAN and one allowed IP; without the antenna there is no video; and what a
+  video platform's terms allow is the antenna owner's call. The antenna serves
+  files that are already in its folder -- it downloads nothing.
+
+The plan, with a check next to every step:
+**[PLAN_CLOUD_LOCAL.md](docs/plan/PLAN_CLOUD_LOCAL.md)**.
 
 ---
 

@@ -1,0 +1,10 @@
+[package]
+name = "bmo-antena"
+version = "0.1.0"
+edition = "2021"
+description = "El protocolo ANTENA/1 del CLOUD LOCAL: lineas de texto entre BMO-X y la antena (un movil). Puro, probado en el anfitrion."
+license = "Apache-2.0"
+
+# Sin dependencias. Lo usa una app de Ring 3; el otro lado (la antena) es
+# `toolchain/tools/antena/antena.py`, y los dos se juzgan contra este banco.
+[dependencies]

@@ -85,6 +85,9 @@ members = [
     # EL GATE RED: el pase que se paga una vez, el buzon sin syscalls y el radar
     # de 4 ms. Lo juzga el kernel y lo usa Ring 3; ver PLAN_RED_TX, E3.
     "platform/shared/bmo-puerta-red",
+    # EL CLOUD LOCAL: el protocolo ANTENA/1 entre BMO-X y el movil que hace de
+    # antena. Ver PLAN_CLOUD_LOCAL, S2.
+    "platform/shared/bmo-antena",
     # El JUEZ de las medidas de ciclos. Vive aqui y no dentro del `.bex` que
     # mide por la misma razon que la politica de foco vive en `bmo-input`: aqui
     # se puede PROBAR. Un `.bex` es `no_main` para un target sin sistema

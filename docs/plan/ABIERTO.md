@@ -7,7 +7,7 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   227 casillas ABIERTAS en 31 planes
+   228 casillas ABIERTAS en 31 planes
    152 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
@@ -107,6 +107,15 @@
 - [ ] S3 -- EL PRIMER CLIENTE: INTI. Porque puede declarar el alias. Y
 - ... y 6 mas
 
+## [`PLAN_CLOUD_LOCAL.md`](PLAN_CLOUD_LOCAL.md) -- 8 abiertas, 0 hechas
+
+*PLAN CLOUD LOCAL -- el movil es la ANTENA, BMO-X es la pantalla*
+
+- [ ] S0 -- lo que tiene que estar antes. G5 de docs/plan/PLAN_RED_TX.md:
+- [ ] S1 -- el reproductor LOCAL. Una app .bex en BMO C con pl_mpeg
+- [ ] S2 -- el protocolo ANTENA/1, escrito y con banco. En codigo el
+- ... y 5 mas
+
 ## [`PLAN_VATIOS.md`](PLAN_VATIOS.md) -- 8 abiertas, 4 hechas
 
 *PLAN_VATIOS -- lo que gasta el CPU en reposo, y por que*
@@ -159,15 +168,6 @@
 - [ ] E4 -- el muro: IOMMU, si la placa lo da. Foto de placa (la operacion
 - [ ] E5 -- la pila encima: un ping que contesta. platform/shared/bmo-pila
 - [ ] E6 -- firmas: cifrado autenticado sobre UDP. ChaCha20-Poly1305 y
-- ... y 4 mas
-
-## [`PLAN_SATELITE.md`](PLAN_SATELITE.md) -- 7 abiertas, 0 hechas
-
-*PLAN SATELITE -- el movil es la ANTENA, BMO-X es la pantalla*
-
-- [ ] S0 -- lo que tiene que estar antes. G5 de docs/plan/PLAN_RED_TX.md:
-- [ ] S1 -- el reproductor LOCAL. Una app .bex en BMO C con pl_mpeg
-- [ ] S2 -- el protocolo ANTENA/1, escrito y con banco. Un crate puro,
 - ... y 4 mas
 
 ## [`PLAN_DOOM.md`](PLAN_DOOM.md) -- 6 abiertas, 3 hechas
