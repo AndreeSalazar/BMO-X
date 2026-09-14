@@ -4541,3 +4541,20 @@ lo lleva en tiempo real desde el escritorio, y la IP concedida vive en memoria.
 
 [!] Una duda que solo el metal contesta: `bmo-pila` rechaza el UDP sin suma, y
 hay routers que mandan el DHCP asi. Si pasa, `red ip` lo dira por su nombre.
+
+**Y el metal contesto el mismo dia:** `red ip` dijo `CONCEDIDA`, con dos horas de
+concesion, router, mascara y DNS, y `red perfil` ensena la IP propia. La duda de
+la suma no llego a existir: el router la pone. G2 hecho.
+
+### G3 y G4, escritos detras
+
+Con la IP, el escritorio monta un `Nodo` de `bmo-pila`: pregunta por ARP con su
+propia IP, contesta a quien le pregunte, y con eso `red ping <ip>` manda cuatro
+ecos con su tiempo y `red dns <nombre>` le pregunta al DNS del router.
+
+- **El tiempo del ping no mide al escritorio.** Mientras hay un ping en marcha el
+  buzon se vacia cada vuelta, no cada cuarto de segundo; y la pantalla dice que
+  el numero incluye el latido de 4 ms del kernel en cada sentido.
+- **El DNS no se cree los punteros.** Solo hacia atras, nunca al mismo sitio y
+  como mucho 16 saltos; un A de un nombre que no se pregunto se ignora, y un
+  CNAME solo se sigue dentro de la misma respuesta.

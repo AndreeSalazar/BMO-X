@@ -376,6 +376,9 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
     // anillo solo se vaciaba al teclar `red rx`: entre dos ordenes la tarjeta
     // llenaba sus 16 descriptores y tiraba el resto, y los contadores estaban
     // quietos. Cuatro veces por segundo son dos preguntas al kernel.
+    // ** Con un ping en marcha el buzon se mira CADA vuelta: medir un tiempo de
+    // ida y vuelta de 250 en 250 ms seria medir al escritorio, no a la red.
+    crate::commands::red_nodo::cada_vuelta();
     if dsk.tick.quarter && bmo::info(bmo::INFO_NET_RX_ARMADO) != 0 {
         // Con pase abierto el kernel no sondea por aqui: las tramas van al
         // buzon, y se recogen sin syscall.

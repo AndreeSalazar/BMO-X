@@ -139,12 +139,16 @@ son cinco clases de linea.
       2026-09-14. La IP vive en memoria: nunca en disco ni en el repositorio
       (seccion 5). **Como se sabe:** `red ip` dice `CONCEDIDA` y `red perfil`
       ensena un numero en `IP propia`.
-- [ ] **G3 -- la pila sobre el buzon.** `platform/shared/bmo-pila` (`nodo.rs`)
-      leyendo y escribiendo con `bmo::red::recibir` y `bmo::red::enviar`. Es E5:
-      el router contesta a un ping.
-- [ ] **G4 -- DNS.** Una pregunta A por UDP con la lista blanca de
-      `platform/shared/bmo-pila`. **Como se sabe:** un nombre da la misma IP que
-      da Windows en el mismo cable.
+- [ ] **G3 -- la pila sobre el buzon.** `platform/shared/bmo-pila` (`nodo.rs`,
+      con `Nodo::eco`) leyendo y escribiendo con `bmo::red::recibir` y
+      `bmo::red::enviar`, en codigo el 2026-09-14: `red ping <ip>` en
+      `Ultra_userspace/services/director/src/commands/red_nodo.rs` (ARP con
+      nuestra IP, cuatro ecos con su tiempo). Es E5. **Como se sabe:** el router
+      contesta a los cuatro ecos.
+- [ ] **G4 -- DNS.** `platform/shared/bmo-pila/src/dns.rs`, en codigo el
+      2026-09-14: una pregunta A por UDP, punteros de compresion solo hacia atras
+      y CNAME seguido solo dentro de la respuesta. `red dns <nombre>`. **Como se
+      sabe:** un nombre da la misma IP que da Windows en el mismo cable.
 - [ ] **G5 -- TCP de verdad.** `platform/shared/bmo-pila/src/tcp` contra un
       servidor real: el saludo de tres pasos y un cierre limpio.
 - [ ] **G6 -- TLS 1.3: EL MURO.** En `platform/shared/bmo-cripto`, con los

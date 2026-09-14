@@ -182,6 +182,16 @@ impl Nodo {
         Ok(Some(ether::con_relleno(salida, n + m)))
     }
 
+    /// **Un `ping`**: la peticion de eco entera, lista para el cable. La respuesta
+    /// vuelve por [`Nodo::atender`] como `Hecho::Eco`.
+    pub fn eco(&mut self, salida: &mut [u8], mac_destino: Mac, ip_destino: Ip, id: u16, secuencia: u16, datos: &[u8]) -> Result<usize, Rechazo> {
+        if salida.len() < CARGA {
+            return Err(Rechazo::Corto);
+        }
+        let m = icmp::escribir(&mut salida[CARGA..], icmp::ECO_PETICION, id, secuencia, datos)?;
+        self.envolver(salida, mac_destino, ip_destino, ipv4::ICMP, m)
+    }
+
     /// Un datagrama UDP entero, listo para el cable.
     pub fn udp(&mut self, salida: &mut [u8], mac_destino: Mac, ip_destino: Ip, origen: u16, destino: u16, datos: &[u8]) -> Result<usize, Rechazo> {
         if salida.len() < CARGA {
@@ -215,6 +225,24 @@ mod pruebas {
         let m = icmp::escribir(&mut b[CARGA..], icmp::ECO_PETICION, 0x1234, 1, datos).unwrap();
         ipv4::escribir(&mut b[14..], R, destino_ip, ipv4::ICMP, m, 9).unwrap();
         b
+    }
+
+    /// *** EL PING DE IDA Y VUELTA entre dos nodos: el nuestro pregunta, el
+    /// "router" contesta con la pila de verdad, y la respuesta vuelve como `Eco`.
+    #[test]
+    fn un_eco_sale_y_vuelve_como_eco() {
+        let mut yo = Nodo::nuevo(YO_MAC, YO);
+        let mut router = Nodo::nuevo(R_MAC, R);
+        let mut ida = [0u8; 128];
+        let n = yo.eco(&mut ida, R_MAC, R, 0x424D, 3, b"BMO-X").unwrap();
+        let mut vuelta = [0u8; 128];
+        let Hecho::Contestar(m) = router.atender(&ida[..n], 0, &mut vuelta).unwrap() else { panic!("el router no contesto") };
+        let mut nada = [0u8; 128];
+        assert_eq!(
+            yo.atender(&vuelta[..m], 1, &mut nada),
+            Ok(Hecho::Eco { origen: R, id: 0x424D, secuencia: 3 })
+        );
+        assert_eq!(router.cuentas.ecos_contestados, 1);
     }
 
     #[test]

@@ -30,6 +30,8 @@ pub(crate) mod red;
 pub(crate) mod red_pase;
 /// `red ip`: la IP propia por DHCP, en tiempo real (G2). Ver su cabecera.
 pub(crate) mod red_ip;
+/// `red ping` y `red dns`: la pila propia sobre el buzon (G3 y G4).
+pub(crate) mod red_nodo;
 pub(crate) mod reports;
 /// La TIPOGRAFIA de los informes: filas, barras y unidades. Salio de `reports`
 /// el 12-09 porque alli convivian dos clases de coste -- lo que pregunta a la

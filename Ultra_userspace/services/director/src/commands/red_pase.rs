@@ -120,8 +120,8 @@ fn mejores(dst: &mut [u32; 4]) -> usize {
     n
 }
 
-/// **Vacia el buzon.** Sin syscall.
-fn drenar() {
+/// **Vacia el buzon.** Sin syscall. Tambien lo llama `red_nodo::cada_vuelta`.
+pub(crate) fn drenar() {
     if !bmo::red::pase_abierto() {
         return;
     }
@@ -131,6 +131,7 @@ fn drenar() {
         RECIBIDAS.fetch_add(1, Ordering::Relaxed);
         // Toda trama pasa tambien por `red ip`: el DHCP llega por el mismo buzon.
         crate::commands::red_ip::oir(&t[..n]);
+        crate::commands::red_nodo::oir(&t[..n]);
         if n < 42 || t[12] != 0x08 || t[13] != 0x06 {
             continue;
         }
@@ -187,6 +188,7 @@ static CANDIDATOS: [AtomicU32; 4] = [AtomicU32::new(0), AtomicU32::new(0), Atomi
 pub(crate) fn latir(s: &mut Output) {
     drenar();
     crate::commands::red_ip::latir(s);
+    crate::commands::red_nodo::latir(s);
     let fase = FASE.load(Ordering::Relaxed);
     if fase == QUIETA {
         return;
@@ -356,6 +358,8 @@ pub(crate) fn orden(s: &mut Output, what: &[u8]) -> bool {
         b"prueba" => empezar_prueba(s),
         b"perfil" => perfil(s),
         b"ip" => crate::commands::red_ip::empezar(s),
+        b"ping" => crate::commands::red_nodo::ping(s, resto),
+        b"dns" => crate::commands::red_nodo::dns(s, resto),
         b"ver" => ver(s, false),
         b"tapar" => ver(s, true),
         b"opciones" | b"ayuda" | b"?" => opciones(s),
@@ -372,7 +376,9 @@ pub(crate) fn orden(s: &mut Output, what: &[u8]) -> bool {
 /// **TODAS LAS OPCIONES DE `red`**, en una pantalla.
 pub(crate) fn opciones(s: &mut Output) {
     section(s, b"RED -- LAS OPCIONES");
-    let filas: [(&[u8], &[u8]); 12] = [
+    let filas: [(&[u8], &[u8]); 14] = [
+        (b"red ping <ip>", b"cuatro ecos con la pila propia, con su tiempo (pide `red ip`)"),
+        (b"red dns <nombre>", b"pregunta la IPv4 de un nombre al DNS del router (pide `red ip`)"),
         (b"red", b"el informe: tarjeta, enlace, receptor y lo que llega"),
         (b"red perfil", b"lo que la maquina sabe de su red, recortado"),
         (b"red rx", b"arma el receptor y cuenta lo nuevo"),
@@ -718,7 +724,7 @@ fn numero(b: &[u8]) -> Option<u64> {
     Some(n)
 }
 
-fn ipv4(b: &[u8]) -> Option<u32> {
+pub(crate) fn ipv4(b: &[u8]) -> Option<u32> {
     let mut ip = 0u32;
     let mut partes = 0;
     for trozo in recortar(b).split(|&c| c == b'.') {

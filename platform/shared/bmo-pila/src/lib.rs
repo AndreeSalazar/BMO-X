@@ -34,8 +34,9 @@
 //!    recibir en el Ryzen              HECHO en metal (2026-09-13)
 //!    transmitir (el GATE RED)         HECHO en metal (2026-09-14): el router
 //!                                     contesto a `red prueba`
-//!    DHCP                             `dhcp.rs`, probado aqui; `red ip` en metal
-//!    DNS                              encima de `udp`, el siguiente aqui
+//!    DHCP                             `dhcp.rs`: `red ip` CONCEDIDA en metal
+//!    ping                             `nodo.rs` (`Nodo::eco`): `red ping`
+//!    DNS                              `dns.rs`, probado aqui: `red dns`
 //!    TLS 1.3                          bmo-cripto tiene X25519, AES-GCM,
 //!                                     SHA-256 y HKDF; falta la maquina de
 //!                                     estados y X.509
@@ -51,6 +52,8 @@
 pub mod arp;
 /// DHCP, del lado del cliente: la IP propia (G2, 2026-09-14).
 pub mod dhcp;
+/// DNS, del lado del cliente: un nombre a su IPv4 (G4, 2026-09-14).
+pub mod dns;
 pub mod ether;
 pub mod icmp;
 pub mod ipv4;
