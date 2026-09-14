@@ -123,9 +123,9 @@ pub unsafe fn enable_slot() -> Option<u8> {
 /// Un recurso que se pide en un camino que puede fallar necesita su
 /// devolucion **en el mismo sitio**, no en el camino feliz.
 ///
-/// Lo que NO devuelve: las paginas DMA del anillo EP0 y del contexto de
-/// dispositivo. El HAL no tiene `free_dma_pages` todavia, asi que eso sigue
-/// siendo una fuga -- acotada, porque ahora los intentos estan contados.
+/// Lo que NO devuelve: las paginas DMA del anillo EP0 y de los contextos. Desde
+/// el 2026-09-14 no hace falta: son de la RANURA (`paginas.rs`) y el siguiente
+/// aparato que la reciba las reutiliza. Es un techo, no una fuga.
 pub unsafe fn disable_slot(slot: u8) -> bool {
     if slot == 0 { return false; }
     let ok = send_cmd(Trb {
@@ -145,6 +145,9 @@ pub unsafe fn disable_slot(slot: u8) -> bool {
     if (slot as usize) < MAX_SLOTS {
         EP0_RINGS[slot as usize].valid = false;
     }
+    // Y sus endpoints dejan de estar VIVOS: sin esto, el siguiente aparato en esta
+    // ranura veria anillos "en uso" que ya no son de nadie y pediria paginas nuevas.
+    crate::transferencia::olvidar_endpoints(slot);
     ok
 }
 
@@ -222,7 +225,9 @@ unsafe fn direccionar_en_slot(port: u8, speed: u8, slot: u8) -> Option<u8> {
     let h = hal();
     let cs = ctx_sz(ctrl);
 
-    let ep0_phys = h.alloc_dma_pages(1)?;
+    // ** Las tres paginas son de la RANURA: pedidas la primera vez que se usa
+    // este numero, reutilizadas en cada enchufe despues (`paginas.rs`).
+    let ep0_phys = crate::paginas::de_ranura(slot, crate::paginas::Uso::AnilloEp0)?;
     let ep0_virt = h.phys_to_virt(ep0_phys) as *mut u32;
     core::ptr::write_bytes(ep0_virt as *mut u8, 0, 4096);
     let mut ring = TransferRing::new(ep0_virt, ep0_phys);
@@ -232,10 +237,10 @@ unsafe fn direccionar_en_slot(port: u8, speed: u8, slot: u8) -> Option<u8> {
     ring.enable_toggle_cycle();
     ep0_reg(slot, ep0_phys & !0xF, ep0_virt);
 
-    let in_phys = h.alloc_dma_pages(1)?;
+    let in_phys = crate::paginas::de_ranura(slot, crate::paginas::Uso::Entrada)?;
     let in_virt = h.phys_to_virt(in_phys) as *mut u8;
     core::ptr::write_bytes(in_virt, 0, 4096);
-    let dev_phys = h.alloc_dma_pages(1)?;
+    let dev_phys = crate::paginas::de_ranura(slot, crate::paginas::Uso::Dispositivo)?;
     let dev_virt = h.phys_to_virt(dev_phys) as *mut u8;
     core::ptr::write_bytes(dev_virt, 0, 4096);
 

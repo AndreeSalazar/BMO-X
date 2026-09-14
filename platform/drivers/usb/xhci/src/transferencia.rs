@@ -56,7 +56,9 @@ pub unsafe fn control_transfer(slot: u8, bm_req_type: u8, b_request: u8,
         // nada": devolver 0. Dos causas opuestas --una es memoria del sistema,
         // la otra es el periferico-- con la misma cara, y sin una linea. La de
         // arriba (`no ep0 ring`) si gritaba; esta no. Ahora las dos.
-        let dp = h.alloc_dma_pages(1).unwrap_or(0);
+        // ** LA FUGA, CERRADA (2026-09-14): antes una pagina NUEVA por cada
+        // transferencia con datos -- cada LED del teclado--; ahora la de la ranura.
+        let dp = crate::paginas::de_ranura(slot, crate::paginas::Uso::Datos).unwrap_or(0);
         if dp == 0 {
             h.log("[xhci] control_transfer: SIN PAGINAS DMA (no es el aparato, es la memoria)\n");
             return 0;
@@ -179,6 +181,18 @@ struct EpRing { valid: bool, ring_phys: u64, ring_virt: *mut u32, pcs: bool, enq
 static mut EP_RINGS: [[EpRing; MAX_DCI]; MAX_SLOTS] = [[EpRing {
     valid: false, ring_phys: 0, ring_virt: core::ptr::null_mut(), pcs: false, enqueue: 0
 }; MAX_DCI]; MAX_SLOTS];
+/// **Los endpoints de una ranura dejan de estar vivos.** Lo llama `disable_slot`:
+/// el xHC ya no los recorre, y sus anillos pueden volver a servir al siguiente.
+pub(crate) fn olvidar_endpoints(slot: u8) {
+    if (slot as usize) < MAX_SLOTS {
+        unsafe {
+            for ep in EP_RINGS[slot as usize].iter_mut() {
+                ep.valid = false;
+            }
+        }
+    }
+}
+
 fn ep_ring_mut(slot: u8, dci: u8) -> Option<&'static mut EpRing> {
     if (slot as usize) < MAX_SLOTS && (dci as usize) < MAX_DCI {
         unsafe { let p = &mut EP_RINGS[slot as usize][dci as usize]; if p.valid { Some(p) } else { None } }
@@ -197,11 +211,17 @@ fn ep_ring_mut(slot: u8, dci: u8) -> Option<&'static mut EpRing> {
 /// configurarlo: falla al primer TRB, que es el peor sitio donde enterarse.
 ///
 /// ```text
-///    1  Isoch OUT      4  Control      5  Isoch IN      7  Interrupt IN
+///    1  Isoch OUT   2  Bulk OUT   4  Control   5  Isoch IN   6  Bulk IN   7  Interrupt IN
 /// ```
 pub const EP_TYPE_ISOCH_OUT: u8 = 1;
 /// Ver [`EP_TYPE_ISOCH_OUT`].
 pub const EP_TYPE_ISOCH_IN: u8 = 5;
+/// **BULK de salida y de entrada** (S3b.2, 2026-09-14): por donde viajan los datos
+/// de un disco USB o de una red USB. Sin agenda periodica: el xHC los sirve cuando
+/// el bus queda libre, asi que no llevan intervalo ni ancho de banda reservado.
+pub const EP_TYPE_BULK_OUT: u8 = 2;
+/// Ver [`EP_TYPE_BULK_OUT`].
+pub const EP_TYPE_BULK_IN: u8 = 6;
 
 /// Convierte el `bInterval` del descriptor de endpoint al campo **Interval**
 /// del Endpoint Context.
@@ -307,7 +327,7 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
     let h = hal();
     let cs = ctx_sz(ctrl);
 
-    let in_phys = match h.alloc_dma_pages(1) { Some(p) => p, None => { h.log("[xhci] cfg_ep: no mem\n"); return false; } };
+    let in_phys = match crate::paginas::de_ranura(slot, crate::paginas::Uso::Entrada) { Some(p) => p, None => { h.log("[xhci] cfg_ep: no mem\n"); return false; } };
     let in_virt = h.phys_to_virt(in_phys) as *mut u8;
     core::ptr::write_bytes(in_virt, 0, 4096);
 
@@ -330,7 +350,12 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
     sc.add(0).write_volatile((old_dw0 & !(0x1F << 27)) | (new_entries << 27));
 
     // Allocate transfer ring for this endpoint
-    let tr_phys = match h.alloc_dma_pages(1) { Some(p) => p, None => { h.log("[xhci] cfg_ep: no ring\n"); return false; } };
+    // ** Un anillo VIVO no se reutiliza: el xHC podria estar leyendolo. Ese caso
+    // (reconfigurar un endpoint en marcha) pide pagina nueva como antes; solo el
+    // anillo de un endpoint que ya no existe vuelve a servir (`paginas.rs`).
+    let vivo = ep_ring_mut(slot, dci).is_some();
+    let tr = if vivo { h.alloc_dma_pages(1) } else { crate::paginas::de_endpoint(slot, dci) };
+    let tr_phys = match tr { Some(p) => p, None => { h.log("[xhci] cfg_ep: no ring\n"); return false; } };
     let tr_virt = h.phys_to_virt(tr_phys) as *mut u32;
     core::ptr::write_bytes(tr_virt as *mut u8, 0, 4096);
     // El Link TRB del final del anillo necesita **Toggle Cycle**: sin el, al dar
@@ -351,7 +376,9 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
     // Device Context (bits 23:20) -- no hace falta que el caller la adivine ni
     // arrastrarla por media pila de llamadas: se la preguntamos al hardware.
     let speed = ((old_dw0 >> 20) & 0xF) as u8;
-    let enc = encode_interval(speed, interval);
+    // ** Un endpoint BULK no tiene cita periodica: su Interval va a cero.
+    let bulk = ep_type == EP_TYPE_BULK_OUT || ep_type == EP_TYPE_BULK_IN;
+    let enc = if bulk { 0 } else { encode_interval(speed, interval) };
     LAST_EP_BINTERVAL = interval;
     LAST_EP_INTERVAL = enc;
     LAST_EP_SPEED = speed;
@@ -384,7 +411,8 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
     // teclas jamas completan (tev pegado, kev=0). Para un teclado boot el
     // payload por intervalo = max_pkt (8 bytes). Con esto el DCI del teclado
     // deberia empezar a postear Transfer Events al presionar teclas.
-    let max_esit = max_pkt as u32; // interrupt LS/FS/HS boot: 1 paquete por ESIT
+    // interrupt LS/FS/HS boot: 1 paquete por ESIT. BULK: cero, no es periodico.
+    let max_esit = if bulk { 0 } else { max_pkt as u32 };
     // ** Y el Average TRB Length tampoco es una constante.
     //
     // Es lo que el xHC usa para presupuestar el bus, y estaba clavado en `8` --
@@ -394,7 +422,8 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
     // error: son tramas que llegan tarde, o sea justo el contador que
     // `AUDIO_MAESTRO` puso en la portada. Un numero mal declarado que se ve
     // como un chasquido en un oido.
-    let avg_trb = if isocrono { max_pkt as u32 } else { 8 };
+    // BULK: 3072, el valor que el propio xHCI (4.14.1.1) recomienda para bulk.
+    let avg_trb = if isocrono { max_pkt as u32 } else if bulk { 3072 } else { 8 };
     ep.add(4).write_volatile((max_esit << 16) | avg_trb);
 
     let trb = Trb {
@@ -595,12 +624,32 @@ pub unsafe fn recuperar_endpoint(slot: u8, dci: u8) -> bool {
 // ===================================================================
 
 pub unsafe fn queue_interrupt_in(slot: u8, dci: u8, buf_phys: u64, len: u16) -> bool {
+    encolar_normal(slot, dci, buf_phys, len as u32)
+}
+
+/// **Encola una transferencia BULK** de `len` bytes en `buf_phys` (S3b.2,
+/// 2026-09-14). De entrada o de salida lo decide el TIPO del endpoint, fijado en
+/// [`configure_endpoint`] con [`EP_TYPE_BULK_IN`] o [`EP_TYPE_BULK_OUT`]: el TRB
+/// es el mismo Normal con IOC que la interrupcion. Mismo contrato que
+/// [`queue_interrupt_in`] para quien lo llama.
+///
+/// [!] SIN PROBAR EN METAL. Su primera prueba es un pendrive (S3b.2 del plan).
+pub unsafe fn queue_bulk(slot: u8, dci: u8, buf_phys: u64, len: u32) -> bool {
+    // El Transfer Length de un TRB son 17 bits: 128 KiB menos uno.
+    if len > 0x1_FFFF {
+        return false;
+    }
+    encolar_normal(slot, dci, buf_phys, len)
+}
+
+/// Un TRB Normal con IOC en el anillo del endpoint, con la vuelta bien dada.
+unsafe fn encolar_normal(slot: u8, dci: u8, buf_phys: u64, len: u32) -> bool {
     let ring = match ep_ring_mut(slot, dci) { Some(r) => r, None => return false };
     let idx = ring.enqueue;
     let b = idx * 4;
     ring.ring_virt.add(b).write_volatile((buf_phys & 0xFFFF_FFFF) as u32);
     ring.ring_virt.add(b + 1).write_volatile(((buf_phys >> 32) & 0xFFFF_FFFF) as u32);
-    ring.ring_virt.add(b + 2).write_volatile(len as u32);
+    ring.ring_virt.add(b + 2).write_volatile(len & 0x1_FFFF);
     let ctl = (TRB_NORMAL << 10) | (1 << 5); // IOC
     ring.ring_virt.add(b + 3).write_volatile(ctl | if ring.pcs { 1 } else { 0 });
     ring.enqueue = idx + 1;

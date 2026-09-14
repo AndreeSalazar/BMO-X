@@ -27,6 +27,11 @@ pub use enumerar::*;
 /// PARADO`, que es la leccion mas cara de este driver.
 mod transferencia;
 pub use transferencia::*;
+/// **Las paginas de DMA de cada ranura y de cada endpoint**, pedidas UNA vez y
+/// reutilizadas (2026-09-14). Aparte porque es la unica cuenta de memoria de este
+/// driver que se puede probar sin un xHC delante -- y era una fuga.
+mod paginas;
+pub use paginas::cuentas_dma;
 
 use avisos::Avisos;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};

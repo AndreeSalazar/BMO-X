@@ -134,11 +134,13 @@ pantalla tal cual.
       campo). **Como se sabe:** `cargo test -p bmo-usbred` en verde, con 20.000
       transferencias mutadas.
 
-- [ ] **S3b.2 -- BULK en el xHCI.** `platform/drivers/usb/xhci/src/transferencia.rs`
-      sabe control, interrupcion de entrada e isocrono de salida; faltan los
-      endpoints BULK de entrada y salida (tipos 2 y 6 del contexto). **Como se
-      sabe:** un pendrive contesta a un INQUIRY de almacenamiento, que es BULK y
-      no necesita ningun movil.
+- [ ] **S3b.2 -- BULK en el xHCI.** En codigo el 2026-09-14 en
+      `platform/drivers/usb/xhci/src/transferencia.rs`: los tipos 2 y 6 del
+      contexto, `configure_endpoint` sin intervalo ni ancho periodico para ellos,
+      y `queue_bulk`. SIN PROBAR EN METAL, y su prueba pide una pieza mas: un
+      driver minimo de almacenamiento (Bulk-Only Transport, un INQUIRY).
+      **Como se sabe:** un pendrive contesta a un INQUIRY de almacenamiento, que
+      es BULK y no necesita ningun movil.
 
 - [ ] **S3b.2a -- la FUGA de DMA del xHCI.** Medido el 2026-09-14: el HAL de
       `platform/drivers/usb/xhci/src/lib.rs` solo sabe `alloc_dma_pages`, nunca
@@ -146,9 +148,11 @@ pantalla tal cual.
       en cada transferencia con datos. Eso incluye cada cambio de LED del teclado
       (Bloq Mayus), y cada enchufe vuelve a pedir el anillo EP0 y sus dos
       contextos. Sin arreglar esto, un driver de red USB -- que habla por control
-      a menudo -- se comeria la memoria. Arreglo: UNA pagina de datos por ranura,
-      pedida al direccionar y reutilizada; y un `devolver` en el HAL para el
-      desenchufe. Toca el camino del teclado: se prueba en metal ANTES de seguir.
+      a menudo -- se comeria la memoria. En codigo el 2026-09-14:
+      `platform/drivers/usb/xhci/src/paginas.rs` da a cada ranura (y a cada
+      endpoint que no esta vivo) SU pagina, pedida la primera vez y reutilizada
+      despues, con banco que cuenta cien LEDs = una pagina. Toca el camino del
+      teclado: se prueba en metal ANTES de seguir.
       **Como se sabe:** `save` da los mismos `marcos libres` antes y despues de
       100 pulsaciones de Bloq Mayus y de 10 enchufes del raton.
 
