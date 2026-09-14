@@ -345,6 +345,8 @@ pub(crate) const RED_OP_CERRAR: u64 = 0x04;
 pub(crate) const RED_OP_ESTADO: u64 = 0x05;
 /// `(despegues << 32) | aterrizajes`: si la tarjeta DEVOLVIO lo que se le dio.
 pub(crate) const RED_OP_VUELOS: u64 = 0x06;
+/// Latidos del GATE RED servidos desde el arranque: cada cuanto late DE VERDAD.
+pub(crate) const RED_OP_LATIDOS: u64 = 0x07;
 
 /// Lo que contesta `RED_OP_ARMAR`.
 pub(crate) const RED_ARMADO_OK: u64 = 0;

@@ -74,6 +74,12 @@ struct Tarea {
     negadas0: u64,
     dadas0: u64,
     devueltas0: u64,
+    // ** el latido real, y lo que devolvio el servidor
+    latidos0: u64,
+    ciclos0: u64,
+    del_servidor: u32,
+    rechazo_servidor: Option<bmo_pila::Rechazo>,
+    inalcanzable: bool,
 }
 
 static mut TAREA: Tarea = quieta();
@@ -234,6 +240,11 @@ const fn quieta() -> Tarea {
         negadas0: 0,
         dadas0: 0,
         devueltas0: 0,
+        latidos0: 0,
+        ciclos0: 0,
+        del_servidor: 0,
+        rechazo_servidor: None,
+        inalcanzable: false,
     }
 }
 
@@ -247,6 +258,11 @@ fn fotografiar(t: &mut Tarea) {
     t.dadas0 = dadas;
     t.devueltas0 = devueltas;
     t.dejadas = 0;
+    t.latidos0 = bmo::red::latidos();
+    t.ciclos0 = bmo::ciclos();
+    t.del_servidor = 0;
+    t.rechazo_servidor = None;
+    t.inalcanzable = false;
 }
 
 /// Deja una trama en el buzon y la cuenta.
@@ -303,6 +319,23 @@ fn diagnostico(s: &mut Output, t: &Tarea) {
         s.text(b"  -> todo salio al cable: el silencio es del OTRO lado (no contesta o no reenvia)\n");
     }
     s.with_ink(INK_PLAIN);
+    // ** Y lo que VINO del servidor, que es la otra mitad: la foto del 14-09
+    // dijo "todo salio al cable" y no podia distinguir "no contesta" de
+    // "contesta y no se creyo la respuesta".
+    if t.dns {
+        s.text(b"  [diagnostico] del servidor llegaron ");
+        s.dec(t.del_servidor as u64);
+        s.text(b" tramas");
+        if t.inalcanzable {
+            s.text(b": PUERTO INALCANZABLE -- no hay DNS escuchando en el router");
+        } else if let Some(r) = t.rechazo_servidor {
+            s.text(b"; la ultima no se creyo: ");
+            s.text(r.texto().as_bytes());
+        } else if t.del_servidor == 0 {
+            s.text(b": ninguna -- prueba en Windows `nslookup geminiprotocol.net 192.168.0.1`");
+        }
+        s.byte(b'\n');
+    }
 }
 
 /// **Con un ping en marcha, el buzon se mira cada vuelta.** Lo llama el bucle.
@@ -320,6 +353,15 @@ pub(crate) fn oir(trama: &[u8]) {
         return;
     }
     let Some(n) = nodo().as_mut() else { return };
+    // ** Lo que viene DEL SERVIDOR se cuenta antes de juzgarlo (IPv4 sin
+    // opciones: el origen esta en 26..30 y el tipo ICMP en 34).
+    let del_servidor = t.dns && trama.len() >= 35 && trama[12..14] == [0x08, 0x00] && trama[26..30] == t.destino;
+    if del_servidor {
+        t.del_servidor += 1;
+        if trama[23] == 1 && trama[34] == 3 {
+            t.inalcanzable = true;
+        }
+    }
     let mut salida = [0u8; 1514];
     match n.atender(trama, ahora_ms(), &mut salida) {
         // Alguien pregunta por NUESTRA IP (el router, antes de contestar): se le
@@ -343,8 +385,11 @@ pub(crate) fn oir(trama: &[u8]) {
                 let l = datagrama.datos.len().min(t.respuesta.len());
                 t.respuesta[..l].copy_from_slice(&datagrama.datos[..l]);
                 t.largo_respuesta = l;
+            } else if del_servidor {
+                t.rechazo_servidor = Some(bmo_pila::Rechazo::NoEsParaMi);
             }
         }
+        Err(r) if del_servidor => t.rechazo_servidor = Some(r),
         _ => {}
     }
 }
@@ -499,6 +544,18 @@ fn resumen_ping(s: &mut Output, t: &Tarea) {
         // numeros casi iguales no son una red, son un reloj. Se dice.
         s.text(b"  (mide sobre todo a BMO-X: la trama espera al latido para salir y otra vez\n");
         s.text(b"   para leerse; un router por cable suele contestar en menos de 1 ms)\n");
+        // *** Y EL LATIDO, MEDIDO: 15,96 / 47,96 / 63,96 ms son 1, 3 y 4 veces 16.
+        let latidos = bmo::red::latidos().saturating_sub(t.latidos0);
+        let us = ciclos_a_us(bmo::ciclos().saturating_sub(t.ciclos0));
+        if latidos > 0 {
+            s.text(b"  latido real del kernel: ");
+            ms(s, us / latidos);
+            s.text(b" ms  (");
+            s.dec(latidos);
+            s.text(b" latidos en ");
+            s.dec(us / 1000);
+            s.text(b" ms; el radar se llama de 4)\n");
+        }
         s.with_ink(INK_GOOD);
         s.text(b"  G3 hecho: la pila propia hace ping y le contestan.\n");
         s.with_ink(INK_PLAIN);

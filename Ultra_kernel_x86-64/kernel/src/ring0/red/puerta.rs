@@ -194,6 +194,15 @@ static GENERACION: AtomicU64 = AtomicU64::new(0);
 static SECUENCIA: AtomicU64 = AtomicU64::new(0);
 static LATIDO_VIVO: AtomicBool = AtomicBool::new(false);
 static ULTIMO_MOTIVO: AtomicU32 = AtomicU32::new(0);
+/// **Latidos servidos desde el arranque.** Existe por la foto del 2026-09-14:
+/// los tiempos de ping salian de 16 en 16 ms, y el radar se llama "de 4 ms". Con
+/// este contador y el reloj de Ring 3 se mide cada cuanto late DE VERDAD.
+static LATIDOS: AtomicU64 = AtomicU64::new(0);
+
+/// Latidos servidos desde el arranque. Ver `LATIDOS`.
+pub fn latidos() -> u64 {
+    LATIDOS.load(Ordering::Relaxed)
+}
 
 /// Hay un pase abierto?
 pub fn abierto() -> bool {
@@ -392,6 +401,7 @@ fn latido() -> (bool, bool) {
     let Some(mut p) = (unsafe { PASE }) else {
         return (false, false);
     };
+    LATIDOS.fetch_add(1, Ordering::Relaxed);
     let ahora = crate::ring0::reloj::ticks();
     let antes = p.lado.secuencia();
     let mmio = unsafe { super::MMIO };

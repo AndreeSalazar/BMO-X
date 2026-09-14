@@ -139,7 +139,9 @@ son cinco clases de linea.
       2026-09-14. La IP vive en memoria: nunca en disco ni en el repositorio
       (seccion 5). **Como se sabe:** `red ip` dice `CONCEDIDA` y `red perfil`
       ensena un numero en `IP propia`.
-- [ ] **G3 -- la pila sobre el buzon.** `platform/shared/bmo-pila` (`nodo.rs`,
+- [x] **G3 -- la pila sobre el buzon.** HECHO en el Ryzen el 2026-09-14: el
+      router y un servidor de Internet contestaron a los cuatro ecos. [!] Los
+      tiempos salen de 16 en 16 ms: el latido real se mide en `red ping`. `platform/shared/bmo-pila` (`nodo.rs`,
       con `Nodo::eco`) leyendo y escribiendo con `bmo::red::recibir` y
       `bmo::red::enviar`, en codigo el 2026-09-14: `red ping <ip>` en
       `Ultra_userspace/services/director/src/commands/red_nodo.rs` (ARP con

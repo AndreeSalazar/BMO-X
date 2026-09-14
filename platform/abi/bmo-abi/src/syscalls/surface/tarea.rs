@@ -499,6 +499,9 @@ pub const RED_OP_ESTADO: u64 = 0x05;
 /// `(despegues << 32) | aterrizajes` del anillo de salida: tramas dadas a la
 /// tarjeta y tramas que la tarjeta devolvio ENVIADAS.
 pub const RED_OP_VUELOS: u64 = 0x06;
+/// Latidos del GATE RED servidos desde el arranque. Con el reloj de Ring 3 dice
+/// cada cuanto late de verdad.
+pub const RED_OP_LATIDOS: u64 = 0x07;
 /// Donde queda el buzon del pase en el proceso. 7 paginas.
 pub const RED_BUZON_VA: u64 = 0x0000_0002_0000_0000;
 

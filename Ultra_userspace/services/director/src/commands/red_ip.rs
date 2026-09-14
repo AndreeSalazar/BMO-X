@@ -23,6 +23,12 @@ static mut CLIENTE: Option<dhcp::Cliente> = None;
 static mut PINTADA: u8 = 0;
 /// Lo ultimo que llego A NUESTRO PUERTO y no se creyo: el porque de un fallo.
 static mut RECHAZO: Option<Rechazo> = None;
+/// **La ultima concesion CONFIRMADA**, con su hora. Sobrevive a pedir otra:
+/// el 14-09 un segundo `red ip` dejo a la maquina sin la IP que ya tenia, y
+/// `red dns` contesto "no hay IP propia" con una concesion de dos horas viva.
+static mut ULTIMA: Option<(dhcp::Concesion, u64)> = None;
+/// Preguntas que salieron en esta peticion, para decirlo si nadie contesta.
+static mut ENVIADAS: u32 = 0;
 
 fn cliente() -> &'static mut Option<dhcp::Cliente> {
     unsafe { &mut *addr_of_mut!(CLIENTE) }
@@ -48,14 +54,28 @@ fn fase(e: dhcp::Estado) -> u8 {
 
 /// La IP concedida, si la hay.
 pub(crate) fn concesion() -> Option<dhcp::Concesion> {
-    match cliente().as_ref()?.estado() {
-        dhcp::Estado::Concedida { concesion, .. } => Some(concesion),
-        _ => None,
-    }
+    let (k, desde) = unsafe { ULTIMA }?;
+    let vida_ms = k.segundos as u64 * 1000;
+    (ahora_ms().saturating_sub(desde) < vida_ms).then_some(k)
 }
 
 /// **`red ip`.**
-pub(crate) fn empezar(s: &mut Output) {
+pub(crate) fn empezar(s: &mut Output, resto: &[u8]) {
+    // ** Con una concesion viva no se vuelve a preguntar: un cliente DHCP no
+    // pide lo que ya tiene. `red ip nueva` lo fuerza, y aun asi la vieja sigue
+    // valiendo hasta que llegue la nueva.
+    if resto != b"nueva" {
+        if let (Some(k), Some((_, desde))) = (concesion(), unsafe { ULTIMA }) {
+            let vida_ms = k.segundos as u64 * 1000;
+            let quedan = vida_ms.saturating_sub(ahora_ms().saturating_sub(desde)) / 1000;
+            s.text(b"  ya hay IP propia: ");
+            ip(s, k.ip);
+            s.text(b"  (quedan ");
+            s.dec(quedan);
+            s.text(b" s). `red ip nueva` pide otra\n");
+            return;
+        }
+    }
     if cliente().as_ref().is_some_and(|c| c.en_marcha()) {
         s.text(b"  ya hay una peticion DHCP en marcha: sale aqui abajo segun avanza\n");
         return;
@@ -95,6 +115,7 @@ pub(crate) fn empezar(s: &mut Output) {
     unsafe {
         PINTADA = 1;
         RECHAZO = None;
+        ENVIADAS = 0;
     }
     s.text(b"  [ip 1/3] pase ABIERTO. Pregunto por DHCP quien reparte IPs (DISCOVER)...\n");
 }
@@ -125,7 +146,9 @@ pub(crate) fn latir(s: &mut Output) {
     let mut t = [0u8; 400];
     match c.latir(ahora_ms(), &mut t) {
         Ok(Some(n)) => {
-            if bmo::red::enviar(&t[..n]).is_err() {
+            if bmo::red::enviar(&t[..n]).is_ok() {
+                unsafe { ENVIADAS += 1 };
+            } else {
                 s.with_ink(INK_ERR);
                 s.text(b"  [ip] la pregunta no entro en el buzon: el pase ya no esta abierto\n");
                 s.with_ink(INK_PLAIN);
@@ -154,7 +177,8 @@ pub(crate) fn latir(s: &mut Output) {
             ip(s, o.ip);
             s.text(b". La pido (REQUEST)...\n");
         }
-        dhcp::Estado::Concedida { concesion: k, .. } => {
+        dhcp::Estado::Concedida { concesion: k, desde_ms } => {
+            unsafe { ULTIMA = Some((k, desde_ms)) };
             s.with_ink(INK_GOOD);
             s.text(b"  [ip 3/3] CONCEDIDA: ");
             ip(s, k.ip);
@@ -176,7 +200,9 @@ pub(crate) fn latir(s: &mut Output) {
             match fallo {
                 dhcp::Fallo::Negada => s.text(b"  [ip] el servidor NEGO la IP (NAK)\n"),
                 dhcp::Fallo::NadieContesta => {
-                    s.text(b"  [ip] nadie contesto en 12 s. ");
+                    s.text(b"  [ip] nadie contesto en 12 s (salieron ");
+                    s.dec(unsafe { ENVIADAS } as u64);
+                    s.text(b" preguntas). ");
                     match unsafe { RECHAZO } {
                         Some(r) => {
                             s.text(b"Lo que llego a nuestro puerto se rechazo: ");
