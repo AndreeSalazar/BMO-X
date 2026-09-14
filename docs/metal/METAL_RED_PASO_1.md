@@ -151,7 +151,7 @@ persigue desde el primer dia.
 # 5. LA VUELTA ATRAS
 
 ```text
-   git revert abd9cf1c
+   git revert e850495b
 ```
 
 Y el riesgo real de esta prueba, dicho entero: **es opt-in.** `net` a secas no

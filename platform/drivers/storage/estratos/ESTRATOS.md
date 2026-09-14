@@ -9,7 +9,7 @@
 > en dos semanas: un puntero roto no falla, manda al lector a la nada.
 >
 > Lo destapo el guardian de citas (`toolchain/tools/enlaces/enlaces.py`,
-> `87259db8`), que vio tres ficheros de codigo citandolo **con numeros de
+> `402f0a36`), que vio tres ficheros de codigo citandolo **con numeros de
 > section y con frases suyas entrecomilladas** contra una ruta que ya no
 > existia.
 >
@@ -94,13 +94,13 @@ dias. Un documento de estado se envejece solo: se pone al dia o se borra.
 | 2 gate de identidad | sin esto no se escribe | **en metal** (07-26) |
 | 3 capa de bloques | contrato unico | en codigo (`bmo-block`); AHCI si, **NVMe no** |
 | 4 solo lectura | montar y leer | **en metal** (06-08): monta F:, pinta el grafo |
-| 5 escritura | *"aqui empieza lo serio"* | **HECHO EN CODIGO** (18-08, `1c96b133`) -- ver abajo |
+| 5 escritura | *"aqui empieza lo serio"* | **HECHO EN CODIGO** (18-08, `8895eaf4`) -- ver abajo |
 | 6 recolector | cuando haya que recoger | la CONTABILIDAD si (`espacio.rs`) y **el TRIM de la cola libre tambien** (17-08); el recolector no |
 | 7 TimeBack encima | el historial deja de ser copia | no |
 
 ### El paso 5, con precision -- que se hizo y que falta
 
-**Se escribe un fichero de verdad, desde Ring 3.** `1c96b133` cablea 582 lineas:
+**Se escribe un fichero de verdad, desde Ring 3.** `8895eaf4` cablea 582 lineas:
 `ring0/fsys/estratos/escribir.rs`, dos syscalls, `userland/src/estratos.rs` y la
 orden en la ventana. Ya no es el commit vacio del 17-08.
 
@@ -198,7 +198,7 @@ ser codigo.**
 [!] Y hasta ese dia **no habia funcionado nunca**, por UNA LINEA: `crear_fichero`
 llamaba `reserve` y despues `barrera_hecha` saltandose `cerrar_datos()`, asi que
 la barrera contestaba `FueraDeOrden` y el commit no ocurria. Faltaba desde
-`1c96b133`. Ver Ep. 45 de la bitacora -- la leccion es que **probar cada pieza no
+`8895eaf4`. Ver Ep. 45 de la bitacora -- la leccion es que **probar cada pieza no
 es probar el camino**.
 
 Lo que se anadio encima ese mismo dia, todo sobre el mismo camino:

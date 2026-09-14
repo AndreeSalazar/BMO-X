@@ -12,7 +12,7 @@
 //! `bottom`.
 //!
 //! `sonda_marcar_planos.rs` probo ese bloque RECORTADO y dio bien. Pero desde
-//! EL TROQUEL (`52267ab3`) **que locales viven en r12..r15 depende de cuantas
+//! EL TROQUEL (`11588250`) **que locales viven en r12..r15 depende de cuantas
 //! veces aparece cada nombre**, y la funcion de verdad usa `texturecolumn`,
 //! `mid`, `angle` e `index` muchas mas veces que el recorte. Otro reparto,
 //! otro programa. Aqui va entera.

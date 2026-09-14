@@ -194,15 +194,15 @@ tres primeros **ya han ejecutado en el Ryzen**.
 > compositor + zona de DOOM), `apk=6:0:0` --cero eventos xHCI perdidos-- y
 > **30,5 MiB usados de 14,8 GiB**.
 >
-> **Lo que entro ese dia**: el bus USB como **hilo del kernel** (`58888f46`,
+> **Lo que entro ese dia**: el bus USB como **hilo del kernel** (`d18ff1d5`,
 > primer usuario de verdad de `spawn_kernel`) y el rescate `Ctrl+Alt+Esc`
 > vigilando tambien la puerta CRUDA, que es la que usa un juego; hasta **8 cajas
-> sucias** en el compositor (`758ab20f` -- una sola caja convertia 384 pixeles
+> sucias** en el compositor (`4ea125c7` -- una sola caja convertia 384 pixeles
 > reales en 2.073.600 copiados, 8,3 MB por fotograma); la NIC **recibiendo
-> tramas** con `net rx` (`abd9cf1c`, `CR.TE` apagado a proposito: no se pone un
+> tramas** con `net rx` (`e850495b`, `CR.TE` apagado a proposito: no se pone un
 > byte en el cable); AXION leyendo frecuencia efectiva y **vatios**; el paso 0
 > del audio preguntandole al aparato como quiere las muestras; y el contrato de
-> syscalls **partido en cinco** (`1c597731`) despues de que `INFO_CPU_HZ_REAL` y
+> syscalls **partido en cinco** (`fb4ba40b`) despues de que `INFO_CPU_HZ_REAL` y
 > `INFO_FUGAS` acabaran los dos en `0x1E` -- dos campos con el mismo numero no
 > dan error de compilacion: dan un panel que ensena el dato de otro.
 >
@@ -259,7 +259,7 @@ tres primeros **ya han ejecutado en el Ryzen**.
 > prueba lo que se nos ocurrio. La primera prueba que no se escribe uno mismo
 > llega con la RED.
 >
-> **5. ⏳ LA RED EMPIEZA -- reconocida, no manejada** (`d4cdc090`). Se borraron
+> **5. ⏳ LA RED EMPIEZA -- reconocida, no manejada** (`b78ec0c0`). Se borraron
 > las 287 lineas de driver **Intel e1000** que no llamaba nadie: la NIC de esta
 > maquina es `VEN_10EC&DEV_8168` (Realtek) y el e1000 es la NIC por defecto de
 > **QEMU**. En su sitio, `pci::find_net` + `bmo_net::identificar` + el comando
@@ -1541,7 +1541,7 @@ formato del raton en el log de arranque.
 1. ~~**Capability de MEMORIA**~~ -- **HECHA** (`a9ccd4f8`), con su programa y
    su contador en `info`. Falta la foto.
 2. ~~**Cablear la escritura de ESTRATOS al dispositivo.**~~ -- **HECHO**, y
-   ESTRATOS es **1.0** desde el 19-08 (`3c715ca5`): se escribe desde Ring 3, se
+   ESTRATOS es **1.0** desde el 19-08 (`fdc63bac`): se escribe desde Ring 3, se
    relee TRAS REINICIAR en el Ryzen, y encima lleva borrar, renombrar, copiar,
    marcar una version y volver a ella. Lo que queda de ese frente ya no es
    "cablear": son los TOPES --96 bytes en `new` por el renglon del syscall, 36

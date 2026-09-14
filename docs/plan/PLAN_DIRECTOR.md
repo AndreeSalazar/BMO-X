@@ -936,7 +936,7 @@ cargador de programas eso es ejecutar otro binario.
 
 ## Lo que se encontro, y no era uno sino tres
 
-El 19-08 (`cc5e6922`) un clic paso a SENALAR y el lanzamiento a **doble** clic.
+El 19-08 (`249a0f13`) un clic paso a SENALAR y el lanzamiento a **doble** clic.
 El gesto se media contando `Tick::frames` contra una constante:
 
 ```text

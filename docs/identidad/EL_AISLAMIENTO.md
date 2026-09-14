@@ -118,9 +118,9 @@ con la calculadora ni con COBOL ni con una app maliciosa.
 
 | commit | que cambio |
 |---|---|
-| `c41b44e8` | los cuatro niveles del recorrido comprueban que la direccion sea alcanzable **antes** de usarla. Deja de matar y **dice el nivel y el valor** |
-| `2c6eb01e` | ese valor no cabia en la fila de 80 columnas y salia cortado -- ahora el numero no cede nunca |
-| `51df22b6` | y ademas dice **en que tabla y en que casilla**, que es lo que separa "el marco no es una tabla" de "la entrada esta mal escrita" |
+| `15e118a8` | los cuatro niveles del recorrido comprueban que la direccion sea alcanzable **antes** de usarla. Deja de matar y **dice el nivel y el valor** |
+| `906545b7` | ese valor no cabia en la fila de 80 columnas y salia cortado -- ahora el numero no cede nunca |
+| `c6ee16a4` | y ademas dice **en que tabla y en que casilla**, que es lo que separa "el marco no es una tabla" de "la entrada esta mal escrita" |
 
 ★ Resultado medido en el Ryzen: **la misma situacion que antes daba pantalla
 azul ahora da tres lineas rojas y la maquina sigue en pie.** Eso es una

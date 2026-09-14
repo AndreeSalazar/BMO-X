@@ -18,7 +18,7 @@
 
 | # | pieza | estado | quien la necesita |
 |---|---|---|---|
-| **S1** | MMIO por direccion fisica | ✅ **HECHO 26-08** (`ce45036c`), sin ejecutar | todo driver |
+| **S1** | MMIO por direccion fisica | ✅ **HECHO 26-08** (`dadc3412`), sin ejecutar | todo driver |
 | **S2** | memoria DMA con fisica conocida | ✅ **HECHO 26-08**, sin ejecutar | todo driver, y `RED_MAESTRO` paso 2 |
 | **S3** | una IRQ que despierta a un proceso | ✅ **HECHO 26-08 con el RELOJ**, sin ejecutar. Con un aparato de verdad falta la decision 2 | todo driver que no quiera sondear |
 

@@ -485,7 +485,7 @@ ya no habra es una muerte muda.
    83 WARN proc:   el .bex de disco no paso la admision =4
 ```
 
-Era la **relocation partida entre dos paginas** (`c4396a86`, 08-11), y detras
+Era la **relocation partida entre dos paginas** (`a3fbe9fe`, 08-11), y detras
 habia dos mas: el `+ part_lba` que faltaba en FAT32 (`ea7ad1e0`) y las tablas
 out-of-band leidas antes que el codigo (`60dd6ddd`). Las tres puertas del
 sistema estan cerradas desde el 08-11.
@@ -539,7 +539,7 @@ de consola con las nueve lineas, el panel del kernel --que vuelve al morir el
 dueno-- y el repintado del compositor al recuperarla.
 
 O sea que la pantalla rota **es el sintoma de que DOOM no llego a dibujar**, no
-un fallo del blit ni del troceado por cajas sucias (`758ab20f`), que no toca a
+un fallo del blit ni del troceado por cajas sucias (`4ea125c7`), que no toca a
 DOOM: DOOM pinta con su propio blit.
 
 [!] El camino de recuperacion (`main.rs:2294`) repinta fondo, lanzador, barra,

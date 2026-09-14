@@ -26,8 +26,8 @@ Medido sobre `platform/abi/bmo-abi/src/syscalls/surface/` y los drivers del
 arbol.
 
 > ★★ **AL 2026-08-18: 2 syscalls y 88 OPERACIONES.** El mismo `grep` sobre el
-> mismo directorio, en tres fechas del arbol: **69** el 11-08 (`cf878698`),
-> **73** el 14-08 (`324f7654`), **88** hoy. O sea +27% en una semana, y son 43
+> mismo directorio, en tres fechas del arbol: **69** el 11-08 (`3d95eecb`),
+> **73** el 14-08 (`4cd8533a`), **88** hoy. O sea +27% en una semana, y son 43
 > `TASK`, 9 `ARCH`, 6 `INPUT`, 4 `AUDIO`, 4 `FB`, 4 `PRESTADO`, 4 `CONSOLA`...
 >
 > Dos cosas de esa cifra, y ninguna es cosmetica. La primera: **la fuente de la

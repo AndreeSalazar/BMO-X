@@ -9,7 +9,7 @@ cumple solo --375 de los ultimos 400-- asi que forzarlo no compra nada.
 Lo que NO se cumple solo es el ambito. Contados el 2026-08-20:
 
     gui          69      el compositor
-    director     13      el compositor, renombrado el 19-08 (`3e9552a4`)
+    director     13      el compositor, renombrado el 19-08 (`22abf803`)
     escritorio    7      el compositor, otra vez
     ui            3      y otra
 

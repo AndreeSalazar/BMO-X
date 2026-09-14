@@ -372,9 +372,9 @@ impl Desktop {
 /// ** Y el culpable, MEDIDO commit a commit con `llvm-objdump`:
 ///
 /// ```text
-///   bb671fb9  pre-struct   35.560   cabe
-///   70df8f73  el struct    95.544   NO CABE   <- aqui murio, 5 commits atras
-///   c6febd8e  hoy          95.528   NO CABE
+///   8b93d06e  pre-struct   35.560   cabe
+///   b6a65dfb  el struct    95.544   NO CABE   <- aqui murio, 5 commits atras
+///   3e78d6bf  hoy          95.528   NO CABE
 /// ```
 ///
 /// ** El motivo de que juntar 52 locales en un struct TRIPLIQUE el marco: como

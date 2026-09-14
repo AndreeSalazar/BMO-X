@@ -1724,7 +1724,7 @@ el rect VIEJO de una con el fondo NUEVO de la otra. Al reves es el rastro que
 ## Ep. 45 -- Faltaba una linea, y nunca se guardo un fichero
 **Sintoma**: ninguno. `estratos` decia *"NO se hizo, el volumen sigue igual"* y
 el motivo en F11 era `fuera de orden`. Nadie lo leyo porque **nadie lo ejecuto**:
-el commit que estreno la escritura (`1c96b133`, 18-08) se cerro con "sin probar
+el commit que estreno la escritura (`8895eaf4`, 18-08) se cerro con "sin probar
 en metal", y encima se le anadieron dos dias de funciones.
 
 **Culpable**: la transaccion tiene cuatro fases --`Datos -> Barrera -> Commit ->
@@ -3000,7 +3000,7 @@ observaciones suyas y una es un aviso que hay que devolverle antes de nada.
    `entrada 4ms 27345us/s bombeo` -> `bombeo` sigue siendo UN numero
 ```
 
-Los tres instrumentos son de `2641a97e` y `e5531778`, o sea del build que aun no
+Los tres instrumentos son de `662c0cca` y `0a0d1351`, o sea del build que aun no
 esta en el disco. **Un patron identico despues de un cambio que no se desplego
 no dice nada del cambio**: dice que la imagen es la misma. Se anota aqui porque
 es la tercera vez esta semana que un log llega antes que el flasheo, y la unica
@@ -4247,7 +4247,7 @@ Alt+Enter en `c/cubo.bex` **reinicio la maquina**: triple fallo. `tramp.rs` ya
 lo decia -- un obrero no tiene GS por-CPU, y cualquier excepcion en el es un
 reset. El despertar automatico de nucleos desde dentro de `tocar` junto por
 primera vez dos caminos que nunca habian corrido en metal. Apagado
-(`DESPERTAR_SOLO = false`, `75c0506b`) hasta que la prueba en orden
+(`DESPERTAR_SOLO = false`, `fc42f38d`) hasta que la prueba en orden
 (`smp all` -> `smp prueba` -> `smp orquesta` -> cubo) diga cual fue.
 
 > Una accion normal no puede poder reiniciar el PC.
@@ -4284,7 +4284,7 @@ estaba a mitad de instruccion.
 `INFO` contestaba exito siempre y un campo que no existe valia 0 -- el mismo
 silencio que `cabina_info` ya habia arreglado tres funciones mas arriba. Ahora:
 no existe = 10, la memoria de OTROS procesos sin autoridad = 3 + bandera 16, y
-el valor sigue a 0 para que ningun panel cambie (`c43d0952`).
+el valor sigue a 0 para que ningun panel cambie (`e91794fb`).
 
 ### La primera herramienta en INTI: `bico.inti`
 
@@ -4318,14 +4318,14 @@ de colores, si.
 
 El arreglo no toca los ~30 sitios que borran: **borrar apunta** (`scene/dano.rs`,
 ocho rectangulos sueltos) y el cierre del fotograma devuelve las ventanas que
-tocan lo apuntado, las de debajo primero y la de arriba al final (`236c91b7`).
+tocan lo apuntado, las de debajo primero y la de arriba al final (`39430e3d`).
 
 > Un hueco documentado sigue siendo un hueco. Solo cambia quien lo encuentra.
 
 ### Y los tres botones, y la biblioteca de Windows
 
 El mismo dia: el realce de cerrar/minimizar/maximizar estaba escrito DOS veces y
-ninguna miraba el Z-order (`e108c677`), y media biblioteca eran copias de
+ninguna miraba el Z-order (`50d0aab9`), y media biblioteca eran copias de
 `$RECYCLE.BIN` -- la papelera que Windows deja en cualquier disco que toca.
 
 ### *** `bmo-pila`: TCP/IP propio, antes de que llegue la primera trama

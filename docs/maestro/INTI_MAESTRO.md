@@ -1074,7 +1074,7 @@ palabra MAL ESCRITA que resulta caber en ASCII. Cuesta tres cosas a la vez:
   y `pequeno` en sus propios identificadores;
 - **y no ahorra nada**, porque el sinonimo correcto casi siempre existe.
 
-★ Ya se pago una vez: `tamano()` paso a `size()` el 2026-08-20 (`fc665530`,
+★ Ya se pago una vez: `tamano()` paso a `size()` el 2026-08-20 (`c0bc7c7b`,
 *"fuera las palabras sin su ene"*). Aquel dia no habia sinonimo castellano
 --`medida` estaba ocupada, `largo` significa otra cosa-- y se cogio el ingles,
 que es el escalon 2. **`anade` si lo tenia y se colo igual**: `agrega` es

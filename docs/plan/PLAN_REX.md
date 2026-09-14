@@ -333,7 +333,7 @@ legible y el numero sigue viniendo de un sitio solo.
 
 ### ★ Y se probo contra el codigo de VERDAD, no contra un test sintetico
 
-R14 corrio sobre el `raycaster_C.c` de `d5bd4abe` --el de antes del paso 1-- y
+R14 corrio sobre el `raycaster_C.c` de `f7c9669e` --el de antes del paso 1-- y
 canto los **cinco** usos reales: `FB_BASE` (dos veces), `FB_DIMS`, `FB_STRIDE`
 y `ENT_TECLA`. La regla caza el bug que la motivo, sobre el codigo que lo tenia.
 

@@ -75,8 +75,8 @@ sistema crecia.
 `platform/abi/bmo-abi/src/syscalls/surface/` en tres fechas del arbol:
 
 ```
-   2026-08-11   cf878698    69 operaciones
-   2026-08-14   324f7654    73
+   2026-08-11   3d95eecb    69 operaciones
+   2026-08-14   4cd8533a    73
    2026-08-18              88
    2026-08-19   HEAD        93      <- 44 TASK, 9 ARCH, 6 INPUT, 4 AUDIO, 4 TAREA...
 ```

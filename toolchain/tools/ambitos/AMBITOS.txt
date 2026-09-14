@@ -22,13 +22,13 @@
 # los 69 `gui` de ayer no se reescriben, y un guardian que fallara por ellos se
 # apagaria en una semana. Se mueve con `--sellar`.
 [DESDE]
-201fa944cf2a3d39418ada57d84ef3be65bfd3e3   la lista se cierra aqui (2026-08-20)
+0e262e197698ae03affcff08f88ee2578598061a   la lista se cierra aqui (2026-08-20)
 
 # Viejo -> como se llama ahora, y por que. Un alias no es un error del que
 # escribe: es un nombre que se quedo atras, y decirle el nuevo cuesta lo mismo
 # que decirle que no.
 [ALIAS]
-gui            -> director     el compositor se renombro el 19-08 (`3e9552a4`)
+gui            -> director     el compositor se renombro el 19-08 (`22abf803`)
 escritorio     -> director     el mismo componente, tercer nombre
 ui             -> director     el mismo componente, cuarto nombre
 

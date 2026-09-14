@@ -80,7 +80,7 @@ corto y va arriba-- era un problema de **utilizacion**.
 
 - [X] **P2.1 -- un quantum es de quien CORRE.** `on_timer` daba el resto del
       quantum a `s.current` sin mirar si seguia `Running`. HECHO el **2026-09-08**
-      en `scheduler/roja.rs` (commit `cd9f5bf3`), **sin medir en metal**. Baja `C`
+      en `scheduler/roja.rs` (commit `ed12540d`), **sin medir en metal**. Baja `C`
       de 4 ms a 1 ms.
 
 - [ ] **P2.2 -- RESCHEDULE FORZADO: una tarea que se duerme suelta el CPU en el

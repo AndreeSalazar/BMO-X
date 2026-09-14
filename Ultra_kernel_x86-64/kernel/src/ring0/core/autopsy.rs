@@ -374,7 +374,7 @@ fn nombre_vector(v: u64) -> &'static str {
 /// Devuelve `false` --y no escribe nada-- si la direccion no cae en la imagen.
 ///
 /// ** Este numero es el que `--map` del compilador convierte en un nombre de
-/// funcion (`071c891e`). El kernel siempre tuvo el `rip` absoluto y la base de
+/// funcion (`3511373b`). El kernel siempre tuvo el `rip` absoluto y la base de
 /// la imagen es una constante suya, asi que la resta se podia hacer desde el
 /// principio; se hacia a mano, en cada informe, con una calculadora. Hacerla
 /// aqui es lo que cierra el circuito entre la autopsia y el mapa.

@@ -492,7 +492,7 @@ fn publicar(ruta: &str, gesto: &Gesto) -> Result<u64, WriteError> {
     // transaccion seguia en Datos, asi que la barrera devolvia `FueraDeOrden`
     // y **el commit no llegaba a ocurrir jamas**.
     //
-    // [!] Faltaba desde el commit que estreno la escritura (`1c96b133`, 18-08),
+    // [!] Faltaba desde el commit que estreno la escritura (`8895eaf4`, 18-08),
     // no desde el refactor de ayer: `crear_fichero` NUNCA ha guardado un
     // fichero. `sellar` si funcionaba --y por eso se vio la generacion 3 en el
     // Ryzen-- porque aquel camino si la llamaba.
