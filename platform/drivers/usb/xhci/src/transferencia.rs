@@ -40,6 +40,16 @@ pub unsafe fn control_transfer(slot: u8, bm_req_type: u8, b_request: u8,
     let h = hal();
     let ep0 = match ep0_mut(slot) { Some(e) => e, None => { h.log("no ep0 ring\n"); return 0; } };
 
+    // ** UNA pagina de DMA para la etapa de datos, y ni un byte mas (2026-09-14).
+    // El bucle de abajo copia `buf.len()` bytes en ESA pagina: con un bufer de
+    // mas de 4096 escribiria en la memoria fisica de al lado, y un TRB con una
+    // fisica que no es no da fault. Hoy nadie llama con tanto (el mayor es la
+    // configuracion, 512); esto hace que manana tampoco pueda.
+    if buf.len() > 4096 {
+        h.log_u64("[xhci] control_transfer: bufer de mas de una pagina, NEGADO: ", buf.len() as u64);
+        return 0;
+    }
+
     let has_data = !buf.is_empty();
     let data_page = if has_data {
         // Quedarse sin paginas DMA se trataba igual que "el aparato no mando

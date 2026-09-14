@@ -140,6 +140,30 @@ pantalla tal cual.
       sabe:** un pendrive contesta a un INQUIRY de almacenamiento, que es BULK y
       no necesita ningun movil.
 
+- [ ] **S3b.2a -- la FUGA de DMA del xHCI.** Medido el 2026-09-14: el HAL de
+      `platform/drivers/usb/xhci/src/lib.rs` solo sabe `alloc_dma_pages`, nunca
+      devolverlas, y `control_transfer` (`transferencia.rs`) pide una pagina NUEVA
+      en cada transferencia con datos. Eso incluye cada cambio de LED del teclado
+      (Bloq Mayus), y cada enchufe vuelve a pedir el anillo EP0 y sus dos
+      contextos. Sin arreglar esto, un driver de red USB -- que habla por control
+      a menudo -- se comeria la memoria. Arreglo: UNA pagina de datos por ranura,
+      pedida al direccionar y reutilizada; y un `devolver` en el HAL para el
+      desenchufe. Toca el camino del teclado: se prueba en metal ANTES de seguir.
+      **Como se sabe:** `save` da los mismos `marcos libres` antes y despues de
+      100 pulsaciones de Bloq Mayus y de 10 enchufes del raton.
+
+- [x] **S3b.2b -- el tope de una pagina en `control_transfer`.** HECHO el
+      2026-09-14 en `platform/drivers/usb/xhci/src/transferencia.rs`: la etapa de
+      datos copiaba `buf.len()` bytes en UNA pagina de DMA sin mirar el largo; un
+      bufer de mas de 4096 habria escrito en la memoria fisica de al lado. Hoy el
+      mayor era 512, y ahora uno mas grande se niega con su linea en el log.
+
+- [ ] **S3b.2c -- HUBS.** `platform/drivers/usb/xhci/src/enumerar.rs` solo
+      direcciona aparatos en los puertos RAIZ: no construye la ruta (route string)
+      ni habla con un hub. Un movil, un teclado o un pendrive detras de un hub (o
+      del hub de un monitor) no enumera. **Como se sabe:** un teclado enchufado a
+      un hub escribe en el escritorio.
+
 - [ ] **S3b.3 -- el driver RNDIS.** En `Ultra_kernel_x86-64/kernel/src/ring0/dev/usb`,
       con el control encapsulado por el endpoint 0 y las tramas por BULK.
       **Como se sabe:** el movil contesta a INITIALIZE y da su MAC.
@@ -295,3 +319,94 @@ pida: no son una red, son la llave del movil.
                                           su carpeta; y ffmpeg solo lee
                                           ficheros (`-protocol_whitelist`)
 ```
+
+---
+
+# 8. LA VISION: de un movil a una ANTENA de verdad (2026-09-14)
+
+Eddi: *"que la ANTENA se enfoque en MASTICAR, y BMO-X recibe lo que ella
+EMPAQUETA, pidiendolo por el router principal. Y una version 2: una distro Arch
+Linux convertida en antena, ultra optimizada... o el PCI en RISC-V u otro chip,
+eso ya depende de empresas. Y si la antena se lleva Python para que BMO-X lo
+ejecute?"*.
+
+## La idea de fondo: masticar y empaquetar
+
+La antena no "le pasa Internet" a BMO-X: le entrega **paquetes que BMO-X ya sabe
+digerir**, cada uno en el formato mas simple que sirve para lo suyo:
+
+```text
+   lo pesado de fuera            lo que mastica la antena     lo que recibe BMO-X
+   un video de cualquier codec   ffmpeg                       MPEG-1 + MP2 (pl_mpeg)
+   una pagina web                la web, JavaScript           texto / gemtext
+   una imagen (JPEG, WebP, AVIF) el decodificador             QOI o BICO (ya se pintan)
+   un audio (Opus, AAC)          el decodificador             PCM (el tubo de audio)
+   un calculo en Python          CPython y sus librerias      el RESULTADO, no el codigo
+```
+
+Todo va por la LAN a traves del router de casa, que es el "principal": BMO-X y la
+antena son dos maquinas de la misma red. **No por Internet**: por Internet haria
+falta TLS, y eso es justo el muro (G6 de `docs/plan/PLAN_RED_TX.md`) que la
+antena existe para quitar de en medio.
+
+## Las tres versiones de la antena
+
+```text
+   V1  el MOVIL (hoy)           Termux + ffmpeg por software. Sirve para probar el
+                                modelo; el HONOR X7a tira de 720p y se calienta
+   V2  la ANTENA DEDICADA       un mini-PC (o un portatil viejo) con Arch Linux
+                                reducido a UNA cosa: arranca directo al servicio de
+                                antena, sin escritorio. Codifica por HARDWARE
+                                (VAAPI/NVENC): 1080p en vivo, varios a la vez
+   V3  la ANTENA DENTRO DE LA   una tarjeta PCIe con su propio chip (RISC-V u otro)
+       CAJA                     y su propio sistema. Existe con otro nombre: DPU o
+                                SmartNIC (un ordenador entero en una tarjeta de red)
+```
+
+** V3 es el mismo modelo que BMO-X ya tiene con la RTL8168 y el GATE RED -- un
+aparato PCI y un anillo de mensajes -- pero con alguien LISTO al otro lado. Y trae
+el riesgo mas serio de todo el plan: **una tarjeta con DMA es un maestro del bus**,
+y sin IOMMU (E4 de `docs/plan/PLAN_RED_TX.md`) puede escribir en toda la RAM. Es el
+NEUTRO en su forma mas pura (`NEUTRO/LEY.md`): una V3 sin IOMMU no se enchufa.
+
+## Python en la antena: "BMO-X ejecuta Python" sin llevar Python dentro
+
+Es inesperado y tiene sentido, con sus limites dichos:
+
+```text
+   como           BMO-X pide un TRABAJO con nombre ("resume este texto",
+                  "grafica estos numeros"); la antena lo corre en su Python y
+                  devuelve el RESULTADO (texto, numeros, una imagen QOI)
+   lo que gana    todo el ecosistema de Python -- numpy, IA -- sin portar CPython
+   la regla dura  NUNCA codigo arbitrario desde BMO-X: solo scripts de una lista
+                  blanca y FIRMADOS con la misma ancla que firma los `.bex`
+                  (`toolchain/tools/bmo-firmar`). Uno sin firma se niega por nombre
+   lo que cuesta  1. es ejecucion REMOTA: la antena ve los datos que se le mandan
+                  2. la latencia de la LAN en cada llamada
+                  3. sin antena, el trabajo contesta NO por su nombre: BMO-X no
+                     se vuelve dependiente, se vuelve CAPAZ cuando la hay
+```
+
+[!] No sustituye al Python nativo de BMO-X: son dos caminos. La antena da el
+ecosistema entero ya; el nativo da Python sin nadie al lado.
+
+## Los escalones de la vision
+
+- [ ] **V2.0 -- la antena en un PC con Linux.** `toolchain/tools/antena/antena.py`
+      sin cambios, en una maquina con codificacion por hardware. **Como se sabe:**
+      sirve 1080p en vivo sin pasar del 50% de CPU.
+
+- [ ] **V2.1 -- ANTENA/2: mas que video.** Verbos nuevos en
+      `platform/shared/bmo-antena`: `PAGINA <url>` (texto), `IMAGEN <id>` (QOI) y
+      `SONIDO <id>` (PCM), con la misma `Conversacion` estricta. **Como se sabe:**
+      `cargo test -p bmo-antena` con los tres, y una imagen de la antena pintada
+      en el Ryzen.
+
+- [ ] **P1 -- TRABAJOS de Python firmados.** `EJECUTA <trabajo>` en ANTENA/2: solo
+      nombres de una lista blanca, cada script firmado con `toolchain/tools/bmo-firmar`
+      y verificado por la antena antes de correrlo. **Como se sabe:** un script sin
+      firma contesta `NO sin firma`, y uno firmado devuelve su resultado a BMO-X.
+
+- [ ] **V3.0 -- la tarjeta.** Solo despues de E4 (IOMMU) de
+      `docs/plan/PLAN_RED_TX.md`. **Como se sabe:** `placa` dice AMD-Vi, y la
+      tarjeta vive en un dominio propio con su corral mapeado y nada mas.
