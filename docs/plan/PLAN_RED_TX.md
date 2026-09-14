@@ -34,32 +34,39 @@
 - [x] **E0 -- recibir, en metal.** `red` en Ejecutar el 2026-09-13: cogidas 16,
       perdidas 0, reparto ARP 4 IPv4 12. El corral de entrada es
       `platform/drivers/net/src/anillo.rs` y el armado vive en
-      `Ultra_kernel_x86-64/kernel/src/ring0/dev/net/mod.rs` (`rx_start`).
+      `Ultra_kernel_x86-64/kernel/src/ring0/red/mod.rs` (`rx_start`).
 - [x] **E1 -- el plano de salida, los vuelos y el grifo, en el anfitrion.**
       `platform/drivers/net/src/tx.rs` (2026-09-13): un solo `EOR`, largo
       acotado a 60..1514, vuelos en orden con caducidad al tick exacto, y el
       grifo cerrado al nacer. Se comprueba con `cargo test -p bmo-net`.
-
----
-
-# 2. LOS ESCALONES QUE FALTAN
-
-- [ ] **E2 -- el corral de RX se PRESTA en el titular, sin transmitir.** Codigo
-      el 2026-09-13, falta la foto. Hasta hoy `rx_start` ponia el corral como
-      `Titular::Neutro` pero el titular no sabia que la NIC escribia ahi. Ahora
+- [x] **E2 -- el corral de RX se PRESTA en el titular, sin transmitir.** Foto
+      del Ryzen el 2026-09-13: `save` dice en vuelo 9, pisados 0, choques 0.
+      Ese mismo dia `red rx` volvio a CERO tramas: el sondeo paraba en el primer
+      descriptor con error y el anillo se quedaba atascado para siempre. Ahora
+      `Llegada` (`platform/drivers/net/src/lib.rs`) solo para en `DeLaTarjeta`;
+      una trama mala se cuenta (`INFO_NET_RX_MALAS`), se devuelve y se sigue.
+      Y la red sale de `dev`: es su propia familia, `ring0/red`.
+      Antes de E2 `rx_start` ponia el corral como `Titular::Neutro` pero el titular no sabia que la NIC escribia ahi. Ahora
       `prestar_tramo` de `Ultra_kernel_x86-64/kernel/src/ring0/mm/titular/roja.rs`
       marca sus 9 paginas con `APARATO_NIC` ANTES de tocar la tarjeta, y
       `devolver_tramo` las devuelve si armar falla.
       ** Es un PRESTAMO y no un vuelo: un anillo esperando trafico esta ocioso,
       no callado, y contarlo como silencio envenenaria el plazo de R-DMA-8
       (`NEUTRO/DMA/REGLAS.txt`, punto 3).
-      **Como se sabe que salio:** `save` en el Ryzen, con `red rx` armado, dice
-      `en vuelo 9 marcos`, `choques 0` y `pisados 0` -- y el "mas mudo" NO pasa a
-      ser la red.
+
+---
+
+# 2. LOS ESCALONES QUE FALTAN
+
+- [ ] **E2b -- la foto de `red rx` tras el atasco.** Con el escritorio abierto
+      30 segundos, `red rx` en Ejecutar dice tramas > 0 y cuantas malas.
+      **Como se sabe que salio:** el total sube entre dos fotos seguidas; si
+      malas sube a la par, el atasco era ese y el enlace de 10 Mbit es su causa.
+      Sin esta foto E3 no se puede probar: su prueba es LEER la respuesta.
 
 - [ ] **E3 -- transmitir detras del grifo.** `CR.TE`, `TNPDS`, `TCR` y la campana
       `TPPOLL.NPQ` de `platform/drivers/net/src/tx.rs`, en
-      `Ultra_kernel_x86-64/kernel/src/ring0/dev/net/mod.rs`. Una operacion nueva de
+      `Ultra_kernel_x86-64/kernel/src/ring0/red/mod.rs`. Una operacion nueva de
       `TASK_OP_RED` que COPIA la trama de Ring 3 al bufer, la pasa por `Grifo` y
       solo despues toca la campana. El grifo lo abre el dueno con una orden
       (`red abrir <segundos>`), y sin abrir contesta `Cerrado` por su nombre.

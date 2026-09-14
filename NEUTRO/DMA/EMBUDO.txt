@@ -80,7 +80,7 @@ EL CENSO, AL 2026-09-09
            igual que en AHCI
 
     NIC    *** LA UNICA QUE YA ESTA BIEN. Pide UN corral contiguo entero
-           (dev/net/mod.rs:325, `Titular::Neutro`) y todos sus bufers salen de
+           (red/mod.rs:325, `Titular::Neutro`) y todos sus bufers salen de
            ahi. La direccion fisica no se valida porque NO PUEDE estar mal:
            se calcula como `base + i * tamano` dentro de la arena
 

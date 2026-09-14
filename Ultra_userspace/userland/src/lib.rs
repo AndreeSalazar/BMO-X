@@ -356,6 +356,7 @@ pub const INFO_NET_RX_BYTES: u64 = 0x4A;
 pub const INFO_NET_RX_PERDIDAS: u64 = 0x4B;
 pub const INFO_NET_RX_TIPOS: u64 = 0x4C;
 pub const INFO_NET_PCI: u64 = 0x2E;
+pub const INFO_NET_RX_MALAS: u64 = 0x6D;
 
 /// El metro de la puerta: puertas servidas y ciclos dentro de `dispatch`.
 /// **Se leen como DELTA** -- antes y despues del bucle que se quiera medir.

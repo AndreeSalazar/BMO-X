@@ -624,7 +624,7 @@ porque **un informe HID malo hay que INYECTARLO**.
    ------------------------------------------------
    kernel/ring0/plat/madt.rs                 0     219 lineas
    kernel/ring0/plat/placa.rs                0     350
-   kernel/ring0/dev/net/mod.rs               0     637
+   kernel/ring0/red/mod.rs               0     637
 ```
 
 **120 pruebas fuera del kernel. Cero dentro.** Y las de fuera **ya son
@@ -690,7 +690,7 @@ inventen despues de escribir esto.
 
 ### Lo que sigue abierto de C6
 
-- **`placa.rs` (350 lineas) y `dev/net/mod.rs` (637)** siguen dentro del kernel
+- **`placa.rs` (350 lineas) y `red/mod.rs` (637)** siguen dentro del kernel
   con cero pruebas. El mismo reparto vale para los dos, y el segundo es el que
   ahora recibe bytes de un tercero **de verdad**.
 - ★ **El limite que C6 ya tenia escrito sigue en pie, y se cumplio**: *"la sonda

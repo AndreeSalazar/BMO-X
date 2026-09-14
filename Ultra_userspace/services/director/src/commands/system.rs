@@ -162,6 +162,19 @@ pub(crate) fn net(dsk: &mut Desktop, _p: &bmo::Pantalla, what: &[u8]) -> After {
                 dsk.out.grid.text(b" tramas, ");
                 dsk.out.grid.dec(bmo::info(bmo::INFO_NET_RX_BYTES));
                 dsk.out.grid.text(b" bytes\n");
+                // ** Y LOS DOS NUMEROS QUE DICEN POR QUE, si no llega nada.
+                let perdidas = bmo::info(bmo::INFO_NET_RX_PERDIDAS);
+                let malas = bmo::info(bmo::INFO_NET_RX_MALAS);
+                dsk.out.grid.text(b"  tiradas por la tarjeta: ");
+                dsk.out.grid.dec(perdidas);
+                dsk.out.grid.text(b"   malas devueltas: ");
+                dsk.out.grid.dec(malas);
+                dsk.out.grid.text(b"\n");
+                if total == 0 && malas > 0 {
+                    dsk.out.grid.text(b"  llegan tramas CON ERROR: el cable o el puerto (el enlace esta a 10 Mbit).\n");
+                } else if total == 0 && perdidas > 0 {
+                    dsk.out.grid.text(b"  la tarjeta recibe y TIRA: el anillo no se vacia a tiempo.\n");
+                }
                 if total == 0 {
                     // ** CERO EN TOTAL justo al armar es LO ESPERADO, y decirlo
                     // es lo que impide gastar el minuto siguiente buscando un

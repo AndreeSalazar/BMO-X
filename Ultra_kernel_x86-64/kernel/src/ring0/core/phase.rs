@@ -370,7 +370,7 @@ pub fn main(ctx: &mut BootContext) {
     // respuesta decide si el driver que viene se empieza sobre suelo firme o
     // sobre una suposicion. Ver `dev/red.rs`.
     crate::ring0::core::boot_timeline::mark("disk + ahci");
-    crate::ring0::dev::net::init();
+    crate::ring0::red::init();
 
     // *** EL CENSO DE LA PLACA. Cero escrituras, y va DESPUES de la NIC por lo
     // mismo que ella: es una pregunta, no una configuracion.

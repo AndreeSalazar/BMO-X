@@ -372,6 +372,13 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
     // contaba iteraciones del bucle; ahora cuenta CUARTOS DE SEGUNDO, medidos
     // por `Tick::pulse` con el TSC. Es el mismo movimiento que hicieron las
     // vitales veinte lineas mas abajo, y el porque entero esta en `BLINK`.
+    // ** LA RED SE SONDEA SOLA mientras esta armada (2026-09-13). Hasta hoy el
+    // anillo solo se vaciaba al teclar `red rx`: entre dos ordenes la tarjeta
+    // llenaba sus 16 descriptores y tiraba el resto, y los contadores estaban
+    // quietos. Cuatro veces por segundo son dos preguntas al kernel.
+    if dsk.tick.quarter && bmo::info(bmo::INFO_NET_RX_ARMADO) != 0 {
+        bmo::red::sondear();
+    }
     if dsk.tick.quarter {
         dsk.field.since_key = dsk.field.since_key.wrapping_add(1);
         if dsk.field.since_key >= BLINK {

@@ -144,7 +144,7 @@ es justo lo que hacen ya `perfil-placa` y `censo-neutro`.
 | [`GPU.txt`](GPU.txt) | aqui | `platform/drivers/gpu/rdna4/` | -- |
 | [`ENTRADA.txt`](ENTRADA.txt) | aqui | `uhid/` + `dev/usb/` | -- |
 | disco | falta | `dev/disk/` | -- |
-| red | falta | `dev/net/` | -- |
+| red | falta | `red/` | -- |
 
 ⚠ **Solo la placa tiene guardian PROPIO.** Los otros cinco son declaraciones sin
 nadie que las compare campo por campo, y eso hay que decirlo en vez de dejar que

@@ -176,7 +176,7 @@ pub(crate) fn shell_placa() {
     if !crate::ring0::dev::pci::hay_ecam() {
         s_log("[placa] sin ECAM careado: las caps extendidas son INALCANZABLES, no ilegibles");
     } else {
-        let (_, _, bus, dev, fun, _) = crate::ring0::dev::net::donde();
+        let (_, _, bus, dev, fun, _) = crate::ring0::red::donde();
         let mut caps = [crate::ring0::dev::pci::CapExt { id: 0, version: 0, offset: 0 }; 16];
         let n = crate::ring0::dev::pci::caps_extendidas(bus, dev, fun, &mut caps);
         if n == 0 {

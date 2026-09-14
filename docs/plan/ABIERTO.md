@@ -8,7 +8,7 @@
 
 ```text
    218 casillas ABIERTAS en 30 planes
-   146 hechas
+   147 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -215,11 +215,11 @@
 - [ ] 3. reap PREGUNTA AL JUEZ en vez de mirar solo su rsp. El cambio
 - ... y 2 mas
 
-## [`PLAN_RED_TX.md`](PLAN_RED_TX.md) -- 5 abiertas, 2 hechas
+## [`PLAN_RED_TX.md`](PLAN_RED_TX.md) -- 5 abiertas, 3 hechas
 
 *PLAN RED TX -- transmitir, con el DMA contado y el cable detras de un grifo*
 
-- [ ] E2 -- el corral de RX se PRESTA en el titular, sin transmitir. Codigo
+- [ ] E2b -- la foto de red rx tras el atasco. Con el escritorio abierto
 - [ ] E3 -- transmitir detras del grifo. CR.TE, TNPDS, TCR y la campana
 - [ ] E4 -- el muro: IOMMU, si la placa lo da. Foto de placa (la operacion
 - ... y 2 mas

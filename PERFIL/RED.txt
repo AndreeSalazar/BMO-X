@@ -3,7 +3,7 @@ EL PERFIL DE LA RED -- que vive DENTRO del perfil de la placa
 
   La mitad OPERATIVA esta repartida en dos: `platform/drivers/net/` (lo que un
   RTL cuenta de si mismo, probado en el anfitrion) y
-  `kernel/src/ring0/dev/net/` (el que le habla).
+  `kernel/src/ring0/red/` (el que le habla).
 
 
 LO PRIMERO: ESTO NO ES UNA TARJETA APARTE
@@ -56,7 +56,7 @@ LO QUE HACE Y LO QUE NO
 A QUIEN EXPONE
 --------------
 
-expone: Ultra_kernel_x86-64/kernel/src/ring0/dev/net
+expone: Ultra_kernel_x86-64/kernel/src/ring0/red
    los offsets de registro son del mapa de la familia 8169/8168. Leerlos en
    OTRA tarjeta no da error: da numeros que parecen datos
 

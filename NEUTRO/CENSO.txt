@@ -44,7 +44,7 @@ LOS QUE ESTAN DENTRO DE ESTA MAQUINA HOY
   aparato   ejecuta  opaco  DMA  marcos                        etiquetados
   -------   -------  -----  ---  ---------------------------   -----------
   AHCI      si       si     SI   dev/disk/mod.rs  x2           SI  07-09
-  NIC       si       si     SI   dev/net/mod.rs   x1           SI  07-09
+  NIC       si       si     SI   red/mod.rs   x1           SI  07-09
   xHCI      si       si     SI   dev/usb/mod.rs   x1           SI  07-09
   GPU+PSP   si       si     SI   -- todavia no hay tarjeta --  --
   ucode     si       si     si   no pide: ya esta dentro       imposible

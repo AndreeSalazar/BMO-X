@@ -1,5 +1,25 @@
 //! **La tarjeta de red: encontrarla y preguntarle quien es.** Nada mas.
 //!
+//! [familia] red  nivel 6 -- la tarjeta de red: tramas crudas, su corral y su grifo; el kernel no sabe lo que es una IP
+//! [conecta] cabina, dev, mm
+//!
+//! ## ** EL CARRIL DE INTERNET, de abajo arriba (2026-09-13)
+//!
+//! Eddi: *"ponlo en el carril de que pertenece a internet"*. Vivia dentro de
+//! `dev` como un aparato mas, y la red no es un aparato mas: es la unica parte
+//! del kernel que lee bytes que mando un DESCONOCIDO. Estas son todas sus
+//! piezas, en el orden en que una trama las cruza:
+//!
+//! ```text
+//!    platform/drivers/net        bmo-net: registros, corral RX/TX, que llego y
+//!                                el grifo. Probado en el anfitrion
+//!    ring0/red                   ESTA familia: arma, sondea y presta el corral
+//!    ring0/syscall/op_maquina    la puerta: `TASK_OP_RED`
+//!    userland/src/red.rs         la cara de esa puerta en Ring 3
+//!    director commands/red.rs    `red` y `red rx`
+//!    platform/shared/bmo-pila    TCP/IP propio, en Ring 3
+//! ```
+//!
 //! [carril]  AMARILLO  la tarjeta de red: EN OBRAS, y por eso amarilla
 //! [consumo] NADA      lee la tarjeta cuando alguien pregunta; sigue encendida
 //!                     como la dejo el firmware
@@ -241,6 +261,11 @@ static mut RX_BYTES: u64 = 0;
 static mut RX_TIPOS: [u64; 4] = [0; 4];
 /// Tramas mas cortas que una cabecera. Aparte: es cable o filtro, no trafico.
 static mut RX_CORTAS: u64 = 0;
+/// Descriptores que la tarjeta devolvio con algo que NO era una trama limpia
+/// (error, partida, enana, o que no cabia). Se cuentan y se DEVUELVEN: ver
+/// `bmo_net::Llegada`. Si sube y `RX_FRAMES` no, el cable o el puerto mandan
+/// basura -- con el enlace a 10 Mbit, el primer sospechoso.
+static mut RX_MALAS: u64 = 0;
 
 /// **El consumo del receptor.** `(tramas, bytes, [arp, ipv4, ipv6, otros], cortas)`.
 pub fn rx_consumo() -> (u64, u64, [u64; 4], u64) {
@@ -271,6 +296,11 @@ pub fn rx_activo() -> bool {
 /// Frames received since [`rx_start`].
 pub fn rx_tramas() -> u64 {
     unsafe { RX_FRAMES }
+}
+
+/// Tramas MALAS devueltas a la tarjeta desde que se armo. Ver `RX_MALAS`.
+pub fn rx_malas() -> u64 {
+    unsafe { RX_MALAS }
 }
 
 unsafe fn w8(mmio: *mut u8, off: usize, v: u8) {
@@ -383,6 +413,7 @@ pub fn rx_start() -> bool {
         RX_BYTES = 0;
         RX_TIPOS = [0; 4];
         RX_CORTAS = 0;
+        RX_MALAS = 0;
 
         // Los descriptores salen del plano ENTEROS, `EOR` incluido. El kernel no
         // arma ninguno: copia lo que el modulo probado le da.
@@ -507,10 +538,26 @@ pub fn rx_poll() -> u32 {
         // so a card that returns everything at once cannot keep this loop.
         for _ in 0..bmo_net::RX_RING_LEN {
             let d = core::ptr::read_volatile(desc(&plan, RX_NEXT));
-            let largo = match d.frame_len() {
-                Some(l) => l,
-                None => break,
+            // *** EL ATASCO DEL 13-09. Aqui habia `None => break` para CUALQUIER
+            // cosa que no fuera una trama limpia, y una sola con error dejaba el
+            // anillo parado para siempre: el descriptor era nuestro, nadie lo
+            // devolvia y la tarjeta se quedaba esperandolo. Ahora solo para
+            // `DeLaTarjeta`; lo demas se CUENTA, se devuelve y se sigue.
+            let llegada = d.llegada();
+            if llegada.para_el_sondeo() {
+                break;
+            }
+            let largo = match llegada {
+                bmo_net::Llegada::Trama(l) => Some(l),
+                mala => {
+                    RX_MALAS = RX_MALAS.wrapping_add(1);
+                    if RX_MALAS <= 4 {
+                        crate::ring0::cabina::count("red", "trama MALA devuelta a la tarjeta (2=error 3=partida 4=enana)", mala.codigo() as u64);
+                    }
+                    None
+                }
             };
+            if let Some(largo) = largo {
             // *** Y AQUI SE PREGUNTA OTRA VEZ, aunque el plano ya lo hubiera
             // garantizado al armar el anillo.
             //
@@ -521,9 +568,11 @@ pub fn rx_poll() -> u32 {
             // el parser de Ethernet como si fuera suyo.
             let Some(buf_fis) = plan.bufer(RX_NEXT) else { break };
             if !plan.contiene(buf_fis, largo as u64) {
+                // Tambien se devuelve: parar aqui era el mismo atasco por otra
+                // puerta. No se lee ni un byte de ella.
                 crate::ring0::cabina::fault("red", "la tarjeta declara una trama que NO CABE en su bufer", largo as u64);
-                break;
-            }
+                RX_MALAS = RX_MALAS.wrapping_add(1);
+            } else {
             let buf = mm::phys_to_virt(buf_fis) as *const u8;
             let trama = core::slice::from_raw_parts(buf, largo as usize);
             match bmo_net::EthHeader::parse(trama) {
@@ -589,6 +638,8 @@ pub fn rx_poll() -> u32 {
                     crate::ring0::cabina::count("red", "trama demasiado corta para tener cabecera", largo as u64);
                 }
             }
+            } // cabe en el corral
+            } // era una trama
             // Give the descriptor back to the card, with EOR preserved on the
             // last one -- rebuilding it from scratch is what keeps that bit from
             // being lost on the first wrap.

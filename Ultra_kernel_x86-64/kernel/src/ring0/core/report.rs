@@ -198,6 +198,8 @@ const INFO_NET_RX_BYTES: u64 = 0x4A;
 const INFO_NET_RX_PERDIDAS: u64 = 0x4B;
 const INFO_NET_RX_TIPOS: u64 = 0x4C;
 const INFO_NET_PCI: u64 = 0x2E;
+/// Tramas malas devueltas a la tarjeta (error, partida, enana). 2026-09-13.
+const INFO_NET_RX_MALAS: u64 = 0x6D;
 
 // El metro de la puerta: cuantas y cuantos ciclos dentro de `dispatch`. Se
 // leen como delta. Ver `ring0/syscall/meter.rs`.
@@ -457,12 +459,12 @@ pub fn campo(n: u64) -> Option<u64> {
         // [!] El precedente de que un INFO puede tocar MMIO ya estaba al lado:
         // `INFO_NET_RX_PERDIDAS` lee `MPC` del aparato, y lo lee esta misma
         // orden tecleada. Lo que no puede hacerlo es lo que pinta `splash`.
-        INFO_NET_PRESENTE => crate::ring0::dev::net::hay() as u64,
+        INFO_NET_PRESENTE => crate::ring0::red::hay() as u64,
         INFO_NET_VENDOR_DEVICE => {
-            let (v, d, _, _, _, _) = crate::ring0::dev::net::donde();
+            let (v, d, _, _, _, _) = crate::ring0::red::donde();
             ((v as u64) << 16) | (d as u64)
         }
-        INFO_NET_MAC => crate::ring0::dev::net::identidad()
+        INFO_NET_MAC => crate::ring0::red::identidad()
             .map(|i| {
                 let m = i.mac;
                 let mut v = 0u64;
@@ -476,26 +478,27 @@ pub fn campo(n: u64) -> Option<u64> {
             .unwrap_or(0),
         // ** AL APARATO, AHORA. Ver el reparto de arriba: este campo es la
         // prueba, y una prueba cacheada no prueba nada.
-        INFO_NET_PHY_CRUDO => crate::ring0::dev::net::releer()
+        INFO_NET_PHY_CRUDO => crate::ring0::red::releer()
             .map(|i| i.phy as u64)
             .unwrap_or(0),
         // Cero es *"no hay enlace"*, y es una respuesta -- no un fallo.
         //
         // [!] Este SI se queda cacheado, y no por descuido: lo pinta `splash`.
-        INFO_NET_MEGABITS => crate::ring0::dev::net::identidad()
+        INFO_NET_MEGABITS => crate::ring0::red::identidad()
             .map(|i| if i.enlace_arriba() { i.megabits() as u64 } else { 0 })
             .unwrap_or(0),
-        INFO_NET_RX_ARMADO => crate::ring0::dev::net::rx_activo() as u64,
-        INFO_NET_RX_TRAMAS => crate::ring0::dev::net::rx_tramas(),
-        INFO_NET_RX_BYTES => crate::ring0::dev::net::rx_consumo().1,
+        INFO_NET_RX_ARMADO => crate::ring0::red::rx_activo() as u64,
+        INFO_NET_RX_TRAMAS => crate::ring0::red::rx_tramas(),
+        INFO_NET_RX_MALAS => crate::ring0::red::rx_malas(),
+        INFO_NET_RX_BYTES => crate::ring0::red::rx_consumo().1,
         // ** El unico contador de red que NO lleva BMO-X. Un contador propio
         // solo puede contar lo que se cogio -- lo que se perdio por no haber
         // descriptor libre solo lo sabe el silicio. `None` sale como cero: no
         // hay tarjeta que preguntar, que es distinto de "no se perdio nada" y
         // por eso `INFO_NET_RX_ARMADO` va al lado.
-        INFO_NET_RX_PERDIDAS => crate::ring0::dev::net::rx_perdidas().unwrap_or(0) as u64,
+        INFO_NET_RX_PERDIDAS => crate::ring0::red::rx_perdidas().unwrap_or(0) as u64,
         INFO_NET_RX_TIPOS => {
-            let (_, _, t, _) = crate::ring0::dev::net::rx_consumo();
+            let (_, _, t, _) = crate::ring0::red::rx_consumo();
             // Se recortan a 16 bits cada uno. Un contador que desborda su
             // casilla y se lleva por delante al vecino diria que llegaron
             // millones de tramas de otro protocolo, y eso es peor que saturar.
@@ -503,7 +506,7 @@ pub fn campo(n: u64) -> Option<u64> {
             c(t[0]) | (c(t[1]) << 16) | (c(t[2]) << 32) | (c(t[3]) << 48)
         }
         INFO_NET_PCI => {
-            let (_, _, bus, dev, fun, _) = crate::ring0::dev::net::donde();
+            let (_, _, bus, dev, fun, _) = crate::ring0::red::donde();
             ((bus as u64) << 16) | ((dev as u64) << 8) | (fun as u64)
         }
         INFO_CPU_HILOS => cpu_topo().map(|t| t.hilos as u64).unwrap_or(0),

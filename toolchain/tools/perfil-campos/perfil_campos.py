@@ -74,7 +74,7 @@ COMPARABLES = {
         # aqui para que su ausencia no se lea como que esta cubierto.
     ],
     "RED.txt": [
-        ("pci_vendor", os.path.join(K, "dev", "net", "mod.rs"),
+        ("pci_vendor", os.path.join(K, "red", "mod.rs"),
          r"const VENDOR_REALTEK:\s*u16\s*=\s*(0x[0-9A-Fa-f]+)", "numero"),
     ],
 }

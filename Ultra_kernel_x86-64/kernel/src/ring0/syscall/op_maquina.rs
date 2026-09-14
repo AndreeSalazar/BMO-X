@@ -548,7 +548,7 @@ pub(super) fn disco(arg0: u64, _arg1: u64) -> BmoStatus {
 
 /// **ARMAR Y SONDEAR LA RED.** Ver `TASK_OP_RED` en `ops.rs` para el por que.
 pub(super) fn red(arg0: u64, _arg1: u64) -> BmoStatus {
-    use crate::ring0::dev::net;
+    use crate::ring0::red as net;
     match arg0 {
         RED_OP_ARMAR => {
             // ** ANTES de obedecer, con quien lo pide. Misma regla que el

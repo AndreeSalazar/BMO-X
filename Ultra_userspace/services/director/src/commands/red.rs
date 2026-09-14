@@ -134,6 +134,9 @@ pub(crate) fn report_net(s: &mut Output, what: &[u8]) {
                 s.text(b" tramas desde la ultima mirada   (total ");
                 s.dec(total);
                 s.text(b")\n");
+                label(s, b"malas");
+                s.dec(bmo::info(bmo::INFO_NET_RX_MALAS));
+                s.text(b" devueltas a la tarjeta (error, partida o enana)\n");
                 if total == 0 {
                     // ** Cero EN TOTAL justo al armar es LO ESPERADO, y decirlo
                     // evita la tarde que se pierde buscando un bug en un driver

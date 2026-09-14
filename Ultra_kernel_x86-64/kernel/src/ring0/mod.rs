@@ -146,7 +146,7 @@ pub mod plat {
 
 pub mod core {
     //! [familia] core  nivel 14 -- el arranque y el shell de Ring 0: orquesta a todos y nadie deberia llamarlo
-    //! [conecta] cabina, cpu, cpu_vendor, dev, fsys, mirador, mm, obj, plat, svc, syscall, task, uconsole
+    //! [conecta] cabina, cpu, cpu_vendor, dev, fsys, mirador, mm, obj, plat, red, svc, syscall, task, uconsole
     pub mod entry;
     /// El informe del sistema que Ring 3 pide por `TASK_OP_INFO`. Esta aqui y
     /// no en `obj/` porque no es un objeto con handle: son datos que el kernel
@@ -216,10 +216,6 @@ pub mod dev {
     /// codigo. La segunda puerta del portero -- la primera es `usb::portero`,
     /// que mira lo que LLEGA; esta mira lo que HAY. No escribe ni un bit.
     pub mod portero;
-    /// **La tarjeta de red, de momento solo RECONOCIDA.** Encuentra la NIC,
-    /// elige su BAR de memoria y le pregunta su MAC y su enlace -- sin
-    /// escribirle un byte. Los anillos DMA vienen despues, y sobre esta prueba.
-    pub mod net;
     /// El reloj de la placa (CMOS). Lo que significan sus bytes lo decide
     /// `bmo-rtc`; aqui solo se tocan los puertos.
     pub mod clock;
@@ -227,6 +223,10 @@ pub mod dev {
 }
 pub mod mm;
 pub mod svc;
+/// **LA RED** -- la tarjeta, su corral y su grifo. Salio de `dev` el 2026-09-13:
+/// es la unica parte del kernel que lee bytes de un desconocido, y merece su
+/// familia y su carril (ver su cabecera).
+pub mod red;
 
 // -- La raiz: lo que hay que leer primero --------------------------------
 /// La superficie congelada. Tres puertas y ni una mas.

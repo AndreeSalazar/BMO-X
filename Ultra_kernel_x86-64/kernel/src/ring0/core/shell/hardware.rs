@@ -77,7 +77,7 @@ pub(crate) fn shell_audio() {
 }
 
 pub(crate) fn shell_red(arg: &[u8]) {
-    use crate::ring0::dev::net;
+    use crate::ring0::red as net;
     const H: &[u8; 16] = b"0123456789ABCDEF";
     fn txt(b: &mut [u8; 80], o: &mut usize, t: &str) {
         for &c in t.as_bytes() { if *o < b.len() { b[*o] = c; *o += 1; } }
@@ -225,7 +225,7 @@ pub(crate) fn shell_red(arg: &[u8]) {
 /// [!] `MPC` solo se LEE. Escribirlo lo pone a cero, y un instrumento que borra
 /// lo que mide al mirarlo no se puede mirar dos veces.
 fn consumo_de_red() {
-    use crate::ring0::dev::net;
+    use crate::ring0::red as net;
     fn txt(b: &mut [u8; 80], o: &mut usize, t: &str) {
         for &c in t.as_bytes() { if *o < b.len() { b[*o] = c; *o += 1; } }
     }

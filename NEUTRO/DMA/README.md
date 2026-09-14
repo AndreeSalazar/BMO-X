@@ -125,7 +125,7 @@ Contar los sitios dio algo que no se buscaba:
 
 *** **El escalon N-C del plan --la ventana-- ya existe, y lleva meses
 funcionando en la tarjeta de red** (`drivers/net/src/anillo.rs:102`,
-`dev/net/mod.rs:325`).
+`red/mod.rs:325`).
 
 > No hay que inventar el patron. Hay que **llevarlo hacia dentro**, a los otros
 > dos.

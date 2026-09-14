@@ -299,17 +299,78 @@ impl RxDesc {
     /// segment present (a frame split across descriptors is not a frame we can
     /// read yet), and no error bit.
     pub fn frame_len(&self) -> Option<u16> {
+        match self.llegada() {
+            Llegada::Trama(l) => Some(l),
+            _ => None,
+        }
+    }
+
+    /// **Que dejo la tarjeta en este descriptor**, con los cinco casos
+    /// separados. Ver [`Llegada`]: es lo que decide si el sondeo PARA o SIGUE.
+    pub fn llegada(&self) -> Llegada {
         if self.owned_by_card() {
-            return None;
+            return Llegada::DeLaTarjeta;
         }
         if self.opts1 & rx::RES != 0 {
-            return None;
+            return Llegada::ConError;
         }
         if self.opts1 & (rx::FS | rx::LS) != (rx::FS | rx::LS) {
-            return None;
+            return Llegada::Partida;
         }
         let with_fcs = (self.opts1 & rx::LEN_MASK) as u16;
-        with_fcs.checked_sub(FCS_LEN)
+        match with_fcs.checked_sub(FCS_LEN) {
+            Some(l) => Llegada::Trama(l),
+            None => Llegada::Enana,
+        }
+    }
+}
+
+/// **Que hay en un descriptor de recepcion**, dicho entero (2026-09-13).
+///
+/// *** EL ATASCO QUE SALIO EN EL RYZEN. `frame_len()` juntaba cuatro casos en
+/// un `None`, y el sondeo del kernel hacia `break` en los cuatro. Pero solo
+/// uno es "no hay nada": en los otros tres el descriptor YA ES NUESTRO y la
+/// tarjeta lo esta esperando de vuelta. Una sola trama con error --lo mas
+/// normal del mundo con un enlace a 10 Mbit-- dejaba el anillo parado para
+/// siempre: `red rx` decia 0 y la red seguia hablando.
+///
+/// ```text
+///    DeLaTarjeta   aqui se PARA: no hay nada mas que leer
+///    Trama(l)      se lee, se devuelve y se sigue
+///    ConError      se CUENTA, se devuelve y se sigue
+///    Partida       se CUENTA, se devuelve y se sigue
+///    Enana         se CUENTA, se devuelve y se sigue
+/// ```
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Llegada {
+    /// La tiene todavia la tarjeta.
+    DeLaTarjeta,
+    /// Una trama entera y limpia, de este largo SIN la FCS.
+    Trama(u16),
+    /// La tarjeta marco error (CRC, alineacion, desbordamiento).
+    ConError,
+    /// Solo un trozo: no trae primer y ultimo segmento a la vez.
+    Partida,
+    /// Mas corta que su propia FCS.
+    Enana,
+}
+
+impl Llegada {
+    /// Solo este caso para el sondeo. Una funcion con nombre y no un `match`
+    /// escrito en el kernel: es la regla que se rompio.
+    pub const fn para_el_sondeo(self) -> bool {
+        matches!(self, Llegada::DeLaTarjeta)
+    }
+
+    /// El codigo que se ensena: 2 error, 3 partida, 4 enana (0 y 1 no son malas).
+    pub const fn codigo(self) -> u8 {
+        match self {
+            Llegada::DeLaTarjeta => 0,
+            Llegada::Trama(_) => 1,
+            Llegada::ConError => 2,
+            Llegada::Partida => 3,
+            Llegada::Enana => 4,
+        }
     }
 }
 
@@ -712,6 +773,30 @@ mod tests {
         d.opts1 = rx::FS | rx::LS | 2; // shorter than its own FCS
         assert_eq!(d.frame_len(), None, "under four bytes there is not even a CRC");
     }
+
+    /// *** EL ATASCO DEL 13-09: SOLO LA QUE TIENE LA TARJETA PARA EL SONDEO.
+    ///
+    /// Las otras tres son descriptores NUESTROS con una trama que no sirve. Si
+    /// el sondeo para en ellas, nadie los devuelve, la tarjeta se queda sin
+    /// sitio y el anillo no vuelve a coger nada.
+    #[test]
+    fn solo_la_de_la_tarjeta_para_el_sondeo() {
+        let mut d = RxDesc::to_card(0x1000, RX_BUF_LEN, false);
+        assert_eq!(d.llegada(), Llegada::DeLaTarjeta);
+        assert!(d.llegada().para_el_sondeo());
+        let casos = [
+            (rx::FS | rx::LS | 64, Llegada::Trama(60)),
+            (rx::FS | rx::LS | rx::RES | 64, Llegada::ConError),
+            (rx::FS | 64, Llegada::Partida),
+            (rx::FS | rx::LS | 2, Llegada::Enana),
+        ];
+        for (opts1, esperado) in casos {
+            d.opts1 = opts1;
+            assert_eq!(d.llegada(), esperado, "{opts1:#x}");
+            assert!(!d.llegada().para_el_sondeo(), "{esperado:?} es nuestra: se devuelve y se sigue");
+        }
+    }
+
 
     /// ** THE ETHERTYPE IS BIG-ENDIAN AND THIS MACHINE IS NOT.
     ///

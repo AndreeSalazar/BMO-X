@@ -25,7 +25,7 @@ LAS TRES, Y LAS TRES ESTAN EN EL CODIGO HOY
   ------------------------------------------
 
     drivers/net/anillo.rs:102     una arena contigua
-    dev/net/mod.rs:325            pedida entera como `Titular::Neutro`
+    red/mod.rs:325            pedida entera como `Titular::Neutro`
 
     La tarjeta de red no valida sus direcciones fisicas PORQUE NO PUEDEN ESTAR
     MAL: se calculan como `base + i * tamano` dentro de un corral que es suyo.

@@ -82,7 +82,7 @@ Hoy es una afirmacion; con esto es una foto.
 ## G2 -- BMO-X como CAJA EN LINEA (el guardian de verdad)
 
 - [ ] **G2.1 -- dos puertas de red y reenvio entre ellas.** Entre el router y el
-      PC. El driver Realtek ya existe (`ring0/dev/net/`) y `PERFIL/RED.txt`
+      PC. El driver Realtek ya existe (`ring0/red/`) y `PERFIL/RED.txt`
       declara su `pci_vendor`.
 - [ ] **G2.2 -- la politica.** Que pasa y que no. Es donde EL ORQUESTAL deja de
       ser una palabra: *"multiplexar es ser generoso, orquestar es ser CELOSO"*.

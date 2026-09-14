@@ -351,6 +351,10 @@ pub const INFO_NET_RX_TIPOS: u64 = 0x4C;
 /// Hace falta para el caso raro y real de dos NIC: sin esto, dos tarjetas dan
 /// dos informes identicos y no hay forma de decir de cual habla cada uno.
 pub const INFO_NET_PCI: u64 = 0x2E;
+/// Tramas que la tarjeta devolvio y NO eran limpias (error, partida, enana, o
+/// que no cabian). Se cuentan y se devuelven: un anillo que paraba en ellas se
+/// atascaba para siempre (2026-09-13).
+pub const INFO_NET_RX_MALAS: u64 = 0x6D;
 
 /// -- ** EL METRO DE LA PUERTA -------------------------------------------
 ///
