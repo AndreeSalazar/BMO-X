@@ -107,3 +107,63 @@
    [!] el enlace sale a 10 Mbit (el paso 0 leyo 100). No es de este plan: es
        cable, puerto o autonegociacion, y se prueba antes de medir latencias
 ```
+
+---
+
+# 4. EL CAMINO A GEMINI (anotado el 2026-09-13)
+
+> Eddi, con la primera foto del GATE RED delante: *"eso significa que PODEMOS
+> IR A GEMINI para navegar?"*. Todavia no. Esta es la escalera, en orden, y
+> cada peldano dice donde se mira.
+
+La primera foto (2026-09-13): pase ABIERTO, `salieron 1`, 56 tramas en el
+buzon, y el ARP a 192.168.1.1 sin respuesta. Salir del grifo no probaba salir al
+cable, y la IP se eligio a ciegas; por eso existe `red prueba`.
+
+Gemini es el destino bueno porque se ahorra lo mas caro de HTTPS: el certificado
+se recuerda la primera vez (TOFU) y no hay cadena X.509 que validar. Y gemtext
+son cinco clases de linea.
+
+- [ ] **G1 -- el router contesta.** Es E3: `red prueba` en el Ryzen dice `PASA`.
+      Si dice `FALLA en la TARJETA`, se mira
+      `Ultra_kernel_x86-64/kernel/src/ring0/red/salida.rs`.
+- [ ] **G2 -- tener IP.** DHCP en Ring 3 sobre el buzon (UDP 67/68) en
+      `platform/shared/bmo-pila`, o una IP fija en `director.cfg` del disco de
+      BMO -- nunca en el repositorio (seccion 5). **Como se sabe:** `red perfil`
+      dice un numero en `IP propia`, y un ARP con ese origen recibe respuesta.
+- [ ] **G3 -- la pila sobre el buzon.** `platform/shared/bmo-pila` (`nodo.rs`)
+      leyendo y escribiendo con `bmo::red::recibir` y `bmo::red::enviar`. Es E5:
+      el router contesta a un ping.
+- [ ] **G4 -- DNS.** Una pregunta A por UDP con la lista blanca de
+      `platform/shared/bmo-pila`. **Como se sabe:** un nombre da la misma IP que
+      da Windows en el mismo cable.
+- [ ] **G5 -- TCP de verdad.** `platform/shared/bmo-pila/src/tcp` contra un
+      servidor real: el saludo de tres pasos y un cierre limpio.
+- [ ] **G6 -- TLS 1.3: EL MURO.** En `platform/shared/bmo-cripto`, con los
+      vectores oficiales: X25519 (RFC 7748), ChaCha20-Poly1305 (RFC 8439), HKDF
+      (RFC 5869) y la maquina de estados del handshake (RFC 8446). SHA-256 y
+      Ed25519 ya estan. [!] Escrita mal no falla: funciona y no protege.
+- [ ] **G7 -- el cliente Gemini.** Puerto 1965, TOFU guardado en el disco de
+      BMO y gemtext pintado por el DIRECTOR
+      (`Ultra_userspace/services/director`). **Como se sabe:** una capsula real
+      se lee en pantalla.
+
+---
+
+# 5. LO QUE NO SE EXPONE (regla, 2026-09-13)
+
+Eddi: *"no quiero exponer donde vivo, no quiero ser expuesto"*. El repositorio
+es publico, asi que:
+
+```text
+   la MAC entera    NO entra en el repositorio. Las pruebas usan una de ejemplo
+                    (02:1A:2B:3C:4D:5E) y la pantalla y CABINA ensenan solo el
+                    fabricante. `red mac completa` la da entera a quien la pide
+   la IP de la LAN  NO entra en el repositorio. En pantalla si: 192.168.x.x no
+                    dice donde vive nadie
+   la IP PUBLICA    BMO-X no la conoce ni la pregunta. Es la unica que localiza
+   una IP fija      si hace falta, en `director.cfg` del disco de BMO, no aqui
+```
+
+[!] Lo publicado ANTES de esta regla sigue en la historia de git: se limpio el
+arbol, no la historia. Reescribirla es una decision del dueno, no de un commit.

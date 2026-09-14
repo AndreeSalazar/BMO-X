@@ -168,7 +168,7 @@ pub fn address(w: &mut Escritor, v: u64) {
     }
 }
 
-/// Six bytes packed with byte 0 at the top, printed `2C:F0:5D:xx:xx:xx`.
+/// Six bytes packed with byte 0 at the top, printed `02:1A:2B:3C:4D:5E`.
 ///
 /// The order is the whole content of this function. A MAC printed backwards is
 /// perfectly plausible -- six bytes that are neither zeros nor ones -- so it
@@ -270,7 +270,7 @@ mod tests {
     /// correct at the time.
     #[test]
     fn a_mac_reads_in_the_order_it_is_written() {
-        ver(64, |w| mac(w, 0x021A_2B3C_4D5E), "2C:F0:5D:xx:xx:xx");
+        ver(64, |w| mac(w, 0x021A_2B3C_4D5E), "02:1A:2B:3C:4D:5E");
         ver(64, |w| mac(w, 0xFFFF_FFFF_FFFF), "FF:FF:FF:FF:FF:FF");
         ver(64, |w| mac(w, 0), "00:00:00:00:00:00");
     }
@@ -300,7 +300,7 @@ mod tests {
     #[test]
     fn writing_past_the_end_truncates_and_does_not_panic() {
         ver(5, |w| size(w, 4_196_020), "4.0 M");
-        ver(4, |w| mac(w, 0x021A_2B3C_4D5E), "2C:F");
+        ver(4, |w| mac(w, 0x021A_2B3C_4D5E), "02:1");
         ver(2, |w| bits(w, 0xFF), "0b");
     }
 

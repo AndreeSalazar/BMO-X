@@ -251,7 +251,7 @@ pub enum Fmt {
     Addr = 3,
     /// Milliseconds.
     Millis = 4,
-    /// A six-byte MAC, packed with byte 0 at the top. Printed `2C:F0:5D:xx:xx:xx`
+    /// A six-byte MAC, packed with byte 0 at the top. Printed `02:1A:2B:3C:4D:5E`
     /// so it can be compared at a glance with what any other system says.
     Mac = 5,
     /// A bitfield. Printed in binary, because the whole point of a bitfield is

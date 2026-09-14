@@ -4492,3 +4492,24 @@ azar incluidas. **Ningun byte ha salido por el cable todavia**: la prueba es
 
 > Lo que se paga en la puerta se juzga una vez; lo que pasa despues solo se
 > puede juzgar mirando.
+
+### La primera foto, y lo que no probaba
+
+`red abrir 60` y `red arp 192.168.1.1`: el pase abrio, el buzon recogio 56
+tramas sin syscall, `salieron 1`... y el router no contesto. Salir del grifo no
+es salir al cable, y la IP se eligio a ciegas. Desde entonces `red pase` dice
+cuantas devolvio la tarjeta ENVIADAS y quien habla ARP en el cable, y `red
+prueba` hace la secuencia sola, en tiempo real: oye, elige el router, pregunta y
+da uno de tres veredictos (PASA, FALLA en la TARJETA, SIN VEREDICTO).
+
+Eddi pregunto si eso ya era Gemini. No: la escalera G1-G7 esta anotada en la
+seccion 4 de `docs/plan/PLAN_RED_TX.md`, y el muro es TLS 1.3.
+
+### No exponer a nadie
+
+*"No quiero exponer donde vivo."* El repositorio es publico y llevaba la MAC del
+Ryzen en veinte sitios. Se quito del arbol --pruebas con una MAC de ejemplo,
+documentos recortados al fabricante--, y la pantalla y CABINA ya solo imprimen
+los tres primeros bytes. La historia de git la conserva: reescribirla es
+decision del dueno. BMO-X no conoce la IP publica, que es la unica que dice
+donde vive alguien, y no la pregunta.

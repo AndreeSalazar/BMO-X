@@ -149,7 +149,10 @@ pub fn init() {
     //  descubre que existe seria cambiar dos cosas a la vez.
     la_placa_dice(&loc);
 
-    crate::ring0::cabina::mac("red", "MAC", id.mac_u64());
+    // ** SOLO EL FABRICANTE (2026-09-13). La MAC entera identifica este equipo y
+    // CABINA acaba en fotos y en `SALIDA.TXT`: tres bytes bastan para comprobar
+    // que el BAR lleva a los registros, que es para lo que se imprimia.
+    crate::ring0::cabina::id("red", "MAC: el fabricante (el resto no se imprime)", id.mac_u64() >> 24);
     if !id.creible() {
         // Ceros o unos no dicen "tarjeta rota": dicen que la lectura no llego al
         // aparato. Es el BAR, no la NIC, y confundirlos manda a cambiar de
@@ -633,8 +636,10 @@ fn rx_poll_con(entregar: &mut dyn FnMut(&[u8])) -> u32 {
                     //      par en par" -- las dos dan los mismos origenes. El
                     //      paso 1 tiene tres preguntas que contestar y asi solo
                     //      contestaba dos.
-                    crate::ring0::cabina::mac("red", "trama DE", h.src_u64());
-                    crate::ring0::cabina::mac("red", "     PARA", h.dst_u64());
+                    // Fabricante y nada mas: las MAC de los vecinos tampoco son
+                    // de este repositorio ni de una foto.
+                    crate::ring0::cabina::id("red", "trama DE (fabricante)", h.src_u64() >> 24);
+                    crate::ring0::cabina::id("red", "     PARA (fabricante)", h.dst_u64() >> 24);
                     // ** EL TIPO CON SU NOMBRE EN EL MENSAJE. `0x0806` es ARP
                     // para quien tenga la tabla memorizada y no es nada para
                     // todos los demas -- y esta linea la lee una persona una
@@ -660,7 +665,7 @@ fn rx_poll_con(entregar: &mut dyn FnMut(&[u8])) -> u32 {
                             crate::ring0::cabina::warn(
                                 "red",
                                 "[!] dice venir de NOSOTROS y aqui no se transmite",
-                                h.src_u64(),
+                                h.src_u64() >> 24,
                             );
                         }
                     }

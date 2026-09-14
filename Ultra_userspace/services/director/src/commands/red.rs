@@ -28,8 +28,6 @@
 //! privilegio, `CR.TE` sigue apagado en el kernel, y desde aqui no se pone un
 //! byte en el cable.
 
-use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
-
 use bmo_userland as bmo;
 
 use crate::commands::tabla::{label, section};
@@ -89,9 +87,17 @@ pub(crate) fn report_net(s: &mut Output, what: &[u8]) {
     let frames_rx = bmo::info(bmo::INFO_NET_RX_TRAMAS);
 
     // Una sola pregunta, para cuando ya sabes cual quieres.
-    if what == b"mac" {
+    // ** La MAC sale RECORTADA: identifica este equipo, y una foto de la pantalla
+    // viaja lejos. Entera solo si se pide por su nombre. Ver `red_pase.rs`.
+    if what == b"mac" || what == b"mac completa" {
         label(s, b"MAC");
-        if present { mac_hex(s, mac); } else { s.text(b"no hay tarjeta"); }
+        if !present {
+            s.text(b"no hay tarjeta");
+        } else if what == b"mac completa" {
+            crate::commands::red_pase::mac_completa(s, mac);
+        } else {
+            crate::commands::red_pase::mac_privada(s, mac);
+        }
         s.byte(b'\n');
         return;
     }
@@ -206,7 +212,7 @@ pub(crate) fn report_net(s: &mut Output, what: &[u8]) {
     s.byte(b'\n');
 
     label(s, b"MAC");
-    mac_hex(s, mac);
+    crate::commands::red_pase::mac_privada(s, mac);
     s.byte(b'\n');
 
     // 2. Hay enlace?
@@ -306,293 +312,13 @@ pub(crate) fn report_net(s: &mut Output, what: &[u8]) {
     if bmo::red::pase_abierto() {
         s.text(b"    transmitir: PASE ABIERTO -- `red pase` dice como va\n");
     } else {
-        s.text(b"    transmitir: solo con pase -- `red abrir 60` y luego `red arp <ip del router>`\n");
+        s.text(b"    transmitir: solo con pase -- `red prueba` lo hace todo solo\n");
     }
-}
-
-// ===================================================================
-//  *** EL GATE RED DESDE EL ESCRITORIO (E3, 2026-09-13)
-// ===================================================================
-//
-// ** La prueba de E3 es la que no se puede fingir: preguntar por ARP al router
-// y ver SU respuesta, dirigida a nuestra MAC. El router solo contesta si la
-// trama llego al cable.
-
-/// A que IP se pregunto por ARP (big-endian), `0` = a nadie.
-static PREGUNTADA: AtomicU32 = AtomicU32::new(0);
-/// La MAC que contesto por esa IP.
-static RESPUESTA_MAC: AtomicU64 = AtomicU64::new(0);
-static RESPUESTAS: AtomicU64 = AtomicU64::new(0);
-static RECIBIDAS: AtomicU64 = AtomicU64::new(0);
-/// **Quien habla ARP en este cable**: las cuatro primeras IP de origen distintas.
-///
-/// ** La foto del 13-09 dijo `sin respuesta todavia` con 56 tramas en el buzon.
-/// Un router pregunta por ARP todo el rato, asi que su IP ya estaba ahi dentro:
-/// si no es la que se pregunto, el fallo no es el cable, es la IP.
-static VECINOS: [AtomicU32; 4] = [AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0), AtomicU32::new(0)];
-
-fn apuntar_vecino(ip: u32) {
-    if ip == 0 {
-        return;
-    }
-    for v in &VECINOS {
-        let hay = v.load(Ordering::Relaxed);
-        if hay == ip {
-            return;
-        }
-        if hay == 0 {
-            v.store(ip, Ordering::Relaxed);
-            return;
-        }
-    }
-}
-
-fn ip_texto(s: &mut Output, ip: u32) {
-    for k in 0..4 {
-        s.dec(((ip >> ((3 - k) * 8)) & 0xFF) as u64);
-        if k < 3 {
-            s.byte(b'.');
-        }
-    }
-}
-
-/// **Vacia el buzon.** Lo llama el bucle cuatro veces por segundo. Sin syscall.
-pub(crate) fn drenar() {
-    if !bmo::red::pase_abierto() {
-        return;
-    }
-    let mut t = [0u8; 1514];
-    for _ in 0..16 {
-        let Some(n) = bmo::red::recibir(&mut t) else { break };
-        RECIBIDAS.fetch_add(1, Ordering::Relaxed);
-        if n >= 42 && t[12] == 0x08 && t[13] == 0x06 {
-            apuntar_vecino(u32::from_be_bytes([t[28], t[29], t[30], t[31]]));
-        }
-        // ARP (0x0806), respuesta (oper 2), y de la IP por la que se pregunto.
-        if n >= 42 && t[12] == 0x08 && t[13] == 0x06 && t[20] == 0 && t[21] == 2 {
-            let spa = u32::from_be_bytes([t[28], t[29], t[30], t[31]]);
-            if spa != 0 && spa == PREGUNTADA.load(Ordering::Relaxed) {
-                let mut mac = 0u64;
-                for &b in &t[22..28] {
-                    mac = (mac << 8) | b as u64;
-                }
-                RESPUESTA_MAC.store(mac, Ordering::Relaxed);
-                RESPUESTAS.fetch_add(1, Ordering::Relaxed);
-            }
-        }
-    }
-}
-
-/// `red abrir`, `red arp`, `red pase` y `red cerrar`. `false` si no es ninguna.
-pub(crate) fn orden_pase(s: &mut Output, what: &[u8]) -> bool {
-    let (orden, resto) = partir(what);
-    match orden {
-        b"abrir" => abrir(s, resto),
-        b"arp" => arp(s, resto),
-        b"pase" => pase(s),
-        b"cerrar" => {
-            bmo::red::cerrar();
-            s.text(b"  pase CERRADO: grifo cerrado, y el buzon ya es una lapida\n");
-        }
-        _ => return false,
-    }
-    true
-}
-
-fn abrir(s: &mut Output, resto: &[u8]) {
-    let segundos = numero(resto).unwrap_or(60);
-    // El receptor primero: el pase lo exige, y armar es idempotente.
-    let _ = bmo::red::armar();
-    match bmo::red::abrir(segundos.saturating_mul(1000), 1000) {
-        Ok(_) => {
-            s.text(b"  pase ABIERTO por ");
-            s.dec(segundos.min(600));
-            s.text(b" s y 1000 tramas. Pagado UNA vez: desde aqui, cero syscalls por trama\n");
-            s.text(b"  y el radar mira cada 4 ms. Prueba: `red arp <ip del router>`\n");
-        }
-        Err(bmo::red::NoAbre::Negado(no)) => {
-            s.text(b"  NO: ");
-            s.text(no.texto().as_bytes());
-            s.byte(b'\n');
-        }
-        Err(bmo::red::NoAbre::Otro { code, flags }) => {
-            s.text(b"  el kernel contesto algo que no conozco: codigo ");
-            s.dec(code as u64);
-            s.text(b", banderas ");
-            s.dec(flags as u64);
-            s.byte(b'\n');
-        }
-    }
-}
-
-fn arp(s: &mut Output, resto: &[u8]) {
-    let Some(ip) = ipv4(resto) else {
-        s.text(b"  uso: red arp 192.168.1.1\n");
-        return;
-    };
-    let mac = bmo::info(bmo::INFO_NET_MAC);
-    let mut t = [0u8; 42];
-    t[0..6].fill(0xFF);
-    for k in 0..6 {
-        t[6 + k] = (mac >> ((5 - k) * 8)) as u8;
-    }
-    t[12] = 0x08;
-    t[13] = 0x06;
-    // Ethernet, IPv4, 6 y 4 bytes, PREGUNTA.
-    t[14..22].copy_from_slice(&[0, 1, 0x08, 0x00, 6, 4, 0, 1]);
-    let (sha, resto_t) = t[22..].split_at_mut(6);
-    sha.copy_from_slice(&t_mac(mac));
-    // ** Origen 0.0.0.0: una SONDA ARP (RFC 5227). No hace falta tener IP para
-    // preguntar, y no se le ensucia la tabla a nadie con una IP inventada.
-    resto_t[0..4].fill(0);
-    resto_t[4..10].fill(0);
-    resto_t[10..14].copy_from_slice(&ip.to_be_bytes());
-    PREGUNTADA.store(ip, Ordering::Relaxed);
-    RESPUESTAS.store(0, Ordering::Relaxed);
-    RESPUESTA_MAC.store(0, Ordering::Relaxed);
-    match bmo::red::enviar(&t) {
-        Ok(()) => {
-            s.text(b"  pregunta ARP dejada en el buzon: sale en el siguiente latido.\n");
-            s.text(b"  `red pase` en un segundo: si el router contesta, la trama LLEGO al cable\n");
-        }
-        Err(bmo::red::puerta::buzon::NoEnvia::Revocado) => {
-            s.text(b"  no hay pase abierto: `red abrir 60` primero\n");
-        }
-        Err(bmo::red::puerta::buzon::NoEnvia::Llena) => {
-            s.text(b"  el buzon esta lleno: vuelve a intentarlo en un momento\n");
-        }
-        Err(bmo::red::puerta::buzon::NoEnvia::Larga) => {
-            s.text(b"  la trama es demasiado larga\n");
-        }
-    }
-}
-
-fn pase(s: &mut Output) {
-    let e = bmo::red::estado();
-    let abierto = e >> 63 != 0;
-    label(s, b"pase");
-    if abierto {
-        s.text(b"ABIERTO");
-    } else {
-        let motivo = ((e >> 56) & 0x7F) as u32;
-        s.text(b"cerrado");
-        if let Some(m) = bmo::red::puerta::radar::Motivo::desde_codigo(motivo) {
-            s.text(b" -- ");
-            s.text(m.texto().as_bytes());
-        }
-    }
-    s.byte(b'\n');
-    label(s, b"salieron");
-    s.dec(e & 0xFF_FFFF);
-    s.text(b"   negadas ");
-    s.dec((e >> 24) & 0xFF_FFFF);
-    let ultimo = (e >> 48) & 0xFF;
-    if ultimo != 0 {
-        s.text(b"   (ultimo no: ");
-        s.dec(ultimo);
-        s.text(b")");
-    }
-    s.byte(b'\n');
-    // *** LA PREGUNTA DE E3: la tarjeta la SOLTO? Salir del grifo no es salir
-    // al cable; volver de la tarjeta, si.
-    let (dadas, devueltas) = bmo::red::vuelos();
-    label(s, b"tarjeta");
-    s.dec(devueltas);
-    s.text(b" de ");
-    s.dec(dadas);
-    s.text(b" devueltas ENVIADAS");
-    if dadas > devueltas {
-        s.text(b"\n    [!] la tarjeta NO ha soltado alguna: no salio al cable (transmisor)\n");
-    } else if dadas > 0 {
-        s.text(b"\n    la tarjeta las envio: salieron al cable\n");
-    } else {
-        s.byte(b'\n');
-    }
-    label(s, b"buzon");
-    s.dec(RECIBIDAS.load(Ordering::Relaxed));
-    s.text(b" tramas recogidas sin syscall\n");
-    if VECINOS[0].load(Ordering::Relaxed) != 0 {
-        label(s, b"hablan ARP");
-        for v in &VECINOS {
-            let ip = v.load(Ordering::Relaxed);
-            if ip != 0 {
-                ip_texto(s, ip);
-                s.text(b"  ");
-            }
-        }
-        s.text(b"\n    el router suele ser la que acaba en .1 o .254 de esas\n");
-    }
-    let ip = PREGUNTADA.load(Ordering::Relaxed);
-    if ip != 0 {
-        label(s, b"ARP");
-        for k in 0..4 {
-            s.dec(((ip >> ((3 - k) * 8)) & 0xFF) as u64);
-            if k < 3 {
-                s.byte(b'.');
-            }
-        }
-        if RESPUESTAS.load(Ordering::Relaxed) > 0 {
-            s.text(b" CONTESTO desde ");
-            mac_hex(s, RESPUESTA_MAC.load(Ordering::Relaxed));
-            s.text(b"\n    *** la trama salio al cable y el router la oyo: E3 hecho\n");
-        } else {
-            s.text(b" sin respuesta todavia\n");
-        }
-    }
-}
-
-fn t_mac(mac: u64) -> [u8; 6] {
-    let mut m = [0u8; 6];
-    for (k, b) in m.iter_mut().enumerate() {
-        *b = (mac >> ((5 - k) * 8)) as u8;
-    }
-    m
-}
-
-fn recortar(b: &[u8]) -> &[u8] {
-    let i = b.iter().position(|&c| c != b' ').unwrap_or(b.len());
-    let f = b.iter().rposition(|&c| c != b' ').map_or(i, |p| p + 1);
-    &b[i..f.max(i)]
-}
-
-fn partir(b: &[u8]) -> (&[u8], &[u8]) {
-    let b = recortar(b);
-    match b.iter().position(|&c| c == b' ') {
-        Some(i) => (&b[..i], recortar(&b[i + 1..])),
-        None => (b, &[]),
-    }
-}
-
-fn numero(b: &[u8]) -> Option<u64> {
-    if b.is_empty() {
-        return None;
-    }
-    let mut n = 0u64;
-    for &c in b {
-        if !c.is_ascii_digit() {
-            return None;
-        }
-        n = n.checked_mul(10)?.checked_add((c - b'0') as u64)?;
-    }
-    Some(n)
-}
-
-fn ipv4(b: &[u8]) -> Option<u32> {
-    let mut ip = 0u32;
-    let mut partes = 0;
-    for trozo in recortar(b).split(|&c| c == b'.') {
-        let v = numero(trozo)?;
-        if v > 255 || partes == 4 {
-            return None;
-        }
-        ip = (ip << 8) | v as u32;
-        partes += 1;
-    }
-    (partes == 4).then_some(ip)
+    s.text(b"    todas las opciones: `red opciones`\n");
 }
 
 /// Los seis bytes con dos puntos, del mas significativo al menos.
-fn mac_hex(s: &mut Output, mac: u64) {
+pub(crate) fn mac_hex(s: &mut Output, mac: u64) {
     let mut i = 6;
     while i > 0 {
         i -= 1;
@@ -602,7 +328,7 @@ fn mac_hex(s: &mut Output, mac: u64) {
 }
 
 /// `ARRIBA, 100 Mbit` o `ABAJO`. El cero de megabits **es** la respuesta.
-fn link(s: &mut Output, present: bool, mbit: u64) {
+pub(crate) fn link(s: &mut Output, present: bool, mbit: u64) {
     if !present {
         s.text(b"no hay tarjeta");
     } else if mbit == 0 {

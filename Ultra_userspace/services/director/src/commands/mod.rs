@@ -25,6 +25,9 @@ pub(crate) mod history;
 /// El anillo de eventos del kernel, leido desde aqui. Ver su cabecera.
 pub(crate) mod cabina;
 pub(crate) mod red;
+/// EL GATE RED desde el escritorio: el pase, `red prueba` en tiempo real y el
+/// perfil de la red, recortado para no exponer a nadie. Ver su cabecera.
+pub(crate) mod red_pase;
 pub(crate) mod reports;
 /// La TIPOGRAFIA de los informes: filas, barras y unidades. Salio de `reports`
 /// el 12-09 porque alli convivian dos clases de coste -- lo que pregunta a la

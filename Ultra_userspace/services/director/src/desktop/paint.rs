@@ -380,7 +380,8 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
         // Con pase abierto el kernel no sondea por aqui: las tramas van al
         // buzon, y se recogen sin syscall.
         bmo::red::sondear();
-        crate::commands::red::drenar();
+        // Y `red prueba` avanza aqui, un cuarto de segundo cada vez.
+        crate::commands::red_pase::latir(&mut dsk.out.grid);
     }
     if dsk.tick.quarter {
         dsk.field.since_key = dsk.field.since_key.wrapping_add(1);

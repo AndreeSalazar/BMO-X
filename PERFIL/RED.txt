@@ -41,16 +41,27 @@ LA NIC QUE HAY
 LO QUE HACE Y LO QUE NO
 ------------------------
 
-  hace: encuentra la NIC, elige su BAR de memoria, y le pregunta MAC y enlace
-  no_hace: no le escribe un byte. Los anillos de DMA vienen despues
+  hace: encuentra la NIC, le pregunta MAC y enlace, arma el anillo de ENTRADA
+      (recibe en metal desde el 2026-09-13) y el de SALIDA detras del GATE RED
+  no_hace: no sabe lo que es una IP. La IP es de Ring 3, y no se escribe aqui
 
   msi: se PREGUNTA, no se enciende
       con MSI la tarjeta AVISA en vez de que el driver SONDEE, y esa es la fila
       que abre la puerta de TCP. Hoy `rx_poll` sondea
 
-  estado: [!] la foto del paso 1 salio en CERO el 28-08, y NO fue la tarjeta.
-      Tres causas encontradas, arregladas y SIN EJECUTAR. Es la seccion 3.4 de
-      docs/metal/METAL_2026-09-07.md
+  estado: RECIBE en el Ryzen (2026-09-13: 5 -> 14 tramas, malas 0). TRANSMITE
+      en codigo (E3 de docs/plan/PLAN_RED_TX.md) y falta la foto de `red prueba`
+
+
+LO QUE ESTE PERFIL NO GUARDA, A PROPOSITO
+------------------------------------------
+
+  ni la MAC entera, ni ninguna IP, ni nada que diga donde esta la maquina.
+
+  ** Un perfil describe el HARDWARE y viaja en un repositorio publico. La
+  identidad de la red se aprende al arrancar y se queda en la maquina:
+  `red perfil` en el escritorio ensena lo aprendido, recortado. Es la seccion 5
+  de docs/plan/PLAN_RED_TX.md.
 
 
 A QUIEN EXPONE

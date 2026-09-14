@@ -167,7 +167,7 @@ impl Identidad {
     /// **La MAC como un solo numero, para poder pintarla.**
     ///
     /// El byte 0 arriba del todo, asi que en hexadecimal sale en el mismo orden
-    /// en que se escribe: `2C:F0:5D:xx:xx:xx` -> `2CF05Dxxxxxx`. Es lo que
+    /// en que se escribe: `02:1A:2B:3C:4D:5E` -> `021A2B3C4D5E`. Es lo que
     /// permite comparar de un vistazo con lo que dice cualquier otro sistema, y
     /// esa comparacion es toda la prueba de este paso.
     pub fn mac_u64(&self) -> u64 {
@@ -620,10 +620,10 @@ mod tests {
     #[repr(C, align(4))]
     struct Registros([u8; 256]);
 
-    /// La tarjeta de esta maquina, segun su otro sistema operativo. La prueba
-    /// lleva el numero real a proposito: **es la prediccion contra la que se va
-    /// a comparar la foto del arranque**.
-    const MAC_DEL_RYZEN: [u8; 6] = [0x02, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E];
+    /// Una MAC de EJEMPLO, administrada localmente (bit 1 del primer byte).
+    /// Hasta el 2026-09-13 aqui iba la del Ryzen: el repositorio es publico y
+    /// una MAC identifica un equipo, asi que la prediccion vive fuera de el.
+    const MAC_DE_EJEMPLO: [u8; 6] = [0x02, 0x1A, 0x2B, 0x3C, 0x4D, 0x5E];
 
     fn con(mac: [u8; 6], phy: u8) -> Identidad {
         let mut r = Registros([0u8; 256]);
@@ -642,12 +642,12 @@ mod tests {
     /// cuadraria, y el sospechoso seria el BAR -- que estaria bien.
     #[test]
     fn la_mac_sale_en_el_orden_en_que_se_escribe() {
-        let id = con(MAC_DEL_RYZEN, 0);
-        assert_eq!(id.mac, MAC_DEL_RYZEN, "los seis bytes no salen en orden");
+        let id = con(MAC_DE_EJEMPLO, 0);
+        assert_eq!(id.mac, MAC_DE_EJEMPLO, "los seis bytes no salen en orden");
         assert_eq!(
             id.mac_u64(),
             0x021A_2B3C_4D5E,
-            "en hexadecimal tiene que leerse igual que se escribe: 2C:F0:5D:xx:xx:xx"
+            "en hexadecimal tiene que leerse igual que se escribe: 02:1A:2B:3C:4D:5E"
         );
     }
 
@@ -664,7 +664,7 @@ mod tests {
         // Bit 0 del primer byte = direccion de GRUPO. Ninguna tarjeta trae de
         // fabrica una MAC multicast, asi que si sale una, se leyo otra cosa.
         assert!(!con([0x01, 0x00, 0x5E, 0x11, 0x22, 0x33], 0).creible(), "una MAC multicast no es de fabrica");
-        assert!(con(MAC_DEL_RYZEN, 0).creible(), "y la de verdad si es creible");
+        assert!(con(MAC_DE_EJEMPLO, 0).creible(), "y la de verdad si es creible");
     }
 
     /// `PHYstatus` traducido. El valor que se espera del Ryzen es `0x0B`
@@ -672,13 +672,13 @@ mod tests {
     /// exactamente eso: `Up`, `100 Mbps`.
     #[test]
     fn el_enlace_se_lee_del_phystatus() {
-        let cien = con(MAC_DEL_RYZEN, 0x0B);
+        let cien = con(MAC_DE_EJEMPLO, 0x0B);
         assert!(cien.enlace_arriba());
         assert_eq!(cien.megabits(), 100, "0x0B es enlace + 100M + full");
         assert!(cien.duplex_completo());
 
-        assert_eq!(con(MAC_DEL_RYZEN, 0x13).megabits(), 1000, "0x13 lleva el bit de giga");
-        assert_eq!(con(MAC_DEL_RYZEN, 0x07).megabits(), 10, "0x07 es 10M");
+        assert_eq!(con(MAC_DE_EJEMPLO, 0x13).megabits(), 1000, "0x13 lleva el bit de giga");
+        assert_eq!(con(MAC_DE_EJEMPLO, 0x07).megabits(), 10, "0x07 es 10M");
     }
 
     /// ** SIN CABLE, CERO MEGABITS -- y no el ultimo valor que hubiera.
@@ -689,12 +689,12 @@ mod tests {
     /// silencioso, en el sitio donde parece inofensivo.
     #[test]
     fn sin_enlace_no_se_inventa_velocidad() {
-        let sin = con(MAC_DEL_RYZEN, 0x00);
+        let sin = con(MAC_DE_EJEMPLO, 0x00);
         assert!(!sin.enlace_arriba());
         assert_eq!(sin.megabits(), 0, "sin enlace la velocidad es 0, no la que hubiera");
         // Y aunque el chip deje puesto el bit de 1000 con el enlace caido --que
         // pasa al desenchufar-- sigue siendo 0: manda el enlace.
-        assert_eq!(con(MAC_DEL_RYZEN, 0x10).megabits(), 0, "el bit de velocidad sin enlace no vale");
+        assert_eq!(con(MAC_DE_EJEMPLO, 0x10).megabits(), 0, "el bit de velocidad sin enlace no vale");
     }
 
     // == STEP 1: the RX ring, in the only place it can be checked without a card
@@ -809,7 +809,7 @@ mod tests {
         // A real ARP query: broadcast destination, ethertype 0x0806.
         let mut frame = [0u8; 60];
         frame[0..6].copy_from_slice(&[0xFF; 6]);
-        frame[6..12].copy_from_slice(&MAC_DEL_RYZEN);
+        frame[6..12].copy_from_slice(&MAC_DE_EJEMPLO);
         frame[12] = 0x08;
         frame[13] = 0x06;
 
@@ -874,7 +874,7 @@ mod tests {
         trama[13] = 0x06;
 
         let h = EthHeader::parse(&trama).expect("catorce bytes hay");
-        assert_eq!(h.src_u64(), 0x2CF05Dxxxxxx, "el origen, como se dice en voz alta");
+        assert_eq!(h.src_u64(), 0x021A2B3C4D5E, "el origen, como se dice en voz alta");
         assert_eq!(h.dst_u64(), 0xFFFFFFFFFFFF, "y el destino, que es el que faltaba");
         assert!(h.is_broadcast());
     }

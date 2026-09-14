@@ -287,9 +287,15 @@ pub(crate) fn paint(
         let mut i = 6;
         while i > 0 {
             i -= 1;
-            let byte = (mac >> (i * 8)) & 0xFF;
-            n = hex2(byte, &mut b);
-            cx = p.texto_bytes(cx, y, &b[..n], INK);
+            // ** Solo el fabricante (2026-09-13): la MAC entera identifica este
+            // equipo, y la pantalla de arranque es la que mas fotos recibe.
+            if i >= 3 {
+                let byte = (mac >> (i * 8)) & 0xFF;
+                n = hex2(byte, &mut b);
+                cx = p.texto_bytes(cx, y, &b[..n], INK);
+            } else {
+                cx = p.texto(cx, y, "xx", SPLASH_DIM);
+            }
             if i > 0 {
                 cx = p.texto(cx, y, "-", SPLASH_DIM);
             }

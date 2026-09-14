@@ -7,7 +7,7 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   217 casillas ABIERTAS en 30 planes
+   224 casillas ABIERTAS en 30 planes
    148 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
@@ -78,6 +78,15 @@
 - [ ] M0b-2 -- lo que queda del papeleo, SI la medida lo pide. Quedan dos
 - [ ] M0c -- los 112 ticks del match de INFO. El rechazo por campo
 - [ ] M1b -- CUANTO CUESTA REVOCAR UNA PAGINA, y va ANTES de M1. La seccion
+- ... y 8 mas
+
+## [`PLAN_RED_TX.md`](PLAN_RED_TX.md) -- 11 abiertas, 4 hechas
+
+*PLAN RED TX -- transmitir, con el DMA contado y el cable detras de un grifo*
+
+- [ ] E3 -- EL GATE RED: transmitir, pagando UNA vez. Eddi: *"burocratico
+- [ ] E4 -- el muro: IOMMU, si la placa lo da. Foto de placa (la operacion
+- [ ] E5 -- la pila encima: un ping que contesta. platform/shared/bmo-pila
 - ... y 8 mas
 
 ## [`PLAN_DIRECTOR.md`](PLAN_DIRECTOR.md) -- 9 abiertas, 7 hechas
@@ -231,15 +240,6 @@
 - [ ] un arranque verde con lo que ya hay (vuelo, mudo, ajenos, centinela)
 - [ ] sacar titular/ a platform/shared/bmo-marcos, con la tabla como
 - [ ] sus filas de banco -- las ocho reglas del DMA, en el anfitrion
-- ... y 1 mas
-
-## [`PLAN_RED_TX.md`](PLAN_RED_TX.md) -- 4 abiertas, 4 hechas
-
-*PLAN RED TX -- transmitir, con el DMA contado y el cable detras de un grifo*
-
-- [ ] E3 -- EL GATE RED: transmitir, pagando UNA vez. Eddi: *"burocratico
-- [ ] E4 -- el muro: IOMMU, si la placa lo da. Foto de placa (la operacion
-- [ ] E5 -- la pila encima: un ping que contesta. platform/shared/bmo-pila
 - ... y 1 mas
 
 ## [`PLAN_EL_SILICIO.md`](PLAN_EL_SILICIO.md) -- 3 abiertas, 5 hechas
