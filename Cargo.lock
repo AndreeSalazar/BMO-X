@@ -272,6 +272,7 @@ dependencies = [
  "bmo-orquesta",
  "bmo-particiones",
  "bmo-prestamo-juicio",
+ "bmo-puerta-red",
  "bmo-rtc",
  "bmo-trim",
  "bmo-uaudio",
@@ -399,6 +400,10 @@ dependencies = [
 
 [[package]]
 name = "bmo-prestamo-juicio"
+version = "0.1.0"
+
+[[package]]
+name = "bmo-puerta-red"
 version = "0.1.0"
 
 [[package]]

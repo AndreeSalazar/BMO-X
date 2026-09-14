@@ -310,10 +310,11 @@ pub(crate) const TASK_OP_ARGUMENTOS: u64 = 0x33;
 /// CABINA antes y despues**, porque la primera operacion que cambia el estado
 /// de un aparato no puede ser silenciosa ni cuando funciona.
 ///
-/// [!] Y lo que esta operacion NO puede hacer, por construccion: **transmitir.**
-/// `CR.TE` se queda apagado y no hay `RED_OP_*` que lo encienda. Un error aqui
-/// no puede molestar a nadie mas de la red -- que es lo que hace que el paso 1
-/// sea gratis.
+/// [!] Hasta E3 esta operacion NO podia transmitir, por construccion. Desde el
+/// 2026-09-13 puede, y solo de una manera: `RED_OP_ABRIR` es el GATE RED --se
+/// paga una vez, lo juzga `bmo_puerta_red::pase` en orden y cada NO tiene
+/// nombre-- y lo que sale despues pasa por el grifo del kernel, copiado a su
+/// memoria, con el radar de 4 ms mirando. Ver `ring0/red/puerta.rs`.
 pub(crate) const TASK_OP_RED: u64 = 0x2C;
 
 /// **QUE CUENTA LA PLACA DE SI MISMA.** `arg0` = `PLACA_OP_*`, `arg1` = indice.
@@ -334,6 +335,14 @@ pub(crate) const TASK_OP_PLACA: u64 = 0x2D;
 /// arma dos anillos. `SONDEAR` solo vacia lo que ya llego.
 pub(crate) const RED_OP_ARMAR: u64 = 0x01;
 pub(crate) const RED_OP_SONDEAR: u64 = 0x02;
+/// **EL GATE RED.** `arg1` = `pase::empaquetar(ms, cupo)`. Devuelve un handle
+/// `KIND_RED` (y el buzon queda en `puerta::BUZON_VA`), o `negado` con un
+/// `pase::NoPase` en las banderas.
+pub(crate) const RED_OP_ABRIR: u64 = 0x03;
+/// Cerrar el pase propio. `arg1` = el handle, que se revoca.
+pub(crate) const RED_OP_CERRAR: u64 = 0x04;
+/// El estado empaquetado de `puerta::estado`.
+pub(crate) const RED_OP_ESTADO: u64 = 0x05;
 
 /// Lo que contesta `RED_OP_ARMAR`.
 pub(crate) const RED_ARMADO_OK: u64 = 0;

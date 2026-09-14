@@ -105,6 +105,12 @@ pub enum HandleKind {
     /// proceso ya podia dormir con `WAIT(0, _, timeout)`. Lo que cambia es la
     /// PRECISION del despertar, no el permiso.
     Latido = 0x75,
+
+    /// **El pase de red: el GATE RED** (E3 de `PLAN_RED_TX`, 2026-09-13).
+    ///
+    /// Se paga UNA vez con `RED_OP_ABRIR`; da el buzon mapeado y el derecho a
+    /// `WAIT` hasta que llegue una trama. Exclusivo: un pase vivo en la maquina.
+    Red = 0x76,
 }
 
 impl HandleKind {
@@ -170,6 +176,7 @@ impl HandleKind {
             0x60 => Some(Self::Channel),
             0x74 => Some(Self::MmioWindow),
             0x75 => Some(Self::Latido),
+            0x76 => Some(Self::Red),
             _ => None,
         }
     }

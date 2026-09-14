@@ -58,21 +58,27 @@
 
 # 2. LOS ESCALONES QUE FALTAN
 
-- [ ] **E2b -- la foto de `red rx` tras el atasco.** Con el escritorio abierto
-      30 segundos, `red rx` en Ejecutar dice tramas > 0 y cuantas malas.
-      **Como se sabe que salio:** el total sube entre dos fotos seguidas; si
-      malas sube a la par, el atasco era ese y el enlace de 10 Mbit es su causa.
-      Sin esta foto E3 no se puede probar: su prueba es LEER la respuesta.
+- [x] **E2b -- la foto de `red rx` tras el atasco.** Ryzen, 2026-09-13: el total
+      sube 5 -> 9 -> 10 -> 14 entre fotos, tiradas 0 y malas 0. La red recibe y
+      esta callada; lo que la paraba era que nadie vaciaba el anillo entre dos
+      ordenes, y ahora lo vacia el escritorio cuatro veces por segundo.
 
-- [ ] **E3 -- transmitir detras del grifo.** `CR.TE`, `TNPDS`, `TCR` y la campana
-      `TPPOLL.NPQ` de `platform/drivers/net/src/tx.rs`, en
-      `Ultra_kernel_x86-64/kernel/src/ring0/red/mod.rs`. Una operacion nueva de
-      `TASK_OP_RED` que COPIA la trama de Ring 3 al bufer, la pasa por `Grifo` y
-      solo despues toca la campana. El grifo lo abre el dueno con una orden
-      (`red abrir <segundos>`), y sin abrir contesta `Cerrado` por su nombre.
-      **Como se sabe que salio:** una pregunta ARP al router y, en el mismo
-      minuto, `red rx` ve su RESPUESTA dirigida a nuestra MAC. El router solo
-      contesta si la trama llego al cable: es la prueba que no se puede fingir.
+- [ ] **E3 -- EL GATE RED: transmitir, pagando UNA vez.** Eddi: *"burocratico
+      en sentido de firmas pero si es valido ... una sola vez paga y luego sin
+      burocracia, pero viene con radar de 4 ms"*. Los cuatro tiempos de
+      `docs/identidad/LA_RUTA.md`, en codigo el 2026-09-13:
+      `platform/shared/bmo-puerta-red` (el pase, el buzon y el radar, con 21
+      pruebas en el anfitrion), `Ultra_kernel_x86-64/kernel/src/ring0/red/puerta.rs`
+      (la puerta, el latido de 4 ms y la revocacion a una LAPIDA) y
+      `Ultra_kernel_x86-64/kernel/src/ring0/red/salida.rs` (`CR.TE`, `TNPDS`,
+      `TCR` y la campana). `RED_OP_ABRIR` juzga en orden --autoridad de Ring 0,
+      tarjeta, enlace, receptor, un pase a la vez-- y cada no tiene nombre; la
+      trama del proceso se COPIA a memoria del kernel antes del grifo, y el
+      radar revoca por indice o largo imposible, MAC ajena, inundacion, plazo o
+      cupo. Ordenes: `red abrir 60`, `red arp <ip del router>`, `red pase`.
+      **Como se sabe que salio:** `red pase` dice `ARP ... CONTESTO desde` una
+      MAC que no es la nuestra. El router solo contesta si la trama llego al
+      cable: es la prueba que no se puede fingir.
 
 - [ ] **E4 -- el muro: IOMMU, si la placa lo da.** Foto de `placa` (la operacion
       `PLACA_OP_IOMMU` de `Ultra_userspace/userland/src/red.rs`). Si hay AMD-Vi:

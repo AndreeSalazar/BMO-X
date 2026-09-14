@@ -4446,3 +4446,49 @@ core`. Es el siguiente corte.
 
 > Un nudo no siempre es un mal diseno de las relaciones: a veces es un solo
 > nombre para dos oficios.
+
+## Ep. 83 -- La red recibe, tiene su carril, y aprende a pagar una sola vez
+
+**2026-09-13, noche.** Eddi: *"red rx puse pero, puedes hacer funcionar?"* y
+despues, con la foto buena delante: *"burocratico en sentido de firmas pero si
+es valido ... una sola vez paga y luego sin burocracia, pero viene con radar de
+4 ms"*.
+
+### El cero, y lo que de verdad lo arreglo
+
+`rx_poll` paraba en cualquier descriptor que no fuera limpio, y uno con error
+dejaba el anillo parado para siempre. Se arreglo (`Llegada`, `RX_MALAS`) y la
+foto siguiente dijo **malas 0**: no era eso. Lo que faltaba era que alguien
+vaciara el anillo entre dos ordenes, y desde hoy lo vacia el escritorio cuatro
+veces por segundo. El total subio 5, 9, 10, 14. La red recibe y esta callada.
+
+### El carril de internet
+
+`ring0/dev/net` pasa a `ring0/red`, familia propia de nivel 6. No es un aparato
+mas: es la unica parte del kernel que lee bytes que mando un desconocido.
+
+### El GATE RED
+
+Son los cuatro tiempos de `LA_RUTA.md`, con la red:
+
+| tiempo | donde |
+|---|---|
+| declarar y juzgar, UNA vez | `RED_OP_ABRIR`; `bmo-puerta-red::pase` pregunta en orden y cada no tiene nombre |
+| correr sin puerta | un buzon de 7 paginas mapeado en el proceso: tramas con `mov`, `WAIT` para dormir |
+| vigilar | un latido de 4 ms que solo existe mientras hay pase, y un radar que revoca |
+
+Tres decisiones que no se deshacen sin preguntar:
+
+- **La trama se COPIA a memoria del kernel antes del grifo.** Si la tarjeta
+  leyera del buzon, el proceso podria cambiarla despues de juzgada.
+- **Revocar es remapear a una LAPIDA, no dejar un hueco.** Quien tiene la red es
+  el DIRECTOR, y un hueco seria un fallo de pagina que se lleva el escritorio.
+- **La autoridad `RED` la fija Ring 0 al nacer y no se delega.** La firma del
+  `.bex` ya la juzgo el cargador; el handle `KIND_RED` lleva generacion.
+
+Los veredictos tienen 21 pruebas en el anfitrion, 50.000 cabeceras pisadas al
+azar incluidas. **Ningun byte ha salido por el cable todavia**: la prueba es
+`red abrir 60`, `red arp <ip del router>` y que `red pase` diga que contesto.
+
+> Lo que se paga en la puerta se juzga una vez; lo que pasa despues solo se
+> puede juzgar mirando.

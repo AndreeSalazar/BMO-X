@@ -32,7 +32,7 @@
 /// adivinable; un handle concedido no.
 pub mod obj {
     //! [familia] obj  nivel 9 -- los objetos que Ring 3 puede tener, uno por KIND_
-    //! [conecta] cabina, core, dev, fsys, mm, plat, syscall, task, uconsole
+    //! [conecta] cabina, core, dev, fsys, mm, plat, red, syscall, task, uconsole
     pub mod file;
     /// LA PUERTA DE ESTRATOS para un `Archivo`: leer desde Ring 3 lo que se
     /// escribio en el sistema de ficheros propio. Tramo 1.1.

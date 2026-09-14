@@ -377,7 +377,10 @@ pub(crate) fn compose(dsk: &mut Desktop, p: &bmo::Pantalla, dead: usize) {
     // llenaba sus 16 descriptores y tiraba el resto, y los contadores estaban
     // quietos. Cuatro veces por segundo son dos preguntas al kernel.
     if dsk.tick.quarter && bmo::info(bmo::INFO_NET_RX_ARMADO) != 0 {
+        // Con pase abierto el kernel no sondea por aqui: las tramas van al
+        // buzon, y se recogen sin syscall.
         bmo::red::sondear();
+        crate::commands::red::drenar();
     }
     if dsk.tick.quarter {
         dsk.field.since_key = dsk.field.since_key.wrapping_add(1);

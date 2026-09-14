@@ -28,3 +28,4 @@
 0x60 KIND_CHANNEL       Channel            COINCIDEN -- y `build.ps1` ya fijaba este por su nombre
 0x74 KIND_MMIO          MmioWindow         COINCIDEN -- elegido libre en las DOS el 2026-08-26
 0x75 KIND_LATIDO        Latido             COINCIDEN -- S3 del suelo, libre en las DOS el 2026-08-26
+0x76 KIND_RED           Red                COINCIDEN -- el pase del GATE RED (E3 de PLAN_RED_TX), libre en las DOS el 2026-09-13

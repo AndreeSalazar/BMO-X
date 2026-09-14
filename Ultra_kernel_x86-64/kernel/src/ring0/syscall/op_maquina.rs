@@ -608,6 +608,44 @@ pub(super) fn red(arg0: u64, _arg1: u64) -> BmoStatus {
             }
             BmoStatus::ok_value(net::rx_poll() as u64)
         }
+        // *** EL GATE RED: se paga aqui UNA vez (E3 de `PLAN_RED_TX`).
+        //
+        // ** La autoridad la fijo Ring 0 al crear el proceso y no se delega; la
+        // firma del `.bex` ya la juzgo el cargador. Lo que falta lo pregunta
+        // `bmo_puerta_red::pase`, y cada no sale POR SU NOMBRE en las banderas.
+        RED_OP_ABRIR => {
+            let pid = scheduler::current_pid();
+            let (ms, cupo) = bmo_puerta_red::pase::desempaquetar(_arg1);
+            crate::ring0::cabina::info("red", "GATE RED: pide pase el pid", pid as u64);
+            let aspace = crate::ring0::mm::vmm::read_cr3();
+            match net::puerta::abrir(pid, aspace, autoridad::tiene(pid, autoridad::RED), ms, cupo) {
+                Ok(generacion) => {
+                    match cap::grant(pid, cap::KIND_RED, cap::RIGHT_READ | cap::RIGHT_WRITE | cap::RIGHT_WAIT, generacion) {
+                        Some(h) => BmoStatus::ok_value(h),
+                        None => {
+                            net::puerta::cerrar(pid);
+                            let no = bmo_puerta_red::pase::NoPase::SinMemoria;
+                            BmoStatus::negado(no.codigo(), 0)
+                        }
+                    }
+                }
+                Err(no) => {
+                    crate::ring0::cabina::warn("red", no.texto(), pid as u64);
+                    BmoStatus::negado(no.codigo(), 0)
+                }
+            }
+        }
+        RED_OP_CERRAR => {
+            let pid = scheduler::current_pid();
+            let habia = net::puerta::cerrar(pid);
+            if let Ok(r) = cap::resolve(pid, _arg1, cap::RIGHT_READ) {
+                if r.kind == cap::KIND_RED {
+                    cap::revoke(pid, _arg1);
+                }
+            }
+            BmoStatus::ok_value(habia as u64)
+        }
+        RED_OP_ESTADO => BmoStatus::ok_value(net::puerta::estado()),
         _ => unsupported(),
     }
 }

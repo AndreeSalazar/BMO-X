@@ -82,6 +82,9 @@ members = [
     # EL FOCO: salio de `bmo-input` (L8). Politica pura que usan Ring 0 y Ring 3;
     # un driver no es el sitio de lo que comparten dos anillos.
     "platform/shared/bmo-foco",
+    # EL GATE RED: el pase que se paga una vez, el buzon sin syscalls y el radar
+    # de 4 ms. Lo juzga el kernel y lo usa Ring 3; ver PLAN_RED_TX, E3.
+    "platform/shared/bmo-puerta-red",
     # El JUEZ de las medidas de ciclos. Vive aqui y no dentro del `.bex` que
     # mide por la misma razon que la politica de foco vive en `bmo-input`: aqui
     # se puede PROBAR. Un `.bex` es `no_main` para un target sin sistema

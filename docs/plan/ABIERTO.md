@@ -7,8 +7,8 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   218 casillas ABIERTAS en 30 planes
-   147 hechas
+   217 casillas ABIERTAS en 30 planes
+   148 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -215,15 +215,6 @@
 - [ ] 3. reap PREGUNTA AL JUEZ en vez de mirar solo su rsp. El cambio
 - ... y 2 mas
 
-## [`PLAN_RED_TX.md`](PLAN_RED_TX.md) -- 5 abiertas, 3 hechas
-
-*PLAN RED TX -- transmitir, con el DMA contado y el cable detras de un grifo*
-
-- [ ] E2b -- la foto de red rx tras el atasco. Con el escritorio abierto
-- [ ] E3 -- transmitir detras del grifo. CR.TE, TNPDS, TCR y la campana
-- [ ] E4 -- el muro: IOMMU, si la placa lo da. Foto de placa (la operacion
-- ... y 2 mas
-
 ## [`PLAN_DIRECTOR_CENSO.md`](PLAN_DIRECTOR_CENSO.md) -- 4 abiertas, 11 hechas
 
 *PLAN DEL DIRECTOR -- el censo, lo que gasta, y por que*
@@ -240,6 +231,15 @@
 - [ ] un arranque verde con lo que ya hay (vuelo, mudo, ajenos, centinela)
 - [ ] sacar titular/ a platform/shared/bmo-marcos, con la tabla como
 - [ ] sus filas de banco -- las ocho reglas del DMA, en el anfitrion
+- ... y 1 mas
+
+## [`PLAN_RED_TX.md`](PLAN_RED_TX.md) -- 4 abiertas, 4 hechas
+
+*PLAN RED TX -- transmitir, con el DMA contado y el cable detras de un grifo*
+
+- [ ] E3 -- EL GATE RED: transmitir, pagando UNA vez. Eddi: *"burocratico
+- [ ] E4 -- el muro: IOMMU, si la placa lo da. Foto de placa (la operacion
+- [ ] E5 -- la pila encima: un ping que contesta. platform/shared/bmo-pila
 - ... y 1 mas
 
 ## [`PLAN_EL_SILICIO.md`](PLAN_EL_SILICIO.md) -- 3 abiertas, 5 hechas

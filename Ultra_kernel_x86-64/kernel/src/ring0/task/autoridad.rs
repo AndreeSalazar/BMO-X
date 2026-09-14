@@ -70,9 +70,17 @@ use crate::ring0::obj::cap::MAX_PROCS;
 pub const REINICIAR: u64 = 1 << 0;
 /// **Lanzar otro programa.**
 pub const LANZAR: u64 = 1 << 1;
+/// **Pedir el pase de red** (`RED_OP_ABRIR`, 2026-09-13).
+///
+/// *** La tercera, y la pregunta de arriba tiene respuesta: el pase SI tiene
+/// objeto --el handle `KIND_RED`-- pero **pedirlo** no. Lo que se juzga en la
+/// puerta es quien llama antes de que exista nada que conceder, y eso es
+/// exactamente lo que un handle no puede expresar: un handle se pasa, y el
+/// cable no se le presta a quien un proceso de Ring 3 decida lanzar.
+pub const RED: u64 = 1 << 2;
 
 /// Lo que se le da a un proceso que arranco Ring 0.
-pub const DE_SISTEMA: u64 = REINICIAR | LANZAR;
+pub const DE_SISTEMA: u64 = REINICIAR | LANZAR | RED;
 
 /// Lo que se le da a un proceso lanzado desde Ring 3. **Nada, y va con nombre**
 /// para que el sitio que lo pasa diga lo que hace en vez de escribir un `0`.

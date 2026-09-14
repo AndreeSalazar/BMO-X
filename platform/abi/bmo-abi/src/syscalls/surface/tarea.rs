@@ -473,9 +473,9 @@ pub const TASK_OP_DISCO: u64 = 0x29;
 /// kernel decida**, con la misma forma y la misma regla que `TASK_OP_DISCO` --
 /// se apunta en CABINA antes y despues.
 ///
-/// [!] Y NO PUEDE TRANSMITIR, por construccion: `CR.TE` se queda apagado y no
-/// hay `RED_OP_*` que lo encienda. Un error aqui no puede molestar a nadie mas
-/// de la red.
+/// [!] Hasta E3 no podia transmitir. Desde el 2026-09-13 puede de UNA manera:
+/// `RED_OP_ABRIR`, el GATE RED -- se paga una vez, cada NO tiene nombre, y lo
+/// que sale pasa por el grifo del kernel con el radar de 4 ms mirando.
 pub const TASK_OP_RED: u64 = 0x2C;
 
 /// **Que cuenta la placa de si misma.** `arg0` = `PLACA_OP_*`, `arg1` = indice.
@@ -487,6 +487,17 @@ pub const TASK_OP_PLACA: u64 = 0x2D;
 pub const RED_OP_ARMAR: u64 = 0x01;
 /// Vaciar lo que llego y devolver los descriptores. Cuantas tramas se leyeron.
 pub const RED_OP_SONDEAR: u64 = 0x02;
+/// **El GATE RED.** `arg1` = plazo en ms (32 bits bajos) y cupo de tramas (32
+/// altos). Devuelve un handle `HandleKind::Red`; el buzon queda en
+/// [`RED_BUZON_VA`]. Si no, `ERROR_NEGADO` con el motivo en las banderas
+/// (`bmo_puerta_red::pase::NoPase`).
+pub const RED_OP_ABRIR: u64 = 0x03;
+/// Cerrar el pase propio. `arg1` = el handle.
+pub const RED_OP_CERRAR: u64 = 0x04;
+/// `(abierto << 63) | (motivo << 56) | (ultimo no << 48) | (negadas << 24) | salieron`.
+pub const RED_OP_ESTADO: u64 = 0x05;
+/// Donde queda el buzon del pase en el proceso. 7 paginas.
+pub const RED_BUZON_VA: u64 = 0x0000_0002_0000_0000;
 
 pub const RED_ARMADO_OK: u64 = 0;
 /// Sin cable. Es un motivo propio: no es que el anillo falle, es que no van a

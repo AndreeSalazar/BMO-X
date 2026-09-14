@@ -66,6 +66,12 @@ pub mod reg_tx {
     pub const TCR: usize = 0x40;
 }
 
+/// **Lo que se escribe en `TCR`**: rafaga de DMA sin tope (`7 << 8`) y el hueco
+/// entre tramas estandar de 96 bits (`3 << 24`). Son los numeros del driver
+/// r8169 de Linux para esta familia: aqui no hay nada que decidir, y un hueco
+/// distinto es una trama que el otro extremo no separa de la anterior.
+pub const TCR_VALOR: u32 = (0x03 << 24) | (0x07 << 8);
+
 /// Bits de `TxPoll`.
 pub mod tppoll {
     /// Hay algo nuevo en la cola de prioridad normal.
@@ -358,6 +364,12 @@ pub enum NoSale {
 }
 
 impl NoSale {
+    /// El numero que viaja al buzon (`ULTIMO_NO`). Empieza en 1: el cero es
+    /// "la ultima salio".
+    pub fn codigo(self) -> u32 {
+        self as u32 + 1
+    }
+
     pub fn texto(self) -> &'static str {
         match self {
             NoSale::Cerrado => "el grifo esta cerrado",
@@ -411,6 +423,11 @@ impl Grifo {
     pub fn cerrar(&mut self) {
         self.abierto = false;
         self.cupo = 0;
+    }
+
+    /// Las tramas que quedan por conceder. El radar revoca en el cero.
+    pub fn cupo(&self) -> u32 {
+        self.cupo
     }
 
     pub fn abierto(&self, ahora: u64) -> bool {

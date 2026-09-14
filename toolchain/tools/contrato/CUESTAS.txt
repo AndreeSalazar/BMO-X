@@ -11,7 +11,7 @@
 # El numero va solo en la primera linea util. Lo de abajo es el inventario, y es
 # comentario: esta para leerlo, no para juzgarlo.
 
-100
+104
 # NADA      Ultra_kernel_x86-64/kernel/src/ring0/cabina/caida.rs
 # NADA      Ultra_kernel_x86-64/kernel/src/ring0/core/autopsy.rs
 # NADA      Ultra_kernel_x86-64/kernel/src/ring0/core/desmontaje.rs
@@ -85,6 +85,7 @@
 # NADA      platform/drivers/gpu/rdna4/src/psp.rs
 # APARATO   platform/drivers/net/src/anillo.rs
 # APARATO   platform/drivers/net/src/lib.rs
+# APARATO   platform/drivers/net/src/tx.rs
 # APARATO   platform/drivers/storage/ahci/src/arranque.rs
 # DATO      platform/drivers/storage/ahci/src/comando.rs
 # APARATO   platform/drivers/storage/ahci/src/controller.rs
@@ -100,6 +101,9 @@
 # MAQUINA   platform/shared/bmo-mmio-juicio/src/lib.rs
 # DATO      platform/shared/bmo-orquesta/src/lib.rs
 # MAQUINA   platform/shared/bmo-prestamo-juicio/src/lib.rs
+# DATO      platform/shared/bmo-puerta-red/src/buzon.rs
+# NADA      platform/shared/bmo-puerta-red/src/pase.rs
+# NADA      platform/shared/bmo-puerta-red/src/radar.rs
 # DATO      toolchain/lang/c/src/codegen/bex.rs
 # TAREA     toolchain/lang/c/src/codegen/decidir/imagen.rs
 # DATO      toolchain/lang/c/src/codegen/decidir/plegado.rs

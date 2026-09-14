@@ -209,6 +209,10 @@ pub(crate) fn net(dsk: &mut Desktop, _p: &bmo::Pantalla, what: &[u8]) -> After {
         }
         return After::Settle;
     }
+    // ** EL GATE RED: `red abrir`, `red arp`, `red pase`, `red cerrar`.
+    if crate::commands::red::orden_pase(&mut dsk.out.grid, what) {
+        return After::Settle;
+    }
     report_net(&mut dsk.out.grid, what);
     After::Settle
 }

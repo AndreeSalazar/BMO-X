@@ -1,7 +1,7 @@
 //! **La tarjeta de red: encontrarla y preguntarle quien es.** Nada mas.
 //!
 //! [familia] red  nivel 6 -- la tarjeta de red: tramas crudas, su corral y su grifo; el kernel no sabe lo que es una IP
-//! [conecta] cabina, dev, mm
+//! [conecta] cabina, dev, mm, reloj, task
 //!
 //! ## ** EL CARRIL DE INTERNET, de abajo arriba (2026-09-13)
 //!
@@ -14,6 +14,10 @@
 //!    platform/drivers/net        bmo-net: registros, corral RX/TX, que llego y
 //!                                el grifo. Probado en el anfitrion
 //!    ring0/red                   ESTA familia: arma, sondea y presta el corral
+//!    ring0/red/salida.rs         el transmisor: CR.TE, el corral de salida y la campana
+//!    ring0/red/puerta.rs         el GATE RED: el pase, el buzon, el latido de 4 ms
+//!                                y la revocacion en caliente
+//!    platform/shared/bmo-puerta-red  los veredictos del GATE RED, con banco
 //!    ring0/syscall/op_maquina    la puerta: `TASK_OP_RED`
 //!    userland/src/red.rs         la cara de esa puerta en Ring 3
 //!    director commands/red.rs    `red` y `red rx`
@@ -52,6 +56,11 @@
 
 use crate::ring0::dev::pci;
 use crate::ring0::mm;
+
+/// **EL GATE RED** (E3 de `PLAN_RED_TX`): el pase, el buzon y el latido.
+pub mod puerta;
+/// El transmisor. Solo lo toca `puerta`, con su cerrojo puesto.
+mod salida;
 
 /// Realtek. El unico vendor cuyos registros sabemos leer hoy.
 const VENDOR_REALTEK: u16 = 0x10EC;
@@ -326,6 +335,16 @@ unsafe fn desc(p: &bmo_net::anillo::Plan, i: usize) -> *mut bmo_net::RxDesc {
     virt.add(i)
 }
 
+/// **EL UNICO SITIO DE LA NIC QUE PIDE MEMORIA NEUTRA** (N1 de `NEUTRO/LEY.md`).
+///
+/// ** La entrada y la salida piden su corral aqui, y no cada una por su lado:
+/// el censo cuenta APARATOS, y el portero compara ese numero con los maestros
+/// del bus. Dos sitios de la misma tarjeta serian dos filas para un aparato, y la
+/// cuenta del portero dejaria de ser una cita.
+fn pedir_corral(paginas: u64) -> Option<u64> {
+    crate::ring0::mm::phys::alloc_frames_contig_de(paginas, crate::ring0::mm::phys::Titular::Neutro)
+}
+
 /// **Arms the receiver.** Returns `false` and says why if it cannot.
 ///
 /// Nothing is transmitted, here or anywhere else in step 1: `CR.TE` is left
@@ -356,10 +375,7 @@ pub fn rx_start() -> bool {
     let paginas = (bytes + mm::PAGE - 1) / mm::PAGE;
     // ** El corral entero es NEUTRO: la tarjeta escribe ahi por DMA. Ver
     // `NEUTRO/LEY.md`, N2.
-    let arena = match crate::ring0::mm::phys::alloc_frames_contig_de(
-        paginas,
-        crate::ring0::mm::phys::Titular::Neutro,
-    ) {
+    let arena = match pedir_corral(paginas) {
         Some(p) => p,
         None => {
             crate::ring0::cabina::fault("red", "sin marcos contiguos para el corral de DMA", paginas);
@@ -525,6 +541,16 @@ pub fn rx_start() -> bool {
 /// question step 1 exists to answer, and no amount of register dumping answers
 /// it.
 pub fn rx_poll() -> u32 {
+    puerta::sondear_sin_pase()
+}
+
+/// **El sondeo de verdad.** `entregar` recibe cada trama limpia: nada sin pase,
+/// el buzon con pase.
+///
+/// *** Lo llaman DOS hilos -- el syscall de `red rx` y el latido del GATE RED --
+/// y los dos lo hacen con el cerrojo de `puerta` puesto. Sin eso, `RX_NEXT` lo
+/// avanzarian los dos a la vez y una trama se leeria dos veces o ninguna.
+fn rx_poll_con(entregar: &mut dyn FnMut(&[u8])) -> u32 {
     if !rx_activo() {
         return 0;
     }
@@ -586,6 +612,12 @@ pub fn rx_poll() -> u32 {
                         _ => 3,
                     };
                     RX_TIPOS[casilla] = RX_TIPOS[casilla].wrapping_add(1);
+                    entregar(trama);
+
+                    // ** LAS CUATRO LINEAS, SOLO PARA LAS 16 PRIMERAS. Con el
+                    // latido sondeando cada 4 ms, una red con trafico llenaria
+                    // CABINA en un segundo y taparia lo que de verdad importa.
+                    if RX_FRAMES <= 16 {
 
                     // *** LA FOTO DEL PASO 1, y son CUATRO lineas y no dos.
                     //
@@ -621,8 +653,10 @@ pub fn rx_poll() -> u32 {
                     //
                     // Sin este aviso, eso se veria como "la red RECIBE" y la
                     // casilla se pondria verde por el motivo equivocado.
+                    // ** Desde E3 SI se transmite, y entonces esto deja de
+                    // significar lo mismo: solo se dice con el transmisor apagado.
                     if let Some(yo) = ID {
-                        if h.src_u64() == yo.mac_u64() {
+                        if h.src_u64() == yo.mac_u64() && !salida::armada() {
                             crate::ring0::cabina::warn(
                                 "red",
                                 "[!] dice venir de NOSOTROS y aqui no se transmite",
@@ -630,6 +664,7 @@ pub fn rx_poll() -> u32 {
                             );
                         }
                     }
+                    } // las 16 primeras
                 }
                 // Under fourteen bytes there is no header. Counted separately: a
                 // runt is a cable or a filter problem, not a missing frame.

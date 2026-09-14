@@ -17,3 +17,8 @@ description = "Runtime de Ring 3: los dos syscalls, capabilities y la pantalla"
 # coincidia con esta. Ver la cabecera de `src/dibujo/mod.rs`.
 [dependencies]
 bmo-dibujo = { path = "../../platform/shared/bmo-dibujo" }
+# ** Y la SEGUNDA, por el mismo argumento: `bmo-puerta-red` no es un struct del
+# kernel, es la FORMA del buzon del GATE RED y sus veredictos, sin `unsafe`. El
+# kernel la lee con la misma aritmetica con la que Ring 3 la escribe, y dos
+# copias de una forma son como se consigue que un indice valga dos cosas.
+bmo-puerta-red = { path = "../../platform/shared/bmo-puerta-red" }

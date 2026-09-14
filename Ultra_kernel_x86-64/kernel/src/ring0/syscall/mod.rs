@@ -1050,6 +1050,24 @@ fn wait(frame: &TrapFrame) -> BmoStatus {
             );
             return BmoStatus::ok_value(seq);
         }
+        // *** EL BUZON DEL GATE RED: dormir hasta que el latido meta una trama.
+        //
+        // ** Un handle de un pase revocado sigue RESOLVIENDO (la capability no
+        // la toca el radar, que vive dos niveles mas abajo), asi que se pregunta
+        // si el pase es ESE y sigue vivo. Si no, se contesta que no con el motivo
+        // del cierre en las banderas, en vez de dormir para siempre.
+        if r.kind == cap::KIND_RED {
+            if !crate::ring0::red::puerta::vigente(pid, r.object) {
+                return BmoStatus::negado(crate::ring0::red::puerta::ultimo_motivo(), 0);
+            }
+            let seq = scheduler::wait_current_checked(
+                crate::ring0::red::puerta::LLAVE,
+                deadline,
+                frame.rsi,
+                crate::ring0::red::puerta::secuencia,
+            );
+            return BmoStatus::ok_value(seq);
+        }
     }
     // ** AQUI NO HAY UN BRAZO PARA `KIND_ARCHIVO`, Y ESO ES UNA DECISION.
     //

@@ -123,6 +123,16 @@ pub const KIND_MMIO: u8 = 0x74;
 /// `0x75` esta libre en esta tabla y en la de `bmo-abi`, que es el peaje 2.
 pub const KIND_LATIDO: u8 = 0x75;
 
+/// **EL PASE DE RED.** El GATE RED de E3 (`ring0/red/puerta.rs`).
+///
+/// El objeto es la GENERACION del pase: un handle de un pase revocado resuelve
+/// y ya no vale, porque `puerta::vigente` compara la generacion. Da derecho a
+/// esperar en el buzon (`WAIT`) y a cerrarlo. **Es exclusivo**: un pase vivo a
+/// la vez en toda la maquina.
+///
+/// `0x76` esta libre en esta tabla y en la de `bmo-abi` (`HandleKind::Red`).
+pub const KIND_RED: u8 = 0x76;
+
 /// **[X] ERA `0x80`, Y ESO LO HACIA IMPOSIBLE DE RESOLVER** (2026-08-26).
 ///
 /// `HANDLE_KIND_MASK` son **siete bits**. Con `0x80`:
@@ -172,6 +182,7 @@ const _: () = {
     assert!(KIND_MMIO as u64 <= HANDLE_KIND_MASK);
     assert!(KIND_LATIDO as u64 <= HANDLE_KIND_MASK);
     assert!(KIND_TAREA as u64 <= HANDLE_KIND_MASK);
+    assert!(KIND_RED as u64 <= HANDLE_KIND_MASK);
 };
 
 // Rights bits (mirror of bmo-abi BmoCap ids: bit N = capability N).
@@ -407,6 +418,11 @@ pub fn revoke_all(pid: u32) {
     // quien pedirle que pare.
     crate::ring0::core::desmontaje::entra(7, pid);
     crate::ring0::dev::usb::audio::soltar(pid);
+    // ** Y EL PASE DE RED, por lo mismo que el audio: un grifo abierto a nombre
+    // de un muerto seguiria dejando salir lo que quedara en su buzon. Va ANTES
+    // de destruir el espacio: la puerta no lo toca, pero tiene que saber que
+    // ese dueno ya no esta antes de que el pid se pueda reutilizar.
+    crate::ring0::red::puerta::process_died(pid);
     // Sus bloques de memoria no hay que desmapearlos --el espacio entero se
     // destruye--, pero SI hay que soltar el contador de peticiones: sin esto un
     // pid reutilizado heredaria las del muerto y no podria pedir nada.

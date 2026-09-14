@@ -19,14 +19,128 @@
 //! forma que el disco, y con su misma regla -- el kernel lo apunta en CABINA
 //! antes y despues.
 //!
-//! [!] Y NO SE PUEDE TRANSMITIR desde aqui, por construccion: no hay operacion
-//! que encienda `CR.TE`. Un error de este lado no puede molestar a nadie mas de
-//! la red, y eso es lo que hace que el paso 1 salga gratis.
+//! ## *** Y desde E3, EL GATE RED (2026-09-13)
+//!
+//! [`abrir`] se paga UNA vez: el kernel pregunta en orden y cada no tiene
+//! nombre. Si dice que si, el buzon queda mapeado en [`RED_BUZON_VA`] y a partir
+//! de ahi [`enviar`] y [`recibir`] son `mov`, sin syscall. [`esperar`] duerme en
+//! `WAIT` hasta que el latido meta algo. Si el radar revoca, el buzon pasa a una
+//! LAPIDA: lo que se lee dice por que ([`motivo_del_cierre`]) y nada revienta.
+
+use core::sync::atomic::{AtomicU64, Ordering};
+
+use bmo_puerta_red::buzon::{self, Memoria};
 
 use crate::{invoke, CURRENT_TASK, OP_RED};
 
+/// La forma del buzon y los veredictos, los mismos que usa el kernel.
+pub use bmo_puerta_red as puerta;
+
 pub const RED_OP_ARMAR: u64 = 0x01;
 pub const RED_OP_SONDEAR: u64 = 0x02;
+pub const RED_OP_ABRIR: u64 = 0x03;
+pub const RED_OP_CERRAR: u64 = 0x04;
+pub const RED_OP_ESTADO: u64 = 0x05;
+/// Donde el kernel deja el buzon del pase.
+pub const RED_BUZON_VA: u64 = 0x0000_0002_0000_0000;
+
+/// El buzon en MI espacio, leido con `volatile`: el latido escribe a la vez.
+struct Mapeado;
+
+impl Memoria for Mapeado {
+    fn tam(&self) -> usize {
+        buzon::BYTES
+    }
+    fn leer8(&self, off: usize) -> u8 {
+        if off >= buzon::BYTES {
+            return 0;
+        }
+        unsafe { core::ptr::read_volatile((RED_BUZON_VA as *const u8).add(off)) }
+    }
+    fn escribir8(&mut self, off: usize, v: u8) {
+        if off < buzon::BYTES {
+            unsafe { core::ptr::write_volatile((RED_BUZON_VA as *mut u8).add(off), v) };
+        }
+    }
+}
+
+/// El handle del pase de ESTE proceso; `0` = nunca se abrio o se cerro.
+///
+/// [!] Mientras valga 0 no se toca `RED_BUZON_VA`: ahi no hay nada mapeado, y
+/// leer seria un fallo de pagina. Despues de un pase, ahi queda la lapida.
+static PASE: AtomicU64 = AtomicU64::new(0);
+
+/// Por que no se abrio.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoAbre {
+    Negado(puerta::pase::NoPase),
+    Otro { code: u32, flags: u32 },
+}
+
+/// **EL GATE RED.** Pide el pase por `ms` milisegundos y `cupo` tramas.
+pub fn abrir(ms: u64, cupo: u32) -> Result<u64, NoAbre> {
+    let st = invoke(CURRENT_TASK, OP_RED, RED_OP_ABRIR, puerta::pase::empaquetar(ms, cupo), 0);
+    if st.code != 0 {
+        return Err(match puerta::pase::NoPase::desde_codigo(st.flags) {
+            Some(n) => NoAbre::Negado(n),
+            None => NoAbre::Otro { code: st.code, flags: st.flags },
+        });
+    }
+    PASE.store(st.value, Ordering::Relaxed);
+    Ok(st.value)
+}
+
+/// Tengo un pase y sigue vivo?
+pub fn pase_abierto() -> bool {
+    PASE.load(Ordering::Relaxed) != 0 && buzon::Cliente::vivo(&Mapeado)
+}
+
+/// `0` si esta abierto o nunca hubo; si no, el `puerta::radar::Motivo` del cierre.
+pub fn motivo_del_cierre() -> u32 {
+    if PASE.load(Ordering::Relaxed) == 0 {
+        return 0;
+    }
+    buzon::Cliente::estado(&Mapeado)
+}
+
+/// **Deja una trama para el cable.** Sin syscall: sale en el siguiente latido.
+pub fn enviar(trama: &[u8]) -> Result<(), buzon::NoEnvia> {
+    if PASE.load(Ordering::Relaxed) == 0 {
+        return Err(buzon::NoEnvia::Revocado);
+    }
+    buzon::Cliente::enviar(&mut Mapeado, trama)
+}
+
+/// **Recoge una trama recibida.** Sin syscall.
+pub fn recibir(dst: &mut [u8]) -> Option<usize> {
+    if PASE.load(Ordering::Relaxed) == 0 {
+        return None;
+    }
+    buzon::Cliente::recibir(&mut Mapeado, dst)
+}
+
+/// **Duerme** hasta que llegue algo, se revoque el pase o pase `timeout_ns`.
+pub fn esperar(timeout_ns: u64) -> u64 {
+    let h = PASE.load(Ordering::Relaxed);
+    if h == 0 {
+        return 0;
+    }
+    let visto = buzon::Cliente::secuencia(&Mapeado);
+    crate::sys::wait(h, visto, timeout_ns).value
+}
+
+/// Cierra el pase propio. Idempotente.
+pub fn cerrar() {
+    let h = PASE.swap(0, Ordering::Relaxed);
+    if h != 0 {
+        invoke(CURRENT_TASK, OP_RED, RED_OP_CERRAR, h, 0);
+    }
+}
+
+/// El estado empaquetado: ver `RED_OP_ESTADO` en el ABI.
+pub fn estado() -> u64 {
+    invoke(CURRENT_TASK, OP_RED, RED_OP_ESTADO, 0, 0).value
+}
 
 /// **El bit de enlace dentro de `INFO_NET_PHY_CRUDO`.**
 ///
