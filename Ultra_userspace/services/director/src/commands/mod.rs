@@ -28,6 +28,8 @@ pub(crate) mod red;
 /// EL GATE RED desde el escritorio: el pase, `red prueba` en tiempo real y el
 /// perfil de la red, recortado para no exponer a nadie. Ver su cabecera.
 pub(crate) mod red_pase;
+/// `red ip`: la IP propia por DHCP, en tiempo real (G2). Ver su cabecera.
+pub(crate) mod red_ip;
 pub(crate) mod reports;
 /// La TIPOGRAFIA de los informes: filas, barras y unidades. Salio de `reports`
 /// el 12-09 porque alli convivian dos clases de coste -- lo que pregunta a la

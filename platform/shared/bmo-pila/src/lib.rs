@@ -31,11 +31,11 @@
 //!    Ethernet, ARP, IPv4, ICMP, UDP   este crate, probado aqui
 //!    TCP                              este crate, probado aqui
 //!    ---------------------------------------------------------------------
-//!    recibir en el Ryzen              `red rx` (paso 1) -- SIN VERIFICAR:
-//!                                     la foto del 28-08 salio en cero
-//!    transmitir (anillo TX RTL8168)   falta, y es Ring 0: el unico trozo
-//!                                     de la red que toca DMA
-//!    DHCP y DNS                       encima de `udp`, siguientes aqui
+//!    recibir en el Ryzen              HECHO en metal (2026-09-13)
+//!    transmitir (el GATE RED)         HECHO en metal (2026-09-14): el router
+//!                                     contesto a `red prueba`
+//!    DHCP                             `dhcp.rs`, probado aqui; `red ip` en metal
+//!    DNS                              encima de `udp`, el siguiente aqui
 //!    TLS 1.3                          bmo-cripto tiene X25519, AES-GCM,
 //!                                     SHA-256 y HKDF; falta la maquina de
 //!                                     estados y X.509
@@ -44,11 +44,13 @@
 //! ```
 //!
 //! [!] Lo de arriba de la raya esta probado contra pilas de mentira en el
-//! anfitrion. **Ningun byte ha salido todavia por el cable del Ryzen.**
+//! anfitrion. Desde el 2026-09-14 el cable del Ryzen ya lleva tramas de BMO-X.
 
 #![cfg_attr(not(test), no_std)]
 
 pub mod arp;
+/// DHCP, del lado del cliente: la IP propia (G2, 2026-09-14).
+pub mod dhcp;
 pub mod ether;
 pub mod icmp;
 pub mod ipv4;

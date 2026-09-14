@@ -27,7 +27,7 @@
 //! [!] Una foto de la pantalla viaja lejos. Por eso lo que se ensena ya sale
 //! recortado, y no hay que acordarse de taparlo.
 
-use core::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 use bmo_userland as bmo;
 
@@ -129,6 +129,8 @@ fn drenar() {
     for _ in 0..16 {
         let Some(n) = bmo::red::recibir(&mut t) else { break };
         RECIBIDAS.fetch_add(1, Ordering::Relaxed);
+        // Toda trama pasa tambien por `red ip`: el DHCP llega por el mismo buzon.
+        crate::commands::red_ip::oir(&t[..n]);
         if n < 42 || t[12] != 0x08 || t[13] != 0x06 {
             continue;
         }
@@ -184,6 +186,7 @@ static CANDIDATOS: [AtomicU32; 4] = [AtomicU32::new(0), AtomicU32::new(0), Atomi
 /// **Un cuarto de segundo.** Lo llama el bucle del escritorio con el receptor armado.
 pub(crate) fn latir(s: &mut Output) {
     drenar();
+    crate::commands::red_ip::latir(s);
     let fase = FASE.load(Ordering::Relaxed);
     if fase == QUIETA {
         return;
@@ -352,6 +355,9 @@ pub(crate) fn orden(s: &mut Output, what: &[u8]) -> bool {
         b"pase" => pase(s),
         b"prueba" => empezar_prueba(s),
         b"perfil" => perfil(s),
+        b"ip" => crate::commands::red_ip::empezar(s),
+        b"ver" => ver(s, false),
+        b"tapar" => ver(s, true),
         b"opciones" | b"ayuda" | b"?" => opciones(s),
         b"cerrar" => {
             FASE.store(QUIETA, Ordering::Relaxed);
@@ -366,11 +372,13 @@ pub(crate) fn orden(s: &mut Output, what: &[u8]) -> bool {
 /// **TODAS LAS OPCIONES DE `red`**, en una pantalla.
 pub(crate) fn opciones(s: &mut Output) {
     section(s, b"RED -- LAS OPCIONES");
-    let filas: [(&[u8], &[u8]); 10] = [
+    let filas: [(&[u8], &[u8]); 12] = [
         (b"red", b"el informe: tarjeta, enlace, receptor y lo que llega"),
         (b"red perfil", b"lo que la maquina sabe de su red, recortado"),
         (b"red rx", b"arma el receptor y cuenta lo nuevo"),
         (b"red prueba", b"SOLA y en tiempo real: abre, oye, elige router, pregunta, veredicto"),
+        (b"red ip", b"pide IP propia por DHCP, en tiempo real (vive en memoria)"),
+        (b"red ver|tapar", b"la MAC sin censura en pantalla, o tapada otra vez"),
         (b"red abrir [s]", b"GATE RED: pide el pase (60 s si no dices)"),
         (b"red arp <ip>", b"pregunta por ARP quien tiene esa IP"),
         (b"red pase", b"como va el pase, la tarjeta y quien habla ARP"),
@@ -612,7 +620,15 @@ fn perfil(s: &mut Output) {
         None => s.text(b"-\n"),
     }
     label(s, b"IP propia");
-    s.text(b"ninguna todavia: llega con DHCP (G2 del camino a Gemini)\n");
+    match crate::commands::red_ip::concesion() {
+        Some(k) => {
+            ip_texto(s, u32::from_be_bytes(k.ip));
+            s.text(b"   por DHCP, de ");
+            ip_texto(s, u32::from_be_bytes(k.servidor));
+            s.text(b" (en memoria: no se guarda)\n");
+        }
+        None => s.text(b"ninguna todavia -- `red ip` la pide por DHCP\n"),
+    }
     s.text(b"    ** nada de esto se escribe en disco ni sale de la maquina. La IP PUBLICA --\n");
     s.text(b"    la que si dice donde vives-- BMO-X no la conoce: no pregunta a nadie de fuera.\n");
 }
@@ -624,11 +640,31 @@ fn perfil(s: &mut Output) {
 /// **La MAC recortada**: el fabricante y `xx` en el resto. Tres bytes dicen
 /// "Micro-Star" o "TP-Link"; seis dicen "este equipo".
 pub(crate) fn mac_privada(s: &mut Output, mac: u64) {
+    if !TAPAR.load(Ordering::Relaxed) {
+        mac_hex(s, mac);
+        return;
+    }
     for i in 0..3 {
         s.hex((mac >> ((5 - i) * 8)) & 0xFF, 2);
         s.byte(b'-');
     }
     s.text(b"xx-xx-xx");
+}
+
+/// **Tapada o no.** Nace tapada en cada arranque: quitar la censura es para
+/// esta sesion, no se guarda (Eddi, 2026-09-14: *"que tengan sin censura con
+/// click"*; la salida no tiene clic todavia, asi que por ahora es una orden).
+static TAPAR: AtomicBool = AtomicBool::new(true);
+
+fn ver(s: &mut Output, tapar: bool) {
+    TAPAR.store(tapar, Ordering::Relaxed);
+    if tapar {
+        s.text(b"  MAC TAPADA otra vez: solo el fabricante\n");
+    } else {
+        s.with_ink(INK_ERR);
+        s.text(b"  MAC SIN CENSURA hasta `red tapar` o reiniciar. [!] no la ensenes en fotos\n");
+        s.with_ink(INK_PLAIN);
+    }
 }
 
 /// La MAC ENTERA, solo cuando se pide por su nombre.

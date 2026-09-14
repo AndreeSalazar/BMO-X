@@ -35,3 +35,6 @@ bmo-juicio = { path = "../../../platform/shared/bmo-juicio" }
 bmo-imagen = { path = "../../../platform/shared/bmo-imagen" }
 # El aspecto, leido de `sys/director.cfg` al arrancar.
 bmo-config = { path = "../../../platform/shared/bmo-config" }
+# La pila TCP/IP propia: hoy DHCP (`red ip`). Fuera por lo de siempre: alli se
+# prueba contra servidores de mentira, y aqui no corre un test.
+bmo-pila = { path = "../../../platform/shared/bmo-pila" }

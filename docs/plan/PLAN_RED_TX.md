@@ -63,7 +63,9 @@
       esta callada; lo que la paraba era que nadie vaciaba el anillo entre dos
       ordenes, y ahora lo vacia el escritorio cuatro veces por segundo.
 
-- [ ] **E3 -- EL GATE RED: transmitir, pagando UNA vez.** Eddi: *"burocratico
+- [x] **E3 -- EL GATE RED: transmitir, pagando UNA vez.** HECHO en el Ryzen el
+      2026-09-14: `red prueba` dijo `PASA` -- el router de la LAN contesto a la
+      sonda ARP. Eddi: *"burocratico
       en sentido de firmas pero si es valido ... una sola vez paga y luego sin
       burocracia, pero viene con radar de 4 ms"*. Los cuatro tiempos de
       `docs/identidad/LA_RUTA.md`, en codigo el 2026-09-13:
@@ -124,13 +126,17 @@ Gemini es el destino bueno porque se ahorra lo mas caro de HTTPS: el certificado
 se recuerda la primera vez (TOFU) y no hay cadena X.509 que validar. Y gemtext
 son cinco clases de linea.
 
-- [ ] **G1 -- el router contesta.** Es E3: `red prueba` en el Ryzen dice `PASA`.
+- [x] **G1 -- el router contesta.** Es E3: `red prueba` en el Ryzen dijo `PASA`
+      el 2026-09-14.
       Si dice `FALLA en la TARJETA`, se mira
       `Ultra_kernel_x86-64/kernel/src/ring0/red/salida.rs`.
-- [ ] **G2 -- tener IP.** DHCP en Ring 3 sobre el buzon (UDP 67/68) en
-      `platform/shared/bmo-pila`, o una IP fija en `director.cfg` del disco de
-      BMO -- nunca en el repositorio (seccion 5). **Como se sabe:** `red perfil`
-      dice un numero en `IP propia`, y un ARP con ese origen recibe respuesta.
+- [ ] **G2 -- tener IP.** DHCP en Ring 3 sobre el buzon (UDP 67/68):
+      `platform/shared/bmo-pila/src/dhcp.rs` (el protocolo y el cliente, con
+      banco contra servidores de mentira) y la orden `red ip` en
+      `Ultra_userspace/services/director/src/commands/red_ip.rs`, en codigo el
+      2026-09-14. La IP vive en memoria: nunca en disco ni en el repositorio
+      (seccion 5). **Como se sabe:** `red ip` dice `CONCEDIDA` y `red perfil`
+      ensena un numero en `IP propia`.
 - [ ] **G3 -- la pila sobre el buzon.** `platform/shared/bmo-pila` (`nodo.rs`)
       leyendo y escribiendo con `bmo::red::recibir` y `bmo::red::enviar`. Es E5:
       el router contesta a un ping.

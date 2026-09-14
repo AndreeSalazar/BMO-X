@@ -7,6 +7,10 @@ name = "bmo-config"
 version = "0.1.0"
 
 [[package]]
+name = "bmo-cripto"
+version = "0.1.0"
+
+[[package]]
 name = "bmo-dibujo"
 version = "0.1.0"
 
@@ -35,6 +39,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-pila"
+version = "0.1.0"
+dependencies = [
+ "bmo-cripto",
+]
+
+[[package]]
 name = "bmo-puerta-red"
 version = "0.1.0"
 
@@ -56,6 +67,7 @@ dependencies = [
  "bmo-golpe",
  "bmo-imagen",
  "bmo-juicio",
+ "bmo-pila",
  "bmo-ritmo",
  "bmo-rtc",
  "bmo-userland",

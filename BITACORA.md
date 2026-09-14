@@ -4513,3 +4513,31 @@ documentos recortados al fabricante--, y la pantalla y CABINA ya solo imprimen
 los tres primeros bytes. La historia de git la conserva: reescribirla es
 decision del dueno. BMO-X no conoce la IP publica, que es la unica que dice
 donde vive alguien, y no la pregunta.
+
+## Ep. 84 -- El router contesto, y BMO-X pide su propia IP
+
+**2026-09-14.** `red prueba` en el Ryzen, sin tocar nada mas:
+
+```text
+   [prueba 2/3] candidatos a router, oidos en el cable: <el router>
+   [prueba 3/3] pregunto por ARP a <el router>
+   [prueba] PASA: ... contesto
+   la trama salio al cable y el router la oyo. E3 hecho.
+```
+
+**La primera trama escrita por BMO-X ha cruzado un cable y ha vuelto con
+respuesta.** El pase, el buzon, la copia al kernel, el grifo, el corral de salida
+y la campana funcionan en metal. La historia publica se reescribio el mismo dia
+para quitar la MAC del Ryzen (y GitHub Desktop quiso mezclar la vieja encima:
+se cancelo).
+
+### G2, escrito el mismo dia
+
+`bmo-pila/src/dhcp.rs`: DISCOVER, OFFER, REQUEST y ACK, con el cliente avanzando
+con la hora que le dan -- tres preguntas cada cuatro segundos y se rinde. Se
+rechaza por su nombre lo que es de otra maquina, una IP que no puede ser y una
+concesion de menos de un minuto; 20.000 respuestas mutadas no lo tumban. `red ip`
+lo lleva en tiempo real desde el escritorio, y la IP concedida vive en memoria.
+
+[!] Una duda que solo el metal contesta: `bmo-pila` rechaza el UDP sin suma, y
+hay routers que mandan el DHCP asi. Si pasa, `red ip` lo dira por su nombre.
