@@ -31,3 +31,11 @@ path = "src/main.rs"
 [dev-dependencies]
 # Banco de pruebas: ejecuta el codigo emitido (ver forge/bmo-lower).
 bmo-lower = { path = "../../forge/bmo-lower", features = ["emulator"] }
+# ** LOS GEMELOS (2026-09-16, N0c de docs/plan/PLAN_NAVEGAR.md): C es el
+# ORACULO de la superficie en INTI. `tests/gemelos_inti.rs` compila el mismo
+# dibujo con los dos frontends, lo corre en el emulador y exige los mismos
+# bytes en el bloque. Son dependencias del BANCO, no del compilador: `capas.py`
+# solo juzga `[dependencies]`, y aqui no entra nada del otro lado.
+bmo-inti-front = { path = "../inti" }
+bmo-inti-x86-64 = { path = "../inti/emisor-x86_64" }
+bmo-mods = { path = "../../forge/bmo-mods" }

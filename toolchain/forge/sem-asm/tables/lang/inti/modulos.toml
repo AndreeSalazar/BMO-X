@@ -449,19 +449,57 @@ bits_de     = "los ocho bytes de un flotante64, sin convertir su valor"
 flotante_de = "el flotante64 que forman esos ocho bytes"
 
 
+#  ** CON CUERPO desde el 2026-09-16 (N0 de docs/plan/PLAN_NAVEGAR.md): las
+#  piezas viven en `lang/inti/runtime/entrada/` y `runtime/superficie/`, y son
+#  el port de `tables/bmo/superficie/*.h` -- C es el oraculo y el contrato de
+#  los numeros esta en `[constantes]` (sup_*, evento_*, vista_*).
+#
+#  Hasta ese dia estas dos secciones eran NOMBRES sin cuerpo: `usa superficie`
+#  daba E0075 en la primera llamada. Y el nombre `mi_superficie` se fue: INTI
+#  no tiene globales ("un nombre es del bloque donde nacio"), asi que la
+#  superficie es un natural64 que la app guarda y pasa. `linea` y `triangulo`
+#  se fueron tambien: no tienen cuerpo todavia, y un nombre sin cuerpo en esta
+#  tabla es una promesa que el compilador no puede cumplir.
+#
+#  Las teclas y el raton llegan por el BUZON de la superficie (cero syscalls),
+#  no por la entrada exclusiva de `entrada.h`, que es la del shell de Ring 0.
 [entrada]
-espera_tecla  = "para hasta que se pulse una tecla, y la devuelve"
-hay_tecla     = "hay algo pulsado sin esperar?"
-raton         = "donde esta el raton y que botones tiene apretados"
+espera_tecla  = "duerme hasta que llegue una LETRA por el buzon de esa superficie, y la devuelve"
+hay_tecla     = "hay algo en el buzon sin esperar? No consume"
+raton         = "donde esta el puntero sobre esa ventana: x + y * 65536"
 
 [superficie]
-mi_superficie = "la superficie donde dibuja esta app"
-pinta         = "vuelca lo dibujado"
-rectangulo    = "un rectangulo relleno"
-linea         = "una linea de un punto a otro"
-triangulo     = "un triangulo relleno"
-texto_en      = "escribe un texto en una posicion"
-limpia        = "deja la superficie de un solo color"
+superficie_crear           = "pide el bloque, escribe la cabecera BSUP y se la ofrece a quien nos lanzo; 0 si nadie compone"
+superficie_crear_con_buzon = "lo mismo, con un buzon de n ranuras (potencia de dos) para teclas y raton"
+superficie_reconfigurar    = "contestar a un CONFIGURE: una nueva del tamano pedido con el mismo buzon"
+superficie_ancho           = "el ancho que declara su cabecera"
+superficie_alto            = "el alto que declara su cabecera"
+superficie_pixeles         = "donde empiezan los pixeles: detras de la cabecera"
+pinta                      = "el dibujo esta ENTERO: sube la secuencia, y solo entonces el DIRECTOR pinta"
+limpia                     = "deja la superficie de un solo color"
+pixel                      = "un pixel, o nada si esta fuera"
+rectangulo                 = "un rectangulo relleno, recortado"
+texto_en                   = "hasta ocho letras de una palabra en la fuente de BMO-X; devuelve la x siguiente"
+superficie_evento          = "el siguiente evento del buzon, o 0"
+superficie_hay_evento      = "hay algo en el buzon, sin consumirlo"
+evento_hay                 = "el bit 8: es un evento"
+evento_pulsada             = "el bit 9: pulsada, no soltada"
+evento_es_raton            = "el bit 63: es del raton"
+evento_raton_x             = "la x de un evento de raton"
+evento_raton_y             = "la y de un evento de raton"
+evento_botones             = "los botones de un evento de raton"
+evento_es_letra            = "el bit 62: es una letra ya cocinada"
+evento_letra_de            = "la letra, Latin-1"
+evento_es_configurar       = "el bit 61: la ventana cambio"
+configurar_ancho           = "el ancho nuevo de un CONFIGURE"
+configurar_alto            = "el alto nuevo de un CONFIGURE"
+configurar_estado          = "ventana, maximizada o completa"
+superficie_dentro          = "el puntero esta sobre esta ventana"
+superficie_puntero_x       = "la x del puntero sobre la ventana"
+superficie_puntero_y       = "la y del puntero sobre la ventana"
+superficie_vista           = "la VISTA: se ve, minimizada, fuera, prestada, tapada"
+superficie_se_ve           = "R-APP8: si es 0, no pintes"
+superficie_tomada          = "el DIRECTOR ya la tomo (bit 24)"
 
 [archivo]
 abre_para_leer    = "abre un fichero y devuelve por donde va"

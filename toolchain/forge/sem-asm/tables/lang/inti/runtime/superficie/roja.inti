@@ -1,0 +1,173 @@
+# superficie/roja.inti -- LA SUPERFICIE, en INTI: pedir el bloque, escribir la
+# cabecera BSUP y OFRECERSELA a quien nos lanzo. El port de
+# `tables/bmo/superficie/roja.h` (N0 de docs/plan/PLAN_NAVEGAR.md, 2026-09-16).
+#
+# == Por que existe en INTI si ya existe en C ==
+#
+# Porque C e INTI no se enlazan (convenciones de llamada distintas, sin IR
+# comun) y COOPERAN por contrato: los numeros de la cabecera y del buzon viven
+# UNA vez en `bmo_abi::syscalls::surface::superficie`, INTI los lleva como
+# `sup_*` en `modulos.toml` con su juez (`tests/espejo_del_kernel.rs`), y esta
+# pieza los escribe por NOMBRE, nunca el numero. Y C es el ORACULO: la prueba
+# de gemelos exige que un dibujo de aqui y el mismo de `roja.h` dejen los
+# mismos bytes en el bloque.
+#
+# == Que es una superficie aqui: UN natural64 ==
+#
+# En C es un struct con `base`, `bloque`, `ancho` y `alto`. INTI `llano` no
+# tiene monton ni globales, asi que la superficie es la DIRECCION de su bloque
+# (`s`) y todo lo demas se lee del propio bloque:
+#
+#     s + 0 .. 32          la cabecera BSUP (sup_cabecera), la lee el DIRECTOR
+#     s + 32 ..            los pixeles, BGRA de 32 bits
+#     s + buzon ..         el buzon, si lo hay (16 + 8 * ranuras)
+#     s + ofrecidos        LA COLA PRIVADA: 16 bytes que NO se ofrecen --
+#                          el handle del bloque y cuantos bytes se ofrecieron
+#
+# ** La cola privada es lo que en C guarda el struct. Va DETRAS de lo ofrecido
+# porque el DIRECTOR solo ve [s, s + ofrecidos): un handle a la vista de otro
+# proceso seria una capability regalada.
+#
+# == Lo que NO hay, dicho ==
+#
+#     liberar     `llano` no tiene monton y el kernel no tiene hoy una
+#                 operacion para devolver un bloque (MEM_OP_*: base, bytes,
+#                 ofrecer, fisica). Reconfigurar pide un bloque nuevo y el
+#                 viejo se queda: es el mismo coste que `roja.h` describe para
+#                 el CONFIGURE, sin el `free` que alli solo devuelve al monton
+#                 de la app. Cuando exista la operacion, entra aqui
+#
+# Los `crudo` de esta pieza son los que escriben la cabecera y la cola, y
+# todos escriben DENTRO del bloque que el kernel acaba de dar.
+
+perfil llano
+usa bmo
+usa memoria
+
+# La cola privada, detras de lo ofrecido.
+COLA_PRIVADA = 16
+
+# -------------------------------------------------------------------
+#  Leer y escribir la cabecera: campos de 32 bits, por indice
+# -------------------------------------------------------------------
+
+funcion sup_campo(s es natural64, i es natural64) devuelve natural64
+    crudo
+        devuelve lee_natural32(s + i * 4)
+
+funcion sup_pon_campo(s es natural64, i es natural64, v es natural64)
+    crudo
+        escribe_natural32(s + i * 4, v bits_y 4294967295)
+
+funcion sup_pon_palabra(s es natural64, desde es natural64, v es natural64)
+    crudo
+        escribe_natural64(s + desde, v)
+
+funcion sup_palabra(s es natural64, desde es natural64) devuelve natural64
+    crudo
+        devuelve lee_natural64(s + desde)
+
+# -------------------------------------------------------------------
+#  Lo que se lee de una superficie ya creada
+# -------------------------------------------------------------------
+
+funcion superficie_ancho(s es natural64) devuelve natural64
+    devuelve sup_campo(s, 1)
+
+funcion superficie_alto(s es natural64) devuelve natural64
+    devuelve sup_campo(s, 2)
+
+funcion superficie_ranuras(s es natural64) devuelve natural64
+    devuelve sup_campo(s, 7)
+
+# Los pixeles: detras de la cabecera.
+funcion superficie_pixeles(s es natural64) devuelve natural64
+    devuelve s + sup_cabecera
+
+# Cuantos bytes se ofrecieron: cabecera + pixeles + buzon.
+funcion superficie_ofrecidos(s es natural64) devuelve natural64
+    cambiante bytes es natural64 = sup_cabecera + superficie_ancho(s) * superficie_alto(s) * 4
+    si superficie_ranuras(s) > 0
+        bytes = bytes + sup_buzon_cabecera + superficie_ranuras(s) * sup_buzon_ranura
+    devuelve bytes
+
+# El handle del bloque, de la cola privada.
+funcion superficie_bloque(s es natural64) devuelve natural64
+    devuelve sup_palabra(s, superficie_ofrecidos(s))
+
+# ** EL DIBUJO ESTA ENTERO. Es lo unico que hace que el DIRECTOR pinte: sube
+# la secuencia DESPUES del ultimo pixel, nunca antes (R-APP4).
+funcion pinta(s es natural64)
+    sup_pon_campo(s, sup_campo_secuencia, sup_campo(s, sup_campo_secuencia) + 1)
+
+# -------------------------------------------------------------------
+#  Crear: pedir, describir, ofrecer
+# -------------------------------------------------------------------
+
+# Las ranuras tienen que ser potencia de dos: el indice avanza con una mascara
+# (`i bits_y (n - 1)`). Un numero que no lo sea saltaria ranuras y perderia
+# teclas, que es el peor fallo de una entrada. Se trata como "sin buzon".
+funcion ranuras_validas(ranuras es natural64) devuelve natural64
+    si ranuras < 2
+        devuelve 0
+    si (ranuras bits_y (ranuras - 1)) no es 0
+        devuelve 0
+    devuelve ranuras
+
+# Devuelve la superficie (su direccion), o 0 en CUATRO casos, y los cuatro se
+# distinguen en CABINA, no aqui: medidas a cero, no hay memoria, no hay a
+# quien ofrecer (lanzado desde el shell de Ring 0), o la oferta fue RECHAZADA.
+# Una superficie que nadie va a componer no se devuelve viva: es el fallo mudo
+# que `roja.h` conto el 12-09.
+funcion superficie_crear_con_buzon(ancho es natural64, alto es natural64, ranuras es natural64) devuelve natural64
+    si ancho = 0 o alto = 0
+        devuelve 0
+    cambiante n es natural64 = ranuras_validas(ranuras)
+    cambiante bytes es natural64 = sup_cabecera + ancho * alto * 4
+    cambiante buzon es natural64 = 0
+    si n > 0
+        buzon = bytes
+        bytes = bytes + sup_buzon_cabecera + n * sup_buzon_ranura
+    cambiante bloque es natural64 = invoca_valor(mi_tarea, op_pedir_memoria, bytes + COLA_PRIVADA, 0, 0)
+    si bloque = 0
+        devuelve 0
+    cambiante s es natural64 = invoca_valor(bloque, op_base_del_bloque, 0, 0, 0)
+    si s = 0
+        devuelve 0
+    sup_pon_campo(s, 0, sup_magic)
+    sup_pon_campo(s, 1, ancho)
+    sup_pon_campo(s, 2, alto)
+    sup_pon_campo(s, 3, ancho)
+    sup_pon_campo(s, 4, sup_bgra32)
+    sup_pon_campo(s, sup_campo_secuencia, 0)
+    sup_pon_campo(s, 6, buzon)
+    sup_pon_campo(s, 7, n)
+    si n > 0
+        # Cabeza, cola y estado a cero ANTES de ofrecer: si el DIRECTOR tomara
+        # la superficie antes, leeria basura.
+        sup_pon_palabra(s, buzon, 0)
+        sup_pon_palabra(s, buzon + 8, 0)
+    # La cola privada: el handle y cuantos bytes se ofrecen.
+    sup_pon_palabra(s, bytes, bloque)
+    sup_pon_palabra(s, bytes + 8, bytes)
+    cambiante padre es natural64 = invoca_valor(mi_tarea, op_mi_padre, 0, 0, 0)
+    si padre = 0
+        devuelve 0
+    # El desplazamiento va contra la base del BLOQUE, que aqui es la propia
+    # superficie: 0.
+    si invoca_valor(bloque, op_ofrecer, 0, bytes, padre) = 0
+        devuelve 0
+    devuelve s
+
+# La superficie de siempre: sin buzon. Una app que solo ENSENA no le quita las
+# teclas al escritorio.
+funcion superficie_crear(ancho es natural64, alto es natural64) devuelve natural64
+    devuelve superficie_crear_con_buzon(ancho, alto, 0)
+
+# Contestar a un CONFIGURE: una nueva del tamano pedido con el mismo buzon, ya
+# ofrecida. La vieja NO se toca: sigue pintandose hasta que
+# `superficie_tomada(nueva)` diga 1.
+funcion superficie_reconfigurar(vieja es natural64, ancho es natural64, alto es natural64) devuelve natural64
+    si vieja = 0
+        devuelve 0
+    devuelve superficie_crear_con_buzon(ancho, alto, superficie_ranuras(vieja))

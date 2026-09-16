@@ -144,9 +144,23 @@ pub fn armar(fuente: &str) -> Cosecha<Modulo> {
     let mut avisos = piezas.avisos;
     avisos.append(&mut arbol.avisos);
 
-    // Lo que el fuente pidio, en el orden en que lo pidio.
-    let pedidos: Vec<String> = arbol.valor.usa.iter().map(|(n, _)| n.clone()).collect();
-    for nombre in pedidos {
+    // Lo que el fuente pidio, en el orden en que lo pidio -- Y LO QUE PIDEN
+    // LAS PIEZAS QUE TRAE (2026-09-16). Una pieza del runtime tiene sus
+    // propios `usa`: `superficie/dibujo.inti` escribe `usa fuente` para pintar
+    // letras. Hasta hoy esos `usa` solo se apuntaban en la lista del modulo y
+    // NO traian nada, asi que `usa superficie` daba E0110 "no se que es
+    // `glifo_fila`" desde una linea que el usuario no habia escrito. Ahora es
+    // una cola: cada modulo se trae UNA vez, en el orden en que alguien lo
+    // pidio, y un `usa` dentro de una pieza cuenta como si lo hubiera escrito
+    // el usuario detras de los suyos.
+    let mut pendientes: std::collections::VecDeque<String> =
+        arbol.valor.usa.iter().map(|(n, _)| n.clone()).collect();
+    let mut traidos: Vec<String> = Vec::new();
+    while let Some(nombre) = pendientes.pop_front() {
+        if traidos.contains(&nombre) {
+            continue;
+        }
+        traidos.push(nombre.clone());
         for (fichero, texto) in tablas::Runtime::traer(&raices, &nombre) {
             let p = lexico::barrer(&texto, &v);
             let mut a = sintaxis::leer(&p.valor, &v);
@@ -183,6 +197,11 @@ pub fn armar(fuente: &str) -> Cosecha<Modulo> {
                 desde,
                 hasta,
             });
+            for (otro, _) in &a.valor.usa {
+                if !traidos.contains(otro) && !pendientes.contains(otro) {
+                    pendientes.push_back(otro.clone());
+                }
+            }
             arbol.valor.usa.extend(a.valor.usa);
         }
     }

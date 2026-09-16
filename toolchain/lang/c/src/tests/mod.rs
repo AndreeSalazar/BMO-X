@@ -148,6 +148,8 @@ mod probe_keymap;
 /// 2026-08-13: `fread` into a stack buffer returned zero without writing, so
 /// the WAD header was garbage and DOOM said its own WAD was not a WAD.
 mod probe_file_io;
+// ** N0c: la superficie en INTI contra la de C, byte a byte.
+mod gemelos_inti;
 
 // -- Banco de pruebas: EJECUTAR el programa, no mirarlo --------------
 //

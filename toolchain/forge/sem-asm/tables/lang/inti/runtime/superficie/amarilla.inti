@@ -1,0 +1,172 @@
+# superficie/amarilla.inti -- EL BUZON: lo que el DIRECTOR deja en la
+# superficie y la app lee. El port de `tables/bmo/superficie/amarilla.h`.
+#
+# == El buzon, en el bloque ==
+#
+#     buzon + 0    cabeza (u32)   la escribe el DIRECTOR
+#     buzon + 4    cola   (u32)   la escribe la app al leer
+#     buzon + 8    estado (u64)   el puntero (x | y << 16) en los 32 bajos;
+#                                 en los altos: byte 1 = dentro, byte 2 = la
+#                                 VISTA, bit 24 = TOMADA
+#     buzon + 16   las ranuras: un evento de 8 bytes cada una
+#
+# == Un evento, y EL ORDEN DE LAS TRES PREGUNTAS ==
+#
+# El bit 63 dice raton, el 62 dice LETRA (ya cocinada por el kernel, Latin-1),
+# el 61 dice que la ventana cambio. Sin bit alto es un scancode. Los tres son
+# excluyentes, y hay que preguntar en ese orden ANTES de mirar el byte bajo:
+# en un evento de raton el byte bajo son los BOTONES, en uno de letra es la
+# letra. Leerlo sin preguntar no da un error, da un texto con basura.
+#
+# Todos los numeros son los del ABI por nombre (`evento_raton`, `evento_letra`,
+# `evento_configurar`, `vista_*`, `sup_tomada`): ver `modulos.toml`.
+
+perfil llano
+usa bmo
+usa memoria
+
+# Bit 8 del evento: hay evento. Bit 9: pulsada (contra soltada).
+EVENTO_HAY = 256
+EVENTO_PULSADA = 512
+
+funcion sup_buzon(s es natural64) devuelve natural64
+    devuelve sup_campo(s, 6)
+
+# -------------------------------------------------------------------
+#  Leer el siguiente evento
+# -------------------------------------------------------------------
+
+# El siguiente evento del buzon, o 0 si no hay ninguno (o no hay buzon).
+funcion superficie_evento(s es natural64) devuelve natural64
+    si s = 0
+        devuelve 0
+    cambiante buz es natural64 = sup_buzon(s)
+    cambiante ranuras es natural64 = superficie_ranuras(s)
+    si buz = 0 o ranuras = 0
+        devuelve 0
+    cambiante idx es natural64 = buz entre 4
+    cambiante cabeza es natural64 = sup_campo(s, idx)
+    cambiante cola es natural64 = sup_campo(s, idx + 1)
+    si cola = cabeza
+        devuelve 0
+    cambiante e es natural64 = sup_palabra(s, buz + sup_buzon_cabecera + (cola bits_y (ranuras - 1)) * sup_buzon_ranura)
+    sup_pon_campo(s, idx + 1, (cola + 1) bits_y (ranuras - 1))
+    devuelve e
+
+# Hay algo esperando en el buzon, SIN consumirlo.
+funcion superficie_hay_evento(s es natural64) devuelve natural64
+    si s = 0
+        devuelve 0
+    cambiante buz es natural64 = sup_buzon(s)
+    si buz = 0 o superficie_ranuras(s) = 0
+        devuelve 0
+    cambiante idx es natural64 = buz entre 4
+    si sup_campo(s, idx) = sup_campo(s, idx + 1)
+        devuelve 0
+    devuelve 1
+
+# -------------------------------------------------------------------
+#  Que es un evento
+# -------------------------------------------------------------------
+
+funcion evento_hay(e es natural64) devuelve natural64
+    si (e bits_y EVENTO_HAY) no es 0
+        devuelve 1
+    devuelve 0
+
+funcion evento_pulsada(e es natural64) devuelve natural64
+    si (e bits_y EVENTO_PULSADA) no es 0
+        devuelve 1
+    devuelve 0
+
+funcion evento_es_raton(e es natural64) devuelve natural64
+    si (e bits_y evento_raton) no es 0
+        devuelve 1
+    devuelve 0
+
+funcion evento_raton_x(e es natural64) devuelve natural64
+    devuelve (e desplaza derecha 16) bits_y 65535
+
+funcion evento_raton_y(e es natural64) devuelve natural64
+    devuelve (e desplaza derecha 32) bits_y 65535
+
+funcion evento_botones(e es natural64) devuelve natural64
+    devuelve e bits_y 255
+
+funcion evento_es_letra(e es natural64) devuelve natural64
+    si (e bits_y evento_letra) no es 0
+        devuelve 1
+    devuelve 0
+
+# La letra, Latin-1 ya resuelta por el kernel (la enie es 0xF1).
+funcion evento_letra_de(e es natural64) devuelve natural64
+    devuelve e bits_y 255
+
+funcion evento_es_configurar(e es natural64) devuelve natural64
+    si (e bits_y evento_configurar) no es 0
+        devuelve 1
+    devuelve 0
+
+funcion configurar_ancho(e es natural64) devuelve natural64
+    devuelve (e desplaza derecha 16) bits_y 65535
+
+funcion configurar_alto(e es natural64) devuelve natural64
+    devuelve (e desplaza derecha 32) bits_y 65535
+
+funcion configurar_estado(e es natural64) devuelve natural64
+    devuelve (e desplaza derecha 48) bits_y 255
+
+# -------------------------------------------------------------------
+#  El estado del buzon: el puntero, la vista, tomada
+# -------------------------------------------------------------------
+
+# La palabra alta del estado: dentro, vista y tomada.
+# [!] `o` NO cortocircuita en INTI: `s = 0 o sup_buzon(s) = 0` leeria el
+# bloque 0. Por eso cada pregunta va en su `si`, y la de `s` primero.
+funcion sup_estado_alto(s es natural64) devuelve natural64
+    si s = 0
+        devuelve 0
+    cambiante buz es natural64 = sup_buzon(s)
+    si buz = 0
+        devuelve 0
+    devuelve sup_campo(s, (buz entre 4) + 3)
+
+# El puntero esta sobre esta ventana.
+funcion superficie_dentro(s es natural64) devuelve natural64
+    devuelve (sup_estado_alto(s) desplaza derecha 8) bits_y 255
+
+funcion sup_puntero(s es natural64) devuelve natural64
+    si s = 0
+        devuelve 0
+    cambiante buz es natural64 = sup_buzon(s)
+    si buz = 0
+        devuelve 0
+    devuelve sup_campo(s, (buz entre 4) + 2)
+
+funcion superficie_puntero_x(s es natural64) devuelve natural64
+    devuelve sup_puntero(s) bits_y 65535
+
+funcion superficie_puntero_y(s es natural64) devuelve natural64
+    devuelve (sup_puntero(s) desplaza derecha 16) bits_y 65535
+
+# La VISTA (byte 2 del estado): se ve, minimizada, fuera, prestada, tapada.
+# Sin buzon no hay quien lo diga: se contesta "se ve".
+funcion superficie_vista(s es natural64) devuelve natural64
+    si s = 0
+        devuelve vista_se_ve
+    si sup_buzon(s) = 0
+        devuelve vista_se_ve
+    devuelve (sup_estado_alto(s) desplaza derecha 16) bits_y 255
+
+# R-APP8: lo que no se ve, no se pinta. La app se salta el dibujo y sigue viva.
+funcion superficie_se_ve(s es natural64) devuelve natural64
+    si superficie_vista(s) = vista_se_ve
+        devuelve 1
+    devuelve 0
+
+# El DIRECTOR ya la tomo (bit 24 del estado). Solo entonces se puede dejar la
+# vieja de un CONFIGURE.
+funcion superficie_tomada(s es natural64) devuelve natural64
+    si (sup_estado_alto(s) bits_y sup_tomada) no es 0
+        devuelve 1
+    devuelve 0

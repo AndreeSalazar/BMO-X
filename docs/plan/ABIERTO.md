@@ -7,8 +7,8 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   267 casillas ABIERTAS en 32 planes
-   165 hechas
+   265 casillas ABIERTAS en 32 planes
+   167 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -116,15 +116,6 @@
 - [ ] S3 -- EL PRIMER CLIENTE: INTI. Porque puede declarar el alias. Y
 - ... y 6 mas
 
-## [`PLAN_NAVEGAR.md`](PLAN_NAVEGAR.md) -- 8 abiertas, 3 hechas
-
-*PLAN NAVEGAR -- la propuesta maestra de la app que navega sin ser navegador*
-
-- [ ] N0 -- INTI abre una ventana. El port de tables/bmo/superficie/*.h,
-- [ ] N1 -- Navegar v1: la ventana con el mensaje. navegar.inti con
-- [ ] N2 -- Navegar pinta una lamina DE FICHERO. ejemplo.lamina como
-- ... y 5 mas
-
 ## [`PLAN_VATIOS.md`](PLAN_VATIOS.md) -- 8 abiertas, 4 hechas
 
 *PLAN_VATIOS -- lo que gasta el CPU en reposo, y por que*
@@ -204,6 +195,15 @@
 - [ ] Y1.1 subir el bInterval del raton a Ring 0 y a Ring 3. Sin ese
 - [ ] Y1.2 que BUS_PERIOD_MS salga del minimo de los aparatos vivos y no
 - [ ] no promete 0 ms, y llamarlo asi seria vender humo: un pixel viaja por
+- ... y 3 mas
+
+## [`PLAN_NAVEGAR.md`](PLAN_NAVEGAR.md) -- 6 abiertas, 5 hechas
+
+*PLAN NAVEGAR -- la propuesta maestra de la app que navega sin ser navegador*
+
+- [ ] N1 -- Navegar v1: la ventana con el mensaje, en el METAL. El
+- [ ] N2 -- Navegar pinta una lamina DE FICHERO. ejemplo.lamina como
+- [ ] N3 -- el ANTENISTA. Ultra_userspace/services/antenista: Rust, Ring
 - ... y 3 mas
 
 ## [`PLAN_CODEGEN.md`](PLAN_CODEGEN.md) -- 5 abiertas, 4 hechas

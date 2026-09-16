@@ -66,6 +66,8 @@ name = "bmo-c-front"
 version = "0.1.0"
 dependencies = [
  "bmo-abi",
+ "bmo-inti-front",
+ "bmo-inti-x86-64",
  "bmo-lower",
  "bmo-mods",
  "bmo-sem-asm",

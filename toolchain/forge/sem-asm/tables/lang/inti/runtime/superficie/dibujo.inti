@@ -1,0 +1,107 @@
+# superficie/dibujo.inti -- DIBUJAR dentro de la superficie: un color, un
+# rectangulo, un texto. Con RECORTE contra el ancho y el alto que la propia
+# cabecera declara, que es lo que separa un texto que se sale de un #PF
+# (`fuente.h` cuenta los dos fallos de pagina que le costo a `raycaster_C.c`).
+#
+# == Lo que se dibuja y lo que no ==
+#
+#     limpia(s, color)                       toda la superficie de un color
+#     pixel(s, x, y, color)                  un pixel, o nada si esta fuera
+#     rectangulo(s, x, y, ancho, alto, c)    relleno, recortado
+#     texto_en(s, x, y, palabra, color)      hasta OCHO letras de una palabra
+#                                            (`ocho_bytes("...")`), en la
+#                                            fuente de `usa fuente`; devuelve
+#                                            la x siguiente para encadenar
+#
+# ** OCHO LETRAS POR LLAMADA, y no es una limitacion temporal: en `llano` no
+# hay `texto` (lo que crece pide monton) y un literal viaja como palabra de
+# ocho bytes, igual que por la consola. Un mensaje se escribe palabra a palabra
+# con la x que devuelve la anterior.
+#
+# == Las coordenadas son naturales ==
+#
+# No hay `x = -3`: un numero "negativo" es uno enorme y cae fuera por el
+# recorte. Lo que se pide es que NADA escriba fuera de [0, ancho) x [0, alto),
+# y el unico `crudo` de esta pieza (`sup_pon_pixel`) lo cumple porque solo lo
+# llaman funciones que ya recortaron.
+#
+# El color es 0x00RRGGBB en BGRA de 32 bits, el mismo que el framebuffer.
+
+perfil llano
+usa bmo
+usa memoria
+usa fuente
+
+# El unico sitio que escribe un pixel. Quien lo llama ya recorto.
+# [!] Las coordenadas se llaman `px`/`py`: `y` es el operador logico de INTI.
+funcion sup_pon_pixel(s es natural64, px es natural64, py es natural64, color es natural64)
+    crudo
+        escribe_natural32(s + sup_cabecera + (py * sup_campo(s, 3) + px) * 4, color bits_y 4294967295)
+
+# Un pixel, o nada si esta fuera.
+funcion pixel(s es natural64, px es natural64, py es natural64, color es natural64)
+    si s = 0
+        devuelve
+    si px < superficie_ancho(s) y py < superficie_alto(s)
+        sup_pon_pixel(s, px, py, color)
+
+# Un rectangulo relleno, recortado a la superficie.
+funcion rectangulo(s es natural64, x0 es natural64, y0 es natural64, ancho es natural64, alto es natural64, color es natural64)
+    si s = 0
+        devuelve
+    cambiante w es natural64 = superficie_ancho(s)
+    cambiante h es natural64 = superficie_alto(s)
+    si x0 > w o y0 > h
+        devuelve
+    cambiante x2 es natural64 = x0 + ancho
+    cambiante y2 es natural64 = y0 + alto
+    si x2 > w
+        x2 = w
+    si y2 > h
+        y2 = h
+    cambiante fila es natural64 = y0
+    repite mientras fila < y2
+        cambiante col es natural64 = x0
+        repite mientras col < x2
+            sup_pon_pixel(s, col, fila, color)
+            col = col + 1
+        fila = fila + 1
+
+# Toda la superficie de un color.
+funcion limpia(s es natural64, color es natural64)
+    si s = 0
+        devuelve
+    rectangulo(s, 0, 0, superficie_ancho(s), superficie_alto(s), color)
+
+# Un glifo de la fuente en (x, y): 8x16, un bit por pixel, recortado.
+funcion glifo_en(s es natural64, x0 es natural64, y0 es natural64, g es natural64, color es natural64)
+    cambiante w es natural64 = superficie_ancho(s)
+    cambiante h es natural64 = superficie_alto(s)
+    cambiante fila es natural64 = 0
+    repite mientras fila < 16
+        cambiante py es natural64 = y0 + fila
+        cambiante bits es natural64 = glifo_fila(g, fila)
+        si bits no es 0 y py < h
+            cambiante col es natural64 = 0
+            repite mientras col < 8
+                si (bits bits_y (128 desplaza derecha col)) no es 0
+                    si x0 + col < w
+                        sup_pon_pixel(s, x0 + col, py, color)
+                col = col + 1
+        fila = fila + 1
+
+# Hasta ocho letras de una palabra (`ocho_bytes`), de izquierda a derecha, y
+# se para en el primer byte a cero. Devuelve la x siguiente.
+funcion texto_en(s es natural64, x0 es natural64, y0 es natural64, palabra es natural64, color es natural64) devuelve natural64
+    si s = 0
+        devuelve x0
+    cambiante px es natural64 = x0
+    cambiante k es natural64 = 0
+    repite mientras k < 8
+        cambiante letra es natural64 = (palabra desplaza derecha (k * 8)) bits_y 255
+        si letra = 0
+            devuelve px
+        glifo_en(s, px, y0, glifo_de(letra), color)
+        px = px + 8
+        k = k + 1
+    devuelve px

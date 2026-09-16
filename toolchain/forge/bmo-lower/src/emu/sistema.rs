@@ -563,7 +563,7 @@ impl Machine {
             CURRENT_TASK, NR_INVOKE, TASK_OP_ARCHIVO_ABRIR, TASK_OP_ARCHIVO_CREAR,
             TASK_OP_ARGUMENTOS, TASK_OP_AUDIO_CLAIM, TASK_OP_AUDIO_RELEASE, TASK_OP_CONSOLE_READ,
             TASK_OP_CONSOLE_WRITE, TASK_OP_EXIT, TASK_OP_INPUT_CLAIM, TASK_OP_MEMORIA_PEDIR,
-            TASK_OP_RUTA, TASK_OP_YIELD,
+            TASK_OP_MI_PADRE, TASK_OP_RUTA, TASK_OP_YIELD,
         };
 
         let call = ObservedSyscall {
@@ -585,6 +585,9 @@ impl Machine {
         // reloj -- que es lo que tiene que mirar en metal igualmente, porque
         // WAIT puede volver antes (es ADVISORY).
         if call.nr == bmo_abi::syscalls::surface::NR_WAIT as u64 {
+            // Mientras la app duerme, el DIRECTOR de mentira reparte lo que el
+            // banco dejo pendiente para su buzon (2026-09-16).
+            self.repartir_buzon();
             self.finalizar_syscall(0);
             return;
         }
@@ -606,6 +609,12 @@ impl Machine {
                     }
                 }
                 op if op == TASK_OP_EXIT => self.exited = true,
+                // Quien nos lanzo: el DIRECTOR de mentira del banco, o nadie.
+                op if op == TASK_OP_MI_PADRE => {
+                    let p = self.padre;
+                    self.finalizar_syscall(p);
+                    return;
+                }
                 // La ruta se acumula de 8 en 8 y se corta en el primer cero,
                 // igual que en el kernel: un chunk final corto viene relleno.
                 op if op == TASK_OP_RUTA => {
@@ -748,6 +757,21 @@ impl Machine {
             self.finalizar_syscall(v);
             return;
         } else if call.capability >= CAP_MEMORIA {
+            // ** OFRECER un trozo del bloque: `(desde, bytes, tid)`. Se acepta
+            // si va al padre y el trozo cabe en lo entregado; contesta 1 o 0,
+            // como el kernel, y el 0 es lo que `superficie_crear` tiene que
+            // ver para no devolver una superficie que nadie va a componer.
+            if call.operation == bmo_abi::syscalls::surface::MEM_OP_OFRECER {
+                let i = (call.capability - CAP_MEMORIA) as usize;
+                let base = self.mem_bloques.get(i).copied().unwrap_or(0);
+                let (desde, bytes, destino) = (call.arg0, self.regs[R10], self.regs[crate::x86::R8 as usize]);
+                let vale = base != 0 && destino != 0 && destino == self.padre && bytes > 0;
+                if vale {
+                    self.ofertas.push((base, desde, bytes, destino));
+                }
+                self.finalizar_syscall(if vale { 1 } else { 0 });
+                return;
+            }
             let v = self.memoria_op(call.capability, call.operation);
             self.finalizar_syscall(v);
             return;

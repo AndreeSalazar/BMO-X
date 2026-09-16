@@ -1,0 +1,50 @@
+# entrada/buzon.inti -- LAS TECLAS Y EL RATON de una app con ventana, por el
+# buzon de su superficie. Los tres nombres que `modulos.toml` prometia en
+# `[entrada]`, con cuerpo (N0 de docs/plan/PLAN_NAVEGAR.md, 2026-09-16).
+#
+# == Por que el buzon y no `entrada.h` ==
+#
+# `tables/bmo/entrada.h` RECLAMA la entrada entera (`BMO_OP_ENTRADA_RECLAMAR`):
+# es el camino de la pantalla exclusiva y del shell de Ring 0, donde no vive
+# nadie. Una app con ventana recibe las teclas y el raton por el buzon que el
+# DIRECTOR le llena (cero syscalls, 2c del 23-08), y eso es lo que esta pieza
+# lee. La entrada exclusiva no se porta: lo que solo es orden del kernel es
+# codigo que el dueno no puede usar desde el escritorio.
+#
+# == Lo que hace cada uno ==
+#
+#     espera_tecla(s)   duerme hasta que llegue una LETRA (bit 62, Latin-1 ya
+#                       cocinada por el kernel) y la devuelve. Los eventos de
+#                       raton y de ventana que lleguen mientras tanto se
+#                       DESCARTAN: quien los quiere lee `superficie_evento`
+#     hay_tecla(s)      1 si hay algo en el buzon sin esperar. No consume
+#     raton(s)          x + y * 65536: donde esta el puntero sobre la ventana
+#
+# ** Dormir entre miradas es `espera_a(0, 0, nanos)`: sin nada que esperar,
+# solo el plazo. 4 ms es el radar del GATE RED y la mitad de un fotograma; una
+# app que espera una tecla no gasta CPU (R21/L6h).
+
+perfil llano
+usa bmo
+usa memoria
+usa superficie
+
+ESPERA_TECLA_NS = 4000000
+
+funcion espera_tecla(s es natural64) devuelve natural64
+    si s = 0
+        devuelve 0
+    repite mientras 1 = 1
+        cambiante e es natural64 = superficie_evento(s)
+        si e = 0
+            espera_a(0, 0, ESPERA_TECLA_NS)
+        si e no es 0
+            si evento_es_letra(e) = 1
+                devuelve evento_letra_de(e)
+    devuelve 0
+
+funcion hay_tecla(s es natural64) devuelve natural64
+    devuelve superficie_hay_evento(s)
+
+funcion raton(s es natural64) devuelve natural64
+    devuelve superficie_puntero_x(s) + superficie_puntero_y(s) * 65536

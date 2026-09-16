@@ -1,4 +1,4 @@
-# navegar.inti -- NAVEGAR: la cara de la LAMINA en BMO-X. Version 0.
+# navegar.inti -- NAVEGAR: la cara de la LAMINA en BMO-X. Version 1.
 #
 # ===================================================================
 #  Que es, en una frase
@@ -14,22 +14,22 @@
 # ANTENA (da igual cual) pero ANTENA SIEMPRE"*.
 #
 # ===================================================================
-#  ** POR QUE ESTA VERSION SOLO ESCRIBE POR CONSOLA
+#  ** LA VERSION 1: UNA VENTANA, y el mensaje dentro (2026-09-16)
 # ===================================================================
 #
-# Porque INTI HOY no abre una ventana. `usa superficie` y `usa entrada` son
-# nombres en `tables/lang/inti/modulos.toml` sin cuerpo detras: un programa que
-# los use recibe E0075 ("se pidieron y no llegaron a un byte") y no se escribe.
-# Comprobado el 2026-09-16 con un programa de nueve lineas. Darle cuerpo es N0
-# de `PLAN_NAVEGAR.md`, y va ANTES que cualquier ventana de esta app.
+# La version 0 escribia por consola porque INTI no abria una ventana: `usa
+# superficie` era un nombre sin cuerpo (E0075). N0 del plan le dio cuerpo
+# --`tables/lang/inti/runtime/superficie/`, el port de `roja.h` y
+# `amarilla.h` con C de ORACULO-- y esta es la primera app que lo usa.
 #
-# Lo que esta version SI hace, y hace entero: dice que hace falta una antena,
-# que no hay ninguna, y que sin ella no navega ni finge que si. Es el mensaje
-# que la version con ventana va a ensenar en su primer fotograma.
+#     con quien componga (el escritorio)   una ventana de 480x112 con el
+#                                          mensaje, en la fuente de BMO-X;
+#                                          Esc o `q` la cierran
+#     sin nadie (el shell de Ring 0)       el mismo mensaje por consola, y
+#                                          se va con codigo 1. No se tapa
 #
-# ** Y va en INTI y no en C a proposito: "encapsula TODO en INTI para poder
-# viajar". Cero comportamiento indefinido y un `.ibx` que el escritorio lanza
-# igual que un `.bex` (`launcher.rs`: son el mismo formato).
+# ** Lo que sigue sin haber: una antena. "Ninguna conectada" es hoy una verdad
+# sin comprobar porque el ANTENISTA (N3) no existe, y por eso se dice tal cual.
 #
 # ===================================================================
 #  La regla que no cambia con las versiones
@@ -38,85 +38,145 @@
 #     sin antena no hay pagina, y esta app NO LO TAPA:
 #     ni cache, ni "ultima vista", ni pantalla en blanco que parezca cargar.
 #     Dice que falta la antena, con ese nombre, y espera.
+#
+# ** R-APP8: lo que no se ve, no se pinta. La ventana se pinta UNA vez y se
+# repinta solo cuando vuelve a verse; entre vuelta y vuelta duerme 16 ms
+# (`espera_a`), asi que en reposo no gasta (R21/L6h).
 
 perfil llano
 usa bmo
+usa superficie
+
+ANCHO = 480
+ALTO = 112
+RANURAS = 64
+FONDO = 1315860
+TITULO = 16777215
+TEXTO = 13421772
+AVISO = 16755200
+ESC = 27
+LETRA_Q = 113
+UN_FOTOGRAMA_NS = 16000000
 
 # ===================================================================
-#  1. La consola, de ocho en ocho
-# ===================================================================
-#
-# En `llano` un texto viaja en palabras de ocho bytes (`ocho_bytes`), y la
-# consola las escribe tal cual: cada linea de abajo son palabras de OCHO
-# letras exactas, con sus espacios contados. Un mensaje se escribe como se
-# lee: de izquierda a derecha, palabra a palabra.
-
-funcion palabra(w es natural64)
-    invoca(mi_tarea, op_consola_escribir, w, 0, 0)
-
-funcion salto
-    palabra(10)
-
-# ===================================================================
-#  2. El mensaje
+#  1. El mensaje, de ocho en ocho (es lo que `llano` tiene: palabras)
 # ===================================================================
 
-funcion titulo
-    palabra(ocho_bytes("NAVEGAR "))
-    palabra(ocho_bytes("-- la pa"))
-    palabra(ocho_bytes("gina se "))
-    palabra(ocho_bytes("ve aqui,"))
-    palabra(ocho_bytes(" el nave"))
-    palabra(ocho_bytes("gador vi"))
-    palabra(ocho_bytes("ve en la"))
-    palabra(ocho_bytes(" ANTENA."))
-    salto()
+# En la ventana: una linea es una fila de palabras, cada una devuelve la x
+# siguiente. Por consola: las mismas palabras, una detras de otra.
 
-funcion hace_falta
-    palabra(ocho_bytes("Hace fal"))
-    palabra(ocho_bytes("ta una A"))
-    palabra(ocho_bytes("NTENA. D"))
-    palabra(ocho_bytes("a igual "))
-    palabra(ocho_bytes("cual, pe"))
-    palabra(ocho_bytes("ro ANTEN"))
-    palabra(ocho_bytes("A siempr"))
-    palabra(ocho_bytes("e.      "))
-    salto()
+funcion linea_1(s es natural64, fy es natural64, color es natural64)
+    cambiante x es natural64 = 8
+    x = pon(s, x, fy, ocho_bytes("NAVEGAR "), color)
+    x = pon(s, x, fy, ocho_bytes("-- la pa"), color)
+    x = pon(s, x, fy, ocho_bytes("gina se "), color)
+    x = pon(s, x, fy, ocho_bytes("ve aqui,"), color)
+    x = pon(s, x, fy, ocho_bytes(" el nave"), color)
+    x = pon(s, x, fy, ocho_bytes("gador vi"), color)
+    x = pon(s, x, fy, ocho_bytes("ve en la"), color)
+    x = pon(s, x, fy, ocho_bytes(" ANTENA."), color)
+    fin_de_linea(s)
 
-funcion ninguna
-    palabra(ocho_bytes("Ninguna "))
-    palabra(ocho_bytes("conectad"))
-    palabra(ocho_bytes("a: sin a"))
-    palabra(ocho_bytes("ntena, B"))
-    palabra(ocho_bytes("MO-X no "))
-    palabra(ocho_bytes("navega y"))
-    palabra(ocho_bytes(" no fing"))
-    palabra(ocho_bytes("e que si"))
-    palabra(ocho_bytes(".       "))
-    salto()
+funcion linea_2(s es natural64, fy es natural64, color es natural64)
+    cambiante x es natural64 = 8
+    x = pon(s, x, fy, ocho_bytes("Hace fal"), color)
+    x = pon(s, x, fy, ocho_bytes("ta una A"), color)
+    x = pon(s, x, fy, ocho_bytes("NTENA. D"), color)
+    x = pon(s, x, fy, ocho_bytes("a igual "), color)
+    x = pon(s, x, fy, ocho_bytes("cual, pe"), color)
+    x = pon(s, x, fy, ocho_bytes("ro ANTEN"), color)
+    x = pon(s, x, fy, ocho_bytes("A siempr"), color)
+    x = pon(s, x, fy, ocho_bytes("e.      "), color)
+    fin_de_linea(s)
 
-funcion como
-    palabra(ocho_bytes("Enciende"))
-    palabra(ocho_bytes(" la ante"))
-    palabra(ocho_bytes("na en la"))
-    palabra(ocho_bytes(" misma r"))
-    palabra(ocho_bytes("ed (tool"))
-    palabra(ocho_bytes("chain/to"))
-    palabra(ocho_bytes("ols/ante"))
-    palabra(ocho_bytes("na).    "))
-    salto()
+funcion linea_3(s es natural64, fy es natural64, color es natural64)
+    cambiante x es natural64 = 8
+    x = pon(s, x, fy, ocho_bytes("Ninguna "), color)
+    x = pon(s, x, fy, ocho_bytes("conectad"), color)
+    x = pon(s, x, fy, ocho_bytes("a: sin a"), color)
+    x = pon(s, x, fy, ocho_bytes("ntena, B"), color)
+    x = pon(s, x, fy, ocho_bytes("MO-X no "), color)
+    x = pon(s, x, fy, ocho_bytes("navega y"), color)
+    x = pon(s, x, fy, ocho_bytes(" no fing"), color)
+    x = pon(s, x, fy, ocho_bytes("e que si"), color)
+    x = pon(s, x, fy, ocho_bytes(".       "), color)
+    fin_de_linea(s)
+
+funcion linea_4(s es natural64, fy es natural64, color es natural64)
+    cambiante x es natural64 = 8
+    x = pon(s, x, fy, ocho_bytes("Enciende"), color)
+    x = pon(s, x, fy, ocho_bytes(" la ante"), color)
+    x = pon(s, x, fy, ocho_bytes("na en la"), color)
+    x = pon(s, x, fy, ocho_bytes(" misma r"), color)
+    x = pon(s, x, fy, ocho_bytes("ed (tool"), color)
+    x = pon(s, x, fy, ocho_bytes("chain/to"), color)
+    x = pon(s, x, fy, ocho_bytes("ols/ante"), color)
+    x = pon(s, x, fy, ocho_bytes("na).    "), color)
+    fin_de_linea(s)
+
+funcion linea_5(s es natural64, fy es natural64, color es natural64)
+    cambiante x es natural64 = 8
+    x = pon(s, x, fy, ocho_bytes("Esc cier"), color)
+    x = pon(s, x, fy, ocho_bytes("ra.     "), color)
+    fin_de_linea(s)
+
+# Una palabra: en la ventana si la hay, por consola si no.
+funcion pon(s es natural64, x es natural64, fy es natural64, palabra es natural64, color es natural64) devuelve natural64
+    si s = 0
+        invoca(mi_tarea, op_consola_escribir, palabra, 0, 0)
+        devuelve x
+    devuelve texto_en(s, x, fy, palabra, color)
+
+funcion fin_de_linea(s es natural64)
+    si s = 0
+        invoca(mi_tarea, op_consola_escribir, 10, 0, 0)
+
+# ===================================================================
+#  2. El dibujo entero
+# ===================================================================
+
+funcion dibuja(s es natural64)
+    limpia(s, FONDO)
+    linea_1(s, 8, TITULO)
+    linea_2(s, 32, AVISO)
+    linea_3(s, 48, TEXTO)
+    linea_4(s, 64, TEXTO)
+    linea_5(s, 88, TEXTO)
+    pinta(s)
 
 # ===================================================================
 #  3. El programa
 # ===================================================================
-#
-# Version 0: el mensaje y nada mas. No hay antena que buscar todavia --el que
-# habla con ella (el ANTENISTA, N3 del plan) no existe--, asi que "ninguna
-# conectada" es hoy una verdad sin comprobar, y por eso se dice tal cual.
 
 funcion principal devuelve entero32
-    titulo()
-    hace_falta()
-    ninguna()
-    como()
+    cambiante s es natural64 = superficie_crear_con_buzon(ANCHO, ALTO, RANURAS)
+    si s = 0
+        # Nadie compone: el mensaje por consola, y se dice con el codigo.
+        linea_1(0, 0, 0)
+        linea_2(0, 0, 0)
+        linea_3(0, 0, 0)
+        linea_4(0, 0, 0)
+        devuelve 1
+    dibuja(s)
+    cambiante antes es natural64 = 1
+    repite mientras 1 = 1
+        # Hasta 64 eventos por vuelta; lo que no se lea espera a la siguiente.
+        cambiante i es natural64 = 0
+        repite mientras i < 64
+            i = i + 1
+            cambiante e es natural64 = superficie_evento(s)
+            si evento_hay(e) = 0
+                i = 64
+            si evento_hay(e) = 1
+                # El orden de las tres preguntas no es libre: raton, letra,
+                # ventana, y solo entonces el byte bajo.
+                si evento_es_letra(e) = 1
+                    si evento_letra_de(e) = ESC o evento_letra_de(e) = LETRA_Q
+                        devuelve 0
+        # R-APP8: al volver a verse se repinta; mientras no se ve, nada.
+        cambiante se_ve es natural64 = superficie_se_ve(s)
+        si se_ve = 1 y antes = 0
+            dibuja(s)
+        antes = se_ve
+        espera_a(0, 0, UN_FOTOGRAMA_NS)
     devuelve 0

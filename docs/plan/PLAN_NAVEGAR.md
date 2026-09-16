@@ -194,18 +194,23 @@ de esta casa; prometer 60 fps por ESPEJO es S6 y cuesta lo que dice la seccion
       (ANTENA, Ninguna conectada, no finge); y el icono sale en la rejilla del
       escritorio del Ryzen.
 
-- [ ] **N0 -- INTI abre una ventana.** El port de `tables/bmo/superficie/*.h`,
-      `fuente.h` y `entrada.h` a `tables/lang/inti/runtime/superficie/`,
-      `fuente/` y `entrada/`, y la tercera salida de `toolchain/tools/fontgen`
-      (los glifos en INTI). **Como se sabe:** el programa de nueve lineas de la
-      seccion 3 compila sin E0075 y pinta "hola" en una ventana del Ryzen que el
-      DIRECTOR compone; el informe del `.ibx` cuenta los `crudo` del runtime.
+- [x] **N0 -- INTI abre una ventana.** HECHO el 2026-09-16 (ver 8.7): el
+      port de `roja.h` y `amarilla.h` a `tables/lang/inti/runtime/superficie/`
+      (`roja.inti`, `amarilla.inti`, `dibujo.inti`) y de las teclas por el
+      buzon a `runtime/entrada/buzon.inti`; los nombres en `modulos.toml`
+      `[superficie]` y `[entrada]` con cuerpo. **Como se sabe:** el programa
+      de nueve lineas de la seccion 3 compila sin E0075 (17.072 bytes de
+      `.ibx`); `tests/gemelos_inti.rs` de `bmo-c-front` corre el mismo dibujo
+      en C y en INTI y exige el mismo bloque byte a byte. Lo que queda para
+      el Ryzen es N1.
 
-- [ ] **N1 -- Navegar v1: la ventana con el mensaje.** `navegar.inti` con
-      `usa superficie` y `usa entrada`: el mensaje de v0 en su ventana, cierra
-      con Esc. **Como se sabe:** clic en el icono del escritorio, sale la
-      ventana con el mensaje, Esc la cierra, y el DIRECTOR no acusa nada en
-      `cabina fallos`.
+- [ ] **N1 -- Navegar v1: la ventana con el mensaje, en el METAL.** El
+      `navegar.inti` v1 ya esta escrito (`usa superficie`: 480x112, 64
+      ranuras, el mensaje en la fuente de BMO-X, Esc o `q` cierran, R-APP8)
+      y probado en el emulador por los dos caminos
+      (`emisor-x86_64/tests/navegar.rs`). **Como se sabe:** clic en el icono
+      del escritorio del Ryzen, sale la ventana con el mensaje, `q` la
+      cierra, y el DIRECTOR no acusa nada en `cabina fallos`.
 
 - [ ] **N2 -- Navegar pinta una lamina DE FICHERO.** `ejemplo.lamina` como
       recurso del `.ibx` (`paquete.recurso`), el recorrido de la lamina en INTI
@@ -378,14 +383,13 @@ N0 se hace en INTI, con C de ORACULO y el CONTRATO de juez:
            copias --C, Rust, INTI-- pasan a tener juez (hecho, ver 8.5)
    2. N0b  fontgen, cuarta salida: `runtime/fuente/datos.inti` del mismo
            arte que `fuente/datos.h` y la tabla de Ring 0 (hecho, ver 8.6)
-   3. N0   el port: 39 funciones de C (roja.h 8, amarilla.h 17, fuente.h 3,
-           entrada.h 11; ~526 lineas de codigo sin comentarios) a
-           `runtime/superficie/`, `runtime/fuente/`, `runtime/entrada/`.
+   3. N0   el port: roja.h y amarilla.h enteros, fuente.h como dibujo, y
+           las teclas por el BUZON (no la entrada exclusiva de entrada.h).
            Los `crudo` se cuentan en el informe del .ibx; la aritmetica que
-           en C dio dos #PF en `raycaster_C.c` aqui ATRAPA
+           en C dio dos #PF en `raycaster_C.c` aqui ATRAPA (hecho, ver 8.7)
    4. la prueba de GEMELOS en el emulador: C e INTI dibujan lo mismo, los
       bytes del bloque coinciden. Si no coinciden, gana C (ya corre en el
-      Ryzen) hasta que se demuestre lo contrario en el metal
+      Ryzen) hasta que se demuestre lo contrario en el metal (hecho, 8.7)
 ```
 
 ** Lo que INTI gana y C no puede dar: cero comportamiento indefinido, los
@@ -498,7 +502,64 @@ primer dia, y ninguna estaba en la tabla de glifos.
       los 1.920 bytes y los 256 indices de `datos.h`; y `pruebas/signo.rs`
       exige que `255 * 2^56` en natural64 no atrape y `2^32 * 2^32` si.
 
-- [ ] **N0c -- los gemelos.** Una prueba en `emisor-x86_64/tests/` corre la
-      misma secuencia (limpia, rectangulo, texto) en C y en INTI y compara el
-      bloque de la superficie byte a byte. **Como se sabe:** la prueba existe,
-      pasa, y una tilde movida en la fuente de INTI la pone en rojo.
+## 8.7 N0 y N0c, HECHOS el 2026-09-16: INTI abre una ventana, y C lo juzga
+
+```text
+   runtime/superficie/roja.inti      pedir el bloque, la cabecera BSUP por
+                                     NOMBRE (sup_magic, sup_campo_secuencia...),
+                                     el buzon, la COLA PRIVADA (el handle del
+                                     bloque y los bytes ofrecidos, DETRAS de lo
+                                     ofrecido: un handle a la vista de otro
+                                     proceso seria una capability regalada),
+                                     MEM_OFRECER al padre; 0 si nadie compone o
+                                     la oferta se rechaza
+   runtime/superficie/amarilla.inti  el buzon: superficie_evento (anillo con
+                                     mascara), evento_es_raton / es_letra /
+                                     es_configurar y sus campos, el puntero,
+                                     la VISTA, tomada
+   runtime/superficie/dibujo.inti    limpia, pixel, rectangulo y texto_en con
+                                     RECORTE: el unico crudo que escribe un
+                                     pixel solo lo llaman funciones que ya
+                                     recortaron. texto_en pinta OCHO letras por
+                                     palabra (`ocho_bytes`): en llano no hay
+                                     `texto`, y no es temporal
+   runtime/entrada/buzon.inti        espera_tecla (duerme 4 ms entre miradas),
+                                     hay_tecla, raton -- por el BUZON, no por
+                                     la entrada exclusiva de entrada.h, que es
+                                     la del shell de Ring 0
+```
+
+Lo que INTI no tiene y el port tuvo que respetar, dicho:
+
+```text
+   sin globales      no hay `mi_superficie()`: la superficie es un natural64
+                     que la app guarda y pasa. El nombre se fue de la tabla
+   sin `texto`       en llano un literal es una palabra de ocho bytes
+   `y` es operador   una coordenada no puede llamarse `y`: son px/py, x0/y0
+   `o` no cortocircuita   `si s = 0 o campo(s) = 0` LEE el bloque 0. Cada
+                     pregunta en su `si`, la de `s` primero
+   sin liberar       el kernel no tiene hoy operacion para devolver un bloque
+                     (MEM_OP_*: base, bytes, ofrecer, fisica): reconfigurar
+                     pide otro y el viejo se queda, igual que en C sin el
+                     `free` que alli solo devuelve al monton de la app
+   `usa` transitivo  una pieza del runtime con su propio `usa` (dibujo pide
+                     `fuente`) no traia nada: `armar` es ahora una cola y
+                     cada modulo entra una vez
+```
+
+** N0c, los gemelos: `toolchain/lang/c/src/tests/gemelos_inti.rs` compila el
+MISMO dibujo (64x32, ocho ranuras, fondo, un rectangulo, "Hola") con los dos
+frontends, lo corre en el emulador con un DIRECTOR de mentira (`padre = 7`,
+`emu/director.rs`: contesta MI_PADRE, acepta la oferta y reparte eventos al
+buzon mientras la app duerme) y compara el bloque OFRECIDO byte a byte:
+cabecera, pixeles y buzon. Se comprobo que muerde: un pixel de mas en el
+rectangulo de INTI son 60 bytes distintos con su coordenada; un glifo
+equivocado, 312. Y sin padre, ninguno de los dos ofrece nada y los dos se
+van con codigo 1.
+
+- [x] **N0c -- los gemelos.** HECHO el 2026-09-16:
+      `toolchain/lang/c/src/tests/gemelos_inti.rs` corre la misma secuencia
+      (limpia, rectangulo, texto) en C y en INTI y compara el bloque de la
+      superficie byte a byte. **Como se sabe:** la prueba pasa, y mover el
+      rectangulo un pixel o cambiar un glifo la pone en rojo con la
+      coordenada del primer byte distinto.
