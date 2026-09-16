@@ -19,9 +19,15 @@ mas. Ni en el repositorio, ni en un commit, ni en una captura que se comparta.
    [x] Termux instalado, con python y ffmpeg
    [x] termux-setup-storage hecho (ya ve las carpetas del movil)
    [x] la carpeta bmo-antena en el almacenamiento, con antena.py y LEEME
+   [ ] lamina_juez.py al lado de antena.py   <- NUEVO el 16-09: sin el, la
+                                               antena no arranca (lo importa)
    [ ] un video en Movies               <- falta: habia 0
    [ ] la antena arrancada y contestando <- falta
 ```
+
+** Por el cable, igual que antena.py: copiar `toolchain/tools/antena/lamina_juez.py`
+a la carpeta `bmo-antena` del movil. Es el juez de las paginas, y la antena lo
+usa antes de servir una.
 
 ---
 
@@ -98,6 +104,52 @@ Deja `prueba.mpg` en la carpeta. Abrirlo con VLC: si se ve, **A1 esta CUMPLIDO**
    se corta a los minutos                  Android la durmio                paso 1
    prueba.mpg de 0 bytes                   ffmpeg no pudo con el fichero    probar otro video;
                                                                             Termux dice por que
+```
+
+---
+
+## Lo que el movil necesita para ser ANTENA DE PAGINAS (2026-09-16)
+
+Eddi: *"antes de Navegar fijate en el celular, que necesita ANTENA"*. Exacto:
+una ventana en BMO-X que dice "hace falta una antena" sin antena detras es un
+cartel. Esto es lo que el movil tiene HOY para servir paginas, y lo que no:
+
+```text
+   HOY, con Termux    antena.py sirve las laminas (`.lamina`) que haya en su
+                      carpeta, como `p1`, `p2`..., por el mismo `PIDE` que los
+                      videos, y las JUZGA antes (una que BMO-X rechazaria sale
+                      como `NO la lamina no vale: linea N: Fuera ...`).
+                      Probado el 16-09 en Windows contra Windows: la lamina
+                      llega byte a byte, la rota se niega con su coordenada
+   las laminas        las hace el propio movil con `lamina.js` en su Chrome
+                      (seccion L0 de abajo, por chrome://inspect) y se dejan en
+                      la carpeta. Es A MANO: una pagina, una lamina
+   lo que NO hay      una antena que reciba `PIDE <url>` y saque la lamina
+                      SOLA. Eso pide un WebView, o sea la app Android (AA0 de
+                      docs/plan/PLAN_NAVEGAR.md). Termux no trae un motor de
+                      navegador y no se va a fingir con un analizador de HTML
+                      escrito en Python: seria escribir un navegador, que es
+                      justo lo que la antena existe para no hacer
+```
+
+** Con esto el orden queda claro: la antena de paginas A MANO ya existe y basta
+para probar NAVEGAR de punta a punta (N2 y N3); la antena que navega SOLA es
+la app, y es lo primero del movil que pide escribir codigo Android.
+
+### Arrancar la antena con paginas
+
+Las laminas van en la MISMA carpeta que los videos (`--carpeta`): la antena
+lista los `.mp4`... como `v1, v2...` y los `.lamina` como `p1, p2...`.
+
+```text
+   python ~/storage/shared/bmo-antena/antena.py --carpeta ~/storage/shared/bmo-antena/carpeta --permitir <IP de Windows>
+```
+
+Y desde Windows:
+
+```text
+   python toolchain/tools/antena/cliente.py <IP del movil>        lista: v.. y p..
+   python toolchain/tools/antena/cliente.py <IP del movil> p1     guarda pagina.lamina y la juzga
 ```
 
 ---

@@ -18,9 +18,17 @@
 //!    HOLA ANTENA/1                   HOLA ANTENA/1 <nombre>
 //!    LISTA                           LISTA <n>, y n lineas ENTRADA <id> <titulo>
 //!    PIDE <id>                       VIDEO <bytes> mpeg1 <ancho>x<alto>, y el flujo
+//!                                    LAMINA <ancho> <alto> <n>, y n lineas (2026-09-16)
 //!                                    NO <motivo>
 //!    (cerrar la conexion)            es PARAR: no hace falta otra palabra
 //! ```
+//!
+//! ** LAS PAGINAS entran por el MISMO `PIDE` (2026-09-16): la LISTA trae videos
+//! (`v1`, `v2`...) y paginas (`p1`, `p2`...), y lo que distingue a una de otro
+//! es lo que la antena contesta -- `VIDEO` o `LAMINA`. Una lamina no acaba la
+//! conversacion: llegan sus `n` lineas (`lamina::Lector` las juzga una a una,
+//! en Latin-1) y se vuelve a la charla, porque un clic pide la siguiente.
+//! Una antena que solo sabe video contesta `NO` a un `p1`, y eso vale.
 //!
 //! # Lista blanca, como `bmo-pila`
 //!
@@ -111,6 +119,10 @@ pub enum Respuesta<'a> {
     Entrada { id: &'a [u8], titulo: &'a [u8] },
     /// `bytes == 0`: en vivo, acaba al cerrar.
     Video { bytes: u64, ancho: u32, alto: u32 },
+    /// La cabecera de una pagina ya maquetada; siguen `elementos` lineas.
+    Lamina(lamina::Cabecera),
+    /// Una linea de la lamina, ya juzgada por `lamina::Lector`.
+    Elemento(lamina::Paso<'a>),
     No { motivo: &'a [u8] },
 }
 
@@ -204,6 +216,7 @@ pub fn leer(linea: &[u8]) -> Result<Respuesta<'_>, Rechazo> {
             }
             Ok(Respuesta::No { motivo: resto })
         }
+        b"LAMINA" => Ok(Respuesta::Lamina(lamina::leer_cabecera(linea)?)),
         _ => Err(Rechazo::Verbo),
     }
 }
@@ -323,6 +336,8 @@ pub enum Fase {
     Lista { faltan: u32, anunciada: bool },
     Pidiendo,
     Video { declarados: u64, recibidos: u64 },
+    /// Llegan las lineas de una pagina; el lector lleva la cuenta.
+    Lamina(lamina::Lector),
     Cerrada,
 }
 
@@ -369,6 +384,17 @@ impl Conversacion {
         if self.fase == Fase::Cerrada {
             return Err(Rechazo::Cerrada);
         }
+        // ** Las lineas de una lamina NO cuentan para `LINEAS_MAX`: una pagina
+        // son miles, y tienen su propio tope (`lamina::ELEMENTOS_MAX`) y su
+        // propio juez. Tampoco pasan por `leer`: el TEXTO lleva Latin-1.
+        if let Fase::Lamina(mut lector) = self.fase {
+            let paso = match lector.empujar(linea) {
+                Ok(p) => p,
+                Err(e) => return self.cerrar(e),
+            };
+            self.fase = if lector.completa() { Fase::Charla } else { Fase::Lamina(lector) };
+            return Ok(Respuesta::Elemento(paso));
+        }
         self.lineas += 1;
         if self.lineas > LINEAS_MAX {
             return self.cerrar(Rechazo::Charla);
@@ -391,6 +417,16 @@ impl Conversacion {
             }
             (Fase::Pidiendo, Respuesta::Video { bytes, .. }) => Fase::Video { declarados: bytes, recibidos: 0 },
             (Fase::Pidiendo, Respuesta::No { .. }) => Fase::Charla,
+            // La cabecera de la lamina la vuelve a leer el lector: es quien
+            // lleva la cuenta de las `n` lineas que siguen, y una lamina de
+            // cero lineas es una lamina entera.
+            (Fase::Pidiendo, Respuesta::Lamina(_)) => {
+                let mut lector = lamina::Lector::nuevo();
+                if lector.empujar(linea).is_err() {
+                    return self.cerrar(Rechazo::Orden);
+                }
+                if lector.completa() { Fase::Charla } else { Fase::Lamina(lector) }
+            }
             _ => return self.cerrar(Rechazo::Orden),
         };
         self.fase = siguiente;
@@ -577,6 +613,68 @@ mod pruebas {
         c.pedir(&Pedido::Lista).unwrap();
         assert_eq!(c.oir(b"LISTA 999"), Err(Rechazo::Numero));
         assert_eq!(c.fase(), Fase::Cerrada, "pero una linea rota si");
+    }
+
+    /// *** UNA PAGINA POR EL MISMO `PIDE`: la lamina entra linea a linea y la
+    /// conversacion SIGUE, porque un clic pide la siguiente.
+    #[test]
+    fn una_pagina_llega_entera_y_la_charla_sigue() {
+        let mut c = charlando();
+        c.pedir(&Pedido::Pide(b"p1")).unwrap();
+        assert_eq!(
+            c.oir(b"LAMINA 640 100 2"),
+            Ok(Respuesta::Lamina(lamina::Cabecera { ancho: 640, alto: 100, elementos: 2 }))
+        );
+        assert!(matches!(c.fase(), Fase::Lamina(_)));
+        assert!(matches!(c.oir(b"CAJA 0 0 640 100 ffffff"), Ok(Respuesta::Elemento(lamina::Paso::Elemento(_)))));
+        // Latin-1 dentro del texto: no pasa por `leer`, pasa por el lector.
+        assert!(matches!(c.oir(b"TEXTO 8 8 1 000000 ma\xF1ana"), Ok(Respuesta::Elemento(_))));
+        assert_eq!(c.fase(), Fase::Charla, "las dos llegaron: se vuelve a la charla");
+        // Y se puede pedir otra: el clic.
+        c.pedir(&Pedido::Pide(b"p2")).unwrap();
+        assert_eq!(c.oir(b"NO no hay pagina con ese id"), Ok(Respuesta::No { motivo: b"no hay pagina con ese id" }));
+        assert_eq!(c.fase(), Fase::Charla);
+    }
+
+    /// Las lineas de una lamina no cuentan para `LINEAS_MAX`: una pagina real
+    /// son miles, y tiene su propio tope.
+    #[test]
+    fn una_lamina_larga_no_es_charla() {
+        let mut c = charlando();
+        c.pedir(&Pedido::Pide(b"p1")).unwrap();
+        c.oir(b"LAMINA 640 4000 200").unwrap();
+        for i in 0..200u32 {
+            let linea = alloc_linea(i);
+            assert!(c.oir(&linea).is_ok(), "linea {} de la lamina", i);
+        }
+        assert_eq!(c.fase(), Fase::Charla);
+    }
+
+    fn alloc_linea(i: u32) -> Vec<u8> {
+        let mut v = b"CAJA 0 ".to_vec();
+        v.extend_from_slice((i * 16).to_string().as_bytes());
+        v.extend_from_slice(b" 8 8 000000");
+        v
+    }
+
+    /// Una lamina rota cierra la conversacion ENTERA, como cualquier otra
+    /// linea rota: una caja fuera de la pagina no se recorta en silencio.
+    #[test]
+    fn una_lamina_rota_cierra() {
+        let mut c = charlando();
+        c.pedir(&Pedido::Pide(b"p1")).unwrap();
+        c.oir(b"LAMINA 640 100 2").unwrap();
+        assert_eq!(c.oir(b"CAJA 700 0 10 10 000000"), Err(Rechazo::Fuera));
+        assert_eq!(c.fase(), Fase::Cerrada);
+        assert_eq!(c.oir(b"CAJA 0 0 10 10 000000"), Err(Rechazo::Cerrada));
+
+        let mut c = charlando();
+        assert_eq!(c.oir(b"LAMINA 640 100 1"), Err(Rechazo::Orden), "una lamina que nadie pidio");
+
+        let mut c = charlando();
+        c.pedir(&Pedido::Pide(b"p1")).unwrap();
+        assert_eq!(c.oir(b"LAMINA 640 100 0"), Ok(Respuesta::Lamina(lamina::Cabecera { ancho: 640, alto: 100, elementos: 0 })));
+        assert_eq!(c.fase(), Fase::Charla, "una lamina vacia es una lamina entera");
     }
 
     #[test]

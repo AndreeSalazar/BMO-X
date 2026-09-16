@@ -925,6 +925,17 @@ texto al borde; ahora se saltan.
       toolchain/tools/antena/cliente.py --lamina toolchain/tools/antena/ejemplo.lamina`
       dice `7 lineas, 308 bytes`.
 
+- [x] **L0b -- la antena del movil SIRVE paginas.** HECHO el 2026-09-16:
+      `toolchain/tools/antena/antena.py` lista los `.lamina` de su carpeta como
+      `p1`, `p2`... y los sirve por el mismo `PIDE`, juzgados antes con
+      `lamina_juez.py` (el juez de `lamina.rs`, en Python, compartido con
+      `cliente.py`); `platform/shared/bmo-antena` entiende `LAMINA` en
+      `Conversacion` (sus lineas no cuentan como charla, y una rota cierra).
+      **Como se sabe:** `cargo test -p bmo-antena` (33); y antena.py en
+      Windows contra `cliente.py 127.0.0.1 p1` deja `pagina.lamina` identica
+      byte a byte, mientras una lamina rota contesta `NO la lamina no vale:
+      linea 2: Fuera: 700+10 > 640`.
+
 - [ ] **L0 -- el recorrido, en el MOVIL.** Primero SIN app: Chrome en el
       HONOR, depuracion USB y `chrome://inspect` desde el PC, con `lamina.js`
       pegado en la consola remota (paso a paso en

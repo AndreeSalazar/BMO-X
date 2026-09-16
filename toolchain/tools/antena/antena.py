@@ -13,7 +13,15 @@ El protocolo es ANTENA/1, y su juez esta en `platform/shared/bmo-antena`:
     HOLA ANTENA/1              HOLA ANTENA/1 <nombre>
     LISTA                      LISTA <n>, y n lineas ENTRADA <id> <titulo>
     PIDE <id>                  VIDEO 0 mpeg1 640x360, y el flujo hasta cerrar
+                               LAMINA <ancho> <alto> <n>, y n lineas (una PAGINA)
                                NO <motivo>
+
+Desde el 2026-09-16 la carpeta tiene DOS cosas: videos (`v1`, `v2`...) y
+PAGINAS ya maquetadas, ficheros `.lamina` (`p1`, `p2`...). Una lamina la hace
+`lamina.js` en el navegador del movil (GUIA_MOVIL.md, seccion L0) y se deja en
+la carpeta; la antena la JUZGA con `lamina_juez.py` antes de servirla -- una
+lamina que BMO-X rechazaria no sale de aqui, sale un NO con el motivo. Una
+lamina no acaba la conversacion: BMO-X pide la siguiente con el clic.
 
 ESTRICTA (2026-09-14, Eddi: "MAS ESTRICTO ANTENA"):
   - UNA IP. Otra se cierra sin contestarle ni una palabra, y la antena espera un
@@ -43,6 +51,8 @@ import socket
 import subprocess
 import sys
 import time
+
+from lamina_juez import juzgar_lamina
 
 VERSION = "ANTENA/1"
 PUERTO = 7117
@@ -78,12 +88,35 @@ def dentro(carpeta, nombre):
 
 
 def catalogo(carpeta):
-    """`[(id, fichero)]`. El id es `v1`, `v2`...: un nombre de fichero no viaja."""
-    nombres = sorted(
+    """`[(id, fichero)]`. El id es `v1`, `v2`... para los videos y `p1`,
+    `p2`... para las paginas: un nombre de fichero no viaja."""
+    videos = sorted(
         f for f in os.listdir(carpeta)
         if f.lower().endswith(EXTENSIONES) and dentro(carpeta, f)
     )
-    return [("v%d" % (i + 1), n) for i, n in enumerate(nombres[:LISTA_MAX])]
+    paginas = sorted(
+        f for f in os.listdir(carpeta)
+        if f.lower().endswith(".lamina") and dentro(carpeta, f)
+    )
+    lista = [("v%d" % (i + 1), n) for i, n in enumerate(videos)]
+    lista += [("p%d" % (i + 1), n) for i, n in enumerate(paginas)]
+    return lista[:LISTA_MAX]
+
+
+def servir_lamina(conexion, ruta):
+    """Una pagina: se juzga ENTERA antes de mandar la primera linea. Si BMO-X la
+    rechazaria, aqui sale un NO con el motivo y no un fichero a medias."""
+    datos = open(ruta, "rb").read()
+    try:
+        juzgar_lamina(ruta)
+    except ValueError as e:
+        enviar(conexion, "NO la lamina no vale: %s" % limpio(str(e)))
+        return
+    lineas = [l.rstrip(b"\r") for l in datos.split(b"\n")]
+    if lineas and lineas[-1] == b"":
+        lineas.pop()
+    for l in lineas:
+        conexion.sendall(l + b"\n")
 
 
 class Linea:
@@ -178,7 +211,10 @@ def atender(conexion, carpeta, nombre):
             fichero = dict(catalogo(carpeta)).get(id_)
             ruta = dentro(carpeta, fichero) if fichero else None
             if ruta is None:
-                enviar(conexion, "NO no hay video con ese id")
+                enviar(conexion, "NO no hay nada con ese id")
+                continue
+            if id_.startswith("p"):
+                servir_lamina(conexion, ruta)
                 continue
             servir_video(conexion, ruta)
             return
@@ -202,8 +238,9 @@ def main():
     servidor.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     servidor.bind((args.escuchar, args.puerto))
     servidor.listen(1)
-    print("antena: escuchando en el puerto %d, %d videos en la carpeta"
-          % (args.puerto, len(catalogo(args.carpeta))))
+    lista = catalogo(args.carpeta)
+    print("antena: escuchando en el puerto %d, %d videos y %d paginas en la carpeta"
+          % (args.puerto, sum(1 for i, _ in lista if i[0] == "v"), sum(1 for i, _ in lista if i[0] == "p")))
     while True:
         conexion, origen = servidor.accept()
         with conexion:

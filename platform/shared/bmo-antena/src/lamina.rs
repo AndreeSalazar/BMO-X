@@ -46,8 +46,11 @@
 //! Por la LAN medida (~10 Mbit, 16 ms) una pagina son 0,1..0,5 s; un scroll por
 //! red seria Opera Mini en lo peor que tenia.
 //!
-//! [!] Esto es el FORMATO, puro y con banco. Cablearlo en `Conversacion`
-//! (`PAGINA`, `CLIC`, `TECLA`) y pintarlo en el DIRECTOR es L1, y espera a TCP.
+//! ** Y esta CABLEADO en `Conversacion` desde el mismo dia: una pagina se pide
+//! con el `PIDE <id>` de siempre (`p1`, `p2`...), la antena contesta `LAMINA`
+//! y las `n` lineas pasan por este `Lector` sin contar como charla. Pintarla
+//! (NAVEGAR, N2 de `docs/plan/PLAN_NAVEGAR.md`) y `CLIC`/`TECLA` de vuelta
+//! siguen pendientes.
 
 use crate::{id_valido, Rechazo, ANCHO_MAX, LINEA_MAX};
 
@@ -308,6 +311,10 @@ pub enum Paso<'a> {
 /// **Lee una lamina linea a linea**: primero la cabecera, luego exactamente `n`
 /// elementos. Una linea de mas, de menos o fuera de sitio cierra con nombre, y
 /// despues todo es `Cerrada` -- como `Conversacion`.
+///
+/// Es `Copy` a proposito: vive DENTRO de `Fase::Lamina` de la conversacion, y
+/// una fase se copia al cambiar.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Lector {
     cab: Option<Cabecera>,
     faltan: u32,
