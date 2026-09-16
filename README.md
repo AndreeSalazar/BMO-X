@@ -726,6 +726,27 @@ smuggled in -- the dirty work stays outside, on a device that already does it.
   video platform's terms allow is the antenna owner's call. The antenna serves
   files that are already in its folder -- it downloads nothing.
 
+BMO-X keeps **two paths** to the network, and they are split by what each one
+is allowed to accept, not by the wire (both run over `bmo-pila` and the same
+kernel gate):
+
+```text
+   DIRECT    protocols that fit in one page of RFC -- DHCP, DNS, ping (done on
+             the metal), TCP, Gemini, a plain HTTP GET -- against servers that
+             speak BMO-X's language: a repository of SIGNED `.bex`, another
+             BMO-X, a NAS at home. Never JavaScript, never a browser
+   ANTENNA   the web, sessions, codecs, Python: chewed on the phone (or on a
+             stripped-down Linux box) and handed over as simple data, with a
+             quota and a quarantine if the antenna misbehaves
+```
+
+A signed `.bex` may travel in the clear: the signature protects the content,
+TLS would only protect the channel. Anything private stays at home until TLS
+(the wall) exists. And "browsing" without becoming a browser is a third shape
+between text and screen mirroring: the antenna runs the whole browser and sends
+the page **already laid out** -- boxes, text runs, images -- the way Opera Mini
+did in 2005, except the server is your own phone on your own LAN.
+
 The plan, with a check next to every step:
 **[PLAN_CLOUD_LOCAL.md](docs/plan/PLAN_CLOUD_LOCAL.md)**.
 

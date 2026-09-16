@@ -659,3 +659,186 @@ en este arbol, y la antena no trae ninguna cuenta puesta.
       escuchando por la red, y nada de cuentas guardadas que no sean suyas.
       **Como se sabe:** se apaga tirando del cable y al encender vuelve sola a
       servir, sin tocar un teclado.
+
+---
+
+# 11. LAS DOS VIAS: BMO-X habla PROTOCOLOS, la antena habla la WEB (2026-09-16)
+
+Eddi: *"BMO-X puede tener 2 vias, no? La ANTENA, mi celular, procesa lo suyo,
+pero BMO-X tendra lo suyo, que es para conectar con servidores principales. Son
+2 elementos independientes: como tener 2 kernels, pero Linux enfoca en Internet
+y caos -- aunque un Arch podria convertirse en antena profesional -- y BMO-X se
+enfoca en AOT PURO"*.
+
+## Si: son dos vias, y una de ellas YA EXISTE
+
+La via directa no hay que inventarla: es `platform/shared/bmo-pila` (TCP/IP
+propio, determinista, de lista blanca) y su escalera en
+`docs/plan/PLAN_RED_TX.md`. La via de la antena es `platform/shared/bmo-antena`.
+Las dos van por el MISMO tubo, y se separan arriba, en Ring 3:
+
+```text
+                 BMO-X (Ring 3)
+   +-------------------------+    +-------------------------+
+   |  VIA DIRECTA            |    |  VIA ANTENA             |
+   |  protocolos propios o   |    |  ANTENA/1, APP/1        |
+   |  de una pagina de RFC:  |    |  (bmo-antena): la web   |
+   |  DHCP, DNS, ping, TCP,  |    |  masticada, con cupo y  |
+   |  Gemini, HTTP simple,   |    |  cuarentena             |
+   |  y TLS cuando llegue    |    |                         |
+   +-----------+-------------+    +------------+------------+
+               |                               |
+               +------ bmo-pila (TCP/IP) ------+
+                               |
+                    GATE RED (kernel, E3)          <- no sabe cual es cual
+                               |
+                           RTL8168
+```
+
+** El kernel no distingue las vias, y es correcto: entrega tramas y se aparta
+(`docs/maestro/RED_MAESTRO.md`). La diferencia entre las dos no esta en el tubo:
+esta en QUE SE ACEPTA por cada una.
+
+## La regla que las separa
+
+```text
+   VIA DIRECTA   habla PROTOCOLOS: cosas que caben en una pagina de RFC y que
+                 bmo-pila puede aceptar por lista blanca. NUNCA JavaScript, NUNCA
+                 un navegador. Lo que entra es un formato que BMO-X POSEE (un
+                 `.bex` firmado, un `.mpg`, gemtext) o un dato de tamano fijo
+   VIA ANTENA    habla la WEB: todo lo que pide un motor de navegador, sesiones,
+                 codecs, Python. Lo que entra son DATOS en formatos simples, con
+                 cupo, y la antena en cuarentena si se pasa de lista
+```
+
+"Servidores principales", dicho con nombres: un repositorio de `.bex` firmados,
+otro BMO-X, un NAS de casa por un protocolo simple, la hora (NTP), una capsula
+Gemini (G7). Es decir: **servidores que hablan el idioma de BMO-X o uno que cabe
+en una pagina**. La web no cabe en una pagina, y por eso es de la antena.
+
+## Independientes de verdad, y en que se parecen
+
+```text
+   SI  si la antena esta DESTERRADA, la via directa sigue: `red ping` no depende
+       del movil
+   SI  si la via directa no tiene TLS (G6), la antena sigue: ella lleva su TLS
+   SI  comparten el tubo (bmo-pila, GATE RED, la tarjeta) y por tanto el ancho:
+       una lamina bajando y un `.bex` bajando se reparten los mismos ~10 Mbit
+   SI  NO comparten la confianza: por la directa entra lo FIRMADO; por la antena
+       entra lo MASTICADO. Un `.bex` que llegue por la antena vale lo mismo que
+       uno del pendrive: nada hasta que `bmo-firmar` lo reconozca
+```
+
+## El numero incomodo: hasta donde llega HOY la via directa
+
+```text
+   DHCP, ping, DNS           HECHOS en metal (2026-09-14): BMO-X ya toca Internet
+   contenido (TCP, G5)       en codigo, probado en el anfitrion, NO en metal
+   confidencial fuera de     TLS 1.3 (G6): meses. Hasta entonces la via directa
+   casa (TLS, G6)            fuera de la LAN va EN CLARO
+```
+
+** Y aqui esta el matiz que vale: **un `.bex` firmado puede viajar en claro**.
+La firma protege el contenido; TLS solo protegeria el canal. Por eso para el
+repositorio de `.bex` la pieza que manda es `toolchain/tools/bmo-firmar`, que ya
+existe, y no G6. Lo que NO puede viajar en claro es lo privado (una contrasena,
+un documento) -- y eso, hasta G6, o se queda en casa o va por la antena.
+
+## Arch como antena PROFESIONAL: que anade "profesional"
+
+V2.0 y V2.0b (secciones 8 y 10) ya ponen el Arch desmontado como antena
+dedicada. "Profesional" son tres cosas medibles, y ninguna es del movil:
+
+```text
+   codec por hardware        1080p en vivo sin calentarse (V2.0)
+   navegador sin pantalla    Chromium sin cabeza existe en Linux: la LAMINA de
+                             abajo sale de ahi con mas fidelidad que de un WebView
+   varios BMO-X a la vez     una antena de casa para mas de una pantalla
+```
+
+Y el reparto que Eddi nombra queda escrito: **el caos vive donde ya sabe vivir**.
+Linux lleva 30 anios aguantando la web, JITs y drivers de terceros; BMO-X no va
+a competir en eso, va a ser el sitio donde el caos NO entra (AOT, firmado, sin
+sorpresas). Dos kernels, cada uno en lo suyo.
+
+## L1 -- LAMINA: navegar "por completo" sin ser navegador
+
+Hoy el plan solo llega a "pagina como TEXTO" (seccion 8: `PAGINA` -> texto).
+Navegar de verdad tiene exactamente TRES formas, no una:
+
+```text
+   TEXTO     la antena manda el texto de la pagina       barato; se pierde la forma
+   LAMINA    la antena hace TODO el navegador (JS, CSS,  lo bueno: BMO-X pinta cajas,
+             fuentes, layout) y manda la pagina YA       texto e imagenes con lo que
+             MAQUETADA: rectangulos con coordenadas,     ya tiene (rasterizador,
+             tiras de texto, imagenes en QOI/BICO        fuente.h, imagen.h)
+   ESPEJO    pixeles del navegador del movil (S6)        caro y ciego: 160 Mbit sin
+                                                         comprimir, o video con lag
+```
+
+La LAMINA es la que casa con `docs/plan/PLAN_MAQUETA.md`: MAQUETA *"emite las
+coordenadas ya calculadas"*, y lo caro de CSS es el texto (metricas, kerning,
+shaping). Eso lo calcula la antena; BMO-X recibe **la salida de un compilador,
+nunca HTML**. L7 se respeta: el navegador no entra en BMO-X, entra su RESULTADO.
+Hay precedente exacto: Opera Mini (2005) hacia justo esto con los servidores de
+Opera; aqui el servidor es el movil de uno en su LAN, y esa es la diferencia de
+confianza.
+
+Lo que cuesta, con lo medido en esta casa:
+
+```text
+   [!] LAN ~10 Mbit, ping 16 ms: una lamina son decenas o cientos de KB, o sea
+       0,1..0,5 s por pagina. Vale para "clic -> pagina". NO vale para hacer
+       scroll por red: la lamina llega ENTERA (no solo lo visible) y BMO-X hace
+       scroll y hover en LOCAL. Cada clic o tecla es un viaje mas el re-layout
+       en el movil (cientos de ms en el HONOR X7a): se siente como Opera Mini
+   [!] lo que NO cabe en LAMINA: animaciones JS, canvas, WebGL, Google Docs y
+       parecidos. Eso es ESPEJO (S6) o nada. El video dentro de una pagina va
+       por S4 (MPEG-1)
+   [!] NO lo hace Termux: un motor de navegador entero no corre ahi. Hace falta
+       la app Android con un WebView y un recorrido del DOM en JavaScript
+       (getBoundingClientRect, estilos calculados, nodos de texto, imagenes
+       reescaladas a su tamano en pantalla). Son cientos de lineas, y es LA MISMA
+       app que S6 ya pide
+   [!] la antena lo ve TODO: cookies, sesiones y lo que se teclee en BMO-X
+       viajan en claro hasta el movil (seccion 1). Con una contrasena en un
+       formulario deja de ser abstracto: la LAMINA no es para iniciar sesion en
+       el banco
+   [!] el "core de potencia real" se queda parado: la antena no presta
+       POTENCIA, presta SUPERFICIE (TLS + JavaScript + codecs son meses de
+       codigo, no ciclos). El Ryzen no gana calculando aqui; gana no teniendo
+       que saber
+```
+
+El formato, en una linea por tipo, todo de tamano fijo y sin punteros
+(`platform/shared/bmo-antena/src/lamina.rs`):
+
+```text
+   CAJA    x y ancho alto color                 un rectangulo relleno
+   TEXTO   x y tamano color <bytes>             una tira ya partida en lineas
+   IMAGEN  x y ancho alto <id>                  el `id` se pide con IMAGEN <id> (QOI)
+   ENLACE  x y ancho alto <id>                  zona clicable: CLIC <id> trae otra lamina
+   CAMPO   x y ancho alto <id>                  zona de teclado: TECLA <id> <texto>
+```
+
+## Los escalones nuevos
+
+- [ ] **L0 -- el recorrido del DOM, en el movil.** La app Android (la de S6)
+      con un WebView y un script que recorre el DOM y escribe una LAMINA a un
+      fichero. **Como se sabe:** `toolchain/tools/antena/cliente.py` lee la
+      lamina de una pagina real y dice cuantas cajas, tiras e imagenes trae, y
+      ninguna coordenada se sale del ancho pedido.
+
+- [ ] **L1 -- LAMINA en BMO-X.** `lamina.rs` en `platform/shared/bmo-antena`
+      (los cinco tipos, tamanos fijos, cupo de bytes), `PAGINA <url>` devuelve
+      una lamina, y `CLIC <id>` / `TECLA <id> <texto>` de vuelta; el DIRECTOR la
+      pinta en una ventana con el rasterizador, `fuente.h` e `imagen.h`.
+      **Como se sabe:** una pagina real llega maquetada, se pinta en el Ryzen,
+      el scroll va en local sin tocar la red, y un clic en un enlace trae la
+      lamina siguiente.
+
+- [ ] **D1 -- la via directa trae un `.bex` FIRMADO.** Despues de G5: un GET de
+      HTTP/1.0 (una pagina de RFC, en `bmo-pila`) contra un servidor de la LAN
+      que sirve ficheros, y el `.bex` pasa por `bmo-firmar` antes de correr.
+      **Como se sabe:** el `.bex` bajado corre en BMO-X; el mismo sin firma se
+      niega por nombre, y la antena en cuarentena no impide la bajada.
