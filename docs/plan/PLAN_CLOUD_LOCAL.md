@@ -533,3 +533,129 @@ antena tendria un boton para apagarte el PC: le bastaria con portarse mal.
 - [ ] **V2.2 -- BUSCA.** El verbo de busqueda en `platform/shared/bmo-antena`,
       respuesta en lineas de texto. **Como se sabe:** `cliente.py` recibe los
       resultados de una busqueda hecha por la antena.
+
+---
+
+# 10. LOS DOS KERNELES: AOT aqui, JIT alli (2026-09-15)
+
+Eddi: *"seria como tener 2 kernels: el kernel del celular vive masticando
+Internet, Google y las apps famosas, y entrega BYTES LIMPIOS, no video. Mi BMO-X
+vive TODO AOT; la antena vive GLOBAL de JIT, JVM, Java, Python, Go, y luego se
+convierte en .bex para que mi BMO-X lo ejecute. Y que le preste RAM: la RAM del
+celular y la RAM del PC"*.
+
+## Esto ya existe, y lo tiene en el bolsillo
+
+Todo movil lleva **dos ordenadores con dos sistemas distintos**: el de las apps
+(Android, Linux) y el del modem, que corre su propio sistema en tiempo real. Se
+hablan por mensajes en una zona de memoria acordada, y en los disenios modernos
+el modem esta detras de una IOMMU **porque no se confia en el**.
+
+```text
+   el movil                        este plan
+   ---------------------------     -------------------------------------------
+   procesador de aplicaciones      la ANTENA: el mundo sucio, listo y cambiante
+   procesador del modem            BMO-X: lo esencial, predecible, sin sorpresas
+   memoria compartida + IOMMU      V3, la tarjeta PCIe (y por eso pide E4)
+```
+
+** La idea NO es rara: es el reparto que ya usa el aparato desde el que se pidio.
+
+## Lo que SI se reparte y lo que NO: prestar CAPACIDAD, no DIRECCIONES
+
+Aqui esta la trampa, con numeros de esta casa:
+
+```text
+   la RAM del Ryzen, por su bus      decenas de GB por segundo, ~80 ns de espera
+   la LAN medida en este metal       ~10 Mbit (poco mas de 1 MB/s), ping 16 ms
+```
+
+Son **decenas de miles de veces** menos ancho y unas cien mil veces mas espera.
+Si una direccion de memoria de BMO-X viviera en el movil, CADA lectura seria un
+viaje por la red: un programa de un segundo tardaria horas. Eso es lo que hundio
+a los sistemas de "memoria compartida distribuida" de los anios 90.
+
+Lo que si funciona, y es lo que Eddi describe cuando dice *"entrega datos
+limpios"*:
+
+```text
+   [x] cada RAM con SU trabajo    la del movil aguanta el navegador, la JVM, el
+                                  modelo; la de BMO-X solo el resultado limpio
+   [x] bloques terminados         llega un dato entero, no un puntero a otro sitio
+   [ ] direcciones compartidas    NO por red. Solo tendria sentido en V3 (PCIe),
+                                  donde las dos memorias estan en el mismo bus --
+                                  y ahi manda `NEUTRO/LEY.md`: sin IOMMU, no entra
+```
+
+** Regla corta: **la antena presta CAPACIDAD, no direcciones**. Contratos y
+formatos, nunca punteros ajenos dentro de BMO-X.
+
+## Por que AOT aqui y JIT alli
+
+```text
+   un JIT necesita                  y eso en BMO-X significa
+   -----------------------------    ------------------------------------------
+   memoria que se escribe Y se      romper W^X, la regla que impide que un dato
+   ejecuta                          se convierta en codigo
+   un recolector de basura          pausas que nadie pidio, justo cuando el
+                                    compositor tiene 16 ms
+   un monton enorme y elastico      un asignador que crece sin techo
+```
+
+Por eso el reparto es limpio: **BMO-X es AOT entero** (`.bex` compilados antes,
+firmados, sin sorpresas) y **la antena es el mundo JIT entero** (JVM, CPython,
+Go, navegadores). Si la JVM de la antena se cae, BMO-X ni se entera: es otra
+maquina.
+
+## "y luego se convierte en .bex"
+
+Hay una parte real y una parte que no lo es, dichas sin adornos:
+
+```text
+   [x] la antena COMPILA para BMO-X   es una maquina con disco, red y potencia:
+                                      corre el toolchain, saca el .bex y lo FIRMA
+                                      con `toolchain/tools/bmo-firmar`. BMO-X solo
+                                      ejecuta lo firmado; lo demas se niega
+   [x] Go o Java a nativo             existe (compilacion anticipada), pero da un
+                                      binario que espera un sistema POSIX debajo:
+                                      habria que portarlo a la superficie de BMO-X,
+                                      no es apretar un boton
+   [ ] traducir un programa de        NO. Un programa de Python no se vuelve `.bex`
+       Python en vivo                 solo; lo que cruza es su RESULTADO (P1)
+```
+
+## Las apps famosas, una por una
+
+```text
+   Discord, WhatsApp, chats     DATOS: la antena habla con el servicio y manda
+                                canales, mensajes y avatares; BMO-X los pinta en
+                                SUS ventanas. Es "WhatsApp Web", pero el navegador
+                                esta en el movil. Lo mejor de todo el plan
+   YouTube y video              PIXELES ya masticados: MPEG-1 (S4)
+   Steam y juegos               PIXELES en vivo: es ESPEJO (S6), y es Steam Link
+                                tal cual. No hay "dato limpio" de un juego: un
+                                juego ES una imagen por fotograma
+```
+
+[!] Cada servicio tiene sus condiciones de uso. Donde hay puerta oficial (Discord
+la tiene) se usa esa; automatizar la web de un servicio que lo prohibe no se hace
+en este arbol, y la antena no trae ninguna cuenta puesta.
+
+## Los escalones nuevos
+
+- [ ] **C1 -- APP/1, los verbos de DATOS.** En `platform/shared/bmo-antena`:
+      `CANALES`, `MENSAJES <canal> <desde>`, `ENVIA <canal> <texto>` y `AVATAR
+      <id>` (QOI), con la misma `Conversacion` estricta y su cupo. **Como se
+      sabe:** los mensajes de un servicio con puerta oficial se leen en una
+      ventana de BMO-X, y uno escrito en BMO-X llega al movil.
+
+- [ ] **C2 -- la antena COMPILA (AOT remoto).** La antena corre el toolchain y
+      devuelve un `.bex` firmado con `toolchain/tools/bmo-firmar`. **Como se
+      sabe:** un fuente compilado en la antena corre en BMO-X, y el mismo `.bex`
+      sin firma se niega por nombre.
+
+- [ ] **V2.0b -- DESMONTAR el Arch.** La antena dedicada como electrodomestico:
+      sin escritorio, raiz de solo lectura, UN servicio al arrancar, ningun shell
+      escuchando por la red, y nada de cuentas guardadas que no sean suyas.
+      **Como se sabe:** se apaga tirando del cable y al encender vuelve sola a
+      servir, sin tocar un teclado.
