@@ -815,27 +815,128 @@ El formato, en una linea por tipo, todo de tamano fijo y sin punteros
 
 ```text
    CAJA    x y ancho alto color                 un rectangulo relleno
-   TEXTO   x y tamano color <bytes>             una tira ya partida en lineas
+   TEXTO   x y escala color <bytes>             una tira ya partida en lineas (escala 1..4 de 8x16)
    IMAGEN  x y ancho alto <id>                  el `id` se pide con IMAGEN <id> (QOI)
    ENLACE  x y ancho alto <id>                  zona clicable: CLIC <id> trae otra lamina
    CAMPO   x y ancho alto <id>                  zona de teclado: TECLA <id> <texto>
 ```
 
+## La antena va DELANTE, no MANDA (2026-09-16, segunda vuelta)
+
+Eddi: *"vamos a guiar que mi celular guie a mi BMO-X, pero si es para convertir
+en antena lo mastique TODO por mi BMO-X; mientras eso pasa solo entregan
+codigos procesados y BMO-X procesa todo en interior, historial. Es gracioso que
+viva aislado"*.
+
+Una palabra de esa frase hay que corregirla antes de que se convierta en
+diseno: **"guiar"**. La antena va DELANTE -- es la que sale al mundo sucio, la
+que explora, la que se ensucia -- pero no lleva el volante:
+
+```text
+   quien pide           BMO-X. Siempre. La antena no manda nada que no se pidio
+                        (`Conversacion`: una linea fuera de orden CIERRA)
+   quien decide         BMO-X: que se pinta, que se guarda, que se niega
+   quien mastica        la antena, y entrega DATOS en formatos simples
+   si mandara ella      una app del movil tendria el volante de BMO-X; la
+                        cuarentena existe para que eso no pase ni por descuido
+```
+
+** Un explorador que vuelve con mapas, no un guia que te lleva de la mano.
+
+## El movil, con sus numeros: 6 GB, RAM TURBO y MagicOS
+
+```text
+   6 GB de RAM           un WebView con una pagina y ffmpeg a 720p caben; el
+                         navegador y el codec no van a la vez, y no hace falta
+   RAM TURBO             es memoria VIRTUAL sobre el almacenamiento flash. Da
+                         CAPACIDAD, no velocidad: cien veces mas lenta que la
+                         RAM. Vale para no matar apps de fondo, no para masticar
+                         mas deprisa. No cuenta como RAM para este plan
+   MagicOS               es Android, y Android es un kernel Linux. Termux corre
+                         SIN root y la app de L0/S6 es una app normal: nada de
+                         este plan pide root, y root no se va a pedir
+```
+
+** Es la V1 de la antena: sirve para PROBAR el modelo. El escritorio del
+Ryzen ya lo probo (abajo); el movil tiene que repetirlo con menos CPU.
+
+## Lo que BMO-X hace "en interior": el HISTORIAL
+
+Aqui esta la mitad que el movil no tiene y que hace que el reparto valga:
+
+```text
+   la antena          OLVIDA: la pagina de hace un minuto ya no esta
+   BMO-X              RECUERDA: cada lamina, cada video, cada dato que entro,
+                      queda en ESTRATOS con QUIEN lo trajo (el nombre de la
+                      antena) y CUANDO (copy-on-write: escribir ES commitear)
+```
+
+Eso convierte el navegar en algo que BMO-X no tenia manera de dar: una
+biblioteca de lo que se vio, firmada y con fecha, que no depende de que el
+movil siga vivo. Es PRESTA ALMACEN (PR2) mirado desde el otro lado: no es solo
+que el movil guarde en BMO-X; es que lo que la antena TRAE tambien se guarda.
+Una lamina de 90 KB cabe donde cabe un `.mpg` de 20 MiB (S1a).
+
+** Y "vive aislado" es exacto, y es la gracia: **aislado no es incomunicado**.
+Por la unica ventana entran DATOS, nunca codigo; el que mira por ella (el
+lector de `lamina.rs`) rechaza con nombre todo lo que no es del formato. Un
+sistema que no puede ejecutar lo que le llega no necesita antivirus: necesita
+un lector estricto, y eso es lo que se escribio hoy.
+
+## MEDIDO el 2026-09-16: la lamina de una pagina real
+
+`toolchain/tools/antena/lamina.js` corrio en el Chromium del escritorio (no en
+el movil todavia) sobre un articulo de Wikipedia en espanol a 640 px:
+
+```text
+   sin metrica         22.117 px de alto, 2.149 lineas, 91,7 KB, 72 ms, y el
+                       texto se SALIA por la derecha: la fuente del navegador es
+                       proporcional y mas estrecha que los 8 px de BMO-X
+   con metricaBMO()    16.407 px de alto, 2.106 lineas, 89,9 KB, 48 ms, CERO
+                       tiras al borde, CERO rechazos del lector; 510 letras
+                       Latin-1 (acentos, enie) y 4 `?`
+   por la LAN          89,9 KB a 10 Mbit = 72 ms + 16 de ping: ~0,1 s
+   el tope             4.096 lineas: un articulo largo usa la mitad
+```
+
+** El hallazgo: **la lamina no se arregla en BMO-X, se maqueta con su
+metrica**. `metricaBMO()` inyecta Courier New a 13,33 px (mide exactamente 8x16)
+antes de recorrer, y el navegador parte las lineas donde BMO-X las va a pintar.
+Los rotulos "solo para lectores de pantalla" (1x1 px recortados) salian como
+texto al borde; ahora se saltan.
+
 ## Los escalones nuevos
 
-- [ ] **L0 -- el recorrido del DOM, en el movil.** La app Android (la de S6)
-      con un WebView y un script que recorre el DOM y escribe una LAMINA a un
-      fichero. **Como se sabe:** `toolchain/tools/antena/cliente.py` lee la
-      lamina de una pagina real y dice cuantas cajas, tiras e imagenes trae, y
-      ninguna coordenada se sale del ancho pedido.
+- [x] **L1a -- el formato, puro y con banco.** HECHO el 2026-09-16 en
+      `platform/shared/bmo-antena/src/lamina.rs`: `Cabecera`, los cinco
+      elementos, `Lector` (exactamente las `n` anunciadas; una mala cierra),
+      `Fuera` y `Color` como rechazos nuevos. **Como se sabe:** `cargo test -p
+      bmo-antena`, 30 pruebas, incluidas 20.000 lineas mutadas de las que nada
+      que pasa se sale de la lamina, y la lamina real de example.com
+      (`toolchain/tools/antena/ejemplo.lamina`) que entra entera con el parrafo
+      cayendo de 16 en 16 px.
 
-- [ ] **L1 -- LAMINA en BMO-X.** `lamina.rs` en `platform/shared/bmo-antena`
-      (los cinco tipos, tamanos fijos, cupo de bytes), `PAGINA <url>` devuelve
-      una lamina, y `CLIC <id>` / `TECLA <id> <texto>` de vuelta; el DIRECTOR la
-      pinta en una ventana con el rasterizador, `fuente.h` e `imagen.h`.
-      **Como se sabe:** una pagina real llega maquetada, se pinta en el Ryzen,
-      el scroll va en local sin tocar la red, y un clic en un enlace trae la
-      lamina siguiente.
+- [x] **L0a -- el recorrido del DOM, en un navegador de escritorio.** HECHO el
+      2026-09-16: `toolchain/tools/antena/lamina.js` (`metricaBMO()` +
+      `lamina()`), y `cliente.py --lamina f` juzga un fichero con las mismas
+      reglas. **Como se sabe:** los numeros de arriba, y `python
+      toolchain/tools/antena/cliente.py --lamina toolchain/tools/antena/ejemplo.lamina`
+      dice `7 lineas, 308 bytes`.
+
+- [ ] **L0 -- el recorrido, en el MOVIL.** La app Android (la de S6) con un
+      WebView al ancho pedido, `metricaBMO()` y `lamina.js` inyectados, y la
+      lamina escrita a un fichero. **Como se sabe:** el HONOR X7a saca la lamina
+      del mismo articulo con CERO rechazos de `cliente.py --lamina`, y se apunta
+      cuantos ms tardo el recorrido (el Ryzen tardo 48).
+
+- [ ] **L1 -- LAMINA en BMO-X.** `PAGINA <url>` en `Conversacion` devuelve una
+      lamina (cabecera + `n` lineas, con cupo de bytes), `CLIC <id>` / `TECLA
+      <id> <texto>` de vuelta, `IMAGEN <id>` trae QOI; el DIRECTOR la pinta en
+      una ventana con el rasterizador, `fuente.h` e `imagen.h`, y la guarda en
+      ESTRATOS con el nombre de la antena. **Como se sabe:** una pagina real
+      llega maquetada, se pinta en el Ryzen, el scroll va en local sin tocar la
+      red, un clic en un enlace trae la lamina siguiente, y `historial` la
+      ensena.
 
 - [ ] **D1 -- la via directa trae un `.bex` FIRMADO.** Despues de G5: un GET de
       HTTP/1.0 (una pagina de RFC, en `bmo-pila`) contra un servidor de la LAN

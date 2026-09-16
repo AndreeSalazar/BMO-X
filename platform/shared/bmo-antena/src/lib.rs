@@ -42,6 +42,8 @@
 /// **El prestamo y su castigo**: si la antena se pasa de lista, se corta y espera
 /// hasta aclararse. Seccion 9 del plan.
 pub mod cuarentena;
+/// **La lamina**: una pagina ya maquetada por la antena. Seccion 11 del plan.
+pub mod lamina;
 
 pub const VERSION: &[u8] = b"ANTENA/1";
 /// El puerto de la antena. Alto, sin dueno conocido, y facil de recordar.
@@ -73,6 +75,10 @@ pub enum Rechazo {
     Charla,
     /// La conversacion ya se cerro por un rechazo anterior.
     Cerrada,
+    /// Una zona de la lamina que se sale de la lamina.
+    Fuera,
+    /// Un color que no es `rrggbb`.
+    Color,
 }
 
 impl Rechazo {
@@ -91,6 +97,8 @@ impl Rechazo {
             Rechazo::Orden => "una linea que no toca ahora: la antena se sale del protocolo",
             Rechazo::Charla => "demasiadas lineas sin llegar a un video",
             Rechazo::Cerrada => "la conversacion ya se cerro por un rechazo",
+            Rechazo::Fuera => "una zona que se sale de la lamina",
+            Rechazo::Color => "un color que no es rrggbb",
         }
     }
 }
@@ -106,7 +114,7 @@ pub enum Respuesta<'a> {
     No { motivo: &'a [u8] },
 }
 
-fn id_valido(id: &[u8]) -> bool {
+pub(crate) fn id_valido(id: &[u8]) -> bool {
     !id.is_empty()
         && id.len() <= ID_MAX
         && id.iter().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'_' || *c == b'-')

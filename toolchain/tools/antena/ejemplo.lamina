@@ -1,0 +1,8 @@
+LAMINA 640 800 7
+CAJA 0 0 640 800 eeeeee
+TEXTO 128 121 2 000000 Example Domain
+TEXTO 128 169 1 000000 This domain is for use in documentation examples
+TEXTO 128 185 1 000000 without needing permission. Avoid use in
+TEXTO 128 201 1 000000 operations.
+ENLACE 128 231 80 16 e1
+TEXTO 128 231 1 334488 Learn more

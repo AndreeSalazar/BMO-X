@@ -745,7 +745,10 @@ TLS would only protect the channel. Anything private stays at home until TLS
 (the wall) exists. And "browsing" without becoming a browser is a third shape
 between text and screen mirroring: the antenna runs the whole browser and sends
 the page **already laid out** -- boxes, text runs, images -- the way Opera Mini
-did in 2005, except the server is your own phone on your own LAN.
+did in 2005, except the server is your own phone on your own LAN. Measured on
+2026-09-16 in a desktop browser: a Wikipedia article at 640 px is ~2.100 lines and
+90 KB once the page is laid out with BMO-X's own 8x16 font metrics, and the
+reader (`bmo-antena/src/lamina.rs`, 30 tests) accepts every line.
 
 The plan, with a check next to every step:
 **[PLAN_CLOUD_LOCAL.md](docs/plan/PLAN_CLOUD_LOCAL.md)**.
