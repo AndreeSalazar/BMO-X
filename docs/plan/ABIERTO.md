@@ -7,7 +7,7 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   261 casillas ABIERTAS en 32 planes
+   264 casillas ABIERTAS en 32 planes
    161 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
@@ -89,6 +89,15 @@
 - [ ] M1b -- CUANTO CUESTA REVOCAR UNA PAGINA, y va ANTES de M1. La seccion
 - ... y 8 mas
 
+## [`PLAN_NAVEGAR.md`](PLAN_NAVEGAR.md) -- 10 abiertas, 1 hechas
+
+*PLAN NAVEGAR -- la propuesta maestra de la app que navega sin ser navegador*
+
+- [ ] N0 -- INTI abre una ventana. El port de tables/bmo/superficie/*.h,
+- [ ] N1 -- Navegar v1: la ventana con el mensaje. navegar.inti con
+- [ ] N2 -- Navegar pinta una lamina DE FICHERO. ejemplo.lamina como
+- ... y 7 mas
+
 ## [`PLAN_DIRECTOR.md`](PLAN_DIRECTOR.md) -- 9 abiertas, 7 hechas
 
 *DIRECTOR -- de compositor a administrador*
@@ -150,15 +159,6 @@
 - [ ] el tubo abre (A1) <- lo unico que bloquea M1, y es un ARRANQUE
 - [ ] M1 WAV dias despues del tubo
 - [ ] M2 MP3 (= A5) media tarde de comprobar la coma flotante antes
-- ... y 4 mas
-
-## [`PLAN_NAVEGAR.md`](PLAN_NAVEGAR.md) -- 7 abiertas, 1 hechas
-
-*PLAN NAVEGAR -- la propuesta maestra de la app que navega sin ser navegador*
-
-- [ ] N0 -- INTI abre una ventana. El port de tables/bmo/superficie/*.h,
-- [ ] N1 -- Navegar v1: la ventana con el mensaje. navegar.inti con
-- [ ] N2 -- Navegar pinta una lamina DE FICHERO. ejemplo.lamina como
 - ... y 4 mas
 
 ## [`PLAN_NUNCA_ADIVINA.md`](PLAN_NUNCA_ADIVINA.md) -- 7 abiertas, 3 hechas

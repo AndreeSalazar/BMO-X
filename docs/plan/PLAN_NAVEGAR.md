@@ -271,3 +271,137 @@ decada. El HONOR es el primero porque es el que hay.
       `PAGINA`), sin binarios; `LEEME.md` dice como se compila fuera. **Como se
       sabe:** el APK instalado en el HONOR contesta `HOLA ANTENA/1` y a
       `PAGINA <url>` con una lamina que `cliente.py --lamina` acepta.
+
+---
+
+# 8. INTI Y C: COOPERAR, NO FUNDIR (analisis del 2026-09-16, antes de N0)
+
+Eddi: *"primero analiza INTI con C para combinar, pero no literalmente sino
+que cooperen"*. Se miro el codigo, no el recuerdo. Lo que hay:
+
+## 8.1 Lo que INTI y C COMPARTEN hoy
+
+```text
+   bmo-lower (L1)            los ayudantes genericos: escribir por consola,
+                             pedir memoria, salir, los codificadores x86. Los
+                             dos frontends lo enlazan
+   sem-asm/tables/           las instrucciones (`instructions.toml`), los
+                             intrinsecos, `arch/x86_64/abi.toml`. Los CINCO
+                             frontends leen las mismas tablas
+   el BEF                    `.bex` y `.ibx` son el mismo formato; el mismo
+                             cargador, el mismo gate, el mismo escritorio
+   el emulador               `bmo_lower::emu::Machine` corre el codigo de los
+                             dos en el anfitrion; el banco de C y el de INTI
+                             lo usan
+   el ABI (a medias)         C: las constantes de `bmo.h` las juzga `contrato`
+                             contra el ABI (100 parejas). INTI: `[constantes]`
+                             de `modulos.toml` (`op_pedir_memoria = "0x15"`...)
+                             estan ESCRITAS A MANO y NINGUN guardian las compara
+                             con `bmo_abi`. Los dynobj (texto, tabla) si se
+                             comparan; los numeros de las puertas, no
+```
+
+## 8.2 Lo que NO comparten, y por que no se pueden enlazar
+
+```text
+   el IR                     C baja de su AST a x86 en `lang/c/src/codegen/`;
+                             INTI baja de su IR propio en `emisor-x86_64/`. No
+                             hay un IR comun por el que pasar un cuerpo de C a
+                             un programa de INTI
+   el enlazado               no existe entre frontends. `usa monton` es
+                             INCLUSION textual (`lib.rs::armar`: "no es
+                             enlazado, y la diferencia se paga"); `usa archivo`
+                             y `usa superficie` traen nombres de REX "sin
+                             destino: hace falta enlazado, y no lo hay".
+                             `bmo-linker` es otra cosa: la tabla de simbolos
+                             de los `.elf` de Rust
+   la convencion de llamada  ** Y ESTA ES LA QUE MAS PESA. C pasa los
+                             parametros POR LA PILA (`frame.rs`: empiezan en
+                             `[rbp+16]`, por ranuras); INTI los pasa EN
+                             REGISTROS (`funcion.rs`: `ARGUMENTOS` = rdi, rsi,
+                             rdx, r10, r8, r9, la fila `argumentos` de
+                             `arch/x86_64/inti.toml`). Aunque hubiera enlazado,
+                             una funcion de C llamada desde INTI leeria basura
+                             de la pila. Haria falta un PUENTE por cada llamada
+```
+
+** Conclusion de 8.2: "combinar literalmente" (que Navegar en INTI llame a
+`bmo_texto` de `fuente.h`) pide tres cosas que no existen --enlazado entre
+frontends, un formato de objeto, y un puente de convencion-- y la primera es
+la compilacion separada, que `docs/maestro/PYTHON_MAESTRO.md` ya tiene como uno de sus tres
+bloqueantes y como el desbloqueo mas valioso del toolchain. No se
+compra para abrir una ventana.
+
+## 8.3 Las cuatro formas de cooperar, con su precio
+
+```text
+   A  ENLAZAR (compilacion separada)   el destino de verdad: cada cuerpo de
+                                       REX escrito UNA vez y usado por cinco
+                                       frontends. Semanas. No es de Navegar
+   B  POR EL CONTRATO                  el codigo se escribe dos veces (C en
+      (lo que la casa ya hace          `roja.h`, INTI en `superficie.inti`) y
+      entre C y Rust)                  cada NUMERO vive una vez: la cabecera
+                                       de 32 bytes, el indice 5 (secuencia),
+                                       el buzon (16 + 8n, bits 62/63),
+                                       MEM_OFRECER 0x03, MI_PADRE 0x26. Un
+                                       guardian los compara; si C y INTI
+                                       discrepan, el build se pone rojo.
+                                       Y la FUENTE: fontgen escribe la tercera
+                                       salida (INTI) del MISMO arte: un arte,
+                                       tres tablas, cero copias a mano
+   C  C COMO ORACULO                   el banco corre la MISMA secuencia de
+      (como el rasterizador para       dibujo en C (`texto.bex`) y en INTI en
+      la GPU)                          el emulador y exige los MISMOS bytes en
+                                       el bloque de la superficie. La version
+                                       de C, que ya corre en el Ryzen, juzga a
+                                       la de INTI antes de que toque el metal
+   D  POR PROCESO                      dos programas, uno en cada lenguaje,
+      (MEM_OFRECER)                    cooperando por bloques. Es lo que hace
+                                       el ANTENISTA (Rust) con Navegar. Para
+                                       la ventana no: "todo en INTI" es la
+                                       peticion, y una app partida en dos
+                                       procesos para pintar texto seria
+                                       esconder que INTI no sabe pintar
+```
+
+## 8.4 La decision: B + C, y A queda escrita como destino
+
+N0 se hace en INTI, con C de ORACULO y el CONTRATO de juez:
+
+```text
+   1. N0a  `contrato` cubre `modulos.toml [constantes]`: los `op_*` de INTI
+           se comparan con `bmo_abi` igual que los de `bmo.h`. Es un hueco
+           real encontrado por este analisis, y va PRIMERO porque el port de
+           superficie va a meter ahi MEM_OFRECER, MI_PADRE y los bits del
+           buzon
+   2. N0b  fontgen, tercera salida: `runtime/fuente/datos.inti` del mismo
+           arte que `fuente/datos.h` y la tabla de Ring 0
+   3. N0   el port: 39 funciones de C (roja.h 8, amarilla.h 17, fuente.h 3,
+           entrada.h 11; ~526 lineas de codigo sin comentarios) a
+           `runtime/superficie/`, `runtime/fuente/`, `runtime/entrada/`.
+           Los `crudo` se cuentan en el informe del .ibx; la aritmetica que
+           en C dio dos #PF en `raycaster_C.c` aqui ATRAPA
+   4. la prueba de GEMELOS en el emulador: C e INTI dibujan lo mismo, los
+      bytes del bloque coinciden. Si no coinciden, gana C (ya corre en el
+      Ryzen) hasta que se demuestre lo contrario en el metal
+```
+
+** Lo que INTI gana y C no puede dar: cero comportamiento indefinido, los
+sitios sin comprobacion CONTADOS, y una app --Navegar-- que viaja entera en un
+lenguaje. Lo que cuesta: escribirlo dos veces hasta que exista A. Se dice, y
+se acepta con los ojos abiertos.
+
+- [ ] **N0a -- el contrato cubre a INTI.** `toolchain/tools/contrato` compara
+      `[constantes]` de `tables/lang/inti/modulos.toml` con `bmo_abi` como ya
+      compara `bmo.h`. **Como se sabe:** cambiar `op_consola_escribir` a
+      `"0x07"` pone el build en rojo con el nombre de la constante.
+
+- [ ] **N0b -- fontgen, la tercera salida.** `toolchain/tools/fontgen` escribe
+      `tables/lang/inti/runtime/fuente/datos.inti` del mismo arte. **Como se
+      sabe:** los 120 glifos de INTI y los de `fuente/datos.h` son los mismos
+      bytes, comprobado por una prueba de fontgen.
+
+- [ ] **N0c -- los gemelos.** Una prueba en `emisor-x86_64/tests/` corre la
+      misma secuencia (limpia, rectangulo, texto) en C y en INTI y compara el
+      bloque de la superficie byte a byte. **Como se sabe:** la prueba existe,
+      pasa, y una tilde movida en la fuente de INTI la pone en rojo.
