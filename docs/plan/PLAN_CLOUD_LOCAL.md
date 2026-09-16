@@ -923,20 +923,23 @@ texto al borde; ahora se saltan.
       toolchain/tools/antena/cliente.py --lamina toolchain/tools/antena/ejemplo.lamina`
       dice `7 lineas, 308 bytes`.
 
-- [ ] **L0 -- el recorrido, en el MOVIL.** La app Android (la de S6) con un
-      WebView al ancho pedido, `metricaBMO()` y `lamina.js` inyectados, y la
-      lamina escrita a un fichero. **Como se sabe:** el HONOR X7a saca la lamina
-      del mismo articulo con CERO rechazos de `cliente.py --lamina`, y se apunta
-      cuantos ms tardo el recorrido (el Ryzen tardo 48).
+- [ ] **L0 -- el recorrido, en el MOVIL.** Primero SIN app: Chrome en el
+      HONOR, depuracion USB y `chrome://inspect` desde el PC, con `lamina.js`
+      pegado en la consola remota (paso a paso en
+      `toolchain/tools/antena/GUIA_MOVIL.md`, seccion L0). La app Android que
+      lo hace sola es AA0 de `docs/plan/PLAN_NAVEGAR.md`. **Como se sabe:** el
+      HONOR X7a saca la lamina del mismo articulo con CERO rechazos de
+      `cliente.py --lamina`, y se apunta cuantos ms tardo el recorrido (el
+      Ryzen tardo 48).
 
 - [ ] **L1 -- LAMINA en BMO-X.** `PAGINA <url>` en `Conversacion` devuelve una
       lamina (cabecera + `n` lineas, con cupo de bytes), `CLIC <id>` / `TECLA
-      <id> <texto>` de vuelta, `IMAGEN <id>` trae QOI; el DIRECTOR la pinta en
-      una ventana con el rasterizador, `fuente.h` e `imagen.h`, y la guarda en
-      ESTRATOS con el nombre de la antena. **Como se sabe:** una pagina real
-      llega maquetada, se pinta en el Ryzen, el scroll va en local sin tocar la
-      red, un clic en un enlace trae la lamina siguiente, y `historial` la
-      ensena.
+      <id> <texto>` de vuelta, `IMAGEN <id>` trae QOI. Quien la pinta es la app
+      NAVEGAR y quien habla es el ANTENISTA: los dos con su escalera en
+      `docs/plan/PLAN_NAVEGAR.md` (N0..N5), que es la propuesta maestra de la
+      cara. **Como se sabe:** una pagina real llega maquetada, se pinta en el
+      Ryzen, el scroll va en local sin tocar la red, un clic en un enlace trae
+      la lamina siguiente, y `historial` la ensena.
 
 - [ ] **D1 -- la via directa trae un `.bex` FIRMADO.** Despues de G5: un GET de
       HTTP/1.0 (una pagina de RFC, en `bmo-pila`) contra un servidor de la LAN

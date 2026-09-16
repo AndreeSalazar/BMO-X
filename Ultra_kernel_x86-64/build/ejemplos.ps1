@@ -363,6 +363,29 @@ $cRecursos = @(
             '................'
         ) }
     ) }
+    # ** LA CARA DE NAVEGAR: una antena (el mastil y sus ondas) sobre la
+    # pantalla que la ensena. Es un `.ibx` y se empaqueta por el mismo camino:
+    # el mismo formato, el mismo cargador, la misma rejilla del escritorio.
+    @{ bex = 'apps\navegar.ibx'; recursos = @(
+        @{ nombre = 'icono'; icono = @(
+            '.......bb.......',
+            '.....bb..bb.....',
+            '....b..bb..b....',
+            '....b.b..b.b....',
+            '.......oo.......',
+            '.......oo.......',
+            '..oooooooooooo..',
+            '..oWWWWWWWWWWo..',
+            '..oWggggggggWo..',
+            '..oWWWWWWWWWWo..',
+            '..oWgggggWWWWo..',
+            '..oWWWWWWWWWWo..',
+            '..oooooooooooo..',
+            '.....oooooo.....',
+            '....oooooooo....',
+            '................'
+        ) }
+    ) }
 )
 
 # * EL FORMATO `BICO`, escrito aqui porque aqui es donde nace un icono.
@@ -578,7 +601,12 @@ try {
         @{ src = 'toolchain\lang\inti\ejemplos\bico.inti'; out = 'bico.ibx'; dir = 'inti' },
         # ** `run inti/musica.ibx [datos/x.mus]` (2026-09-13): el REPRODUCTOR.
         # Suena por el audifono USB (el altavoz de esta placa no suena).
-        @{ src = 'toolchain\lang\inti\ejemplos\musica.inti'; out = 'musica.ibx'; dir = 'inti' }
+        @{ src = 'toolchain\lang\inti\ejemplos\musica.inti'; out = 'musica.ibx'; dir = 'inti' },
+        # ** NAVEGAR v0 (2026-09-16): la cara de la LAMINA, en INTI y con icono
+        # en el escritorio. Hoy solo el mensaje --hace falta una ANTENA-- porque
+        # INTI aun no abre ventana (N0 de docs/plan/PLAN_NAVEGAR.md). Va a
+        # `apps/`, con DOOM, porque es una APP y no una sonda.
+        @{ src = 'Ultra_userspace\apps\navegar\navegar.inti'; out = 'navegar.ibx'; dir = 'apps' }
     ) 'bmo-inti-x86-64' 'inti' 'ok:|error|aviso' $dataBase $repo
 
     # -- Las dos imagenes que `bico.ibx` convierte ------------------------

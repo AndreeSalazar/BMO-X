@@ -1,0 +1,122 @@
+# navegar.inti -- NAVEGAR: la cara de la LAMINA en BMO-X. Version 0.
+#
+# ===================================================================
+#  Que es, en una frase
+# ===================================================================
+#
+# La app con la que se NAVEGA desde BMO-X sin que BMO-X sea un navegador. El
+# navegador esta en la ANTENA (un movil, un Arch); lo que llega aqui es la
+# pagina YA MAQUETADA --la LAMINA de `platform/shared/bmo-antena`-- y esto la
+# PINTA y devuelve clics y teclas. La propuesta maestra, con los escalones y
+# lo que le falta, es `docs/plan/PLAN_NAVEGAR.md`.
+#
+# Eddi: *"una app simple pero que tenga mensaje que se necesita conectar con
+# ANTENA (da igual cual) pero ANTENA SIEMPRE"*.
+#
+# ===================================================================
+#  ** POR QUE ESTA VERSION SOLO ESCRIBE POR CONSOLA
+# ===================================================================
+#
+# Porque INTI HOY no abre una ventana. `usa superficie` y `usa entrada` son
+# nombres en `tables/lang/inti/modulos.toml` sin cuerpo detras: un programa que
+# los use recibe E0075 ("se pidieron y no llegaron a un byte") y no se escribe.
+# Comprobado el 2026-09-16 con un programa de nueve lineas. Darle cuerpo es N0
+# de `PLAN_NAVEGAR.md`, y va ANTES que cualquier ventana de esta app.
+#
+# Lo que esta version SI hace, y hace entero: dice que hace falta una antena,
+# que no hay ninguna, y que sin ella no navega ni finge que si. Es el mensaje
+# que la version con ventana va a ensenar en su primer fotograma.
+#
+# ** Y va en INTI y no en C a proposito: "encapsula TODO en INTI para poder
+# viajar". Cero comportamiento indefinido y un `.ibx` que el escritorio lanza
+# igual que un `.bex` (`launcher.rs`: son el mismo formato).
+#
+# ===================================================================
+#  La regla que no cambia con las versiones
+# ===================================================================
+#
+#     sin antena no hay pagina, y esta app NO LO TAPA:
+#     ni cache, ni "ultima vista", ni pantalla en blanco que parezca cargar.
+#     Dice que falta la antena, con ese nombre, y espera.
+
+perfil llano
+usa bmo
+
+# ===================================================================
+#  1. La consola, de ocho en ocho
+# ===================================================================
+#
+# En `llano` un texto viaja en palabras de ocho bytes (`ocho_bytes`), y la
+# consola las escribe tal cual: cada linea de abajo son palabras de OCHO
+# letras exactas, con sus espacios contados. Un mensaje se escribe como se
+# lee: de izquierda a derecha, palabra a palabra.
+
+funcion palabra(w es natural64)
+    invoca(mi_tarea, op_consola_escribir, w, 0, 0)
+
+funcion salto
+    palabra(10)
+
+# ===================================================================
+#  2. El mensaje
+# ===================================================================
+
+funcion titulo
+    palabra(ocho_bytes("NAVEGAR "))
+    palabra(ocho_bytes("-- la pa"))
+    palabra(ocho_bytes("gina se "))
+    palabra(ocho_bytes("ve aqui,"))
+    palabra(ocho_bytes(" el nave"))
+    palabra(ocho_bytes("gador vi"))
+    palabra(ocho_bytes("ve en la"))
+    palabra(ocho_bytes(" ANTENA."))
+    salto()
+
+funcion hace_falta
+    palabra(ocho_bytes("Hace fal"))
+    palabra(ocho_bytes("ta una A"))
+    palabra(ocho_bytes("NTENA. D"))
+    palabra(ocho_bytes("a igual "))
+    palabra(ocho_bytes("cual, pe"))
+    palabra(ocho_bytes("ro ANTEN"))
+    palabra(ocho_bytes("A siempr"))
+    palabra(ocho_bytes("e.      "))
+    salto()
+
+funcion ninguna
+    palabra(ocho_bytes("Ninguna "))
+    palabra(ocho_bytes("conectad"))
+    palabra(ocho_bytes("a: sin a"))
+    palabra(ocho_bytes("ntena, B"))
+    palabra(ocho_bytes("MO-X no "))
+    palabra(ocho_bytes("navega y"))
+    palabra(ocho_bytes(" no fing"))
+    palabra(ocho_bytes("e que si"))
+    palabra(ocho_bytes(".       "))
+    salto()
+
+funcion como
+    palabra(ocho_bytes("Enciende"))
+    palabra(ocho_bytes(" la ante"))
+    palabra(ocho_bytes("na en la"))
+    palabra(ocho_bytes(" misma r"))
+    palabra(ocho_bytes("ed (tool"))
+    palabra(ocho_bytes("chain/to"))
+    palabra(ocho_bytes("ols/ante"))
+    palabra(ocho_bytes("na).    "))
+    salto()
+
+# ===================================================================
+#  3. El programa
+# ===================================================================
+#
+# Version 0: el mensaje y nada mas. No hay antena que buscar todavia --el que
+# habla con ella (el ANTENISTA, N3 del plan) no existe--, asi que "ninguna
+# conectada" es hoy una verdad sin comprobar, y por eso se dice tal cual.
+
+funcion principal devuelve entero32
+    titulo()
+    hace_falta()
+    ninguna()
+    como()
+    devuelve 0

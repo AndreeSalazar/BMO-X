@@ -113,3 +113,84 @@ Deja `prueba.mpg` en la carpeta. Abrirlo con VLC: si se ve, **A1 esta CUMPLIDO**
 ```
 
 Cuando A1 este cumplido, el movil ya no pide nada nuevo hasta C.
+
+---
+
+## L0 -- la LAMINA sale del movil SIN escribir una app (2026-09-16)
+
+Es la segunda cosa que el movil puede hacer, y no pide Termux: pide el
+navegador que ya tiene y un cable. `lamina.js` corre DENTRO de una pagina
+cargada y escribe la pagina ya maquetada; en el PC ya lo hizo (un articulo de
+Wikipedia a 640 px: 2.106 lineas, 89,9 KB, 48 ms). Aqui se repite en el HONOR
+para saber CUANTO tarda el movil, que es el numero que decide si la V1 sirve.
+
+### Lo que hace falta
+
+```text
+   en el movil    Chrome (Play Store). El navegador de HONOR no expone la
+                  consola por USB; Chrome si
+                  Opciones de desarrollador: Ajustes > Acerca del telefono >
+                  tocar 7 veces "Numero de compilacion"
+                  Depuracion USB: Ajustes > Sistema > Opciones de
+                  desarrollador > Depuracion USB
+   en el PC       Chrome, y el cable USB del movil
+   en el repo     toolchain/tools/antena/lamina.js y cliente.py
+```
+
+[!] Al conectar, el movil pregunta "Permitir depuracion USB desde este
+ordenador?": si, y solo a ESTE PC. La depuracion USB es la llave del movil
+(igual que ADB en la seccion 7 del plan): se apaga cuando se acaba la prueba.
+
+### Paso a paso
+
+1. En el movil, en Chrome, abrir la pagina de la prueba (un articulo de
+   Wikipedia en espanol vale: tiene acentos, enlaces, imagenes y un campo).
+2. Conectar el cable. En el Chrome del PC ir a `chrome://inspect/#devices`.
+   El HONOR aparece con sus pestanas; pulsar **inspect** en la de la pagina.
+3. Se abre la consola REMOTA: lo que se escribe ahi corre en el movil.
+   Pegar el contenido entero de `lamina.js`, Enter. Luego:
+
+```text
+   metricaBMO()
+   var t0 = performance.now(); var r = lamina({ancho: 640});
+   Math.round(performance.now() - t0) + " ms, " + r.lamina.length + " bytes"
+   copy(r.lamina)
+```
+
+4. `copy(...)` deja la lamina en el portapapeles del PC. Pegarla en un fichero
+   `honor.lamina` y juzgarla:
+
+```text
+   python toolchain/tools/antena/cliente.py --lamina honor.lamina
+```
+
+### Lo que tiene que salir
+
+```text
+   cliente: lamina 640x<alto>, <n> lineas, <bytes> bytes (...)
+            <cajas> caja, <tiras> texto, <imagenes> imagen, ...
+```
+
+Cero RECHAZADA. Y los milisegundos de la consola del movil se apuntan en
+`docs/plan/PLAN_CLOUD_LOCAL.md` (L0): el Ryzen tardo 48 ms; el movil va a
+tardar mas, y ESE numero es el que se queria.
+
+### Si algo falla
+
+```text
+   el movil no aparece en chrome://inspect     depuracion USB apagada, o el
+                                               cable es solo de carga
+   la consola dice "lamina is not defined"     se pego a medias: pegar el
+                                               fichero ENTERO otra vez
+   RECHAZADA con "Fuera"                       la pagina cambio de ancho entre
+                                               metricaBMO() y lamina(): pedir
+                                               las dos seguidas
+   RECHAZADA con "NoAscii"                     un control en el texto: es un
+                                               fallo de lamina.js, y se apunta
+                                               con la pagina que lo dio
+```
+
+** Lo que esto NO es: todavia no hay antena de laminas. Esto saca UNA lamina a
+mano para medir. La antena que contesta `PAGINA <url>` sola es la app Android
+(AA0 de `docs/plan/PLAN_NAVEGAR.md`), y esta prueba es la que dice si merece
+la pena escribirla para este movil.

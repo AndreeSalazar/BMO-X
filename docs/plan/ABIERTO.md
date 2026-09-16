@@ -1,14 +1,14 @@
 <!-- GENERADO por toolchain/tools/planes. No se edita a mano. -->
 
-# LO QUE FALTA -- las casillas abiertas de los 34 planes
+# LO QUE FALTA -- las casillas abiertas de los 35 planes
 
 > Generado por `toolchain/tools/planes`. **El build comprueba que
 > este fichero y los planes dicen lo mismo**, asi que no puede
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   254 casillas ABIERTAS en 31 planes
-   160 hechas
+   261 casillas ABIERTAS en 32 planes
+   161 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -150,6 +150,15 @@
 - [ ] el tubo abre (A1) <- lo unico que bloquea M1, y es un ARRANQUE
 - [ ] M1 WAV dias despues del tubo
 - [ ] M2 MP3 (= A5) media tarde de comprobar la coma flotante antes
+- ... y 4 mas
+
+## [`PLAN_NAVEGAR.md`](PLAN_NAVEGAR.md) -- 7 abiertas, 1 hechas
+
+*PLAN NAVEGAR -- la propuesta maestra de la app que navega sin ser navegador*
+
+- [ ] N0 -- INTI abre una ventana. El port de tables/bmo/superficie/*.h,
+- [ ] N1 -- Navegar v1: la ventana con el mensaje. navegar.inti con
+- [ ] N2 -- Navegar pinta una lamina DE FICHERO. ejemplo.lamina como
 - ... y 4 mas
 
 ## [`PLAN_NUNCA_ADIVINA.md`](PLAN_NUNCA_ADIVINA.md) -- 7 abiertas, 3 hechas
