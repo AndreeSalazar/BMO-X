@@ -406,9 +406,11 @@ ecosistema entero ya; el nativo da Python sin nadie al lado.
       `cargo test -p bmo-antena` con los tres, y una imagen de la antena pintada
       en el Ryzen.
 
-- [ ] **P1 -- TRABAJOS de Python firmados.** `EJECUTA <trabajo>` en ANTENA/2: solo
-      nombres de una lista blanca, cada script firmado con `toolchain/tools/bmo-firmar`
-      y verificado por la antena antes de correrlo. **Como se sabe:** un script sin
+- [ ] **P1 -- TRABAJOS de la lista blanca.** `EJECUTA <trabajo>` en ANTENA/2:
+      nombres de una lista que la antena ofrece sola, cada script firmado con
+      `toolchain/tools/bmo-firmar`. [!] Desde el 2026-09-16 (seccion 12) ya NO
+      es la unica puerta: el codigo en vivo entra por `TRABAJO`, y lo que lo
+      hace seguro es EMPAREJAR (P0), no la lista. **Como se sabe:** un script sin
       firma contesta `NO sin firma`, y uno firmado devuelve su resultado a BMO-X.
 
 - [ ] **V3.0 -- la tarjeta.** Solo despues de E4 (IOMMU) de
@@ -946,3 +948,169 @@ texto al borde; ahora se saltan.
       que sirve ficheros, y el `.bex` pasa por `bmo-firmar` antes de correr.
       **Como se sabe:** el `.bex` bajado corre en BMO-X; el mismo sin firma se
       niega por nombre, y la antena en cuarentena no impide la bajada.
+
+---
+
+# 12. AOT PURO AQUI, EL TALLER ALLI: el intermedio, el emparejamiento y la ventana de Python (2026-09-16)
+
+Eddi: *"BMO-X solo enfoca en AOT puro, no? La ANTENA es donde viven TODOS los
+elementos menos AOT, y BMO-X es el unico. BEF no juzga; si quieres programar
+es AOT con INTI, C, C++ o COBOL, cada uno con su porque. Pero la ANTENA tiene
+que tener un INTERMEDIO que agarre los limpios para que BMO-X pueda llevar lo
+suyo. Hay algo mas inteligente? Porque BMO-X puede programar Python EN una
+ventana unica que conecta a la ANTENA, donde vive otro kernel, que es Linux"*.
+
+## 12.1 Si: BMO-X es AOT puro, y cada lenguaje tiene su porque
+
+```text
+   INTI     el C de BMO-X: cero comportamiento indefinido, los sitios sin
+            comprobacion CONTADOS en el .ibx. Para lo que es de la casa
+   C        el codigo del mundo: DOOM, pl_mpeg, SDL manana. Se trae, no se
+            reescribe
+   C++      lo que ya esta escrito en C++ y merece traerse (22 filas hoy)
+   COBOL    la banca: decimal exacto, File I/O, lo que el mundo real sigue
+            corriendo
+   Ada      Annex F (el decimal de COBOL con tipos), ZFP; lo que se verifica
+```
+
+Todos AOT: un `.bex`/`.ibx` compilado ANTES, firmado, sin sorpresas. Ni JIT,
+ni interprete, ni codigo que se escribe en tiempo de ejecucion (W^X). **Y
+"BEF no juzga" es exacto**: el BEF es el CONTENEDOR. Quien juzga es otro:
+
+```text
+   al construir   los 23 guardianes de bmo.ps1 (contrato, capas, ASCII...)
+   al cargar      bmo-bex-gate (secciones, la mesa de katanas) y bmo-firma
+                  (la firma contra el ancla) en task/admitir.rs
+   al correr      las capabilities: dos syscalls y lo que el handle permite
+```
+
+## 12.2 El INTERMEDIO ya tiene forma: la antena es un TALLER de trabajos
+
+Lo que Eddi llama "el intermedio que agarra los limpios" es el papel de la
+antena escrito con nombre. Hoy `antena.py` sirve video; el intermedio es lo
+mismo generalizado:
+
+```text
+   entra por la LAN     un PEDIDO con nombre y sus datos (PAGINA <url>,
+                        PIDE <video>, TRABAJO <bytes de Python>)
+   dentro, el TALLER    el mundo sucio: navegador, ffmpeg, CPython, la JVM.
+                        Cada trabajo en un subproceso, con CUPO (segundos de
+                        CPU, MB, bytes de salida) y un directorio de trabajo
+   sale por la LAN      SOLO formatos LIMPIOS, con su tipo delante:
+                          TEXTO   Latin-1, lineas
+                          NUMERO  decimal exacto como texto (nada de float
+                                  que cruza en binario)
+                          QOI     una imagen
+                          LAMINA  una pagina ya maquetada
+                          PCM     audio
+                        y NO <motivo> cuando el trabajo se paso del cupo,
+                        murio, o pidio algo que no se presta
+```
+
+** La regla que lo hace inteligente no es la lista de tipos: es que **BMO-X
+nunca recibe codigo, y la antena nunca recibe codigo SIN DUENO**. Lo primero
+ya estaba (seccion 8). Lo segundo es lo que faltaba, y es 12.3.
+
+## 12.3 Lo mas inteligente: EMPAREJAR, para que "codigo arbitrario" deje de ser la regla dura
+
+La seccion 8 dice *"NUNCA codigo arbitrario desde BMO-X: solo scripts de una
+lista blanca y FIRMADOS"*. Ese "nunca" no era por BMO-X: era porque **el canal
+va en claro y cualquier maquina de la LAN puede decir que es BMO-X**. Un
+`TRABAJO` con codigo Python que la antena ejecute a ciegas es ejecucion remota
+para cualquiera que este en casa con un cable.
+
+La primera idea --que BMO-X FIRME cada trabajo con Ed25519-- choca con una
+decision escrita y buena: `PLAN_SEGURIDAD` C3, **en BMO-X no hay clave
+privada** (`bmo-cripto/ed25519.rs` solo comprueba, a proposito). No se toca.
+
+Lo que si cabe, con lo que `bmo-cripto` YA tiene:
+
+```text
+   EMPAREJAR   una vez, a mano: un SECRETO de 32 bytes que nace en la antena
+               (se ensena como 8 palabras, o un QR) y se teclea en BMO-X.
+               Se guarda en ESTRATOS, y en la carpeta de la antena
+   AUTENTICAR  cada linea que BMO-X manda lleva HMAC-SHA256(secreto,
+               contador || linea). La antena comprueba y exige contador
+               creciente (nada se repite). `hmac.rs` y `sha256.rs` existen
+   SI FALLA    una linea sin HMAC o con contador viejo es una FALTA de la
+               cuarentena, como una linea fuera del protocolo
+```
+
+Lo que da y lo que NO, dicho entero:
+
+```text
+   [x] AUTENTICIDAD   la antena sabe que el trabajo lo mando BMO-X
+   [x] INTEGRIDAD     nadie cambio una linea por el camino
+   [ ] CONFIDENCIALIDAD  NO: el codigo que se teclea viaja en claro por la
+                      LAN. Eso sigue siendo G6 (TLS). Hasta entonces: en
+                      casa, y nada de contrasenas dentro de un trabajo
+   [!] el secreto vive en BMO-X, en disco. Es un secreto de EMPAREJAMIENTO
+       con UNA antena, no el ancla que firma los .bex: si se pierde, alguien
+       puede mandar trabajos a tu movil; NO puede firmar un binario. Es la
+       misma clase de riesgo que la clave del WiFi, y se dice
+```
+
+** Con esto la regla de la seccion 8 cambia de "solo lista blanca" a **"solo
+del dueno emparejado"**: lo que Eddi escribe en BMO-X corre en su movil; lo
+que escribe otra maquina de la LAN, no. La lista blanca sigue valiendo para
+trabajos que la antena ofrece sola (V2.1); el codigo en vivo pide emparejar.
+
+## 12.4 "Programar Python en una ventana unica": la ventana es AOT, Python no
+
+```text
+   la ventana (BMO-X)     una app INTI (AOT): un editor de texto arriba, el
+                          RESULTADO abajo. Es la hermana de NAVEGAR: el mismo
+                          ANTENISTA habla con la antena, la misma lamina/QOI
+                          se pinta, el mismo historial en ESTRATOS
+   el trabajo (LAN)       TRABAJO <n> y n bytes de Python, con HMAC y contador
+   el taller (antena)     CPython en un subproceso, cupo, directorio propio
+   el resultado (LAN)     TEXTO / NUMERO / QOI / LAMINA, o NO <motivo>
+```
+
+BMO-X **programa** Python y **nunca lo ejecuta**: el interprete, el monton
+elastico y el recolector viven en el kernel de al lado (seccion 10). Es el
+"BMO-X ejecuta Python sin llevar Python dentro" de la seccion 8, ahora sin la
+lista blanca por delante. Y el editor es un `.ibx` como cualquier otro: la
+ventana cumple W^X, INTI la cuenta, y lo que escribe el usuario son DATOS que
+viajan, no codigo que se carga.
+
+[!] Lo que un trabajo puede tocar en el movil: lo que ve Termux (tu carpeta,
+tus fotos si diste permiso). Un bucle infinito lo corta el cupo; un `rm` de
+tu carpeta no lo corta nadie. La antena da un directorio de trabajo y un
+aviso, no una carcel: la carcel de verdad es V2.0b (el Arch desmontado, raiz
+de solo lectura).
+
+[!] No sustituye al Python nativo de `docs/maestro/PYTHON_MAESTRO.md`: son dos
+caminos. Este da el ecosistema entero YA; el nativo dara Python sin nadie al
+lado, y sus tres bloqueantes siguen siendo los mismos.
+
+## Los escalones nuevos
+
+- [ ] **P0 -- EMPAREJAR.** En `platform/shared/bmo-antena`: `emparejar.rs` --
+      el secreto de 32 bytes, `HMAC-SHA256(secreto, contador || linea)` con
+      `bmo-cripto`, contador creciente, y la falta `Firma` de `cuarentena.rs`
+      para lo que no cuadra. En `toolchain/tools/antena/antena.py`, lo mismo
+      del otro lado, y `emparejar` que ensena el secreto como 8 palabras.
+      **Como se sabe:** `cargo test -p bmo-antena` con una linea repetida
+      (contador viejo) y una alterada, las dos rechazadas por nombre; y
+      `cliente.py` emparejado habla con `antena.py`, y sin emparejar recibe
+      `NO sin dueno`.
+
+- [ ] **P1 -- TRABAJOS en el taller.** Sustituye al P1 de la seccion 8:
+      `TRABAJO <bytes>` en ANTENA/2 (solo emparejado), la antena lo corre en
+      CPython con cupo (segundos, MB, bytes) y contesta `RESULTADO <tipo>
+      <bytes>` o `NO <motivo>`. **Como se sabe:** `print(2**100)` desde
+      `cliente.py` vuelve como NUMERO exacto; `while True: pass` vuelve como
+      `NO cupo de CPU` en el tiempo del cupo.
+
+- [ ] **PY0 -- la ventana de Python, version 0.** `Ultra_userspace/apps/python/`
+      en INTI, por el mismo camino que `apps/navegar/`: icono en el escritorio
+      y el mensaje de que hace falta una antena emparejada. **Como se sabe:**
+      `cargo test -p bmo-inti-x86-64 --test python` la corre en el emulador y
+      el icono sale en el Ryzen.
+
+- [ ] **PY1 -- editor y resultado.** Despues de N0 (INTI abre ventana) y N3
+      (el ANTENISTA): la ventana escribe un trabajo, lo manda, y pinta el
+      RESULTADO (texto, numero, QOI) debajo; cada trabajo y su resultado van a
+      ESTRATOS. **Como se sabe:** `print("hola")` tecleado en el Ryzen vuelve
+      pintado en la misma ventana, y `historial` lo lista.
