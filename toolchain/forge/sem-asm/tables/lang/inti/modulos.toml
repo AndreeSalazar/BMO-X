@@ -341,6 +341,35 @@ sonido_callar        = "0x04"
 #  lo unico que se OYE.
 sonido_tubo          = "0x05"
 
+#  ** LA FORMA DE UNA SUPERFICIE (2026-09-16): lo que una app escribe en su
+#  bloque para que el DIRECTOR lo componga, y el buzon por el que le llegan las
+#  teclas. Son de `bmo_abi::syscalls::surface::superficie`, NO del kernel: el
+#  kernel presta bytes y se aparta. Por eso `tests/espejo_del_kernel.rs` los
+#  lee del ABI y no de `ring0/`.
+#
+#  Es el primer contrato que INTI comparte con C SIN enlazarse: C lleva los
+#  mismos numeros como `BMO_SUP_*` (`tables/bmo/superficie/`), Rust como
+#  `SUP_*`, y cada copia tiene su juez. Un port de la superficie a INTI (N0 de
+#  `docs/plan/PLAN_NAVEGAR.md`) escribe ESTOS nombres, nunca el numero.
+sup_magic            = "0x50555342"
+sup_cabecera         = "0x20"
+sup_bgra32           = "0x00"
+sup_campo_secuencia  = "0x05"
+sup_buzon_cabecera   = "0x10"
+sup_buzon_ranura     = "0x08"
+evento_raton         = "0x8000000000000000"
+evento_letra         = "0x4000000000000000"
+evento_configurar    = "0x2000000000000000"
+estado_ventana       = "0x00"
+estado_maximizada    = "0x01"
+estado_completa      = "0x02"
+sup_tomada           = "0x01000000"
+vista_se_ve          = "0x00"
+vista_minimizada     = "0x01"
+vista_fuera          = "0x02"
+vista_prestada       = "0x03"
+vista_tapada         = "0x04"
+
 #  ** LOS BITS -- el nombre es agnostico, la instruccion es de la maquina.
 #
 #  Peticion de Eddi (2026-08-19): *"una libreria de binarios literalmente, pero

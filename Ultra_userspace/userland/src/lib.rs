@@ -477,6 +477,31 @@ pub const INFO_TAREAS_LISTAS: u64 = 0x09;
 /// robas al programa al que se la ibas a prestar.
 pub const INFO_PANTALLA_DUENO: u64 = 0x1A;
 pub const INFO_TAREAS_LIBRES: u64 = 0x0A;
+
+// ** LA FORMA DE UNA SUPERFICIE (2026-09-16). Copia con nombre de
+// `bmo_abi::syscalls::surface::superficie`, que R4 de `contrato` compara con
+// el ABI en cada build. Antes el DIRECTOR llevaba estos numeros como `const`
+// privadas (`MAGIC`, `HEADER_TAG`, `CARACTER`) con un comentario que decia "el
+// mismo numero que en C" -- y un comentario no es un juez. C los lleva como
+// `BMO_SUP_*` (R13) e INTI como `sup_*` (`espejo_del_kernel.rs`).
+pub const SUP_MAGIC: u64 = 0x5055_5342;
+pub const SUP_CABECERA: u64 = 32;
+pub const SUP_BGRA32: u64 = 0;
+pub const SUP_CAMPO_SECUENCIA: u64 = 5;
+pub const SUP_BUZON_CABECERA: u64 = 16;
+pub const SUP_BUZON_RANURA: u64 = 8;
+pub const SUP_EV_RATON: u64 = 0x8000_0000_0000_0000;
+pub const SUP_EV_CARACTER: u64 = 0x4000_0000_0000_0000;
+pub const SUP_EV_CONFIGURE: u64 = 0x2000_0000_0000_0000;
+pub const SUP_ESTADO_VENTANA: u64 = 0;
+pub const SUP_ESTADO_MAXIMIZADA: u64 = 1;
+pub const SUP_ESTADO_COMPLETA: u64 = 2;
+pub const SUP_TOMADA: u64 = 0x0100_0000;
+pub const SUP_VISTA_SE_VE: u64 = 0;
+pub const SUP_VISTA_MINIMIZADA: u64 = 1;
+pub const SUP_VISTA_FUERA: u64 = 2;
+pub const SUP_VISTA_PRESTADA: u64 = 3;
+pub const SUP_VISTA_TAPADA: u64 = 4;
 pub const INFO_TICKS: u64 = 0x0B;
 pub const INFO_KERNEL_BYTES: u64 = 0x0C;
 pub const INFO_PROGRAMAS: u64 = 0x0D;

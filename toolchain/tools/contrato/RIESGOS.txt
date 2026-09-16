@@ -11,7 +11,7 @@
 # El numero va solo en la primera linea util. Lo de abajo es el inventario, y es
 # comentario: esta para leerlo, no para juzgarlo.
 
-96
+106
 # AJENO              Ultra_kernel_x86-64/kernel/src/ring0/cabina/caida.rs
 # SILENCIO           Ultra_kernel_x86-64/kernel/src/ring0/core/autopsy.rs
 # ESPEJO SILENCIO    Ultra_kernel_x86-64/kernel/src/ring0/core/desmontaje.rs
@@ -79,6 +79,7 @@
 # SILENCIO           platform/abi/bmo-abi/src/fundamentals/status/mod.rs
 # AJENO              platform/abi/bmo-abi/src/fundamentals/string/mod.rs
 # RELOJ              platform/abi/bmo-abi/src/fundamentals/sync/mod.rs
+# ESPEJO             platform/abi/bmo-abi/src/syscalls/surface/superficie.rs
 # AJENO              platform/drivers/gpu/rdna4/src/psp.rs
 # SILENCIO           platform/drivers/net/src/anillo.rs
 # SILENCIO           platform/drivers/net/src/lib.rs
@@ -88,14 +89,23 @@
 # SILENCIO           platform/drivers/storage/ahci/src/controller.rs
 # SILENCIO           platform/drivers/usb/xhci/src/enumerar.rs
 # SILENCIO           platform/drivers/usb/xhci/src/lib.rs
+# ESPEJO             platform/drivers/usb/xhci/src/paginas.rs
 # SILENCIO           platform/drivers/usb/xhci/src/transferencia.rs
+# AJENO              platform/shared/bmo-antena/src/cuarentena.rs
+# AJENO              platform/shared/bmo-antena/src/lamina.rs
+# AJENO              platform/shared/bmo-antena/src/lib.rs
 # AJENO              platform/shared/bmo-dma-forma/src/lib.rs
 # SILENCIO           platform/shared/bmo-dma-juicio/src/lib.rs
 # ESPEJO             platform/shared/bmo-fisica-juicio/src/lib.rs
 # ESPEJO SILENCIO    platform/shared/bmo-orquesta/src/lib.rs
+# AJENO              platform/shared/bmo-pila/src/dhcp.rs
+# AJENO              platform/shared/bmo-pila/src/dns.rs
 # AJENO              platform/shared/bmo-puerta-red/src/buzon.rs
 # UNICO              platform/shared/bmo-puerta-red/src/pase.rs
 # RELOJ              platform/shared/bmo-puerta-red/src/radar.rs
+# SILENCIO           platform/shared/bmo-usbred/src/clase.rs
+# UNICO              platform/shared/bmo-usbred/src/politica.rs
+# AJENO              platform/shared/bmo-usbred/src/rndis.rs
 # AJENO              toolchain/lang/c/src/codegen/bex.rs
 # ESPEJO             toolchain/lang/c/src/codegen/decidir/imagen.rs
 # SILENCIO ESPEJO    toolchain/lang/c/src/codegen/decidir/plegado.rs

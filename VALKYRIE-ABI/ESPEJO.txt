@@ -102,6 +102,23 @@
 0x07 ARCH_OP_SALTAR                 BMO_ARCH_SALTAR                  operacion sobre KIND_ARCHIVO
 0x08 ARCH_OP_ESCRIBIR_DE            BMO_ARCH_ESCRIBIR_DE             operacion sobre KIND_ARCHIVO
 0xFFFFFFFFFFFFFFFE CURRENT_TASK                   BMO_TAREA_ACTUAL                 la pseudo-capability de uno mismo. NO se transfiere nunca
+0x00 SUP_BGRA32                     BMO_SUP_BGRA32 el unico formato de pixel: el del framebuffer, se compone copiando
+0x00 SUP_ESTADO_VENTANA             BMO_SUP_ESTADO_VENTANA EV_CONFIGURE: ventana normal
+0x00 SUP_VISTA_SE_VE                BMO_SUP_VISTA_SE_VE byte 2 del estado del buzon: se ve
+0x01 SUP_ESTADO_MAXIMIZADA          BMO_SUP_ESTADO_MAXIMIZADA EV_CONFIGURE: maximizada
+0x01 SUP_VISTA_MINIMIZADA           BMO_SUP_VISTA_MINIMIZADA VISTA: minimizada (R-APP8: la app se salta el dibujo)
+0x02 SUP_ESTADO_COMPLETA            BMO_SUP_ESTADO_COMPLETA EV_CONFIGURE: pantalla completa
+0x02 SUP_VISTA_FUERA                BMO_SUP_VISTA_FUERA VISTA: fuera del panel
+0x03 SUP_VISTA_PRESTADA             BMO_SUP_VISTA_PRESTADA VISTA: la pantalla esta prestada a otro
+0x04 SUP_VISTA_TAPADA               BMO_SUP_VISTA_TAPADA VISTA: tapada entera
+0x08 SUP_BUZON_RANURA               BMO_SUP_BUZON_RANURA una ranura del buzon: un evento crudo de 8 bytes
+0x10 SUP_BUZON_CABECERA             BMO_SUP_BUZON_CABECERA cabeza, cola y estado del buzon: 16 bytes
+0x20 SUP_CABECERA                   BMO_SUP_CABECERA la cabecera BSUP: 32 bytes, ocho u32
+0x1000000 SUP_TOMADA                     BMO_SUP_TOMADA bit 24 del estado: el DIRECTOR ya la tomo
+0x50555342 SUP_MAGIC                      BMO_SUP_MAGIC "BSUP" en little-endian, primer u32 del bloque
+0x2000000000000000 SUP_EV_CONFIGURE               BMO_SUP_EV_CONFIGURE bit 61 del evento: cambio de ventana
+0x4000000000000000 SUP_EV_CARACTER                BMO_SUP_EV_CARACTER bit 62 del evento: una letra ya cocinada
+0x8000000000000000 SUP_EV_RATON                   BMO_SUP_EV_RATON bit 63 del evento: raton
 0x01 TASK_OP_GET_PID                BMO_OP_PID                       get_pid / pid
 0x02 TASK_OP_GET_TID                BMO_OP_TID                       get_tid / tid
 0x03 TASK_OP_YIELD                  BMO_OP_CEDER                     yield / ceder

@@ -108,7 +108,7 @@ RE_MASK = re.compile(r"HANDLE_KIND_MASK\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f]+)")
 # no por lista: un objeto nuevo entra solo, que es la leccion que ya costo tres
 # operaciones del directorio sin contrato.
 RE_OPS = re.compile(
-    r"const\s+(\w+_OP_\w+|SYSCALL_CLASS_\w+|ES_NODO_\w+|ES_TXT_\w+|DISCO_TRIM_\w+)"
+    r"const\s+(\w+_OP_\w+|SYSCALL_CLASS_\w+|ES_NODO_\w+|ES_TXT_\w+|DISCO_TRIM_\w+|SUP_\w+)"
     r"\s*:\s*u64\s*=\s*(0x[0-9A-Fa-f_]+|\d+)"
 )
 # ** R19: la MISMA forma pero sin `pub`, que es como se cuela. `coste` tenia
@@ -117,8 +117,11 @@ RE_OPS_PRIV = re.compile(
     r"(?m)^\s*const\s+(OP_\w+|ARCH_OP_\w+|ES_NODO_\w+|ES_TXT_\w+)"
     r"\s*:\s*u\d+\s*=\s*(0x[0-9A-Fa-f_]+|\d+)\s*;"
 )
+# ** `SUP_*` desde el 2026-09-16: la FORMA de la superficie no es una operacion,
+# pero es un numero del ABI que el userland copia, y una copia sin juez es la
+# que se separa. Ver `bmo_abi::syscalls::surface::superficie`.
 RE_OPS_USER = re.compile(
-    r"(?m)^\s*pub const\s+(\w*OP_\w+|ES_NODO_\w+|ES_TXT_\w+|DISCO_TRIM_\w+)"
+    r"(?m)^\s*pub const\s+(\w*OP_\w+|ES_NODO_\w+|ES_TXT_\w+|DISCO_TRIM_\w+|SUP_\w+)"
     r"\s*:\s*u\d+\s*=\s*(0x[0-9A-Fa-f_]+|\d+)\s*;"
 )
 

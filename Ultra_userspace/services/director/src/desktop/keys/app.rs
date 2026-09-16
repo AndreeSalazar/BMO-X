@@ -66,7 +66,7 @@ const HAY: u64 = 0x100;
 const PULSADA: u64 = 0x200;
 /// Bit 63: esta ranura es un raton y no una tecla. El gemelo en C es
 /// `BMO_SUP_EV_RATON` de `<bmo/superficie.h>`.
-const RATON: u64 = 1 << 63;
+const RATON: u64 = bmo::SUP_EV_RATON;
 
 /// Bit 62: esta ranura es un CARACTER ya cocido, no un scancode. El gemelo en C
 /// es `BMO_SUP_EV_CARACTER` de `<bmo/superficie.h>`.
@@ -82,7 +82,7 @@ const RATON: u64 = 1 << 63;
 /// Ejecutar. Lo que pasaba es que **cuando el foco era una app, el caracter se
 /// TIRABA** (ver el `continue` de `keys::dispatch`): el unico que sabia la letra
 /// la descartaba justo delante del unico que la necesitaba.
-const CARACTER: u64 = 1 << 62;
+const CARACTER: u64 = bmo::SUP_EV_CARACTER;
 
 /// Cuantos eventos se sacan de la cola por vuelta.
 ///

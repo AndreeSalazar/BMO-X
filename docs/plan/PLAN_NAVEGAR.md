@@ -293,12 +293,17 @@ que cooperen"*. Se miro el codigo, no el recuerdo. Lo que hay:
    el emulador               `bmo_lower::emu::Machine` corre el codigo de los
                              dos en el anfitrion; el banco de C y el de INTI
                              lo usan
-   el ABI (a medias)         C: las constantes de `bmo.h` las juzga `contrato`
-                             contra el ABI (100 parejas). INTI: `[constantes]`
-                             de `modulos.toml` (`op_pedir_memoria = "0x15"`...)
-                             estan ESCRITAS A MANO y NINGUN guardian las compara
-                             con `bmo_abi`. Los dynobj (texto, tabla) si se
-                             comparan; los numeros de las puertas, no
+   el ABI (con dos jueces)   C: las constantes de `bmo.h` las juzga `contrato`
+                             contra el ABI (R13, el espejo sellado). INTI:
+                             `[constantes]` de `modulos.toml` las juzga
+                             `toolchain/lang/inti/tests/espejo_del_kernel.rs`
+                             contra el FUENTE DEL KERNEL, fila a fila.
+                             [!] La primera version de esta seccion dijo que
+                             "ningun guardian las compara": era FALSO, y se
+                             corrigio al leer el fichero. Lo que si faltaba
+                             (8.5): la prueba no era exhaustiva --40 filas
+                             para 41 constantes-- y el contrato de la
+                             SUPERFICIE no estaba en el ABI en ningun sitio
 ```
 
 ## 8.2 Lo que NO comparten, y por que no se pueden enlazar
@@ -369,11 +374,8 @@ compra para abrir una ventana.
 N0 se hace en INTI, con C de ORACULO y el CONTRATO de juez:
 
 ```text
-   1. N0a  `contrato` cubre `modulos.toml [constantes]`: los `op_*` de INTI
-           se comparan con `bmo_abi` igual que los de `bmo.h`. Es un hueco
-           real encontrado por este analisis, y va PRIMERO porque el port de
-           superficie va a meter ahi MEM_OFRECER, MI_PADRE y los bits del
-           buzon
+   1. N0a  la FORMA de la superficie entra en el ABI UNA vez, y las tres
+           copias --C, Rust, INTI-- pasan a tener juez (hecho, ver 8.5)
    2. N0b  fontgen, tercera salida: `runtime/fuente/datos.inti` del mismo
            arte que `fuente/datos.h` y la tabla de Ring 0
    3. N0   el port: 39 funciones de C (roja.h 8, amarilla.h 17, fuente.h 3,
@@ -391,10 +393,57 @@ sitios sin comprobacion CONTADOS, y una app --Navegar-- que viaja entera en un
 lenguaje. Lo que cuesta: escribirlo dos veces hasta que exista A. Se dice, y
 se acepta con los ojos abiertos.
 
-- [ ] **N0a -- el contrato cubre a INTI.** `toolchain/tools/contrato` compara
-      `[constantes]` de `tables/lang/inti/modulos.toml` con `bmo_abi` como ya
-      compara `bmo.h`. **Como se sabe:** cambiar `op_consola_escribir` a
-      `"0x07"` pone el build en rojo con el nombre de la constante.
+## 8.5 N0a, HECHO el 2026-09-16: el contrato de la superficie, una vez
+
+Lo que se encontro al ir a hacerlo, que no era lo que decia el analisis:
+
+```text
+   el contrato de la superficie (BSUP, la cabecera de 32 bytes, el buzon de
+   16 + 8n, los bits 63/62/61, las VISTAS) vivia en DOS copias a mano:
+      C      tables/bmo/superficie/roja.h y amarilla.h   (BMO_SUP_*)
+      Rust   director/scene/surface.rs (MAGIC, HEADER_TAG, BUZON_TAG) y
+             desktop/keys/app.rs (CARACTER = 1 << 62)
+   cada una con un comentario "el mismo numero que...". Un comentario no es
+   un juez. INTI iba a ser la TERCERA copia
+```
+
+Lo que se hizo, en el orden en que se hizo:
+
+```text
+   ABI     platform/abi/bmo-abi/src/syscalls/surface/superficie.rs: 18
+           constantes SUP_*, con la cabecera y el buzon dibujados
+   C       contrato_rex: familia ("SUP_", "BMO_SUP_"); el guardian encontro
+           17 parejas SIN SELLAR y paro el build hasta que una persona las
+           mirara (R13); selladas con nota en VALKYRIE-ABI/ESPEJO.txt.
+           100 -> 117 parejas. (SUP_CAMPO_SECUENCIA no tiene gemelo en C:
+           roja.h escribe el 5 en linea, y queda dicho)
+   Rust    bmo-userland lleva SUP_* con nombre; el DIRECTOR lee ESOS y ya
+           no tiene literales propios. RE_OPS y RE_OPS_USER de contrato
+           cubren SUP_*: 97 -> 115 constantes del userland juzgadas (R4)
+   INTI    modulos.toml [constantes]: 18 nombres (sup_*, evento_*, estado_*,
+           vista_*). espejo_del_kernel.rs lee ahora de DOS fuentes (el kernel
+           para las puertas, el ABI para la forma), gana la fila de mi_tarea
+           (la 41, que no la miraba nadie) y es EXHAUSTIVO: una constante sin
+           fila hace fallar la prueba con su nombre
+```
+
+Y se comprobo que los tres jueces MUERDEN, no que existan: `SUP_CABECERA`
+a 36 en el userland -> R4 rojo con el nombre; `BMO_SUP_BUZON_RANURA` a 16 en
+C -> R13 rojo citando el sello; `sup_cabecera` a `0x24` en INTI -> la prueba
+dice `sup_cabecera = 0x24, y SUP_CABECERA dice 0x20`; y una constante nueva
+sin fila -> `sin fila en ESPEJO: sin_juez`.
+
+** Esto es "mejorar C e INTI para que cooperen" en su forma concreta: no
+comparten codigo (no pueden), comparten un contrato con juez en cada copia.
+El port de N0 escribe `sup_magic` y `evento_letra`, nunca `0x50555342`.
+
+- [x] **N0a -- el contrato de la superficie, una vez.** HECHO el 2026-09-16:
+      `platform/abi/bmo-abi/src/syscalls/surface/superficie.rs`, las tres
+      copias juzgadas (R13 para C, R4 para el userland de Rust,
+      `toolchain/lang/inti/tests/espejo_del_kernel.rs` exhaustivo para INTI).
+      **Como se sabe:** cambiar cualquiera de los tres numeros pone el build
+      en rojo con el nombre de la constante, y una constante nueva en
+      `modulos.toml` sin fila en el espejo tambien.
 
 - [ ] **N0b -- fontgen, la tercera salida.** `toolchain/tools/fontgen` escribe
       `tables/lang/inti/runtime/fuente/datos.inti` del mismo arte. **Como se

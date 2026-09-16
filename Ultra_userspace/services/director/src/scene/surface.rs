@@ -48,23 +48,26 @@ use bmo_userland as bmo;
 use super::chrome::Chrome;
 use super::*;
 
-/// `"BSUP"` en little-endian. El mismo numero que escribe `<bmo/surface.h>`.
-const MAGIC: u32 = 0x5055_5342;
+/// `"BSUP"` en little-endian. Desde el 2026-09-16 es una copia JUZGADA: el
+/// numero vive en `bmo_abi::syscalls::surface::superficie` y `bmo-userland`
+/// lo trae con nombre para que R4 de `contrato` lo compare en cada build. Antes
+/// era una `const` privada con un comentario que decia "el mismo numero que
+/// escribe C", y un comentario no es un juez.
+const MAGIC: u32 = bmo::SUP_MAGIC as u32;
 /// Lo que ocupa la cabecera antes del primer pixel.
-const HEADER_TAG: u64 = 32;
+const HEADER_TAG: u64 = bmo::SUP_CABECERA;
 /// BGRA de 32 bits, el mismo del framebuffer: se compone COPIANDO y no
 /// convirtiendo. Cualquier otro formato se rechaza en vez de convertirse -- una
 /// conversion por pixel y por fotograma en el proceso que menos puede
 /// permitirsela no es soporte, es una promesa que se paga en cada vuelta.
-const BGRA32: u32 = 0;
+const BGRA32: u32 = bmo::SUP_BGRA32 as u32;
 
 /// Lo que ocupa el buzon antes de la primera ranura: cabeza, cola y el estado
-/// del puntero. El mismo numero que `BMO_SUP_BUZON_CABECERA` de
-/// `<bmo/superficie.h>`.
-const BUZON_TAG: u64 = 16;
+/// del puntero.
+const BUZON_TAG: u64 = bmo::SUP_BUZON_CABECERA;
 /// Lo que mide una ranura: un evento crudo, el mismo `u64` que devuelve
 /// `bmo_entrada_evento`.
-const BUZON_RANURA: u64 = 8;
+const BUZON_RANURA: u64 = bmo::SUP_BUZON_RANURA;
 
 /// Cuantas apps pueden tener caja a la vez.
 ///

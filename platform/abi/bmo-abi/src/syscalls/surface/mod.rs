@@ -41,6 +41,7 @@ mod entrada;
 mod informe;
 mod objetos;
 mod puertas;
+mod superficie;
 mod tarea;
 
 // Se reexporta TODO: quien usa este contrato lo escribe exactamente igual que
@@ -51,6 +52,7 @@ pub use entrada::*;
 pub use informe::*;
 pub use objetos::*;
 pub use puertas::*;
+pub use superficie::*;
 pub use tarea::*;
 
 

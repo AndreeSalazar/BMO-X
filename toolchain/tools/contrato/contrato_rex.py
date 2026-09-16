@@ -179,6 +179,10 @@ REX_FAMILIAS = (
     ("TASK_OP_", "BMO_OP_"),
     ("FB_OP_", "BMO_FB_"),
     ("PRESTADO_OP_", "BMO_PRESTADO_"),
+    # ** La FORMA de la superficie (2026-09-16): no son operaciones, son los
+    # numeros del contrato app <-> DIRECTOR (`superficie.rs` del ABI). C los
+    # lleva en `tables/bmo/superficie/roja.h` y `amarilla.h`.
+    ("SUP_", "BMO_SUP_"),
 )
 
 # Las parejas que no comparten cola. Cada una es una persona diciendo "estas dos

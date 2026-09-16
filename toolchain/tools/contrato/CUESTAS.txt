@@ -11,7 +11,7 @@
 # El numero va solo en la primera linea util. Lo de abajo es el inventario, y es
 # comentario: esta para leerlo, no para juzgarlo.
 
-104
+114
 # NADA      Ultra_kernel_x86-64/kernel/src/ring0/cabina/caida.rs
 # NADA      Ultra_kernel_x86-64/kernel/src/ring0/core/autopsy.rs
 # NADA      Ultra_kernel_x86-64/kernel/src/ring0/core/desmontaje.rs
@@ -82,6 +82,7 @@
 # PUERTA    platform/abi/bmo-abi/src/fundamentals/status/mod.rs
 # MAQUINA   platform/abi/bmo-abi/src/fundamentals/string/mod.rs
 # MAQUINA   platform/abi/bmo-abi/src/fundamentals/sync/mod.rs
+# DATO      platform/abi/bmo-abi/src/syscalls/surface/superficie.rs
 # NADA      platform/drivers/gpu/rdna4/src/psp.rs
 # APARATO   platform/drivers/net/src/anillo.rs
 # APARATO   platform/drivers/net/src/lib.rs
@@ -94,16 +95,25 @@
 # TAREA     platform/drivers/usb/xhci/src/avisos.rs
 # APARATO   platform/drivers/usb/xhci/src/enumerar.rs
 # APARATO   platform/drivers/usb/xhci/src/lib.rs
+# DATO      platform/drivers/usb/xhci/src/paginas.rs
 # DATO      platform/drivers/usb/xhci/src/transferencia.rs
+# DATO      platform/shared/bmo-antena/src/cuarentena.rs
+# DATO      platform/shared/bmo-antena/src/lamina.rs
+# DATO      platform/shared/bmo-antena/src/lib.rs
 # TAREA     platform/shared/bmo-dma-forma/src/lib.rs
 # MAQUINA   platform/shared/bmo-dma-juicio/src/lib.rs
 # MAQUINA   platform/shared/bmo-fisica-juicio/src/lib.rs
 # MAQUINA   platform/shared/bmo-mmio-juicio/src/lib.rs
 # DATO      platform/shared/bmo-orquesta/src/lib.rs
+# DATO      platform/shared/bmo-pila/src/dhcp.rs
+# DATO      platform/shared/bmo-pila/src/dns.rs
 # MAQUINA   platform/shared/bmo-prestamo-juicio/src/lib.rs
 # DATO      platform/shared/bmo-puerta-red/src/buzon.rs
 # NADA      platform/shared/bmo-puerta-red/src/pase.rs
 # NADA      platform/shared/bmo-puerta-red/src/radar.rs
+# NADA      platform/shared/bmo-usbred/src/clase.rs
+# NADA      platform/shared/bmo-usbred/src/politica.rs
+# DATO      platform/shared/bmo-usbred/src/rndis.rs
 # DATO      toolchain/lang/c/src/codegen/bex.rs
 # TAREA     toolchain/lang/c/src/codegen/decidir/imagen.rs
 # DATO      toolchain/lang/c/src/codegen/decidir/plegado.rs

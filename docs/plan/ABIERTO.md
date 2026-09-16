@@ -7,8 +7,8 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   264 casillas ABIERTAS en 32 planes
-   161 hechas
+   263 casillas ABIERTAS en 32 planes
+   162 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -89,15 +89,6 @@
 - [ ] M1b -- CUANTO CUESTA REVOCAR UNA PAGINA, y va ANTES de M1. La seccion
 - ... y 8 mas
 
-## [`PLAN_NAVEGAR.md`](PLAN_NAVEGAR.md) -- 10 abiertas, 1 hechas
-
-*PLAN NAVEGAR -- la propuesta maestra de la app que navega sin ser navegador*
-
-- [ ] N0 -- INTI abre una ventana. El port de tables/bmo/superficie/*.h,
-- [ ] N1 -- Navegar v1: la ventana con el mensaje. navegar.inti con
-- [ ] N2 -- Navegar pinta una lamina DE FICHERO. ejemplo.lamina como
-- ... y 7 mas
-
 ## [`PLAN_DIRECTOR.md`](PLAN_DIRECTOR.md) -- 9 abiertas, 7 hechas
 
 *DIRECTOR -- de compositor a administrador*
@@ -123,6 +114,15 @@
 - [ ] S1 -- EL CONTRATO, EN PAPEL Y ANTES QUE EL CODIGO. Que entra y que
 - [ ] S2 -- LA TABLA DE REGISTROS COMO DATO, no como codigo. x86-64 nombra
 - [ ] S3 -- EL PRIMER CLIENTE: INTI. Porque puede declarar el alias. Y
+- ... y 6 mas
+
+## [`PLAN_NAVEGAR.md`](PLAN_NAVEGAR.md) -- 9 abiertas, 2 hechas
+
+*PLAN NAVEGAR -- la propuesta maestra de la app que navega sin ser navegador*
+
+- [ ] N0 -- INTI abre una ventana. El port de tables/bmo/superficie/*.h,
+- [ ] N1 -- Navegar v1: la ventana con el mensaje. navegar.inti con
+- [ ] N2 -- Navegar pinta una lamina DE FICHERO. ejemplo.lamina como
 - ... y 6 mas
 
 ## [`PLAN_VATIOS.md`](PLAN_VATIOS.md) -- 8 abiertas, 4 hechas
