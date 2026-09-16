@@ -398,6 +398,56 @@ impl Plano {
                 let t = self.tipo_de(que, tipos)?;
                 self.elemento(&t).map(|(t, _)| t)
             }
+            // *** UNA LLAMADA TIENE EL TIPO QUE LA FUNCION DIJO (2026-09-16).
+            //
+            // Hasta hoy esto contestaba `None`, y `sin_signo` --que pregunta
+            // aqui-- daba `false`: `glifo_fila(g, f) * potencia(f)`, dos
+            // `natural64` declarados, se comprobaba con la aritmetica CON
+            // SIGNO y `0xDC * 2^56` atrapaba aunque cabe. `deduccion.rs` ya
+            // sabia contestar (para `x = f()`), asi que eran DOS criterios para
+            // la misma pregunta: el que emite y el que deduce discrepaban, que
+            // es justo lo que la cabecera de esta funcion dice que no puede
+            // pasar. La respuesta sale de `retornos`, igual que alli: lo que la
+            // funcion ESCRIBIO, nunca su cuerpo.
+            Expr::Llamada { que, .. } => match que.as_ref() {
+                Expr::Nombre(n, _) => self.retorno_de(n).cloned(),
+                Expr::Tipo(n, _) => self.registro(n).map(|_| Tipo::Nombre(n.clone())),
+                _ => None,
+            },
+            // ** Y UNA OPERACION ARITMETICA HEREDA EL TIPO DE SU LADO TIPADO.
+            //
+            // `(a * b) + c` con los tres `natural64`: la suma ve a la
+            // izquierda una `Binaria`, y sin esto no sabia nada de ella. Solo
+            // la aritmetica y los bits: una comparacion o un `y` dan un
+            // `logico`, y eso lo contesta quien deduce, no esto. Si los dos
+            // lados tienen tipo y no coinciden, no se elige: `None`, que es lo
+            // que `v05` (sin conversion implicita) exige que se denuncie aparte.
+            Expr::Binaria { op, izquierda, derecha, .. } => {
+                use crate::arbol::Op;
+                if !matches!(
+                    op,
+                    Op::Suma
+                        | Op::Resta
+                        | Op::Por
+                        | Op::Divide
+                        | Op::Entre
+                        | Op::Resto
+                        | Op::Elevado
+                        | Op::BitsY
+                        | Op::BitsO
+                        | Op::BitsXor
+                        | Op::DesplazaIzquierda
+                        | Op::DesplazaDerecha
+                ) {
+                    return None;
+                }
+                match (self.tipo_de(izquierda, tipos), self.tipo_de(derecha, tipos)) {
+                    (Some(a), Some(b)) => (a == b).then_some(a),
+                    (Some(a), None) => Some(a),
+                    (None, Some(b)) => Some(b),
+                    (None, None) => None,
+                }
+            }
             _ => None,
         }
     }

@@ -18,13 +18,28 @@ use bmo_lower::x86;
 
 use crate::{DER, IZQ};
 
-/// *** `sin_signo` cambia CUATRO instrucciones, y ninguna falla al emitirse:
-/// las cuatro dan otro numero. Ver `medidas.toml`, seccion `sin_signo`.
+/// *** `sin_signo` cambia CINCO instrucciones, y ninguna falla al emitirse:
+/// las cinco dan otro numero. Ver `medidas.toml`, seccion `sin_signo`.
 pub(crate) fn binaria(out: &mut Vec<u8>, op: Op, sin_signo: bool) {
     match op {
         Op::Suma => x86::add_r64_r64(out, IZQ, DER),
         Op::Resta => x86::sub_r64_r64(out, IZQ, DER),
-        Op::Por => x86::imul_r64_r64(out, IZQ, DER),
+        // *** LA QUINTA FAMILIA DEL FALLO DEL SIGNO (2026-09-16). `imul` deja
+        // CF y OF segun quepa CON SIGNO, asi que `255 * 2^56` sobre `natural64`
+        // --que cabe: 0xFF00_0000_0000_0000-- ATRAPABA por la Regla 1, y
+        // `255 * 2^48` no. Lo destapo la fuente en INTI (N0b de PLAN_NAVEGAR):
+        // empaquetar ocho filas de un glifo en una palabra multiplica un byte
+        // por 2^56, y la tabla se quedaba muda en el primer glifo con la fila 7
+        // encendida. `mul` (una sola operacion, `rdx:rax`) enciende CF solo si
+        // la mitad alta no es cero, que es lo que el `jc` de la comprobacion
+        // sin signo espera. Pisa `rdx`, igual que ya lo pisa `div`.
+        Op::Por => {
+            if sin_signo {
+                x86::mul_r64(out, DER);
+            } else {
+                x86::imul_r64_r64(out, IZQ, DER);
+            }
+        }
         Op::Entre | Op::Divide | Op::Resto => {
             // ** La guardia del cociente NO esta aqui: la pide la IR con
             // `Comprobacion::Cociente` y la emite `Instr::Comprueba`, como las

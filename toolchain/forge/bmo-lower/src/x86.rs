@@ -185,10 +185,24 @@ pub fn and_r64_imm32(out: &mut Vec<u8>, reg: u8, imm: u32) {
 }
 
 /// `imul <dst>, <src>` -- producto con signo entre registros.
+///
+/// [!] Sus banderas CF y OF dicen si el resultado cabe CON SIGNO. Para un
+/// producto sin signo que pase de 2^63 las dos se encienden aunque el numero
+/// quepa en 64 bits: `255 * 2^56` = `0xFF00_0000_0000_0000` "desborda" segun
+/// `imul`. Un natural se multiplica con `mul_r64`.
 pub fn imul_r64_r64(out: &mut Vec<u8>, dst: u8, src: u8) {
     out.push(rex_w(dst, src));
     out.extend_from_slice(&[0x0F, 0xAF]);
     out.push(0xC0 | ((dst & 7) << 3) | (src & 7));
+}
+
+/// `mul <r64>` -- `rdx:rax = rax * r64`, SIN signo. CF (y OF) se encienden
+/// solo si la mitad alta (`rdx`) no es cero: es la bandera de acarreo que un
+/// `jc` de la Regla 1 espera para un natural. Pisa `rdx`, como `div`.
+pub fn mul_r64(out: &mut Vec<u8>, reg: u8) {
+    out.push(rex_w(0, reg));
+    out.push(0xF7);
+    out.push(0xC0 | (4 << 3) | (reg & 7)); // /4 = MUL
 }
 
 /// `cmp <a>, <b>` entre registros.

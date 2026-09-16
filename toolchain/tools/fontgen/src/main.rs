@@ -16,6 +16,13 @@
 //!                      solo tiene pixeles. Se genera AQUI y no se copia,
 //!                      porque dos tablas de glifos a mano son dos fuentes
 //!                      que se separan el dia que alguien corrija una letra
+//!   `runtime/fuente/datos.inti`  **la misma tabla en INTI** (2026-09-16, N0b
+//!                      de `docs/plan/PLAN_NAVEGAR.md`): `usa fuente` la trae
+//!                      dentro del `.ibx`. Es la CUARTA salida del mismo arte y
+//!                      la primera pieza del port de la superficie a INTI. C e
+//!                      INTI no se enlazan (convenciones distintas): cooperan
+//!                      leyendo la misma tabla, generada, con una prueba que
+//!                      exige que las dos digan los mismos bytes
 //!
 //! Regenerar: `cargo run -p bmo-fontgen`.
 
@@ -355,6 +362,17 @@ fn main() {
     let out_c = std::env::args().nth(2).unwrap_or_else(|| {
         "toolchain/forge/sem-asm/tables/bmo/fuente/datos.h".to_string()
     });
+    // ** Y LA CUARTA ES LA MISMA TABLA EN INTI (2026-09-16).
+    //
+    // Una constante de INTI es una lista de palabras de 64 bits en RoData, no
+    // de bytes. Asi que cada glifo van en DOS palabras: la primera lleva las
+    // filas 0..7 con la fila 0 en el byte bajo, la segunda las filas 8..15. Como
+    // la palabra se guarda little-endian, `GLIFOS + g * 16 + f` es la direccion
+    // del byte de la fila `f`: la misma cuenta que `bmo_fuente_glifos[g*16+f]`
+    // en C y que el renderer del kernel, y la tabla pesa lo mismo (1.920 B).
+    let out_inti = std::env::args().nth(3).unwrap_or_else(|| {
+        "toolchain/forge/sem-asm/tables/lang/inti/runtime/fuente/datos.inti".to_string()
+    });
 
     // ** LOS LETREROS SE GENERAN, NO SE PONEN A MANO (2026-09-11).
     //
@@ -477,7 +495,94 @@ fn main() {
     }
     std::fs::write(&out_c, &c).expect("escribir fuente/datos.h");
 
+    // -- 4. la misma tabla, en INTI, para `usa fuente` ------------------
+    let mut i = String::new();
+    for linea in [
+        "fuente/datos.inti -- los glifos de BMO-X, en INTI. AUTO-GENERADO.",
+        "",
+        "NO editar a mano. Regenerar: `cargo run -p bmo-fontgen`, que emite este",
+        "fichero, la tabla del kernel y `fuente/datos.h` DEL MISMO ARTE. Una",
+        "prueba (`lang/inti/emisor-x86_64/tests/fuente.rs`) CORRE esta pieza en",
+        "el emulador y exige que diga los mismos bytes que `datos.h`, glifo a",
+        "glifo: asi C e INTI cooperan sin enlazarse.",
+        "",
+        "Cada glifo son DOS palabras de 64 bits: la primera lleva las filas 0..7",
+        "(la fila 0 en el byte bajo) y la segunda las filas 8..15. La palabra se",
+        "guarda little-endian, asi que `GLIFOS + g * 16 + f` es la direccion del",
+        "byte de la fila `f` del glifo `g` -- la misma cuenta que en C y en el",
+        "kernel. El bit 7 de cada byte es la columna IZQUIERDA.",
+        "",
+        "Indices 0..94 = ASCII 32..=126; 95.. = los extras Latin-1, cuyo byte",
+        "esta en `LATIN1` en el mismo orden.",
+    ] {
+        i += &(if linea.is_empty() { "#\n".to_string() } else { format!("# {linea}\n") });
+    }
+    i += "perfil llano\nusa memoria\n\n";
+    i += &format!("FUENTE_GLIFOS = {glifos}\nFUENTE_ASCII = 95\nFUENTE_EXTRAS = {}\n", EXTRA.len());
+    // El glifo que se pinta cuando el byte no tiene: `?`, ASCII 63, indice 31.
+    i += "FUENTE_HUECO = 31\n\n";
+    i += "GLIFOS = [\n";
+    let dos_palabras = |b: [u8; 16]| -> (u64, u64) {
+        let mut lo = 0u64;
+        let mut hi = 0u64;
+        for f in 0..8 {
+            lo |= (b[f] as u64) << (8 * f);
+            hi |= (b[8 + f] as u64) << (8 * f);
+        }
+        (lo, hi)
+    };
+    // [!] INTI no admite una coma antes del `]` (E0017): la ultima fila va sin
+    // ella, y el comentario de cada fila va DETRAS de la coma.
+    let mut filas: Vec<(u64, u64, String)> = Vec::new();
+    for (n, art) in ART.iter().enumerate() {
+        let lines: Vec<String> = art.iter().map(|l| l.to_string()).collect();
+        let (lo, hi) = dos_palabras(pack(&lines));
+        filas.push((lo, hi, format!("ASCII {}", 32 + n)));
+    }
+    for (code, recipe) in EXTRA.iter() {
+        let (lo, hi) = dos_palabras(pack(&build_extra(recipe)));
+        filas.push((lo, hi, format!("Latin-1 0x{code:02X}")));
+    }
+    let ultima = filas.len() - 1;
+    for (k, (lo, hi, que)) in filas.iter().enumerate() {
+        let coma = if k == ultima { " " } else { "," };
+        i += &format!("    0x{lo:016X}, 0x{hi:016X}{coma}   # {que}\n");
+    }
+    i += "]\n\n# El byte Latin-1 de cada glifo extra, en el orden de arriba desde FUENTE_ASCII.\n";
+    i += "LATIN1 = [\n    ";
+    let latin1: Vec<String> = EXTRA.iter().map(|(code, _)| format!("0x{code:02X}")).collect();
+    i += &latin1.join(", ");
+    i += "\n]\n\n";
+    i += "# La fila `f` (0..15) del glifo `g`: un byte, bit 7 = columna izquierda.\n\
+           # Un glifo que no existe pinta el HUECO, y una fila de mas se recorta:\n\
+           # el unico `crudo` de esta pieza solo lee DENTRO de la tabla.\n\
+           funcion glifo_fila(g es natural64, f es natural64) devuelve natural64\n\
+           \x20   cambiante cual es natural64 = FUENTE_HUECO\n\
+           \x20   si g < FUENTE_GLIFOS\n\
+           \x20       cual = g\n\
+           \x20   crudo\n\
+           \x20       devuelve lee_natural8(GLIFOS + cual * 16 + (f bits_y 15))\n\n";
+    i += "# El indice de glifo de un byte Latin-1: el ASCII directo, un extra por su\n\
+           # byte, o el HUECO si la fuente no lo tiene.\n\
+           funcion glifo_de(byte es natural64) devuelve natural64\n\
+           \x20   si byte > 31 y byte < 127\n\
+           \x20       devuelve byte - 32\n\
+           \x20   cambiante i es natural64 = 0\n\
+           \x20   repite mientras i < FUENTE_EXTRAS\n\
+           \x20       si latin1_extra(i) = byte\n\
+           \x20           devuelve FUENTE_ASCII + i\n\
+           \x20       i = i + 1\n\
+           \x20   devuelve FUENTE_HUECO\n\n";
+    i += "funcion latin1_extra(i es natural64) devuelve natural64\n\
+           \x20   crudo\n\
+           \x20       devuelve lee_natural64(LATIN1 + i * 8)\n";
+    if let Some(dir) = std::path::Path::new(&out_inti).parent() {
+        std::fs::create_dir_all(dir).expect("crear la carpeta de runtime/fuente/");
+    }
+    std::fs::write(&out_inti, &i).expect("escribir runtime/fuente/datos.inti");
+
     println!("generado {out} ({glifos} glifos: 95 ASCII + {} Latin-1)", EXTRA.len());
     println!("generado {out_extra}");
     println!("generado {out_c} (la misma tabla, en C, para REX)");
+    println!("generado {out_inti} (la misma tabla, en INTI, para `usa fuente`)");
 }

@@ -7,8 +7,8 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   268 casillas ABIERTAS en 32 planes
-   164 hechas
+   267 casillas ABIERTAS en 32 planes
+   165 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -116,14 +116,14 @@
 - [ ] S3 -- EL PRIMER CLIENTE: INTI. Porque puede declarar el alias. Y
 - ... y 6 mas
 
-## [`PLAN_NAVEGAR.md`](PLAN_NAVEGAR.md) -- 9 abiertas, 2 hechas
+## [`PLAN_NAVEGAR.md`](PLAN_NAVEGAR.md) -- 8 abiertas, 3 hechas
 
 *PLAN NAVEGAR -- la propuesta maestra de la app que navega sin ser navegador*
 
 - [ ] N0 -- INTI abre una ventana. El port de tables/bmo/superficie/*.h,
 - [ ] N1 -- Navegar v1: la ventana con el mensaje. navegar.inti con
 - [ ] N2 -- Navegar pinta una lamina DE FICHERO. ejemplo.lamina como
-- ... y 6 mas
+- ... y 5 mas
 
 ## [`PLAN_VATIOS.md`](PLAN_VATIOS.md) -- 8 abiertas, 4 hechas
 

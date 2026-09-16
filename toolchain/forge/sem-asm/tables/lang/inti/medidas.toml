@@ -189,13 +189,18 @@ enteros = [
 #  reglas de INTI vigilan lo que el estandar de C deja sin definir; esto estaba
 #  definido y mal.
 #
-#  *** Y afectaba a CUATRO familias, no a una:
+#  *** Y afectaba a CINCO familias, no a una (la quinta salio el 2026-09-16):
 #
 #      < > <= >=          `setl/setg` en vez de `setb/seta`
 #      entre, resto       `cqo` + `idiv` en vez de `xor rdx` + `div`
 #      desplaza derecha   `shr` SIEMPRE -- que es el fallo al reves: correcto
 #                         para un natural y falso para un entero negativo
 #      la Regla 1         `jo` (desborde con signo) en vez de `jc` (acarreo)
+#      por                `imul` SIEMPRE: sus banderas dicen si cabe CON
+#                         SIGNO, asi que `255 * 2^56` sobre natural64 atrapaba
+#                         aunque cabe. Un natural se multiplica con `mul`. Lo
+#                         destapo la fuente en INTI: ocho filas de un glifo en
+#                         una palabra es un byte por 2^56
 #
 #  ** Y esta en una TABLA porque es un dato sobre los TIPOS, no sobre la
 #  maquina: que `natural64` no lleve signo es verdad en todo silicio. El emisor

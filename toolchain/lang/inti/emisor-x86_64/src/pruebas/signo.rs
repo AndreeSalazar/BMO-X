@@ -131,3 +131,46 @@ fn la_aritmetica_de_direcciones_no_lleva_signo() {
 fn nec() -> bmo_inti_front::necesidades::Necesidades {
     bmo_inti_front::necesidades::Necesidades::por_defecto()
 }
+
+// ===================================================================
+//  *** LA QUINTA FAMILIA (2026-09-16): multiplicar, y el tipo de una llamada
+// ===================================================================
+//
+//  La destapo la fuente en INTI (N0b de PLAN_NAVEGAR): empaquetar ocho filas
+//  de un glifo en una palabra es `fila * 256^7`, y con la fila 7 encendida el
+//  producto pasa de 2^63. `imul` enciende CF y OF cuando el resultado no cabe
+//  CON SIGNO, asi que un `natural64` que cabe de sobra atrapaba por la Regla 1.
+//
+//  ** Y debajo habia un SEGUNDO fallo que tapaba al primero: `Plano::tipo_de`
+//  no sabia el tipo de una LLAMADA, asi que `glifo_fila(g, f) * potencia(f)`
+//  --dos `natural64` declarados-- se comprobaba con la aritmetica con signo
+//  aunque el emisor ya multiplicara bien. `deduccion.rs` si lo sabia: eran dos
+//  criterios para la misma pregunta.
+
+/// ***`255 * 2^56` EN `natural64` CABE, y no atrapa.*** Con `imul` atrapaba.
+#[test]
+fn multiplicar_naturales_grandes_no_atrapa() {
+    let f = "perfil llano\n\nfuncion prueba(a es natural64, b es natural64) devuelve natural64\n    devuelve a * b\n";
+    assert_eq!(ejecuta_en(f, "prueba", 255, 1 << 56), 0xFF00_0000_0000_0000, "255 * 2^56 cabe");
+    assert_eq!(ejecuta_en(f, "prueba", 1 << 32, 1 << 31), 1 << 63, "2^63 cabe");
+    // Y lo que de verdad no cabe sigue atrapando: 2^32 * 2^32 = 2^64.
+    assert_eq!(ejecuta_en(f, "prueba", 1 << 32, 1 << 32), 1001, "2^64 no cabe: atrapa");
+}
+
+/// Los enteros siguen multiplicando CON signo: `-2 * 3` es `-6`, y `2^62 * 2`
+/// no cabe con signo aunque quepa sin el.
+#[test]
+fn multiplicar_enteros_sigue_llevando_el_signo() {
+    let f = "perfil llano\n\nfuncion prueba(a es entero64, b es entero64) devuelve entero64\n    devuelve a * b\n";
+    assert_eq!(ejecuta_en(f, "prueba", (-2i64) as u64, 3), (-6i64) as u64);
+    assert_eq!(ejecuta_en(f, "prueba", 1 << 62, 2), 1001, "2^63 no cabe con signo: atrapa");
+}
+
+/// ***EL PRODUCTO DE DOS LLAMADAS TIENE EL TIPO QUE LAS FUNCIONES DIJERON.***
+///
+/// Sin `tipo_de` para `Llamada`, esto se comprobaba con signo y atrapaba.
+#[test]
+fn el_tipo_de_una_llamada_es_el_que_la_funcion_dijo() {
+    let f = "perfil llano\n\nfuncion alto devuelve natural64\n    devuelve 255\n\nfuncion base(k es natural64) devuelve natural64\n    devuelve k\n\nfuncion prueba(a es natural64, b es natural64) devuelve natural64\n    devuelve alto() * base(a) + b\n";
+    assert_eq!(ejecuta_en(f, "prueba", 1 << 56, 7), 0xFF00_0000_0000_0007, "255 * 2^56 + 7, sin signo de principio a fin");
+}

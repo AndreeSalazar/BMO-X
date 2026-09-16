@@ -1201,6 +1201,25 @@ impl Machine {
                         self.flags_logic(r);
                         self.store(src, r, ancho);
                     }
+                    // mul SIN signo: `rdx:rax = rax * operando`. CF y OF se
+                    // encienden solo si la mitad alta no es cero -- que es lo
+                    // que el `jc` de la Regla 1 sin signo lee. Como el silicio,
+                    // no toca `zf` ni `sf`. (2026-09-16: la quinta familia del
+                    // fallo del signo; ver `operaciones.rs` de INTI)
+                    4 => {
+                        let a = self.regs[RAX];
+                        let (lo, hi) = if wide {
+                            let r = (a as u128) * (v as u128);
+                            (r as u64, (r >> 64) as u64)
+                        } else {
+                            let r = (a as u32 as u64) * (v as u32 as u64);
+                            (r & 0xFFFF_FFFF, r >> 32)
+                        };
+                        self.regs[RAX] = lo;
+                        self.regs[RDX] = hi;
+                        self.cf = hi != 0;
+                        self.of = hi != 0;
+                    }
                     // div SIN signo: rdx:rax entre el operando. El emisor
                     // siempre pone rdx=0 antes, asi que basta con rax.
                     6 => {

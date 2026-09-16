@@ -376,8 +376,8 @@ N0 se hace en INTI, con C de ORACULO y el CONTRATO de juez:
 ```text
    1. N0a  la FORMA de la superficie entra en el ABI UNA vez, y las tres
            copias --C, Rust, INTI-- pasan a tener juez (hecho, ver 8.5)
-   2. N0b  fontgen, tercera salida: `runtime/fuente/datos.inti` del mismo
-           arte que `fuente/datos.h` y la tabla de Ring 0
+   2. N0b  fontgen, cuarta salida: `runtime/fuente/datos.inti` del mismo
+           arte que `fuente/datos.h` y la tabla de Ring 0 (hecho, ver 8.6)
    3. N0   el port: 39 funciones de C (roja.h 8, amarilla.h 17, fuente.h 3,
            entrada.h 11; ~526 lineas de codigo sin comentarios) a
            `runtime/superficie/`, `runtime/fuente/`, `runtime/entrada/`.
@@ -445,10 +445,58 @@ El port de N0 escribe `sup_magic` y `evento_letra`, nunca `0x50555342`.
       en rojo con el nombre de la constante, y una constante nueva en
       `modulos.toml` sin fila en el espejo tambien.
 
-- [ ] **N0b -- fontgen, la tercera salida.** `toolchain/tools/fontgen` escribe
-      `tables/lang/inti/runtime/fuente/datos.inti` del mismo arte. **Como se
-      sabe:** los 120 glifos de INTI y los de `fuente/datos.h` son los mismos
-      bytes, comprobado por una prueba de fontgen.
+## 8.6 N0b, HECHO el 2026-09-16: la fuente en INTI, y dos fallos del compilador debajo
+
+`toolchain/tools/fontgen` escribe la CUARTA salida del mismo arte:
+`tables/lang/inti/runtime/fuente/datos.inti`, lo que trae `usa fuente`. Cada
+glifo son dos palabras de 64 bits (filas 0..7 con la fila 0 en el byte bajo, y
+8..15), asi que `GLIFOS + g * 16 + f` es el byte de la fila `f`: la misma
+cuenta que en C y en el kernel, y la tabla pesa lo mismo (1.920 B). Trae
+`glifo_fila(g, f)` (un glifo que no existe da el HUECO `?`; el unico `crudo`
+solo lee dentro de la tabla) y `glifo_de(byte)` (ASCII directo, los 25 extras
+Latin-1 por su byte, el HUECO para lo demas).
+
+** Y el juez no compara ficheros: `lang/inti/emisor-x86_64/tests/fuente.rs`
+CORRE el `.ibx` en el emulador, le pregunta las 1.920 filas y los 256 bytes, y
+los compara con `fuente/datos.h` leido como texto. Al hacerlo salieron DOS
+fallos del compilador que ningun programa habia pisado:
+
+```text
+   la quinta familia    `imul` para TODO producto. Sus banderas dicen si cabe
+   del fallo del signo  CON SIGNO: `255 * 2^56` sobre natural64 --que cabe--
+                        atrapaba por la Regla 1, y `255 * 2^48` no. Ahora un
+                        natural se multiplica con `mul` (F7 /4, `rdx:rax`),
+                        cuyo CF es el acarreo que el `jc` sin signo espera. El
+                        emulador del banco no tenia `mul`: se le anadio con las
+                        mismas banderas que el silicio. Apuntado en
+                        `medidas.toml`, seccion `sin_signo`, como la quinta
+   el tipo de una       `Plano::tipo_de` contestaba `None` para una LLAMADA, y
+   llamada              `sin_signo` daba `false`: `glifo_fila(g, f) *
+                        potencia(f)`, dos natural64 declarados, se comprobaba
+                        con signo aunque el emisor ya multiplicara bien.
+                        `deduccion.rs` SI lo sabia (para `x = f()`): eran dos
+                        criterios para la misma pregunta, justo lo que la
+                        cabecera de `tipo_de` dice que no puede pasar. Ahora
+                        una llamada tiene el tipo que la funcion DIJO y una
+                        operacion aritmetica hereda el de su lado tipado
+```
+
+Y una tercera cosa que no era un fallo sino una ausencia: ninguna prueba de
+`tests/` habia corrido un programa con una tabla congelada, asi que la tabla
+se leia de la direccion cero -- del CODIGO -- y `glifo_fila` devolvia opcodes
+(`0x48, 0x8a, 0x8b`). `pruebas.rs::ejecuta_en` ya lo contaba del 23-08; ahora
+`tests/fuente.rs` rearma `RoData` con el mismo `rodata_de` que usa el `.ibx`.
+
+** Lo que esto ensena de "cooperar": el ORACULO (C) cazo tres cosas en INTI el
+primer dia, y ninguna estaba en la tabla de glifos.
+
+- [x] **N0b -- fontgen, la cuarta salida.** HECHO el 2026-09-16:
+      `toolchain/tools/fontgen` escribe `tables/lang/inti/runtime/fuente/datos.inti`
+      del mismo arte; `tables/bmo/fuente/datos.h` y la tabla del kernel salen
+      byte a byte iguales que antes. **Como se sabe:** `cargo test -p
+      bmo-inti-x86-64 --test fuente` corre `usa fuente` en el emulador y exige
+      los 1.920 bytes y los 256 indices de `datos.h`; y `pruebas/signo.rs`
+      exige que `255 * 2^56` en natural64 no atrape y `2^32 * 2^32` si.
 
 - [ ] **N0c -- los gemelos.** Una prueba en `emisor-x86_64/tests/` corre la
       misma secuencia (limpia, rectangulo, texto) en C y en INTI y compara el
