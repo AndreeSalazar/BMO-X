@@ -79,6 +79,9 @@ pub enum Accion {
     Reabrir,
     /// Hay algo que no es mio y me falta un aparato: intentarlo. Reparacion 3.
     Adoptar,
+    /// Hay algo, los intentos estan gastados: un barrido mas de descanso, y
+    /// cuando se cumpla el descanso vuelven los intentos (2026-09-17).
+    Enfriar,
 }
 
 /// **La decision.** Todo el barrido es esto, una vez por puerto.
@@ -111,16 +114,18 @@ pub fn decidir(v: &Vista) -> Accion {
     if v.es_mio || v.tomado {
         return Accion::Nada;
     }
-    if !v.falta_algo {
-        // No falta nada: re-enumerar por gusto mete control transfers en un
-        // controlador con dos aparatos bombeando. Lo que se enchufe aqui se
-        // atendera por su aviso, que es barato; el barrido no insiste.
-        return Accion::Nada;
-    }
+    // ** AQUI DECIA `if !v.falta_algo { return Nada }` (hasta el 2026-09-17):
+    // con teclado y raton dentro, NINGUN otro puerto se miraba nunca mas. El
+    // movil del dueno enchufado despues de arrancar no llegaba ni a
+    // direccionarse. Ahora se mira todo lo que tenga algo: lo que contesta y
+    // no es mio se APARCA (queda `tomado` y no se vuelve a tocar), asi que el
+    // coste es UNA enumeracion por aparato, no una por barrido. Y `falta_algo`
+    // deja de ser un dato del que dependa nada.
     if v.intentos >= MAX_INTENTOS {
-        // Los intentos siguen siendo finitos mientras haya algo conectado: sin
-        // esto, un aparato que no sabemos adoptar giraria para siempre.
-        return Accion::Nada;
+        // Los intentos siguen siendo finitos: sin esto, un aparato que no
+        // contesta giraria para siempre. Pero se ENFRIAN en vez de cerrarse:
+        // ver `puertos::ENFRIAMIENTO_BARRIDOS`.
+        return Accion::Enfriar;
     }
     Accion::Adoptar
 }
@@ -137,12 +142,18 @@ pub struct Resumen {
     pub adoptados: u8,
     /// Intentos de adopcion que no dieron nada.
     pub fallidos: u8,
+    /// Aparatos que contestaron, no eran mios y quedaron aparcados.
+    pub aparcados: u8,
 }
 
 impl Resumen {
     /// Se reparo algo? Si no, el barrido se calla.
     pub fn hubo_algo(&self) -> bool {
-        self.soltados != 0 || self.reabiertos != 0 || self.adoptados != 0 || self.fallidos != 0
+        self.soltados != 0
+            || self.reabiertos != 0
+            || self.adoptados != 0
+            || self.fallidos != 0
+            || self.aparcados != 0
     }
 }
 
@@ -225,21 +236,34 @@ mod tests {
         assert_eq!(decidir(&v), Accion::Nada);
     }
 
-    /// Con teclado y raton puestos, el barrido no toca nada. Re-enumerar por
-    /// gusto mete control transfers en un bus con dos aparatos bombeando.
+    /// ** Con teclado y raton puestos, lo que llegue SE MIRA IGUAL (2026-09-17).
+    ///
+    /// Aqui decia lo contrario --"si no falta nada, el barrido no toca el
+    /// bus"-- y ese era el motivo de que un movil enchufado despues de
+    /// arrancar no existiera para el kernel. Lo que lo hace barato es que lo
+    /// que contesta y no es mio se APARCA (`tomado`), no que se ignore.
     #[test]
-    fn si_no_falta_nada_el_barrido_no_toca_el_bus() {
+    fn aunque_no_falte_nada_lo_que_llega_se_mira() {
         let v = Vista { falta_algo: false, ..vista() };
+        assert_eq!(decidir(&v), Accion::Adoptar);
+    }
+
+    /// Y lo aparcado --contesto, no era mio-- no se vuelve a tocar: mismo bit
+    /// que el teclado que escribe, misma regla.
+    #[test]
+    fn lo_aparcado_no_se_vuelve_a_tocar() {
+        let v = Vista { tomado: true, falta_algo: false, ..vista() };
         assert_eq!(decidir(&v), Accion::Nada);
     }
 
-    /// Los intentos siguen siendo finitos MIENTRAS haya algo conectado. Un
-    /// aparato que no sabemos adoptar --un pendrive, unos auriculares-- no puede
-    /// hacer girar el barrido para siempre.
+    /// Los intentos siguen siendo finitos MIENTRAS haya algo conectado, pero
+    /// se ENFRIAN en vez de cerrarse: un aparato que no contesta descansa y se
+    /// vuelve a intentar; uno que no sabemos adoptar ya no llega aqui, porque
+    /// contesto y quedo aparcado.
     #[test]
-    fn un_aparato_que_no_sabemos_adoptar_no_gira_para_siempre() {
+    fn un_aparato_que_no_contesta_se_enfria_en_vez_de_cerrarse() {
         let v = Vista { falta_algo: true, intentos: MAX_INTENTOS, ..vista() };
-        assert_eq!(decidir(&v), Accion::Nada);
+        assert_eq!(decidir(&v), Accion::Enfriar);
     }
 
     /// Pero se intenta lo justo: el primer fallo no puede ser el ultimo, porque

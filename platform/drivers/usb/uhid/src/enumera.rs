@@ -370,6 +370,12 @@ pub unsafe fn leer_descriptores(
 pub unsafe fn direccionar_puerto(port: u8) -> Option<u8> {
     let h = bmo_xhci::hal();
     bmo_xhci::port_power_on(port);
+    // ** 100 ms de DEBOUNCE antes del reset (USB 2.0, 7.1.7.3), 2026-09-17.
+    // Aqui habia un spin de 50.000 vueltas: microsegundos. Un raton con
+    // firmware RGB o un movil que aun arranca fallaba el reset o no daba sus
+    // descriptores, y cada fallo gastaba uno de los tres intentos. Se paga
+    // solo al enchufar y al arrancar, nunca en el camino del teclado.
+    h.delay_ms(100);
     // Margen tras encender (chipset AMD).
     for _ in 0..50000 {
         core::hint::spin_loop();

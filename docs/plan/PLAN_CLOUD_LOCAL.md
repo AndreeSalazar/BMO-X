@@ -128,6 +128,29 @@ pantalla tal cual.
       encendido, F11 dice `llego una RED POR USB (RNDIS...)` o `(NCM)`: esa foto
       decide cual de los dos drivers se escribe.
 
+- [ ] **S3b.0c -- que TODO lo USB entre, y limpio.** Eddi, 2026-09-17: *"los
+      USB cuando entro en mi sistema se bugea o se traba, como esperando
+      entrar"*. Auditado el camino entero de un aparato (`bmo-uhid`:
+      `puertos.rs`, `barrido.rs`, `enumera.rs`, `lib.rs`; kernel
+      `dev/usb/enchufe.rs`), cuatro causas y cuatro arreglos en codigo:
+      (1) con teclado y raton dentro NADA mas se enumeraba (`if !falta_algo`
+      y `if completo()`): ahora todo lo que tiene algo se mira, y lo que
+      contesta y no es mio se APARCA (queda `tomado`, una enumeracion por
+      aparato, en paz hasta desenchufar); (2) tres fallos CERRABAN el
+      puerto hasta desenchufar, y a 500 ms por barrido eso son 1,5 s -- un
+      raton con firmware RGB o un movil arrancando tardan mas: ahora los
+      intentos se ENFRIAN (descansa 10 barridos = 5 s y vuelve); (3) antes
+      del reset habia un spin de microsegundos donde la norma pide 100 ms
+      de debounce (USB 2.0, 7.1.7.3): puesto; (4) el arranque cosechaba
+      TODOS los puertos, y cada vacio entraba en el libro del portero como
+      "no se pudo direccionar" (doce fichas de nada): solo se cosecha lo
+      que tiene algo, y por la misma contabilidad que el barrido.
+      `adoptar_puerto` contesta ahora `Instalado / Aparcado / NoContesto /
+      Cerrado` y CABINA dice cual fue. **Como se sabe:** el raton y el
+      teclado entran solos aunque tarden; el movil enchufado con el
+      escritorio ya arriba aparece en `save` como aparcado y configurado;
+      `save` no lista puertos vacios.
+
 - [ ] **S3b.0b -- BMO-X le dice al movil que HAY anfitrion.** En codigo el
       2026-09-17 (`platform/drivers/usb/uhid/src/lib.rs`, `cosechar_puerto`):
       `SET_CONFIGURATION` solo se mandaba a teclados y ratones; todo lo demas

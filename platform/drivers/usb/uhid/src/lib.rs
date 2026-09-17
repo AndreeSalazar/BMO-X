@@ -114,8 +114,11 @@ pub struct UsbHidHal {
     //     physically gone.
     //   * So `completo()` still answered `true` -- keyboard and mouse both
     //     "present".
-    //   * And `adoptar_puerto` opens with `if self.completo() { return false }`,
-    //     whose comment reads *"if nothing is missing, do not touch the bus"*.
+    //   * And `adoptar_puerto` opened with `if self.completo() { return false }`,
+    //     whose comment read *"if nothing is missing, do not touch the bus"*.
+    //     (That gate is gone since 2026-09-17: everything that shows up is
+    //     looked at, and what answers but is not ours gets PARKED. See
+    //     `barrido::decidir`.)
     //
     // The replug event arrived, was consumed correctly, and the adopter decided
     // there was nothing to do -- because as far as it knew, nothing had been
@@ -303,8 +306,15 @@ impl UsbHidHal {
     /// Toca MMIO del xHC: hay que llamarlo con el CR3 del kernel puesto.
     unsafe fn cosechar_puerto(&mut self, port: u8) -> Cosecha {
         let h = bmo_xhci::hal();
-        let mut cosecha = Cosecha { teclado: false, raton: false };
+        let mut cosecha = Cosecha { teclado: false, raton: false, contesto: false };
 
+        // ** UN PUERTO VACIO NO SE COSECHA (2026-09-17). El arranque llamaba
+        // a esto para TODOS los puertos y cada vacio acababa en el libro del
+        // portero como "un puerto con algo dentro NO se pudo direccionar":
+        // doce fichas de nada que dejaban fuera a los aparatos de verdad.
+        if !bmo_xhci::hay_dispositivo(port) {
+            return cosecha;
+        }
         let slot = match enumera::direccionar_puerto(port) {
             Some(s) => s,
             None => {
@@ -325,6 +335,7 @@ impl UsbHidHal {
             }
         };
         let cfg = &cfg[..largo];
+        cosecha.contesto = true;
 
         let mut ifaces = [(0u8, 0u8, 0u8, 0u8); enumera::MAX_IFACES];
         let n_ifs = enumera::interfaces(cfg, &mut ifaces);
@@ -538,12 +549,12 @@ impl UsbHidHal {
     ///
     /// # Safety
     /// Toca MMIO del xHC: hay que llamarlo con el CR3 del kernel puesto.
-    pub unsafe fn adoptar_puerto(&mut self, port: u8) -> bool {
-        // Si no falta nada, no se toca el bus. Re-enumerar por gusto mete
-        // control transfers en un controlador con dos aparatos bombeando.
-        if self.completo() {
-            return false;
-        }
+    pub unsafe fn adoptar_puerto(&mut self, port: u8) -> Adopcion {
+        // ** AQUI DECIA `if self.completo() { return false }` (hasta el
+        // 2026-09-17): con teclado y raton dentro no se tocaba el bus, y un
+        // movil enchufado despues no existia. Ahora se mira; lo que contesta y
+        // no es mio se aparca, asi que sigue siendo UNA enumeracion por
+        // aparato. Ver `barrido::decidir`.
         // * Y aunque falte algo: **a este puerto en concreto, se le puede
         // tocar?** Esto es lo que faltaba, y sin ello la adopcion reactiva se
         // comia a si misma -- resetear un puerto ES un cambio de puerto, asi que
@@ -551,7 +562,7 @@ impl UsbHidHal {
         // puerto que giraba era el del teclado ya enumerado, que moria con el
         // primer reset. Ver [`puertos`].
         if !self.puertos.se_puede_intentar(port) {
-            return false;
+            return Adopcion::Cerrado;
         }
         // Contar ANTES de tocar el bus: si la enumeracion se va por otro
         // camino, el intento ya esta gastado.
@@ -559,9 +570,15 @@ impl UsbHidHal {
         let cosecha = self.cosechar_puerto(port);
         if cosecha.teclado || cosecha.raton {
             self.arrancar_bombas();
-            return true;
+            return Adopcion::Instalado;
         }
-        false
+        if cosecha.contesto {
+            // Contesto y no era mio: se le leyeron los papeles (estan en el
+            // portero) y se configuro; en paz hasta que se desenchufe.
+            self.puertos.aparcar(port);
+            return Adopcion::Aparcado;
+        }
+        Adopcion::NoContesto
     }
 
     /// **El barrido: mirar los puertos de verdad y reparar la diferencia.**
@@ -629,10 +646,15 @@ impl UsbHidHal {
                         continue;
                     }
                     ya_enumere = true;
-                    if self.adoptar_puerto(port) {
-                        r.adoptados = r.adoptados.saturating_add(1);
-                    } else {
-                        r.fallidos = r.fallidos.saturating_add(1);
+                    match self.adoptar_puerto(port) {
+                        Adopcion::Instalado => r.adoptados = r.adoptados.saturating_add(1),
+                        Adopcion::Aparcado => r.aparcados = r.aparcados.saturating_add(1),
+                        _ => r.fallidos = r.fallidos.saturating_add(1),
+                    }
+                }
+                Accion::Enfriar => {
+                    if self.puertos.enfriar(port) {
+                        r.reabiertos = r.reabiertos.saturating_add(1);
                     }
                 }
             }
@@ -642,9 +664,26 @@ impl UsbHidHal {
 }
 
 /// Que se instalo al mirar un puerto.
+/// Lo que dio `adoptar_puerto` (2026-09-17). Antes era un `bool` y "false"
+/// tapaba tres cosas distintas que se tratan de tres maneras.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Adopcion {
+    /// Teclado o raton instalado: el puerto queda tomado.
+    Instalado,
+    /// Contesto, no es mio: papeles leidos, configurado, y aparcado.
+    Aparcado,
+    /// No contesto (sin direccion o sin descriptores): se reintenta, enfriando.
+    NoContesto,
+    /// Ni se intento: puerto tomado, aparcado, o descansando.
+    Cerrado,
+}
+
 struct Cosecha {
     teclado: bool,
     raton: bool,
+    /// El aparato CONTESTO: se direcciono y dio sus descriptores. Distingue
+    /// "no es mio" (se aparca) de "no contesta" (se reintenta, enfriando).
+    contesto: bool,
 }
 
 impl InputHal for UsbHidHal {
@@ -661,15 +700,16 @@ impl InputHal for UsbHidHal {
         let h = bmo_xhci::hal();
 
         // -- Recorrer los puertos ------------------------------------------
-        for port in 0..ctrl.max_ports {
-            let cosecha = unsafe { self.cosechar_puerto(port) };
-
-            // Solo se corta con un raton DEDICADO. Un teclado compuesto marca
-            // las dos banderas --su interfaz de medios cuenta como raton-- y
-            // cortar ahi dejaba el puerto del raton de verdad sin visitar jamas.
-            if cosecha.teclado && cosecha.raton && self.raton_dedicado() {
-                break;
+        // Todos los puertos con algo dentro, y por la MISMA contabilidad que
+        // el barrido (2026-09-17): antes el arranque cosechaba directo, sin
+        // anotar intento ni aparcar, y cortaba en cuanto tenia teclado y
+        // raton -- lo demas se quedaba sin mirar hasta el primer barrido, o
+        // para siempre si el barrido tampoco miraba.
+        for port in 0..ctrl.max_ports.min(puertos::MAX_PUERTOS as u8) {
+            if !unsafe { bmo_xhci::hay_dispositivo(port) } {
+                continue;
             }
+            let _ = unsafe { self.adoptar_puerto(port) };
         }
 
         // -- Arrancar las bombas, AL FINAL ---------------------------------

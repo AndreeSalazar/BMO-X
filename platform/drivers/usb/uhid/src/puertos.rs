@@ -62,11 +62,25 @@ pub const MAX_PUERTOS: usize = 32;
 /// que un teclado). Tres y no infinito: ver la regla 2.
 pub const MAX_INTENTOS: u8 = 3;
 
+/// **Cuantos barridos descansa un puerto con los intentos gastados antes de
+/// volver a intentarse** (2026-09-17). A 500 ms por barrido, cinco segundos.
+///
+/// Hasta hoy un puerto con algo dentro que fallaba tres veces se CERRABA hasta
+/// desenchufarlo. Con el barrido cada 500 ms eso son 1,5 s: un raton con
+/// firmware RGB, o un movil que aun esta arrancando, tarda mas -- y el dueno
+/// lo veia como "se queda esperando entrar" y lo resolvia sacando y metiendo el
+/// cable. Enfriar en vez de cerrar mantiene la regla 2 (nada gira para
+/// siempre: tres resets cada cinco segundos, no doscientos por segundo) y
+/// deja que lo lento acabe entrando.
+pub const ENFRIAMIENTO_BARRIDOS: u8 = 10;
+
 /// Que puertos estan tomados y cuantas veces se ha intentado cada uno.
 #[derive(Debug, Clone, Copy)]
 pub struct Puertos {
     tomados: u32,
     intentos: [u8; MAX_PUERTOS],
+    /// Barridos que lleva descansando un puerto con los intentos gastados.
+    enfriando: [u8; MAX_PUERTOS],
 }
 
 impl Default for Puertos {
@@ -77,7 +91,7 @@ impl Default for Puertos {
 
 impl Puertos {
     pub const fn nuevo() -> Self {
-        Self { tomados: 0, intentos: [0; MAX_PUERTOS] }
+        Self { tomados: 0, intentos: [0; MAX_PUERTOS], enfriando: [0; MAX_PUERTOS] }
     }
 
     fn cabe(port: u8) -> bool {
@@ -119,6 +133,32 @@ impl Puertos {
         }
     }
 
+    /// **Aparcar**: el puerto contesto, se le leyeron los papeles y lo que hay
+    /// no es mio (un movil, un disco, un hub). Se deja EN PAZ hasta que se
+    /// desenchufe -- resetearlo cada cinco segundos seria molestar a un aparato
+    /// sano por no tener driver. Es la misma marca que `take`, a proposito: las
+    /// dos dicen "a este puerto no se le vuelve a tocar", y las dos se levantan
+    /// al desenchufar. Lo que las distingue es quien lo cuenta, no el bit.
+    pub fn aparcar(&mut self, port: u8) {
+        self.take(port);
+    }
+
+    /// **Un barrido mas de descanso** para un puerto con los intentos gastados.
+    /// Devuelve `true` cuando el descanso se cumplio y los intentos vuelven.
+    pub fn enfriar(&mut self, port: u8) -> bool {
+        if !Self::cabe(port) {
+            return false;
+        }
+        let i = port as usize;
+        self.enfriando[i] = self.enfriando[i].saturating_add(1);
+        if self.enfriando[i] >= ENFRIAMIENTO_BARRIDOS {
+            self.enfriando[i] = 0;
+            self.intentos[i] = 0;
+            return true;
+        }
+        false
+    }
+
     /// Se desenchufo: el puerto vuelve a estar libre **y con los intentos
     /// devueltos**. Sin esto, enchufar y desenchufar tres veces dejaria un
     /// puerto inservible hasta el siguiente reinicio.
@@ -126,6 +166,7 @@ impl Puertos {
         if Self::cabe(port) {
             self.tomados &= !(1 << port);
             self.intentos[port as usize] = 0;
+            self.enfriando[port as usize] = 0;
         }
     }
 }
@@ -194,6 +235,32 @@ mod tests {
         assert!(!p.se_puede_intentar(0));
         assert!(!p.se_puede_intentar(5));
         assert!(p.se_puede_intentar(6), "este no tiene nada que ver");
+    }
+
+    #[test]
+    fn los_intentos_gastados_se_enfrian_y_vuelven() {
+        let mut p = Puertos::nuevo();
+        for _ in 0..MAX_INTENTOS {
+            p.anotar_intento(2);
+        }
+        assert!(!p.se_puede_intentar(2));
+        for _ in 0..ENFRIAMIENTO_BARRIDOS - 1 {
+            assert!(!p.enfriar(2), "todavia descansa");
+            assert!(!p.se_puede_intentar(2));
+        }
+        assert!(p.enfriar(2), "se cumplio el descanso");
+        assert!(p.se_puede_intentar(2), "y los intentos volvieron");
+        assert_eq!(p.intentos(2), 0);
+    }
+
+    #[test]
+    fn un_puerto_aparcado_no_se_toca_hasta_desenchufar() {
+        let mut p = Puertos::nuevo();
+        p.aparcar(7);
+        assert!(!p.se_puede_intentar(7));
+        assert!(p.tomado(7));
+        p.release(7);
+        assert!(p.se_puede_intentar(7));
     }
 
     /// Un puerto fuera de rango no rompe nada y no se enumera.

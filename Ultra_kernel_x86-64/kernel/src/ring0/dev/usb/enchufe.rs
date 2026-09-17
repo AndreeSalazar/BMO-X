@@ -78,11 +78,19 @@ fn atender_enchufe(puerto: u8) {
     // evento es 1-based. Restar aqui y no en el driver: el que traduce es el
     // que conoce las dos convenciones.
     let idx = puerto.saturating_sub(1);
-    let adoptado = unsafe {
+    let adopcion = unsafe {
         let hid = &mut *core::ptr::addr_of_mut!(HID);
         hid.adoptar_puerto(idx)
     };
-    if adoptado {
+    // ** Contesto y no era mio (2026-09-17): un movil, un disco, un hub. Sus
+    // papeles estan en el portero, se le dijo que hay anfitrion, y queda en
+    // paz hasta que se desenchufe. Antes esto ni se intentaba con teclado y
+    // raton dentro, y el aviso decia "ya creo tenerlo todo".
+    if adopcion == bmo_uhid::Adopcion::Aparcado {
+        crate::ring0::cabina::info("usb", "puerto: ENCHUFADO, contesto y no es mio: aparcado", puerto as u64);
+        return;
+    }
+    if adopcion == bmo_uhid::Adopcion::Instalado {
         crate::ring0::cabina::info("usb", "puerto: ENCHUFADO y adoptado", puerto as u64);
         unsafe { refrescar_presencia() };
 
@@ -155,14 +163,17 @@ fn atender_enchufe(puerto: u8) {
     //
     // Ver `olvidar_estado_de_teclado`, donde esta contado entero.
     super::olvidar_estado_de_teclado("puerto ENCHUFADO: se olvida el teclado de antes");
-    if k && m {
-        crate::ring0::cabina::info("usb", "puerto: ENCHUFADO, ya creo tenerlo todo", puerto as u64);
-        crate::ring0::cabina::bits("usb", "  ...creo tener teclado:raton", estado);
-    } else if cerrado {
-        crate::ring0::cabina::warn("usb", "puerto: ENCHUFADO pero CERRADO por intentos", puerto as u64);
+    // Lo que queda son dos cosas distintas, y se dicen distinto (2026-09-17):
+    // no contesto (se reintenta, y tras tres fallos descansa cinco segundos
+    // y vuelve), o el aviso llego en un puerto que no se toca -- el del
+    // teclado que escribe, o uno aparcado.
+    if adopcion == bmo_uhid::Adopcion::NoContesto {
+        crate::ring0::cabina::info("usb", "puerto: ENCHUFADO y NO contesto: se reintenta", puerto as u64);
         crate::ring0::cabina::id("usb", "  ...intentos gastados en el", intentos as u64);
+    } else if cerrado && intentos >= bmo_uhid::puertos::MAX_INTENTOS {
+        crate::ring0::cabina::warn("usb", "puerto: ENCHUFADO, tres fallos: descansa 5 s y se reintenta", puerto as u64);
     } else {
-        crate::ring0::cabina::info("usb", "puerto: ENCHUFADO, enumere y no era mio", puerto as u64);
+        crate::ring0::cabina::info("usb", "puerto: aviso en un puerto que no se toca (mio o aparcado)", puerto as u64);
         crate::ring0::cabina::bits("usb", "  ...creo tener teclado:raton", estado);
     }
 }
@@ -275,7 +286,10 @@ pub(crate) fn barrer_si_toca() {
         crate::ring0::cabina::info("usb", "BARRIDO: adopte lo que un aviso perdido dejo fuera", r.adoptados as u64);
     }
     if r.reabiertos != 0 {
-        crate::ring0::cabina::info("usb", "BARRIDO: puertos vacios reabiertos", r.reabiertos as u64);
+        crate::ring0::cabina::info("usb", "BARRIDO: puertos reabiertos (vacios, o que ya descansaron)", r.reabiertos as u64);
+    }
+    if r.aparcados != 0 {
+        crate::ring0::cabina::info("usb", "BARRIDO: aparatos que contestaron y no son mios, aparcados", r.aparcados as u64);
     }
     if r.fallidos != 0 {
         crate::ring0::cabina::info("usb", "BARRIDO: intentos que no dieron nada", r.fallidos as u64);
