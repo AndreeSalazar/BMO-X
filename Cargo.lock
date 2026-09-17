@@ -152,6 +152,7 @@ version = "0.1.0"
 dependencies = [
  "bmo-abi",
  "bmo-c-front",
+ "bmo-cpp-front",
  "bmo-lower",
  "bmo-verify",
 ]

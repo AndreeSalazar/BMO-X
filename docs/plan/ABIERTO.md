@@ -8,7 +8,7 @@
 
 ```text
    289 casillas ABIERTAS en 34 planes
-   191 hechas
+   192 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -125,12 +125,12 @@
 - [ ] S3 -- EL PRIMER CLIENTE: INTI. Porque puede declarar el alias. Y
 - ... y 6 mas
 
-## [`PLAN_EL_ENLAZADOR.md`](PLAN_EL_ENLAZADOR.md) -- 8 abiertas, 7 hechas
+## [`PLAN_EL_ENLAZADOR.md`](PLAN_EL_ENLAZADOR.md) -- 8 abiertas, 8 hechas
 
 *PLAN EL ENLAZADOR -- la pieza que madura a CINCO lenguajes a la vez*
 
 - [ ] E4 -- EL METAL. Ese .bex enlazado, en el Ryzen. Hoy corre en el
-- [ ] E5c -- EL ARBOL ENTERO POR EL CAMINO DEL OBJETO. Los 41 ejecutables
+- [ ] E5f -- errno, Y LOS extern QUE NADIE DEFINE. Lo encontro DOOM al
 - [ ] E5d -- EL bss NO SE SABE NOMBRAR. Salio al hacer E5b: una reloc del
 - ... y 5 mas
 

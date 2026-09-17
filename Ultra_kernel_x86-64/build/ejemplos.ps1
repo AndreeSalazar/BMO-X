@@ -448,16 +448,44 @@ function Compilar-Ejemplos {
     # [!] El tope de 8 caracteres NO es una convencion nuestra: el driver FAT32
     # del kernel se NIEGA a recortar un nombre, asi que un tallo de nueve letras
     # no es feo, es un fichero que no se puede abrir.
-    param($ejemplos, $crate, $etiqueta, $patron, $dataBase, $repo)
+    #
+    # ** `-PorObjeto` (E5c, 2026-09-17): el fuente no se compila a programa sino
+    # a UNIDAD (`-c`), y el programa lo hace `bmo-enlazar`. El camino es mas
+    # largo y el motivo es uno solo: **el enlazador tira lo que nadie llama y el
+    # modo imagen no**. Medido antes de cambiarlo, `cubo_C` bajaba un 37,9 %.
+    #
+    # Solo pueden ir por aqui los frontends que saben escribir un objeto -- hoy
+    # C y C++. COBOL y Ada tienen emisor propio y todavia no (E6 y E7), asi que
+    # NO se les pasa la bandera: van por donde iban.
+    param($ejemplos, $crate, $etiqueta, $patron, $dataBase, $repo, [switch]$PorObjeto)
     foreach ($e in $ejemplos) {
         $tallo = [System.IO.Path]::GetFileNameWithoutExtension($e.out)
         if ($tallo.Length -gt 8) { Fail ($e.out + ': el tallo no cabe en 8.3') }
         $dst = Join-Path (Join-Path $dataBase $e.dir) $e.out
-        $out = cargo run -p $crate --quiet -- (Join-Path $repo $e.src) -o $dst 2>&1
-        $out | ForEach-Object {
-            if ($_ -match $patron) { Write-Host ('    [' + $etiqueta + '] ' + $_) -ForegroundColor DarkGray }
+        if ($PorObjeto) {
+            # El `.bo` es intermedio y no vive en el espejo: lo que se despliega
+            # es el programa, no la unidad con la que se hizo.
+            $bo = Join-Path $env:TEMP ($tallo + '.bo')
+            $out = cargo run -p $crate --quiet -- (Join-Path $repo $e.src) -c -o $bo 2>&1
+            $out | ForEach-Object {
+                if ($_ -match $patron) { Write-Host ('    [' + $etiqueta + '] ' + $_) -ForegroundColor DarkGray }
+            }
+            if ($LASTEXITCODE -ne 0) { Fail ('no compilo ' + $e.src) }
+            if (-not (Test-Path $bo)) { Fail ('no salio la unidad de ' + $e.src) }
+            $out = cargo run -p bmo-enlazar --quiet -- -o $dst $bo 2>&1
+            $out | ForEach-Object {
+                if ($_ -match 'ok:|error|poda:|aviso:') { Write-Host ('    [' + $etiqueta + '] ' + $_) -ForegroundColor DarkGray }
+            }
+            $fallo = $LASTEXITCODE
+            Remove-Item $bo -ErrorAction SilentlyContinue
+            if ($fallo -ne 0) { Fail ('no enlazo ' + $e.src) }
+        } else {
+            $out = cargo run -p $crate --quiet -- (Join-Path $repo $e.src) -o $dst 2>&1
+            $out | ForEach-Object {
+                if ($_ -match $patron) { Write-Host ('    [' + $etiqueta + '] ' + $_) -ForegroundColor DarkGray }
+            }
+            if ($LASTEXITCODE -ne 0) { Fail ('no compilo ' + $e.src) }
         }
-        if ($LASTEXITCODE -ne 0) { Fail ('no compilo ' + $e.src) }
         if (-not (Test-Path $dst)) { Fail ('no salio ' + $e.out) }
     }
 }
@@ -585,13 +613,13 @@ try {
     Compilar-Ejemplos $adaEjemplos 'bmo-ada-front' 'ada' 'ok:|error|linea' $dataBase $repo
 
     Step 'Building C++ example programs...'
-    Compilar-Ejemplos $cppEjemplos 'bmo-cpp-front' 'cpp' 'ok:|error|linea' $dataBase $repo
+    Compilar-Ejemplos $cppEjemplos 'bmo-cpp-front' 'cpp' 'ok:|error|linea' $dataBase $repo -PorObjeto
 
     Step 'Building C example programs...'
     # Sin --base ni --asm-path: ese camino usa el PREPROCESADOR, que es lo que
     # resuelve `#include <bmo/...>`. Con ellos se toma el de modulos, que no lo
     # llama.
-    Compilar-Ejemplos $cEjemplos 'bmo-c-front' 'c' 'ok:|error' $dataBase $repo
+    Compilar-Ejemplos $cEjemplos 'bmo-c-front' 'c' 'ok:|error' $dataBase $repo -PorObjeto
 
     Step 'Building INTI probes...'
     # ** `run inti/cpu.ibx`. Por el MISMO helper que los otros tres: si INTI

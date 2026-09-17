@@ -87,7 +87,16 @@ fn main() {
     // Va ANTES del `write` a proposito: verificar despues dejaria un fichero
     // malo en el disco con un mensaje al lado, y quien lo encuentre manana vera
     // el `.bex`, no el mensaje.
-    if let bmo_verify::Verdict::Rejected(razones) = bmo_verify::verify(&bef) {
+    //
+    // ** Y a un OBJETO se le pide lo del objeto, no lo del programa: un `.bo`
+    // no tiene punto de entrada porque `main` vive en otra unidad. Pasarle el
+    // gate del programa lo rechazaba por no ser lo que no pretende ser.
+    let veredicto = if objeto {
+        bmo_verify::verify_object(&bef)
+    } else {
+        bmo_verify::verify(&bef)
+    };
+    if let bmo_verify::Verdict::Rejected(razones) = veredicto {
         eprintln!("error: el BEF no pasa el gate de verificacion:");
         for r in &razones {
             eprintln!("  - {r}");

@@ -1,22 +1,27 @@
 # Tamano de cada ejecutable de staging/, en bytes.
 # REPORTERO, no trinquete: ver toolchain/tools/tamano/tamano.py
 # Se regenera con:  py toolchain/tools/tamano/tamano.py --fijar
-ada/cierre.bex 1760
-apps/doom.bex 874128
-c/blit.bex 7260
-c/caja.bex 20780
-c/ciclos.bex 37717
-c/coste.bex 41045
+ada/cierre.bex 2352
+apps/doom.bex 876312
+apps/navegar.ibx 21672
+c/blit.bex 5872
+c/caja.bex 10476
+c/ciclos.bex 11729
+c/coste.bex 15205
+c/cubo.bex 29720
+c/guia.bex 27074
 c/holac.bex 2791
-c/leer.bex 18394
+c/imagen.bex 22240
+c/leer.bex 9880
 c/memc.bex 6384
-c/musica.bex 10438
+c/musica.bex 10230
 c/pregc.bex 3114
-c/ray.bex 33253
-c/scrollc.bex 6971
-c/sonda.bex 9591
-c/sonido.bex 6962
-c/vivaldi.bex 7857
+c/ray.bex 24825
+c/scrollc.bex 5885
+c/sonda.bex 9423
+c/sonido.bex 6242
+c/texto.bex 27344
+c/vivaldi.bex 6397
 cobol/1/hola.bex 1088
 cobol/10/maestro.bex 8664
 cobol/2/banco.bex 2248
@@ -29,6 +34,11 @@ cobol/6/carter.bex 3112
 cobol/7/cuentas.bex 6368
 cobol/8/cierre.bex 5104
 cobol/9/comisio.bex 10016
-inti/cpu.ibx 11296
-sys/d.bex 617912
+cpp/cuentas.bex 2994
+inti/bico.ibx 15744
+inti/cpu.ibx 11304
+inti/musica.ibx 20880
+inti/pulso.ibx 6056
+inti/ventana.ibx 18520
+sys/d.bex 863544
 sys/precio.bex 30080

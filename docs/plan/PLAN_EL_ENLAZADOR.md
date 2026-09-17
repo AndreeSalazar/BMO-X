@@ -225,23 +225,67 @@ sigue siendo del dueno: este plan escribe los escalones para cuando la tome.
       quitar la raiz del puntero a funcion tumba una fila, y no seguir las
       aristas tumba tres.
 
-- [ ] **E5c -- EL ARBOL ENTERO POR EL CAMINO DEL OBJETO.** Los 41 ejecutables
-      se compilan en modo IMAGEN, que NO poda: lo de arriba no les llega. Pasar
-      los mismos fuentes por `-c` + `bmo-enlazar` ya se midio el 17-09:
+- [x] **E5c -- EL ARBOL POR EL CAMINO DEL OBJETO. HECHO el 2026-09-17**, por
+      decision del dueno (*"si, haz E5c, cambia los 41 ejecutables"*). El build
+      ya no compila los ejemplos de C y C++ a imagen: los compila a unidad
+      (`-c`) y los enlaza. **19 ejecutables cambiaron de camino** --los 18 de C y
+      el de C++-- y entre todos pasan de **384.118 a 237.825 bytes (-38,1 %)**.
+      De esos 19, quince cambiaron de tamano (los otros cuatro no tenian nada
+      que sobrara), tamanos finales ya con sus recursos dentro:
 
       ```text
-         hola_C       2.791 ->  2.791 B    0,0 %   (no le sobra nada)
-         scroll_C     6.971 ->  5.885 B  -15,6 %
-         raycaster   35.386 -> 24.825 B  -29,8 %
-         cubo_C      46.015 -> 28.561 B  -37,9 %
+         c/ciclos.bex     37.717 -> 11.729   -68,9 %
+         c/coste.bex      41.045 -> 15.205   -63,0 %
+         c/caja.bex       20.780 -> 10.476   -49,6 %
+         c/leer.bex       18.394 ->  9.880   -46,3 %
+         c/imagen.bex     37.800 -> 22.240   -41,2 %
+         c/cubo.bex       47.168 -> 29.720   -37,0 %
+         c/guia.bex       41.818 -> 27.074   -35,3 %
+         c/texto.bex      39.648 -> 27.344   -31,0 %
+         c/ray.bex        35.386 -> 24.825   -29,8 %
+         c/blit.bex        7.260 ->  5.872   -19,1 %
+         c/vivaldi.bex     7.857 ->  6.397   -18,6 %
+         c/scrollc.bex     6.971 ->  5.885   -15,6 %
+         c/sonido.bex      6.962 ->  6.242   -10,3 %
+         c/musica.bex     10.438 -> 10.230    -2,0 %
+         c/sonda.bex       9.591 ->  9.423    -1,8 %
       ```
 
-      **No se hace sin que lo decida el dueno**, y no por prudencia: cambia los
-      41 ejecutables, o sea que se pierde la prueba de byte-identico con la que
-      se han verificado los tres ultimos cambios de fondo. Se paga una vez, con
-      la vista puesta.
-      **Como se sabe**: `cubo.bex` baja a la altura de los 28.561 B y el
-      escritorio sigue pintando su icono.
+      **Como se sabe que siguen haciendo lo mismo**, que es lo unico que
+      importa: "pasa el gate" NO es "hace lo mismo" -- a un `.bex` al que le
+      falte una funcion que si se usa le pasa el gate igual y salta al vacio en
+      el metal. Asi que la fila `los_ejemplos_del_arbol_dicen_lo_mismo_enlazados`
+      compila **catorce** ejemplos de las DOS formas, los EJECUTA los dos y
+      exige la misma salida byte a byte.
+
+      ** Se pierde la prueba de byte-identico con la que se habian verificado
+      los tres cambios de fondo anteriores. Se paga una vez y a la vista: a
+      partir de aqui lo que compara es la SALIDA, no el sha256.
+
+      **Lo que NO entro, y por que**:
+      - `ciclos_C` y `coste_C` si cambiaron de camino, pero el emulador no
+        decodifica sus opcodes (miden ciclos de CPU), asi que de esos dos no hay
+        comprobacion de salida ni antes ni ahora: los juzga el Ryzen.
+      - **DOOM se queda en modo imagen**, y no por prudencia: su objeto no
+        enlaza. Ver E5f.
+      - COBOL, Ada e INTI siguen igual: no saben escribir un objeto (E6, E7, E8).
+
+- [ ] **E5f -- `errno`, Y LOS `extern` QUE NADIE DEFINE.** Lo encontro DOOM al
+      intentar E5c, y el enlazador lo dice con su nombre:
+      `'errno' lo usa doom.bo y no lo define nadie`.
+
+      `<errno.h>` **declara** `extern int errno;` y no lo define nadie en
+      ningun sitio. En modo imagen no se notaba porque BMO C le reservaba ocho
+      bytes de relleno a todo nombre externo que no encontraba -- o sea que
+      funcionaba por un apano, no por un diseno. Enlazando ya no cuela.
+
+      Lo suyo es que **la libc lo defina**, y ahi aparece la pieza que falta:
+      `politica_libc` sabe que FUNCIONES vinieron de una cabecera del sistema
+      porque `Function` trae su linea, pero **`GlobalDecl` no tiene linea**, asi
+      que hoy no hay como decir lo mismo de un dato. Sin eso, definirlo en la
+      cabecera haria que dos unidades que incluyan `<errno.h>` definan las dos
+      `errno` y choquen.
+      **Como se sabe**: DOOM compila con `-c`, enlaza y se juega.
 
 - [ ] **E5d -- EL `bss` NO SE SABE NOMBRAR.** Salio al hacer E5b: una reloc del
       objeto nombra su seccion destino con TRES codigos --codigo, datos,

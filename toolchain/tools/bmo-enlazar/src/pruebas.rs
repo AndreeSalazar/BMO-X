@@ -426,3 +426,56 @@ int main() {
         .expect("tiene que enlazar");
     assert_eq!(correr(&bex), "42");
 }
+
+/// *** E5c: LOS EJEMPLOS DEL ARBOL, POR LOS DOS CAMINOS, Y LA MISMA SALIDA.
+///
+/// Desde el 2026-09-17 el build NO compila los ejemplos de C a imagen: los
+/// compila a unidad y los enlaza, porque el enlazador tira lo que nadie llama y
+/// el modo imagen no. Eso les quita hasta un 68,9 %.
+///
+/// Encoger no vale de nada si hacen otra cosa, y "pasa el gate" no es "hace lo
+/// mismo": un `.bex` al que le falte una funcion que si se usa pasa el gate
+/// igual y salta al vacio EN EL METAL. Asi que aqui cada ejemplo se compila de
+/// las DOS formas, se EJECUTAN las dos y se exige la misma salida byte a byte.
+///
+/// ** Faltan dos de los dieciseis, y no por comodidad: `ciclos_C` y `coste_C`
+/// miden ciclos de CPU y usan opcodes que el emulador no decodifica -- no
+/// corren aqui ni antes ni ahora. Esos dos los juzga el Ryzen (E4), y son los
+/// unicos del arbol sin doble camino comprobado.
+#[test]
+fn los_ejemplos_del_arbol_dicen_lo_mismo_enlazados() {
+    let ejemplos: [(&str, &str); 14] = [
+        ("hola_C.c", include_str!("../../../lang/c/examples/hola_C.c")),
+        ("memoria_C.c", include_str!("../../../lang/c/examples/memoria_C.c")),
+        ("vivaldi_C.c", include_str!("../../../lang/c/examples/vivaldi_C.c")),
+        ("blit_C.c", include_str!("../../../lang/c/examples/blit_C.c")),
+        ("sonido_C.c", include_str!("../../../lang/c/examples/sonido_C.c")),
+        ("musica_C.c", include_str!("../../../lang/c/examples/musica_C.c")),
+        ("scroll_C.c", include_str!("../../../lang/c/examples/scroll_C.c")),
+        ("caja_C.c", include_str!("../../../lang/c/examples/caja_C.c")),
+        ("leer_C.c", include_str!("../../../lang/c/examples/leer_C.c")),
+        ("cubo_C.c", include_str!("../../../lang/c/examples/cubo_C.c")),
+        ("guia_C.c", include_str!("../../../lang/c/examples/guia_C.c")),
+        ("imagen_C.c", include_str!("../../../lang/c/examples/imagen_C.c")),
+        ("raycaster_C.c", include_str!("../../../lang/c/examples/raycaster_C.c")),
+        ("sonda_C.c", include_str!("../../../lang/c/examples/sonda_C.c")),
+    ];
+    for (nombre, fuente) in ejemplos {
+        let imagen = bmo_c_front::compile_with_preprocessor(
+            fuente,
+            std::path::Path::new(nombre),
+            bmo_c_front::CStandard::C11,
+        )
+        .unwrap_or_else(|e| panic!("{nombre} a imagen: {}", e.message));
+        let enlazado = enlazar(&[objeto_con(nombre, fuente, bmo_c_front::Libc::Copia)])
+            .unwrap_or_else(|e| panic!("{nombre} enlazado: {e}"));
+        assert_eq!(correr(&imagen), correr(&enlazado), "{nombre} no dice lo mismo");
+        // Y no puede salir mas grande: si sale, la poda no se aplico.
+        assert!(
+            enlazado.len() <= imagen.len(),
+            "{nombre}: enlazado {} B, imagen {} B",
+            enlazado.len(),
+            imagen.len()
+        );
+    }
+}
