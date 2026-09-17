@@ -356,6 +356,34 @@ pub const INFO_NET_PCI: u64 = 0x2E;
 /// atascaba para siempre (2026-09-13).
 pub const INFO_NET_RX_MALAS: u64 = 0x6D;
 
+/// -- ** LO QUE `save` NO DECIA Y CABINA SI (2026-09-17) ------------------
+///
+/// Eddi: *"Save tiene que decir todo en CABINA... mas organizado"*. Tres cosas
+/// que solo se leian en F11 o en `cabina fallos`: que controlador USB maneja
+/// este kernel y que llego por cada puerto, como van los prestamos (las
+/// ventanas), y los avisos. El movil del dueno enchufado en el xHC que no se
+/// maneja fue lo que lo hizo visible: F11 callaba y `save` no sabia nada.
+///
+/// # `INFO_USB_CENSO`: los controladores, empaquetados
+///
+/// `[0..8)` xHC censados, `[8..16)` aparatos que ve el ELEGIDO, `[16..24)`
+/// aparatos en OTRO xHC que este kernel no mira (huerfanos), `[24..48)`
+/// bus/dev/func del elegido como `bus<<16 | dev<<8 | func`, bit 63 = hay
+/// elegido.
+pub const INFO_USB_CENSO: u64 = 0x6E;
+/// El libro del portero: `[0..16)` fichas escritas, `[16..32)` que no
+/// cupieron, `[32..48)` admitidas, `[48..64)` rechazadas.
+pub const INFO_USB_FICHAS: u64 = 0x6F;
+/// La ficha `n >> 8` (indice en los bits altos, como `INFO_MEM_QUIEN_*`):
+/// `vid<<48 | pid<<32 | puerto<<24 | clase<<16 | subclase<<8 | proto`, los
+/// mismos `papeles` que CABINA. Cero si no hay tal ficha.
+pub const INFO_USB_FICHA: u64 = 0x70;
+/// El veredicto de la ficha `n >> 8` (`bmo_uhid::VEREDICTO_*`), o 0.
+pub const INFO_USB_FICHA_VEREDICTO: u64 = 0x71;
+/// Los prestamos: `[0..8)` ofertas vivas, `[8..16)` tomadas, `[16..24)`
+/// huerfanas, `[32..64)` negadas desde el arranque.
+pub const INFO_PRESTAMOS: u64 = 0x72;
+
 /// -- ** EL METRO DE LA PUERTA -------------------------------------------
 ///
 /// Cuantas puertas ha servido el kernel, y cuantos ciclos ha pasado DENTRO de
@@ -1067,6 +1095,12 @@ pub const INFO_TXT_EXT_NOMBRE: u64 = 0x05;
 /// decision en vez de trivia -- y la que el kernel cuenta como `muda` si esta
 /// vacia.
 pub const INFO_TXT_EXT_NOTA: u64 = 0x06;
+
+/// QUE ES lo de la ficha `n >> 8` del portero, en corto (`bmo_usbred`):
+/// "red RNDIS", "movil MTP", "HID"... Vacio si no hay tal ficha.
+pub const INFO_TXT_USB_QUE_ES: u64 = 0x07;
+/// Que se hizo con la ficha `n >> 8`, con las palabras de CABINA.
+pub const INFO_TXT_USB_MOTIVO: u64 = 0x08;
 
 /// Campos de [`TASK_OP_KLOG_INFO`].
 pub const KLOG_DISPONIBLES: u64 = 0x00;

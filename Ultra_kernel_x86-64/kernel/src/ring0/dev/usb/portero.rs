@@ -106,6 +106,60 @@ pub fn stats() -> (u64, u64, u64) {
     unsafe { (ADMITIDOS, RECHAZADOS, SIN_SITIO) }
 }
 
+/// Cuantas fichas hay escritas.
+pub fn escritas() -> u64 {
+    unsafe { ESCRITAS as u64 }
+}
+
+/// **La ficha numero `i`, empaquetada como los `papeles` de CABINA** (2026-09-17):
+/// `vid<<48 | pid<<32 | puerto<<24 | clase<<16 | subclase<<8 | proto`. Cero si
+/// no hay tal ficha. El veredicto va aparte (`veredicto_de`) porque los papeles
+/// ya llenan los 64 bits.
+///
+/// Existe para `save`: el libro se escribia y solo se podia leer en F11, y el
+/// dueno vive en el escritorio.
+pub fn papeles_de(i: usize) -> u64 {
+    match ficha(i) {
+        Some(f) => ((f.vid as u64) << 48)
+            | ((f.pid as u64) << 32)
+            | ((f.puerto as u64) << 24)
+            | ((f.clase as u64) << 16)
+            | ((f.subclase as u64) << 8)
+            | f.proto as u64,
+        None => 0,
+    }
+}
+
+/// El veredicto de la ficha `i`, o 0 si no hay tal ficha.
+pub fn veredicto_de(i: usize) -> u64 {
+    ficha(i).map_or(0, |f| f.veredicto as u64)
+}
+
+/// QUE ES lo de la ficha `i`, en corto (`bmo_usbred`), o vacio.
+pub fn que_es_de(i: usize) -> &'static str {
+    match ficha(i) {
+        Some(f) if f.veredicto == uhid::VEREDICTO_SIN_DIRECCION => "sin direccionar",
+        Some(f) if f.veredicto == uhid::VEREDICTO_SIN_DESCRIPTORES => "sin papeles",
+        Some(f) => bmo_usbred::clase::que_es(f.clase, f.subclase, f.proto).nombre(),
+        None => "",
+    }
+}
+
+/// Que se hizo con la ficha `i`, con las mismas palabras que CABINA, o vacio.
+pub fn motivo_de(i: usize) -> &'static str {
+    ficha(i).map_or("", |f| motivo(f.veredicto))
+}
+
+fn ficha(i: usize) -> Option<Ficha> {
+    unsafe {
+        if i < ESCRITAS {
+            Some((*core::ptr::addr_of!(LIBRO))[i])
+        } else {
+            None
+        }
+    }
+}
+
 /// **Un aparato llego, estos son sus papeles y esto se le contesto.**
 ///
 /// Lo llama `KernelXhciHal::papeles`, que es la unica implementacion del HAL.
@@ -166,7 +220,7 @@ pub(super) fn apunta(
         | ((clase as u64) << 16)
         | ((subclase as u64) << 8)
         | proto as u64;
-    if admitido(veredicto) {
+    if admitido(veredicto) || veredicto == uhid::VEREDICTO_CONFIGURADO {
         crate::ring0::cabina::info("portero", motivo(veredicto), papeles);
     } else {
         crate::ring0::cabina::warn("portero", motivo_con_nombre(veredicto, clase, subclase, proto), papeles);
@@ -208,6 +262,7 @@ fn motivo(v: u8) -> &'static str {
         uhid::VEREDICTO_RATON_NO_ENTRO => "era un RATON y no se pudo instalar",
         uhid::VEREDICTO_SIN_DIRECCION => "un puerto con algo dentro NO se pudo direccionar",
         uhid::VEREDICTO_SIN_DESCRIPTORES => "direccionado, pero sus descriptores no se leyeron",
+        uhid::VEREDICTO_CONFIGURADO => "sin driver, pero CONFIGURADO: ya sabe que hay anfitrion",
         // Un veredicto que este kernel no conoce es un `bmo_uhid` mas nuevo que
         // el codigo que lo lee. Se dice asi en vez de inventarle un nombre.
         _ => "llego algo con un veredicto que este kernel no sabe nombrar",

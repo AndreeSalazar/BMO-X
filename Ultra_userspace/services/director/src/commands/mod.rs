@@ -33,6 +33,8 @@ pub(crate) mod red_ip;
 /// `red ping` y `red dns`: la pila propia sobre el buzon (G3 y G4).
 pub(crate) mod red_nodo;
 pub(crate) mod reports;
+/// Lo que `save` no decia y CABINA si: usb, prestamos, avisos (2026-09-17).
+pub(crate) mod save_cabina;
 /// La TIPOGRAFIA de los informes: filas, barras y unidades. Salio de `reports`
 /// el 12-09 porque alli convivian dos clases de coste -- lo que pregunta a la
 /// maquina (DATO) y lo que solo coloca un numero (NADA). Ver su cabecera.

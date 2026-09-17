@@ -58,6 +58,26 @@ impl Tipo {
             Tipo::Otro => "llego algo que NO ES HID: no hay codigo para su clase",
         }
     }
+
+    /// El nombre corto, para una tabla: cabe en una columna y no explica.
+    /// (`save` lo pone al lado de cada puerto, 2026-09-17.)
+    pub fn nombre(self) -> &'static str {
+        match self {
+            Tipo::Rndis => "red RNDIS",
+            Tipo::Ncm => "red NCM",
+            Tipo::Ecm => "red ECM",
+            Tipo::DatosCdc => "datos CDC",
+            Tipo::Mtp => "movil MTP",
+            Tipo::Adb => "ADB",
+            Tipo::Almacenamiento => "disco",
+            Tipo::Hid => "HID",
+            Tipo::Audio => "audio",
+            Tipo::Video => "video",
+            Tipo::Hub => "hub",
+            Tipo::DelFabricante => "fabricante",
+            Tipo::Otro => "otro",
+        }
+    }
 }
 
 /// **Que es**, por los tres numeros del descriptor de interfaz.

@@ -200,6 +200,12 @@ const INFO_NET_RX_TIPOS: u64 = 0x4C;
 const INFO_NET_PCI: u64 = 0x2E;
 /// Tramas malas devueltas a la tarjeta (error, partida, enana). 2026-09-13.
 const INFO_NET_RX_MALAS: u64 = 0x6D;
+// Lo que `save` no decia y CABINA si (2026-09-17). Ver `informe.rs`.
+const INFO_USB_CENSO: u64 = 0x6E;
+const INFO_USB_FICHAS: u64 = 0x6F;
+const INFO_USB_FICHA: u64 = 0x70;
+const INFO_USB_FICHA_VEREDICTO: u64 = 0x71;
+const INFO_PRESTAMOS: u64 = 0x72;
 
 // El metro de la puerta: cuantas y cuantos ciclos dentro de `dispatch`. Se
 // leen como delta. Ver `ring0/syscall/meter.rs`.
@@ -365,6 +371,8 @@ const INFO_TXT_FAMILIA: u64 = 0x04;
 /// cosa que el kernel.
 const INFO_TXT_EXT_NOMBRE: u64 = 0x05;
 const INFO_TXT_EXT_NOTA: u64 = 0x06;
+const INFO_TXT_USB_QUE_ES: u64 = 0x07;
+const INFO_TXT_USB_MOTIVO: u64 = 0x08;
 
 const PAGE: u64 = 4096;
 
@@ -490,6 +498,22 @@ pub fn campo(n: u64) -> Option<u64> {
         INFO_NET_RX_ARMADO => crate::ring0::red::rx_activo() as u64,
         INFO_NET_RX_TRAMAS => crate::ring0::red::rx_tramas(),
         INFO_NET_RX_MALAS => crate::ring0::red::rx_malas(),
+        INFO_USB_CENSO => crate::ring0::dev::usb::arranque::censo(),
+        INFO_USB_FICHAS => {
+            let (adm, rech, sin) = crate::ring0::dev::usb::portero::stats();
+            (crate::ring0::dev::usb::portero::escritas() & 0xFFFF)
+                | ((sin & 0xFFFF) << 16)
+                | ((adm & 0xFFFF) << 32)
+                | ((rech & 0xFFFF) << 48)
+        }
+        // Las dos con el indice arriba, como `INFO_MEM_QUIEN_*`.
+        c if c & 0xFF == INFO_USB_FICHA => {
+            crate::ring0::dev::usb::portero::papeles_de((c >> 8) as usize)
+        }
+        c if c & 0xFF == INFO_USB_FICHA_VEREDICTO => {
+            crate::ring0::dev::usb::portero::veredicto_de((c >> 8) as usize)
+        }
+        INFO_PRESTAMOS => crate::ring0::obj::loan::resumen(),
         INFO_NET_RX_BYTES => crate::ring0::red::rx_consumo().1,
         // ** El unico contador de red que NO lleva BMO-X. Un contador propio
         // solo puede contar lo que se cogio -- lo que se perdio por no haber
@@ -750,6 +774,12 @@ pub fn texto(n: u64, trozo: u64) -> u64 {
         // El indice en los bits altos, igual que `INFO_MEM_QUIEN_*`. Fuera de
         // rango contesta la cadena vacia, que el llamante ya sabe leer como
         // final -- pedir la fila 200 no es un error, es el final de la tabla.
+        c if c & 0xFF == INFO_TXT_USB_QUE_ES => {
+            crate::ring0::dev::usb::portero::que_es_de((c >> 8) as usize)
+        }
+        c if c & 0xFF == INFO_TXT_USB_MOTIVO => {
+            crate::ring0::dev::usb::portero::motivo_de((c >> 8) as usize)
+        }
         c if c & 0xFF == INFO_TXT_EXT_NOMBRE || c & 0xFF == INFO_TXT_EXT_NOTA => {
             let i = (c >> 8) as usize;
             match crate::ring0::cpu_vendor::features::ALL.get(i) {

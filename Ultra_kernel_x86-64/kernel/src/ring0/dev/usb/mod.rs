@@ -91,7 +91,7 @@ pub use panel::*;
 // we debug blind (exactly what "init sin teclado" left us).
 const DLOG_MAX: usize = 96;
 /// **Encender el bus**: esperar a un puerto y enumerar. Ocurre UNA vez.
-mod arranque;
+pub mod arranque;
 /// **Lo que llega despues**: enchufar, desenchufar, y el barrido de 500 ms que
 /// recoge lo que un aviso perdido dejo caer.
 mod enchufe;

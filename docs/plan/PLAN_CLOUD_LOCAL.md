@@ -128,6 +128,18 @@ pantalla tal cual.
       encendido, F11 dice `llego una RED POR USB (RNDIS...)` o `(NCM)`: esa foto
       decide cual de los dos drivers se escribe.
 
+- [ ] **S3b.0b -- BMO-X le dice al movil que HAY anfitrion.** En codigo el
+      2026-09-17 (`platform/drivers/usb/uhid/src/lib.rs`, `cosechar_puerto`):
+      `SET_CONFIGURATION` solo se mandaba a teclados y ratones; todo lo demas
+      se direccionaba, se le leian los papeles y se dejaba SIN configurar --
+      y un Android sin configurar no ofrece ni "transferir archivos" ni el
+      anclaje, porque para el no hay nadie al otro lado del cable. Ahora lo
+      que no se adopta se configura igual antes de devolver el slot
+      (veredicto `CONFIGURADO`, en F11 y en `save`). No es un driver: es
+      decirle "hay alguien". **Como se sabe:** con el movil en un puerto del
+      xHC elegido, el movil ofrece sus modos de USB, y `save` lo lista con
+      "CONFIGURADO: ya sabe que hay anfitrion".
+
 - [ ] **S3b.1 -- los mensajes, probados sin movil.** En codigo el 2026-09-14:
       `platform/shared/bmo-usbred/src/rndis.rs` (INITIALIZE, la MAC, el filtro y
       la cabecera de 44 de cada trama, con `DataOffset` contado desde su propio

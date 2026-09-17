@@ -357,6 +357,14 @@ pub const INFO_NET_RX_PERDIDAS: u64 = 0x4B;
 pub const INFO_NET_RX_TIPOS: u64 = 0x4C;
 pub const INFO_NET_PCI: u64 = 0x2E;
 pub const INFO_NET_RX_MALAS: u64 = 0x6D;
+/// Los tres de `save` que antes solo decia CABINA (2026-09-17): el censo de
+/// controladores USB, el libro del portero y los prestamos. La forma de cada
+/// uno esta en `bmo-abi/syscalls/surface/informe.rs`.
+pub const INFO_USB_CENSO: u64 = 0x6E;
+pub const INFO_USB_FICHAS: u64 = 0x6F;
+pub const INFO_USB_FICHA: u64 = 0x70;
+pub const INFO_USB_FICHA_VEREDICTO: u64 = 0x71;
+pub const INFO_PRESTAMOS: u64 = 0x72;
 
 /// El metro de la puerta: puertas servidas y ciclos dentro de `dispatch`.
 /// **Se leen como DELTA** -- antes y despues del bucle que se quiera medir.
@@ -788,6 +796,8 @@ pub const INFO_TXT_FAMILIA: u64 = 0x04;
 /// El nombre y el motivo de la fila `i` del censo: `INFO_TXT_EXT_NOMBRE | (i << 8)`.
 pub const INFO_TXT_EXT_NOMBRE: u64 = 0x05;
 pub const INFO_TXT_EXT_NOTA: u64 = 0x06;
+pub const INFO_TXT_USB_QUE_ES: u64 = 0x07;
+pub const INFO_TXT_USB_MOTIVO: u64 = 0x08;
 
 // Operaciones sobre un handle de directorio (`KIND_DIRECTORIO`).
 pub const DIR_OP_SIGUIENTE: u32 = 0x01;

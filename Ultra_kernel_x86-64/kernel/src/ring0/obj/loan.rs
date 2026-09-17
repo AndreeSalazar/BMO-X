@@ -186,10 +186,43 @@ pub const PADRE_NO_VIVE: u32 = 5;
 /// que **es suyo por construccion**-- y `desde`/`bytes` el trozo. La unica
 /// comprobacion que hace falta es que el trozo quepa dentro, y es una resta:
 /// el rango lo concedio el kernel y lo tiene apuntado.
+/// Cuantas ofertas se NEGARON desde el arranque, por cualquier motivo.
+///
+/// `save` la ensena al lado de las vivas y las tomadas (2026-09-17): la
+/// ventana que no sale es la negativa mas cara de esta casa, y hasta hoy solo
+/// se contaba en CABINA.
+static mut NEGADAS: u64 = 0;
+
+/// **El resumen para `save`**, en un `u64`: `[0..8)` ofertas vivas, `[8..16)`
+/// de ellas tomadas, `[16..24)` huerfanas (el dueno murio con la oferta viva),
+/// `[32..64)` negadas desde el arranque.
+pub fn resumen() -> u64 {
+    let ofertas = unsafe { &*core::ptr::addr_of!(OFERTAS) };
+    let (mut vivas, mut tomadas, mut huerfanas) = (0u64, 0u64, 0u64);
+    for o in ofertas.iter() {
+        if o.viva {
+            vivas += 1;
+            if o.tomada {
+                tomadas += 1;
+            }
+            if o.huerfana {
+                huerfanas += 1;
+            }
+        }
+    }
+    let negadas = unsafe { NEGADAS };
+    vivas | (tomadas << 8) | (huerfanas << 16) | (negadas.min(0xFFFF_FFFF) << 32)
+}
+
+fn negada(motivo: u32) -> u32 {
+    unsafe { NEGADAS = NEGADAS.wrapping_add(1) };
+    motivo
+}
+
 pub fn offer(owner: u32, aspace: u64, base: u64, entregado: u64, desde: u64, bytes: u64, destino: u32) -> u32 {
     if bytes == 0 || desde.checked_add(bytes).map_or(true, |f| f > entregado) {
         crate::ring0::cabina::warn("prestamo", "el trozo no cabe en el bloque", desde);
-        return NO_CABE_EN_EL_BLOQUE;
+        return negada(NO_CABE_EN_EL_BLOQUE);
     }
     // Y que quepa en SU WINDOW, que es lo que decide donde se mapea. Se
     // comprueba al ofrecer y no al tomar porque el que ofrece es quien puede
@@ -201,10 +234,10 @@ pub fn offer(owner: u32, aspace: u64, base: u64, entregado: u64, desde: u64, byt
         .is_some_and(|t| t.cabe_en(PRESTAMO_VENTANA));
     if !cabe {
         crate::ring0::cabina::warn("prestamo", "no cabe en una ventana de prestamo", bytes);
-        return NO_CABE_EN_LA_VENTANA;
+        return negada(NO_CABE_EN_LA_VENTANA);
     }
     if destino == owner {
-        return A_MI_MISMO;
+        return negada(A_MI_MISMO);
     }
     let ofertas = unsafe { &mut *core::ptr::addr_of_mut!(OFERTAS) };
     // Una oferta por pareja (dueno, destino): reofrecer sustituye, no apila.
@@ -228,7 +261,7 @@ pub fn offer(owner: u32, aspace: u64, base: u64, entregado: u64, desde: u64, byt
         }
     }
     crate::ring0::cabina::warn("prestamo", "no quedan ofertas libres", MAX as u64);
-    SIN_RANURAS
+    negada(SIN_RANURAS)
 }
 
 /// **Tomar lo que me ofrecieron.** Devuelve el handle, o `None`.

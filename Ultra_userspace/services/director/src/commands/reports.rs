@@ -384,6 +384,12 @@ pub(crate) fn report_consumo(s: &mut Output, t: &crate::desktop::Tick) {
               b"el disco escribio mas alla de lo que declaro");
     fila_cero(s, b"dijo de mas", bmo::info(bmo::INFO_DMA_HBA_DE_MAS),
               b"el HBA conto mas sectores de los pedidos");
+
+    // *** LO QUE CABINA SABIA Y ESTO NO (2026-09-17): el USB, los prestamos y
+    // los avisos, en su fichero. Eddi: "save tiene que decir todo".
+    super::save_cabina::report_usb(s);
+    super::save_cabina::report_prestamos(s);
+    super::save_cabina::report_avisos(s);
 }
 
 #[inline(never)]

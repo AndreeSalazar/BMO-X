@@ -342,6 +342,17 @@ impl UsbHidHal {
         let sale_del_teclado = self.teclado.as_ref().is_some_and(|k| k.slot() == slot)
             || (self.teclado.is_none() && compuesto);
 
+        // ** LO QUE NO SE ADOPTA SE CONFIGURA IGUAL (2026-09-17).
+        //
+        // `SET_CONFIGURATION` solo se mandaba dentro de `preparar_endpoint`,
+        // o sea, a teclados y ratones. Todo lo demas se direccionaba, se le
+        // leian los papeles y se dejaba SIN CONFIGURAR -- y un aparato sin
+        // configurar no arranca su firmware: el movil del dueno enchufado al
+        // Ryzen no ofrecia ninguna de sus opciones de USB porque, para
+        // Android, no habia anfitrion. Se cuenta aqui cuantas interfaces se
+        // toman (la `cosecha`); si al final no fue ninguna y el aparato tiene
+        // una configuracion, se le manda igual, abajo, antes de devolver el
+        // slot. No es un driver: es decirle "hay alguien".
         for (iface, clase, subclase, proto) in &ifaces[..n_ifs] {
             // Toda interfaz se DICE antes de juzgarla. Sin esto, un aparato
             // descartado y un aparato ausente se ven exactamente igual --que es
@@ -468,6 +479,17 @@ impl UsbHidHal {
             if slot == self.kbd_slot() || slot == self.mouse_slot() {
                 h.log_u64("[uhid] no devuelvo el slot: lo usa un aparato vivo, ", slot as u64);
             } else {
+                // Primero que SEPA que hay anfitrion (ver arriba), y despues
+                // se devuelve el slot: el aparato se queda configurado en su
+                // lado del cable, que es lo que Android necesita para ofrecer
+                // sus modos, y el controlador recupera la ranura. Solo si
+                // tiene una configuracion que mandar y algo dentro.
+                if cfg_val != 0 && n_ifs > 0 {
+                    h.log_u64("[uhid] sin driver: lo CONFIGURO para que sepa que hay anfitrion, cfg=", cfg_val as u64);
+                    bmo_xhci::control_transfer(slot, 0x00, 0x09, cfg_val as u16, 0, &mut [], false);
+                    let (i0, c0, s0, p0) = ifaces[0];
+                    h.papeles(vid, pid, port, i0, c0, s0, p0, VEREDICTO_CONFIGURADO);
+                }
                 h.log_u64("[uhid] nada que adoptar, devuelvo el slot ", slot as u64);
                 bmo_xhci::disable_slot(slot);
             }
@@ -889,3 +911,8 @@ pub const VEREDICTO_RATON_NO_ENTRO: u8 = 8;
 pub const VEREDICTO_SIN_DIRECCION: u8 = 9;
 /// Direccionado, pero sus descriptores no se pudieron leer.
 pub const VEREDICTO_SIN_DESCRIPTORES: u8 = 10;
+/// Llego, no era teclado ni raton, y se le mando `SET_CONFIGURATION` igual
+/// para que SEPA que hay anfitrion (2026-09-17). Un movil Android sin eso no
+/// ofrece ni "transferir archivos" ni el anclaje: para el no hay nadie al otro
+/// lado del cable. Sigue sin driver -- eso no cambia -- pero ya no esta mudo.
+pub const VEREDICTO_CONFIGURADO: u8 = 11;

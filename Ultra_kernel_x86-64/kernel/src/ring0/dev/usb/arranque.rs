@@ -106,6 +106,35 @@ pub(crate) fn delay_ms(ms: u64) {
 /// Each sweep is `nports` MMIO reads. At 1 ms the loop would hammer the
 /// controller's registers for nothing: the debounce is a physical time of the
 /// port and reading it more often does not make it happen sooner.
+/// **El censo de controladores, apuntado para `save`** (2026-09-17).
+///
+/// Lo que `init` decide se decia SOLO en CABINA: cuantos xHC hay, cual gano y
+/// cuantos aparatos quedaron en el otro sin que este kernel los mire jamas.
+/// El dueno enchufo su movil en el xHC que no se maneja, F11 no dijo nada, y
+/// la unica explicacion estaba en `cabina fallos`. Ahora `save` la lleva.
+///
+/// Empaquetado en un `u64`: `[0..8)` xHC censados, `[8..16)` aparatos que ve
+/// el elegido, `[16..24)` aparatos en OTRO xHC (huerfanos), `[24..48)`
+/// bus/dev/func del elegido como `bus<<16 | dev<<8 | func`, y el bit 63 dice
+/// que hay elegido (sin el, los demas campos son cero de verdad).
+static mut CENSO: u64 = 0;
+
+/// El censo empaquetado. Cero antes de `init`.
+pub fn censo() -> u64 {
+    unsafe { CENSO }
+}
+
+fn apuntar_censo(censados: u32, vistos: u32, huerfanos: u32, elegido: Option<pci::XhciLoc>) {
+    let mut v = ((censados.min(255) as u64))
+        | ((vistos.min(255) as u64) << 8)
+        | ((huerfanos.min(255) as u64) << 16);
+    if let Some(l) = elegido {
+        v |= ((l.bus as u64) << 16 | (l.dev as u64) << 8 | l.func as u64) << 24;
+        v |= 1 << 63;
+    }
+    unsafe { CENSO = v };
+}
+
 fn wait_for_connection(nports: u8, budget_ms: u64) -> (u64, u64) {
     const SWEEP_MS: u64 = 10;
     let mut waited = 0u64;
@@ -146,11 +175,13 @@ pub fn init(_ctx: &BootContext) {
     let mut mejor: Option<pci::XhciLoc> = None;
     let mut mejor_vistos: u32 = 0;
     let mut vistos_total: u32 = 0;
+    let mut censados: u32 = 0;
     for skip in 0..4usize {
         let loc = match pci::find_xhci(skip) {
             Some(l) => l,
             None => break,
         };
+        censados += 1;
         // MMIO virtual: SIEMPRE por el physmap. La identidad de s2 vive en
         // PML4[0] y un espacio de Ring 3 solo hereda su primer GiB, asi que
         // tocar un BAR de ~4 GiB bajo el CR3 de un proceso es un #PF en Ring 0.
@@ -273,6 +304,7 @@ pub fn init(_ctx: &BootContext) {
         chosen = true;
     }
 
+    apuntar_censo(censados, mejor_vistos, vistos_total.saturating_sub(mejor_vistos), mejor);
     if !chosen || mejor.is_none() {
         log("[usb] ningun xHC ve el teclado (probar otro puerto fisico)\n");
         crate::ring0::cabina::fault("usb", "ningun xHC ve dispositivos (probar otro puerto)", 0);
