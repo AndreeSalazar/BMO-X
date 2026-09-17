@@ -7,8 +7,8 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   286 casillas ABIERTAS en 34 planes
-   189 hechas
+   287 casillas ABIERTAS en 34 planes
+   190 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -188,6 +188,15 @@
 - [ ] 2 A: tipar la binaria las 3 casillas nuevas en verde, y 449 sin
 - ... y 3 mas
 
+## [`PLAN_EL_ENLAZADOR.md`](PLAN_EL_ENLAZADOR.md) -- 6 abiertas, 6 hechas
+
+*PLAN EL ENLAZADOR -- la pieza que madura a CINCO lenguajes a la vez*
+
+- [ ] E4 -- EL METAL. Ese .bex enlazado, en el Ryzen. Hoy corre en el
+- [ ] E5c -- EL ARBOL ENTERO POR EL CAMINO DEL OBJETO. Los 41 ejecutables
+- [ ] E5d -- EL bss NO SE SABE NOMBRAR. Salio al hacer E5b: una reloc del
+- ... y 3 mas
+
 ## [`PLAN_EL_NEUTRO_VIGILADO.md`](PLAN_EL_NEUTRO_VIGILADO.md) -- 6 abiertas, 12 hechas
 
 *PLAN EL NEUTRO VIGILADO -- que algo procese el DMA aunque la CPU no mire*
@@ -231,15 +240,6 @@
 - [ ] emit_program son 357 lineas dentro de mod.rs, y hace TRES cosas:
 - [ ] emit_stmt son 175 lineas y un match de sentencias. Es hermano de
 - [ ] parser/preprocessor.rs son 1.204 lineas y es el otro monolito.
-- ... y 2 mas
-
-## [`PLAN_EL_ENLAZADOR.md`](PLAN_EL_ENLAZADOR.md) -- 5 abiertas, 5 hechas
-
-*PLAN EL ENLAZADOR -- la pieza que madura a CINCO lenguajes a la vez*
-
-- [ ] E4 -- EL METAL. Ese .bex enlazado, en el Ryzen. Hoy corre en el
-- [ ] E5b -- TIRAR LO QUE NADIE LLAMA. Donde esta el ahorro de verdad, y no
-- [ ] E6 -- COBOL CALL estatico. toolchain/lang/cobol/PLAN_BANCA.md, 6.2 y
 - ... y 2 mas
 
 ## [`PLAN_EL_SEMAFORO_COMPLETO.md`](PLAN_EL_SEMAFORO_COMPLETO.md) -- 5 abiertas, 4 hechas

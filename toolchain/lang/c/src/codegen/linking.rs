@@ -301,15 +301,25 @@ impl Codegen {
     pub(super) fn patch_call_relocs(&mut self) {
         let mut faltan: Vec<String> = Vec::new();
         for reloc in &self.call_relocs {
+            // ** En un OBJETO no se cierra NI LO QUE ESTA AQUI (E5b).
+            //
+            // Hasta el 2026-09-17 una llamada a una funcion de esta misma
+            // unidad se escribia aqui, porque el enlazador copiaba el codigo
+            // de cada unidad entero y esa distancia seguia valiendo. Desde que
+            // el enlazador TIRA lo que nadie llama, las funciones se mueven
+            // dentro de su propia unidad -- y una distancia ya escrita no
+            // tiene quien la corrija: apuntaria a media instruccion, sin
+            // fallar al enlazar. Es el mismo motivo por el que `lea
+            // [rip+cadena]` se abrio en E2, y esta escrito en `objeto.rs`: en
+            // un objeto las referencias van ABIERTAS.
+            if self.objeto {
+                self.obj_rel32.push((reloc.offset, objeto::Destino::Simbolo(reloc.target.clone())));
+                continue;
+            }
             if let Some(&target_offset) = self.function_offsets.get(&reloc.target) {
                 let off = reloc.offset;
                 let disp = target_offset as i32 - (off as i32 + 4);
                 self.code[off..off + 4].copy_from_slice(&disp.to_le_bytes());
-            } else if self.objeto {
-                // ** In an object this is not an error: it is what an object is
-                // FOR. The linker closes it, or says by name that nobody
-                // defines it.
-                self.obj_rel32.push((reloc.offset, objeto::Destino::Simbolo(reloc.target.clone())));
             } else if !faltan.contains(&reloc.target) {
                 faltan.push(reloc.target.clone());
             }
@@ -327,11 +337,14 @@ impl Codegen {
     /// call relocs: displacement dentro de la seccion de codigo.
     pub(super) fn patch_func_addr_fixups(&mut self) {
         for (off, name) in &self.func_addr_fixups {
+            // Abierta tambien en un objeto, y por lo mismo que la llamada.
+            if self.objeto {
+                self.obj_rel32.push((*off, objeto::Destino::Simbolo(name.clone())));
+                continue;
+            }
             if let Some(&target) = self.function_offsets.get(name) {
                 let disp = target as i32 - (*off as i32 + 4);
                 self.code[*off..*off + 4].copy_from_slice(&disp.to_le_bytes());
-            } else if self.objeto {
-                self.obj_rel32.push((*off, objeto::Destino::Simbolo(name.clone())));
             } else {
                 self.errors.push(format!("no existe la funcion '{name}' cuya direccion se tomo"));
             }

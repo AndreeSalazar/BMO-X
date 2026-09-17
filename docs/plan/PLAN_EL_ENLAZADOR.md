@@ -183,26 +183,75 @@ sigue siendo del dueno: este plan escribe los escalones para cuando la tome.
          el programa + libc entera                                  28.197 B  (5,5x MAS)
       ```
 
-      La unidad encoge y el programa CRECE, que es literalmente el "como se cae"
-      que esta casilla tenia escrito: el enlazador mete la libc entera porque no
-      sabe tirar lo que nadie llama. Eso es E5b. Y no se deja en una frase: la
-      fila `hoy_la_libc_aparte_sale_mas_grande_y_ese_es_el_trabajo_que_falta`
-      EXIGE hoy que el enlazado salga mas grande, asi que se pondra ROJA el dia
-      que E5b se haga. El numero se da la vuelta ahi, no en una impresion.
+      La unidad encogia y el programa CRECIA, que es literalmente el "como se
+      cae" que esta casilla tenia escrito. **Arreglado el mismo dia por E5b**:
+      con la poda puesta el programa queda en 2.132 B, 88 bytes por encima de
+      llevarse la copia. El numero se dio la vuelta en la fila que lo exigia, no
+      en una impresion.
 
       [!] **Se hizo antes que E4, que la seccion 4 llama un error**, por orden
       del dueno (17-09). El aviso sigue en pie y por eso E5 queda en `[~]` y no
       en `[x]`: la libc aparte no la ha ejecutado ningun CPU. E4 es su condicion.
 
-- [ ] **E5b -- TIRAR LO QUE NADIE LLAMA.** Donde esta el ahorro de verdad, y no
-      solo para la libc: **un ejemplo de C con dos `#include` se lleva hoy 79
-      funciones dentro** (medido con `--map`), llame a las que llame. El
-      enlazador ya tiene lo que hace falta y no hay que inventar formato: cada
-      simbolo trae su `[offset, size)` y las relocaciones dicen quien llama a
-      quien. Se marca desde `main`, se conserva lo alcanzable --contando que una
-      direccion tomada en `.data` tambien es una llamada-- y se recolocan las
-      secciones. **Como se sabe**: el programa de `strncpy` baja de 28.197 B a la
-      altura de los 5.100, y la fila de E5 se pone roja.
+- [x] **E5b -- TIRAR LO QUE NADIE LLAMA. HECHO el 2026-09-17**, en
+      `toolchain/tools/bmo-enlazar/src/tirar.rs`. Se marca desde `main`, se
+      conserva lo alcanzable y lo demas no se copia. **Y el numero de E5 se dio
+      la vuelta**, con las cuatro esquinas medidas sobre el programa que solo
+      usa `strncpy`:
+
+      ```text
+                                sin poda     con poda
+         la copia privada        5.100 B      2.044 B   (-60,0 %)
+         la libc APARTE         28.197 B      2.132 B   (-92,4 %)
+      ```
+
+      O sea: enlazar contra la libc entera ya no cuesta 5,5 veces mas, cuesta
+      **88 bytes** mas -- y esos 88 no son cuerpos, son su `rodata`, que no se
+      poda. La fila que exigia lo contrario esta reescrita afirmandolo
+      (`enlazar_contra_la_libc_entera_ya_no_cuesta_mas`).
+
+      **Lo que hubo que arreglar primero, y no estaba en el plan**: una llamada
+      a una funcion de la MISMA unidad la cerraba el compilador, porque hasta
+      ahora el enlazador copiaba cada unidad entera y esa distancia seguia
+      valiendo. Tirando funciones, las de al lado se mueven -- y una distancia
+      ya escrita apuntaria a media instruccion SIN fallar al enlazar. Ahora un
+      objeto lleva ABIERTAS tambien sus referencias internas, que es lo que
+      `objeto.rs` decia de `lea [rip+cadena]` desde E2.
+
+      **Como se comprueba que no es una trampa**: un podador que tire de mas
+      deja un programa que enlaza, pasa el gate y salta al vacio. Por eso las
+      filas exigen las dos mitades juntas --que tire `isspace` y NO tire
+      `strncpy`-- y que la salida sea la misma que sin podar. Mutado, caen dos:
+      quitar la raiz del puntero a funcion tumba una fila, y no seguir las
+      aristas tumba tres.
+
+- [ ] **E5c -- EL ARBOL ENTERO POR EL CAMINO DEL OBJETO.** Los 41 ejecutables
+      se compilan en modo IMAGEN, que NO poda: lo de arriba no les llega. Pasar
+      los mismos fuentes por `-c` + `bmo-enlazar` ya se midio el 17-09:
+
+      ```text
+         hola_C       2.791 ->  2.791 B    0,0 %   (no le sobra nada)
+         scroll_C     6.971 ->  5.885 B  -15,6 %
+         raycaster   35.386 -> 24.825 B  -29,8 %
+         cubo_C      46.015 -> 28.561 B  -37,9 %
+      ```
+
+      **No se hace sin que lo decida el dueno**, y no por prudencia: cambia los
+      41 ejecutables, o sea que se pierde la prueba de byte-identico con la que
+      se han verificado los tres ultimos cambios de fondo. Se paga una vez, con
+      la vista puesta.
+      **Como se sabe**: `cubo.bex` baja a la altura de los 28.561 B y el
+      escritorio sigue pintando su icono.
+
+- [ ] **E5d -- EL `bss` NO SE SABE NOMBRAR.** Salio al hacer E5b: una reloc del
+      objeto nombra su seccion destino con TRES codigos --codigo, datos,
+      rodata-- y `bss` no es ninguno. Un puntero guardado en un dato que apunte
+      a un global sin inicializar de OTRA unidad (`extern int tabla[100];`) no
+      se puede expresar. Hoy eso **para el enlace con su nombre**
+      (`BssNoSeSabeNombrar`) en vez de escribir una direccion de `rodata`, que
+      es lo que hacia la cuenta anterior sin decirlo.
+      **Como se cierra**: un cuarto codigo, y el cargador del kernel sabiendo
+      aplicarlo -- toca Ring 0, y por eso es casilla y no un apano.
 
 - [ ] **E6 -- COBOL `CALL` estatico.** `toolchain/lang/cobol/PLAN_BANCA.md`, 6.2 y
       6.3, sobre E3. Aqui se prueba que el contrato es de FORMATO: un `.bo` de

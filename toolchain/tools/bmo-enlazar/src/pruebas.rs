@@ -251,12 +251,23 @@ fn la_libc_aparte_hace_lo_mismo_que_la_copiada() {
     assert_eq!(correr(&aparte), "BMO-X");
 }
 
-/// *** Y LO QUE E5 NO COMPRA TODAVIA, con su numero: enlazar contra la libc
-/// entera SALE MAS GRANDE que llevarse la copia, porque el enlazador no tira lo
-/// que nadie llama. Eso es E5b, y esta fila existe para que el dia que se haga,
-/// el numero se de la vuelta AQUI y no en una impresion.
+/// *** E5b HECHO, Y ESTE NUMERO SE DIO LA VUELTA.
+///
+/// Hasta el 2026-09-17 esta fila EXIGIA que enlazar contra la libc entera
+/// saliera mas grande que llevarse la copia, y existia para ponerse roja el dia
+/// que el enlazador aprendiera a tirar lo que nadie llama. Ese dia llego, asi
+/// que ahora afirma lo contrario. Las cuatro esquinas, medidas:
+///
+/// ```text
+///                           sin poda    con poda
+///    la copia privada        5.100 B     2.044 B   (-60,0 %)
+///    la libc APARTE         28.197 B     2.132 B   (-92,4 %)
+/// ```
+///
+/// Los 88 bytes que la libc enlazada sigue costando de mas no son cuerpos: son
+/// su `rodata`, que no se poda (ver `tirar.rs`).
 #[test]
-fn hoy_la_libc_aparte_sale_mas_grande_y_ese_es_el_trabajo_que_falta() {
+fn enlazar_contra_la_libc_entera_ya_no_cuesta_mas() {
     let copia = enlazar(&[objeto_con("solo.bo", USA_LIBC, bmo_c_front::Libc::Copia)]).unwrap();
     let libc = (
         "libc.bo".to_string(),
@@ -268,9 +279,8 @@ fn hoy_la_libc_aparte_sale_mas_grande_y_ese_es_el_trabajo_que_falta() {
     ])
     .unwrap();
     assert!(
-        aparte.len() > copia.len(),
-        "si esto se pone rojo es que E5b (tirar lo que nadie llama) ya esta hecho: \
-         copiada {} B, enlazada {} B",
+        aparte.len() <= copia.len() + copia.len() / 10,
+        "enlazar contra la libc entera no puede costar mas que copiarsela:          copiada {} B, enlazada {} B",
         copia.len(),
         aparte.len()
     );
@@ -307,4 +317,73 @@ int main() {
     ])
     .unwrap();
     assert_eq!(correr(&bex), "uno dos 3");
+}
+
+/// *** LO QUE COMPRA E5b, con nombres y no solo con bytes.
+///
+/// Las dos mitades se comprueban JUNTAS a proposito: un podador que tire lo que
+/// nadie llama pero se lleve por delante algo que si se usa no es medio bueno,
+/// es una trampa -- el programa enlaza, pasa el gate y salta a donde ya no hay
+/// nadie. Por eso aqui se exige tambien que la salida sea la MISMA que sin
+/// podar: tirar codigo muerto no puede cambiar lo que un programa hace.
+#[test]
+fn la_poda_tira_lo_que_nadie_llama_y_deja_lo_que_si() {
+    let libc = || (
+        "libc.bo".to_string(),
+        bmo_c_front::compile_libc_object(bmo_c_front::CStandard::C11).unwrap(),
+    );
+    let con = enlazar_informado(
+        &[objeto_con("principal.bo", USA_LIBC, bmo_c_front::Libc::Aparte), libc()],
+        true,
+    )
+    .unwrap();
+    let sin = enlazar_informado(
+        &[objeto_con("principal.bo", USA_LIBC, bmo_c_front::Libc::Aparte), libc()],
+        false,
+    )
+    .unwrap();
+
+    assert_eq!(correr(&con.bytes), "BMO-X");
+    assert_eq!(correr(&con.bytes), correr(&sin.bytes));
+    assert!(
+        con.tiradas.iter().any(|n| n == "isspace"),
+        "nadie llama a 'isspace' y sigue dentro"
+    );
+    assert!(
+        !con.tiradas.iter().any(|n| n == "strncpy"),
+        "se tiro 'strncpy', que es justo lo que el programa usa"
+    );
+    assert!(
+        con.bytes.len() * 5 < sin.bytes.len(),
+        "podado {} B, sin podar {} B",
+        con.bytes.len(),
+        sin.bytes.len()
+    );
+    assert!(
+        con.sin_podar.is_empty(),
+        "hoy toda unidad de BMO C se puede podar; estas no: {:?}",
+        con.sin_podar
+    );
+}
+
+/// A una funcion a la que solo se llega por PUNTERO no la llama ningun `call`,
+/// asi que no hay arista que seguir: quien la mantiene viva es su direccion
+/// GUARDADA EN UN DATO. Sin esa raiz, la poda se la lleva y el programa salta
+/// al vacio -- y lo haria en el metal, no aqui.
+#[test]
+fn la_poda_no_tira_lo_que_se_llama_por_puntero() {
+    const POR_PUNTERO: &str = r#"
+int doble(int x) { return x + x; }
+int (*apunta)(int) = doble;
+int main() {
+    printf("%d", apunta(21));
+    return 0;
+}
+"#;
+    let i = enlazar_informado(&[objeto("puntero.bo", POR_PUNTERO)], true).unwrap();
+    assert!(
+        !i.tiradas.iter().any(|n| n == "doble"),
+        "se tiro 'doble', a la que solo se llega por puntero"
+    );
+    assert_eq!(correr(&i.bytes), "42");
 }
