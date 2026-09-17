@@ -473,10 +473,19 @@ fn bombear_interno() {
     barrer_si_toca();
 
     let mut evs = [InputEvent::empty(); 16];
-    let n = unsafe {
+    let (n, reinicio) = unsafe {
         let hid = &mut *core::ptr::addr_of_mut!(HID);
-        hid.poll(&mut evs)
+        let n = hid.poll(&mut evs);
+        (n, hid.reinicio_pendiente())
     };
+    // ** LA ESCALERA DE LINUX (2026-09-17): un aparato con un segundo de
+    // errores seguidos se solto y el barrido lo adopta de cero. Aqui se dice
+    // y se refresca la presencia; lo demas ya lo hizo el driver.
+    if let Some(puerto) = reinicio {
+        crate::ring0::cabina::warn("usb", "un segundo de errores seguidos: REINICIO el aparato (soltar y re-adoptar), puerto", puerto as u64 + 1);
+        olvidar_estado_de_teclado("aparato reiniciado por errores: se olvida lo pulsado");
+        unsafe { refrescar_presencia() };
+    }
     unsafe { HID_EVENTS = HID_EVENTS.wrapping_add(n as u32); }
     repartir_eventos(&evs[..n]);
 }

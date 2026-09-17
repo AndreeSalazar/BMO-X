@@ -54,6 +54,7 @@ pub mod formato;
 /// parte del driver que se puede probar sin un xHC delante -- y era la que
 /// estaba mal.
 pub mod puertos;
+pub mod racha;
 pub mod raton;
 pub mod teclado;
 
@@ -62,6 +63,7 @@ use bmo_input::event::InputEvent;
 use bmo_input::hal::{InputHal, PointerMode};
 use dir::Direccion;
 use puertos::Puertos;
+use racha::{Paso, Racha};
 use raton::Raton;
 use teclado::Teclado;
 
@@ -136,6 +138,17 @@ pub struct UsbHidHal {
     // such device).
     puerto_teclado: Option<u8>,
     puerto_raton: Option<u8>,
+    /// Vueltas del bombeo (una por `poll`): el reloj de las rachas.
+    vuelta: u64,
+    /// La racha de errores de cada aparato, por separado: la del raton no
+    /// toca al teclado (ver `racha.rs`).
+    racha_teclado: Racha,
+    racha_raton: Racha,
+    /// Un aparato que lleva un segundo fallando y hay que reiniciar entero:
+    /// su puerto. Lo recoge el kernel con `reinicio_pendiente` y lo cuenta.
+    reinicio_pendiente: Option<u8>,
+    /// Cuantos aparatos se reiniciaron enteros desde el arranque.
+    reinicios: u32,
 }
 
 impl Default for UsbHidHal {
@@ -155,6 +168,66 @@ impl UsbHidHal {
             puertos: Puertos::nuevo(),
             puerto_teclado: None,
             puerto_raton: None,
+            vuelta: 0,
+            racha_teclado: Racha::nueva(),
+            racha_raton: Racha::nueva(),
+            reinicio_pendiente: None,
+            reinicios: 0,
+        }
+    }
+
+    /// **El puerto de un aparato que lleva un segundo fallando**, si lo hay.
+    /// El driver ya lo solto (el barrido lo vuelve a adoptar de cero, que es
+    /// nuestro `usb_reset_device`); el kernel lo cuenta y refresca la
+    /// presencia. Se contesta una vez.
+    pub fn reinicio_pendiente(&mut self) -> Option<u8> {
+        self.reinicio_pendiente.take()
+    }
+
+    /// Cuantos aparatos se reiniciaron enteros desde el arranque.
+    pub fn reinicios(&self) -> u32 {
+        self.reinicios
+    }
+
+    /// Un error del teclado o del raton (`es_teclado`): la escalera decide.
+    ///
+    /// # Safety
+    /// Puede soltar el puerto del aparato (no toca el bus).
+    unsafe fn anotar_error(&mut self, es_teclado: bool) {
+        let ahora = self.vuelta;
+        let (racha, puerto) = if es_teclado {
+            (&mut self.racha_teclado, self.puerto_teclado)
+        } else {
+            (&mut self.racha_raton, self.puerto_raton)
+        };
+        if racha.error(ahora) == Paso::Reiniciar {
+            // Un segundo de errores seguidos: se rinde con el endpoint y se
+            // reinicia el aparato ENTERO, como `usb_reset_device`. Soltar el
+            // puerto lo devuelve al barrido, que lo adopta de cero -- con su
+            // debounce, su reset y, si hace falta, su corte de corriente.
+            let h = bmo_xhci::hal();
+            h.log_u64("[uhid] un segundo de errores seguidos: REINICIO el aparato del puerto ", puerto.unwrap_or(0xFF) as u64);
+            if let Some(port) = puerto {
+                self.soltar_puerto(port);
+                self.reinicios = self.reinicios.saturating_add(1);
+                self.reinicio_pendiente = Some(port);
+            }
+        }
+    }
+
+    /// Rearma lo que este parado y ya haya cumplido su espera. Es el
+    /// `mod_timer(io_retry)` de Linux, hecho a cada vuelta del bombeo.
+    fn rearmar_lo_que_toque(&mut self) {
+        let ahora = self.vuelta;
+        if let Some(k) = self.teclado.as_mut() {
+            if !k.bombeando() && self.racha_teclado.puede_rearmar(ahora) {
+                let _ = k.arrancar();
+            }
+        }
+        if let Some(m) = self.raton.as_mut() {
+            if !m.bombeando() && self.racha_raton.puede_rearmar(ahora) {
+                let _ = m.arrancar();
+            }
         }
     }
 
@@ -817,17 +890,52 @@ impl InputHal for UsbHidHal {
                     bmo_xhci::recuperar_endpoint(slot, ep);
                 }
 
+                let bueno = cc == 1 || cc == 13;
                 if let Some(k) = self.teclado.as_mut().filter(|k| k.direccion().es_mio(slot, ep)) {
                     n += k.atender(cc, resto);
+                    if bueno {
+                        self.racha_teclado.bien();
+                    } else {
+                        self.anotar_error(true);
+                    }
                 } else if let Some(m) =
                     self.raton.as_mut().filter(|m| m.direccion().es_mio(slot, ep))
                 {
                     n += m.atender(cc, resto);
+                    if bueno {
+                        self.racha_raton.bien();
+                    } else {
+                        self.anotar_error(false);
+                    }
                 } else {
                     self.huerfanos = self.huerfanos.wrapping_add(1);
                 }
             }
         }
+        // ** LA ESCALERA, a cada vuelta (2026-09-17): lo que se quedo parado
+        // por un error se rearma cuando su espera se cumple; y un endpoint que
+        // el hardware dice que NO corre mientras creemos que bombea cuenta
+        // como error aunque no haya evento -- antes solo encendia una luz.
+        self.vuelta = self.vuelta.wrapping_add(1);
+        if self.vuelta % 25 == 0 {
+            unsafe {
+                if let Some(k) = self.teclado.as_ref() {
+                    if k.bombeando() && bmo_xhci::ep_state(k.slot(), k.dci()) != 1 {
+                        bmo_xhci::recuperar_endpoint(k.slot(), k.dci());
+                        self.teclado.as_mut().map(|k| k.parar());
+                        self.anotar_error(true);
+                    }
+                }
+                if let Some(m) = self.raton.as_ref() {
+                    if m.bombeando() && bmo_xhci::ep_state(m.slot(), m.dci()) != 1 {
+                        bmo_xhci::recuperar_endpoint(m.slot(), m.dci());
+                        self.raton.as_mut().map(|m| m.parar());
+                        self.anotar_error(false);
+                    }
+                }
+            }
+        }
+        self.rearmar_lo_que_toque();
         n
     }
 

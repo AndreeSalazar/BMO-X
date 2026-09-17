@@ -177,6 +177,9 @@ impl Teclado {
     pub fn slot(&self) -> u8 { self.dir.slot }
     pub fn dci(&self) -> u8 { self.dir.dci }
     pub fn bombeando(&self) -> bool { self.bombeando }
+    /// El hardware dice que el endpoint no corre: se deja de creer que bombea,
+    /// para que la escalera lo rearme cuando toque.
+    pub fn parar(&mut self) { self.bombeando = false; }
 
     /// Errores de transferencia vistos, igual que en el raton.
     pub fn errores(&self) -> u32 { self.errores }
@@ -228,6 +231,12 @@ impl Teclado {
             h.log_u64("[uhid] teclado: transferencia con error cc=", cc as u64);
             h.log_u64("  (errores=", self.errores as u64);
             h.log(")\n");
+            // ** TRAS UN ERROR NO SE REARMA AQUI (2026-09-17): lo hace el HAL con
+            // la ESCALERA de Linux (`racha.rs`): 13, 26, 52, 104 ms de espera,
+            // y al segundo de errores seguidos se reinicia el aparato entero.
+            // Rearmar al instante era girar contra un aparato roto 250 veces
+            // por segundo y no enterarse nunca de que estaba roto.
+            return n;
         }
 
         self.rearmar();

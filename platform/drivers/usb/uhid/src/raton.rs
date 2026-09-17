@@ -141,6 +141,9 @@ impl Raton {
     pub fn dci(&self) -> u8 { self.dir.dci }
     pub fn es_provisional(&self) -> bool { self.provisional }
     pub fn bombeando(&self) -> bool { self.bombeando }
+    /// El hardware dice que el endpoint no corre: se deja de creer que bombea,
+    /// para que la escalera lo rearme cuando toque.
+    pub fn parar(&mut self) { self.bombeando = false; }
 
     /// Encola la primera transferencia y toca el timbre. Igual que en el
     /// teclado: hasta que se llama, esta enumerado y mudo.
@@ -200,6 +203,12 @@ impl Raton {
             h.log_u64("[uhid] raton: transferencia con error cc=", cc as u64);
             h.log_u64("  (mps=", self.mps as u64);
             h.log(")\n");
+            // ** TRAS UN ERROR NO SE REARMA AQUI (2026-09-17): lo hace el HAL con
+            // la ESCALERA de Linux (`racha.rs`): 13, 26, 52, 104 ms de espera,
+            // y al segundo de errores seguidos se reinicia el aparato entero.
+            // Rearmar al instante era girar contra un aparato roto 250 veces
+            // por segundo y no enterarse nunca de que estaba roto.
+            return n;
         }
 
         self.rearmar();

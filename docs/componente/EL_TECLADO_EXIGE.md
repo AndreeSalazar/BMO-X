@@ -699,3 +699,55 @@ BOOT`. El Report Descriptor **ya se sabe leer** (ver `formato`), asi que esa
 condicion espera solo a confirmarse en el Ryzen antes de ensancharse. Cuando se
 levante, el portero es lo que dira si sirvio: los aparatos que hoy salen con ese
 veredicto son exactamente los que entrarian.
+
+## 8. E8 -- QUE SE REINTENTE COMO LINUX, Y QUE NADIE MUERA CON NADIE
+
+> Escrita el **2026-09-17**. Eddi: *"analiza en linux como es reintento con
+> teclado para que nunca muera con mouse, eso se aplica con todos los USB"*.
+
+En Linux hay DOS mitades, y hasta hoy BMO-X solo tenia media de una:
+
+```text
+   ENTRAR   drivers/usb/core/hub.c       debounce ESTABLE 100 ms (muestras cada
+                                         25 ms, tope ~2 s); reset con hasta 5
+                                         intentos y 800 ms de espera; 10 ms tras
+                                         SET_ADDRESS; descriptores con reintentos
+                                         y 200 ms entre ellos; 4 vueltas enteras
+                                         y despues se RINDE hasta el siguiente
+                                         aviso de conexion. Todo en un hilo que
+                                         NO es el que atiende los teclados.
+   NO MORIR drivers/hid/usbhid/hid-core.c  `hid_io_error()`: un informe con error
+                                         se reintenta a 13, 26, 52, 104, 104...
+                                         ms; medio segundo sin errores = racha
+                                         nueva; UN SEGUNDO de errores seguidos =
+                                         se deja el endpoint y se resetea el
+                                         APARATO ENTERO (`usb_reset_device`).
+                                         Un stall (-EPIPE) = clear_halt.
+                                         Cada aparato tiene SU racha.
+```
+
+**Lo que hacia BMO-X**: E3 (resucitar el endpoint parado) y rearmar AL
+INSTANTE tras cada error, sin cuenta ni tope: un aparato roto giraba 250
+veces por segundo y nadie se enteraba; un endpoint que el hardware daba por
+no-corriendo sin evento solo encendia la luz de E6.
+
+**Exige (y hoy: HECHO, `bmo-uhid/src/racha.rs`)**: la escalera de
+`hid_io_error` a cada vuelta del bombeo, una racha por aparato --la del raton
+no toca al teclado--; al segundo de errores seguidos se SUELTA el puerto y el
+barrido lo adopta de cero (debounce, reset, y del segundo intento en adelante
+corte de corriente): es nuestro `usb_reset_device`. Y cada 100 ms se mira si
+el endpoint que creemos bombeando corre de verdad (`ep_state`); si no, cuenta
+como error y entra en la misma escalera.
+
+Del lado de ENTRAR, lo que ya se aplico el mismo dia: debounce de 100 ms,
+intentos espaciados (1, 2, 4 s), descanso que dobla (5, 10, 20, 40 s), un
+puerto mudo se abandona tras 75 s hasta desenchufar, y el arranque espera a
+que los puertos se asienten.
+
+**Lo que NO es como Linux, dicho de frente**: aqui la enumeracion corre en
+el MISMO hilo que bombea el teclado, asi que cada intento sobre un puerto
+ajeno para el teclado ~medio segundo. La escalera hace que sean pocos y se
+acaben; la reforma de verdad es enumerar aparte, y esta anotada.
+
+**El numero**: `reinicios` de aparato (`UsbHidHal::reinicios`), y CABINA lo
+dice con el puerto cuando pasa.
