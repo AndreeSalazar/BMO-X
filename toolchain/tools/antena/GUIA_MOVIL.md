@@ -13,21 +13,27 @@ mas. Ni en el repositorio, ni en un commit, ni en una captura que se comparta.
 
 ---
 
-## Lo que ya esta hecho (verificado el 2026-09-14 por el cable)
+## Lo que ya esta hecho (A1 CUMPLIDO el 2026-09-16, por WiFi)
 
 ```text
    [x] Termux instalado, con python y ffmpeg
    [x] termux-setup-storage hecho (ya ve las carpetas del movil)
-   [x] la carpeta bmo-antena en el almacenamiento, con antena.py y LEEME
-   [ ] lamina_juez.py al lado de antena.py   <- NUEVO el 16-09: sin el, la
-                                               antena no arranca (lo importa)
-   [ ] un video en Movies               <- falta: habia 0
-   [ ] la antena arrancada y contestando <- falta
+   [x] la carpeta bmo-antena en la RAIZ del almacenamiento, copiada por MTP
+       desde Windows el 16-09: antena.py, lamina_juez.py, ejemplo.lamina,
+       bunny.mp4 (Big Buck Bunny, 10 s, CC-BY) y LEEME.txt
+   [x] la antena arrancada en Termux y contestando por WiFi
+   [x] Windows recibio LISTA 2 (v1 bunny.mp4, p1 ejemplo.lamina), 1,69 MB de
+       MPEG-1 en 12 s que VLC reprodujo, y p1 identica byte a byte
+   [ ] una lamina hecha EN el HONOR (seccion L0)  <- lo que queda del movil
 ```
 
-** Por el cable, igual que antena.py: copiar `toolchain/tools/antena/lamina_juez.py`
-a la carpeta `bmo-antena` del movil. Es el juez de las paginas, y la antena lo
-usa antes de servir una.
+** La carpeta va en la raiz del almacenamiento, no en Movies: el `errno 2`
+del 16-09 era el enlace `~/storage/movies` de Termux, que no existia. Con
+`--carpeta ~/storage/shared/bmo-antena` no hace falta ningun enlace.
+
+** La copia por MTP se puede hacer desde un script de Windows (Shell COM,
+`CopyHere` sobre "Este equipo > HONOR X7a > Memoria interna"): los ficheros
+llegan con su nombre, su extension y sus bytes exactos.
 
 ---
 
@@ -64,10 +70,11 @@ Los dos tienen que estar en la MISMA red del router (el movil por WiFi vale).
 En Termux, con la IP de Windows (luego sera la de BMO-X):
 
 ```text
-   python ~/storage/shared/bmo-antena/antena.py --carpeta ~/storage/movies --permitir <IP de Windows>
+   python ~/storage/shared/bmo-antena/antena.py --carpeta ~/storage/shared/bmo-antena --permitir <IP de Windows>
 ```
 
-Se queda esperando. Dejar Termux abierto.
+Tiene que decir `antena: escuchando en el puerto 7117, 1 videos y 1 paginas
+en la carpeta`. Se queda esperando. Dejar Termux abierto.
 
 ## Paso 5 -- pedirle desde Windows
 

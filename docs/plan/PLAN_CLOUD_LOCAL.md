@@ -508,9 +508,13 @@ antena tendria un boton para apagarte el PC: le bastaria con portarse mal.
 
 ## Los escalones nuevos
 
-- [ ] **A1 -- la antena contesta a Windows.** La guia paso a paso es
+- [x] **A1 -- la antena contesta a Windows.** HECHO el 2026-09-16 con el
+      HONOR X7a por WiFi (Termux, ffmpeg 8.1.2): la guia paso a paso es
       `toolchain/tools/antena/GUIA_MOVIL.md`. **Como se sabe:** `cliente.py` en
-      Windows recibe la LISTA y un `prueba.mpg` de 10 s que VLC reproduce.
+      Windows recibio `LISTA 2` (`v1 bunny.mp4`, un clip de Big Buck Bunny
+      CC-BY, y `p1 ejemplo.lamina`), 1.693.696 bytes de MPEG-1 en 12 s (1,13
+      Mbit/s, cabecera `00 00 01 BA`) que VLC reprodujo, y la pagina `p1`
+      llego IDENTICA byte a byte. El movil ya es ANTENA por la red.
 
 - [x] **PR0 -- la ley del castigo, pura y con banco.** HECHO el 2026-09-14 en
       `platform/shared/bmo-antena/src/cuarentena.rs`: `Cuarentena` (faltas,
