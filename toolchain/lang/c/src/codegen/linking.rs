@@ -88,6 +88,15 @@ impl Codegen {
         for (idx, s) in self.strings.iter().enumerate() {
             for f in &self.fixups {
                 if f.string_idx == idx {
+                    if self.objeto {
+                        // The distance to rodata is only known once the units
+                        // are laid out: the linker's job. See `objeto.rs`.
+                        self.obj_rel32.push((
+                            f.lea_offset,
+                            objeto::Destino::Seccion(SectionKind::RoData, off_en_seccion as u64),
+                        ));
+                        continue;
+                    }
                     let rip = f.lea_offset + 4;
                     let disp = (va_rodata + off_en_seccion) as i64 - rip as i64;
                     self.code[f.lea_offset..f.lea_offset + 4]
@@ -111,6 +120,17 @@ impl Codegen {
         let va_bss = va_data + super::decidir::imagen::hasta_pagina(data_len);
         for &(lea_offset, ref name) in &self.global_fixups {
             if let Some(&(off, _)) = self.global_offsets.get(name) {
+                if self.objeto {
+                    let destino = if self.enlace.solo_externos.contains(name) {
+                        objeto::Destino::Simbolo(name.clone())
+                    } else if (off as usize) < data_len {
+                        objeto::Destino::Seccion(SectionKind::Data, off as u64)
+                    } else {
+                        objeto::Destino::Seccion(SectionKind::Bss, (off as usize - data_len) as u64)
+                    };
+                    self.obj_rel32.push((lea_offset, destino));
+                    continue;
+                }
                 let va = if (off as usize) < data_len {
                     va_data + off as usize
                 } else {
@@ -164,6 +184,10 @@ impl Codegen {
         // declarado mas abajo que ella.
         let pendientes_g = core::mem::take(&mut self.relocs_a_global);
         for (off_en_data, gname, sumando) in pendientes_g {
+            if self.objeto && self.enlace.solo_externos.contains(&gname) {
+                self.obj_abs64.push((off_en_data, objeto::Destino::Simbolo(gname), sumando));
+                continue;
+            }
             let Some(&(destino, _)) = self.global_offsets.get(&gname) else {
                 self.errors.push(format!(
                     "la tabla apunta a '{gname}' y ese global no existe en esta unidad"
@@ -183,6 +207,10 @@ impl Codegen {
         let pendientes = core::mem::take(&mut self.relocs_a_funcion);
         for (off_en_data, fname) in pendientes {
             let Some(&destino) = self.function_offsets.get(&fname) else {
+                if self.objeto {
+                    self.obj_abs64.push((off_en_data, objeto::Destino::Simbolo(fname), 0));
+                    continue;
+                }
                 self.errors.push(format!(
                     "la tabla apunta a '{fname}' y esa funcion no se emitio en esta unidad"
                 ));
@@ -277,6 +305,11 @@ impl Codegen {
                 let off = reloc.offset;
                 let disp = target_offset as i32 - (off as i32 + 4);
                 self.code[off..off + 4].copy_from_slice(&disp.to_le_bytes());
+            } else if self.objeto {
+                // ** In an object this is not an error: it is what an object is
+                // FOR. The linker closes it, or says by name that nobody
+                // defines it.
+                self.obj_rel32.push((reloc.offset, objeto::Destino::Simbolo(reloc.target.clone())));
             } else if !faltan.contains(&reloc.target) {
                 faltan.push(reloc.target.clone());
             }
@@ -297,6 +330,8 @@ impl Codegen {
             if let Some(&target) = self.function_offsets.get(name) {
                 let disp = target as i32 - (*off as i32 + 4);
                 self.code[*off..*off + 4].copy_from_slice(&disp.to_le_bytes());
+            } else if self.objeto {
+                self.obj_rel32.push((*off, objeto::Destino::Simbolo(name.clone())));
             } else {
                 self.errors.push(format!("no existe la funcion '{name}' cuya direccion se tomo"));
             }

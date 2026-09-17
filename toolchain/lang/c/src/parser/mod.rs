@@ -99,6 +99,14 @@ pub(crate) struct Parser {
     /// Globales que una funcion ha ido creando al declarar sus `static`.
     /// `parse_program` las recoge al terminar cada funcion.
     globales_pendientes: Vec<GlobalDecl>,
+    /// Linkage facts for the object (`.bo`). See `ast::Enlace`.
+    enlace: Enlace,
+    /// A file-scope `static` was read: how many functions and globals there
+    /// were at that moment. The declaration that grows either list is the
+    /// static one.
+    static_desde: Option<(usize, usize)>,
+    /// How many times each global name was declared `extern`.
+    extern_cuentas: HashMap<String, usize>,
     /// How many untagged struct/union bodies have been seen. Only used to make
     /// their generated tags unique.
     anon_aggregates: u32,
@@ -131,6 +139,9 @@ impl Parser {
             static_alias: HashMap::new(),
             base_del_declarador: TypeSpec::Int,
             globales_pendientes: Vec::new(),
+            enlace: Enlace::default(),
+            static_desde: None,
+            extern_cuentas: HashMap::new(),
             anon_aggregates: 0,
             funcion_actual: String::new(),
             syscalls: HashMap::new(),
@@ -168,8 +179,24 @@ impl Parser {
             return Err(e.clone());
         }
         let mut globals = Vec::new();
-        let mut functions = Vec::new();
+        let mut functions: Vec<Function> = Vec::new();
         while *self.peek() != Token::Eof {
+            // * The declaration after a file-scope `static` is the one that grew
+            // a list: its names get internal linkage. Checked BEFORE the
+            // pending locals are appended, so those do not count as growth.
+            if let Some((f, g)) = self.static_desde {
+                if functions.len() > f || globals.len() > g {
+                    for func in &functions[f..] {
+                        self.enlace.estaticos.insert(func.name.clone());
+                    }
+                    for gd in &globals[g..] {
+                        if let GlobalDecl::Var(_, n, _) | GlobalDecl::VarLista(_, n, _) = gd {
+                            self.enlace.estaticos.insert(n.clone());
+                        }
+                    }
+                    self.static_desde = None;
+                }
+            }
             // An untagged aggregate is defined wherever its TYPE is written --
             // inside a typedef, a parameter list, a local. `parse_type_spec`
             // cannot reach `globals` from there, so it leaves the definition
@@ -369,6 +396,7 @@ impl Parser {
             }
             if *self.peek() == Token::Extern {
                 self.advance();
+                let globales_antes = globals.len();
                 // A prototype is also `extern`: `extern int f(int);`. It
                 // declares nothing to allocate, and reading it as a variable
                 // would stop at the parenthesis.
@@ -390,6 +418,14 @@ impl Parser {
                 self.skip_semicolon();
                 self.var_types.insert(name.clone(), typ.clone());
                 globals.push(GlobalDecl::Var(typ, name, None));
+                // * Every name this `extern` declared, commas included: counted
+                // so that one declared extern and never defined is known to
+                // live in another unit.
+                for gd in &globals[globales_antes..] {
+                    if let GlobalDecl::Var(_, n, _) = gd {
+                        *self.extern_cuentas.entry(n.clone()).or_insert(0) += 1;
+                    }
+                }
                 continue;
             }
             // * `static` EN EL NIVEL DE FICHERO: se acepta y se sigue de largo.
@@ -408,6 +444,10 @@ impl Parser {
             // `terminar_declaracion_static`.
             if *self.peek() == Token::Static {
                 self.advance();
+                // ** 2026-09-17: and now it is remembered. The next declaration
+                // that adds a function or a global is internal linkage -- see
+                // the top of this loop. One unit still behaves exactly the same.
+                self.static_desde = Some((functions.len(), globals.len()));
                 continue;
             }
             // `inline` at file scope, same treatment and for the same reason as
@@ -472,7 +512,16 @@ impl Parser {
                 }
                 // Un PROTOTIPO: `int f(int);`. No emite nada -- solo dice que
                 // esa funcion existira. Ya se consumio, asi que se sigue.
-                Tope::Prototipo => continue,
+                Tope::Prototipo => {
+                    // `static int f(void);` -- the prototype carries the
+                    // linkage, and the later definition inherits it.
+                    if self.static_desde.take().is_some() {
+                        if let Some((n, ..)) = self.enlace.prototipos.last() {
+                            self.enlace.estaticos.insert(n.clone());
+                        }
+                    }
+                    continue;
+                }
                 Tope::NoEsFuncion => {}
             }
             {
@@ -550,7 +599,19 @@ impl Parser {
                 )
             })
             .collect();
-        Ok(Program { globals, functions, exported: Vec::new(), disposiciones })
+        // A global declared `extern` as many times as it appears was never
+        // DEFINED here: it lives in another unit.
+        let mut enlace = std::mem::take(&mut self.enlace);
+        for (n, veces) in &self.extern_cuentas {
+            let total = globals
+                .iter()
+                .filter(|gd| matches!(gd, GlobalDecl::Var(_, m, _) | GlobalDecl::VarLista(_, m, _) if m == n))
+                .count();
+            if total == *veces {
+                enlace.solo_externos.insert(n.clone());
+            }
+        }
+        Ok(Program { globals, functions, exported: Vec::new(), disposiciones, enlace })
     }
 
     /// Parse with module resolution. Returns merged Program with all dependency sources.

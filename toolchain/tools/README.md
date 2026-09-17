@@ -53,6 +53,7 @@ documento recien escrito esta huerfano un rato por definicion.
 | [`bex-link`](bex-link/) | el `.bex` a partir del binario de Rust |
 | [`bmo-linker`](bmo-linker/) | **NO es un enlazador**: lee `.elf` de Ring 3 y escribe `BMO_SYMBOLS.toml`, un REGISTRO de simbolos. Ni es del workspace ni lo llama ningun guion de build. El enlazador que falta esta en [`PLAN_EL_ENLAZADOR`](../../docs/plan/PLAN_EL_ENLAZADOR.md) |
 | [`bmo-pack`](bmo-pack/) | mete los recursos DENTRO del `.bex` |
+| [`bmo-enlazar`](bmo-enlazar/) | **el enlazador ESTATICO**: N objetos (`.bo`) -> un `.bex`. E3 de [`PLAN_EL_ENLAZADOR`](../../docs/plan/PLAN_EL_ENLAZADOR.md) |
 | [`bmo-firmar`](bmo-firmar/) | **la firma Ed25519 de un `.bex` YA construido**, y la unica del arbol que puede firmar. Ver abajo |
 | [`bef-bootstrap`](bef-bootstrap/) | el arranque del formato BEF |
 | [`c-gen`](c-gen/) | los ejemplos de C |

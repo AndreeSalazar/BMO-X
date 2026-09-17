@@ -122,14 +122,26 @@ sigue siendo del dueno: este plan escribe los escalones para cuando la tome.
       `VALKYRIE-ABI/` o junto a `bef/header.rs`, y pide su numero de version.
       **Como se sabe**: `bmo-verify` rechaza un `.bo` como ejecutable, con motivo.
 
-- [ ] **E2 -- BMO C escribe un objeto.** `toolchain/lang/c`: una orden `-c` que
+- [x] **E2 -- BMO C escribe un objeto. HECHO el 2026-09-17.** `-c` emite un
+      `.bo`; el modo objeto vive en `toolchain/lang/c/src/codegen/objeto.rs` y su
+      banco en `src/tests/objeto.rs` (7 filas). El parser guarda lo que tiraba
+      --prototipos, `static` de fichero y `extern`-- en `ast::Enlace`, y **los 41
+      ejecutables del arbol salen byte a byte iguales**: el modo imagen no
+      cambio. Dos fallos que salieron: `&x` de un nombre que no existe emitia
+      CERO en silencio (dos sitios), y una funcion con solo prototipo no podia
+      usarse como valor. Lo que decia la casilla: una orden `-c` que
       emite `.bo` con sus globales como simbolos y cada llamada a una funcion que
       no esta en la unidad como relocacion `Rel32` contra un simbolo indefinido
       -- donde hoy dice *"aqui no hay enlazado: todo lo que se llama tiene que
       estar en esta unidad"*. **Como se sabe**: un banco en el anfitrion que lee el
       `.bo` y encuentra el simbolo indefinido y su relocacion.
 
-- [ ] **E3 -- `toolchain/tools/bmo-enlazar`.** N objetos -> un `.bex`: junta
+- [x] **E3 -- `bmo-enlazar`. HECHO el 2026-09-17.** `toolchain/tools/bmo-enlazar`,
+      7 filas que compilan C de verdad, enlazan y EJECUTAN: dos unidades que se
+      llaman dan `42`, las cadenas y los globales cruzan de unidad, dos `static`
+      con el mismo nombre no chocan, y los cuatro "no" (nadie lo define, definido
+      dos veces, sin `main`, no es un objeto) dicen nombre y unidad. El mismo
+      mandato da los mismos bytes. Lo que decia la casilla: N objetos -> un `.bex`: junta
       secciones, resuelve simbolos, aplica relocaciones y llama a `bmo-verify`
       ANTES de escribir. Y dice que NO con nombre: simbolo definido dos veces,
       simbolo que nadie define, relocacion que no cabe. Sin `Weak` al principio
@@ -137,8 +149,10 @@ sigue siendo del dueno: este plan escribe los escalones para cuando la tome.
       **Como se sabe**: `dos.c` + `uno.c` -> `.bex` que corre en el emulador con la
       salida EXACTA, y el mismo `.bex` sale igual byte a byte en dos corridas.
 
-- [ ] **E4 -- EL METAL.** Ese `.bex` en el Ryzen. **Es la condicion 2 de C++
-      cumplida**, y se dice en `toolchain/lang/cpp/APARCADO.md` ese mismo dia.
+- [ ] **E4 -- EL METAL.** Ese `.bex` enlazado, en el Ryzen. Hoy corre en el
+      emulador; lo que falta es una foto. **La condicion 2 de C++ esta cumplida
+      en el anfitrion desde el 17-09** (`APARCADO.md`, 7.2), y se cierra del todo
+      con esta casilla.
 
 - [ ] **E5 -- la libc como biblioteca.** Las cabeceras de
       `toolchain/forge/sem-asm/tables/standards/C/` dejan de traer el cuerpo: se

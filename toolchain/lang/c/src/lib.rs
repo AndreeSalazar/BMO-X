@@ -38,6 +38,28 @@ pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CError> {
     codegen::compile_to_bef_bytes(&program)
 }
 
+/// **Compile ONE unit to an object (`.bo`)**, to be joined by `bmo-enlazar`.
+/// E2 of `docs/plan/PLAN_EL_ENLAZADOR.md`; the contract is
+/// `bmo_abi::bef::objeto`.
+pub fn compile_source_to_object(source: &str) -> Result<Vec<u8>, CError> {
+    let program = parse(source)?;
+    codegen::compile_to_object(&program)
+}
+
+/// The same, through the preprocessor -- the path a real `.c` file takes.
+pub fn compile_object_with_preprocessor(
+    source: &str,
+    file_path: &Path,
+    std: CStandard,
+) -> Result<Vec<u8>, CError> {
+    let features = StandardFeatures::load_standard(std);
+    let include_paths = module::discover_include_paths();
+    let mut pp = parser::preprocessor::Preprocessor::new(&features, include_paths);
+    let expanded = pp.preprocess(source, file_path)?;
+    let program = parse_with_features(&expanded, &features)?;
+    codegen::compile_to_object(&program)
+}
+
 /// Compile with a specific C standard (C89/C99/C11/C17/C23).
 /// Loads the standard TOML manifest and applies feature gating during parsing.
 pub fn compile_with_standard(source: &str, std: CStandard) -> Result<Vec<u8>, CError> {

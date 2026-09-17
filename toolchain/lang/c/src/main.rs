@@ -19,6 +19,9 @@ fn main() {
     let mut file_path = None;
     let mut out_override: Option<PathBuf> = None;
     let mut quiere_mapa = false;
+    // `-c`, el mismo nombre que en cualquier compilador de C: compila UNA
+    // unidad y no enlaza. La salida es un objeto (`.bo`), no un programa.
+    let mut solo_objeto = false;
     let mut solo_preprocesar = false;
 
     let mut i = 1;
@@ -50,6 +53,9 @@ fn main() {
             // compilador; solo no salia.
             "--map" | "-m" => {
                 quiere_mapa = true;
+            }
+            "-c" | "--objeto" => {
+                solo_objeto = true;
             }
             "--output" | "-o" => {
                 i += 1;
@@ -143,12 +149,20 @@ fn main() {
         }
     }
 
-    let result = match (base_paths.is_empty(), asm_paths.is_empty()) {
-        (true, true) => {
-            let file = Path::new(path);
-            bmo_c_front::compile_with_preprocessor(&source, file, standard)
+    let result = if solo_objeto {
+        if !base_paths.is_empty() || !asm_paths.is_empty() {
+            eprintln!("error: -c no se combina con --base ni --asm-path todavia (esos son el camino de modulos)");
+            process::exit(2);
         }
-        _ => bmo_c_front::compile_source_to_bef_with_all(&source, base_paths, asm_paths),
+        bmo_c_front::compile_object_with_preprocessor(&source, Path::new(path), standard)
+    } else {
+        match (base_paths.is_empty(), asm_paths.is_empty()) {
+            (true, true) => {
+                let file = Path::new(path);
+                bmo_c_front::compile_with_preprocessor(&source, file, standard)
+            }
+            _ => bmo_c_front::compile_source_to_bef_with_all(&source, base_paths, asm_paths),
+        }
     };
 
     match result {
@@ -156,8 +170,9 @@ fn main() {
             // Sin -o la salida es <fuente>.bef. El BEF y el BEX son el
             // MISMO formato (magic BEF1); `.bex` es la extension de uno
             // ejecutable, que es lo que el kernel embebe.
-            let out_path = out_override
-                .unwrap_or_else(|| Path::new(path).with_extension("bef"));
+            let out_path = out_override.unwrap_or_else(|| {
+                Path::new(path).with_extension(if solo_objeto { "bo" } else { "bef" })
+            });
 
             // -- * EL GATE, ANTES DE ESCRIBIR --------------------------
             //
@@ -174,7 +189,12 @@ fn main() {
             // fichero malo en el disco con un mensaje de error al lado, y el
             // que lo encuentre manana vera el `.bex` y no el mensaje. Un gate
             // que avisa cuando el dano ya esta hecho es un informe, no un gate.
-            if let bmo_verify::Verdict::Rejected(razones) = bmo_verify::verify(&bef_bytes) {
+            let veredicto = if solo_objeto {
+                bmo_verify::verify_object(&bef_bytes)
+            } else {
+                bmo_verify::verify(&bef_bytes)
+            };
+            if let bmo_verify::Verdict::Rejected(razones) = veredicto {
                 eprintln!("error: el BEF no pasa el gate de verificacion:");
                 for r in &razones {
                     eprintln!("  - {r}");

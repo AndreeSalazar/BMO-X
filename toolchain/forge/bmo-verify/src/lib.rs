@@ -118,6 +118,31 @@ pub fn verify(bef: &[u8]) -> Verdict {
     }
 }
 
+/// **El gate de un OBJETO (`.bo`)**, que no es el de una imagen.
+///
+/// Un objeto no pasa por `bmo_bex_gate`: esa puerta es la del kernel, y un
+/// objeto no se carga -- se enlaza. Lo que si tiene que cumplir es el contrato
+/// (`bmo_abi::bef::objeto`) y el validador estructural, que es lo que un
+/// frontend debe comprobar antes de escribirlo. E2 de `PLAN_EL_ENLAZADOR`.
+pub fn verify_object(bef: &[u8]) -> Verdict {
+    if let Err(falta) = bmo_abi::bef::objeto::read(bef) {
+        return Verdict::Rejected(vec![format!("{falta:?}")]);
+    }
+    let result = validator::validate(bef);
+    if result.is_valid {
+        Verdict::Ok
+    } else {
+        Verdict::Rejected(
+            result
+                .issues
+                .iter()
+                .filter(|i| matches!(i.severity, validator::IssueSeverity::Error))
+                .map(|i| i.message.clone())
+                .collect(),
+        )
+    }
+}
+
 /// Igual que `verify`, pero devuelve TAMBIEN las advertencias (para
 /// herramientas que quieran inspeccionar sin rechazar).
 pub fn verify_verbose(bef: &[u8]) -> (Verdict, Vec<String>) {

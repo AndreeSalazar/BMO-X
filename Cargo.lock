@@ -147,6 +147,16 @@ name = "bmo-dma-juicio"
 version = "0.1.0"
 
 [[package]]
+name = "bmo-enlazar"
+version = "0.1.0"
+dependencies = [
+ "bmo-abi",
+ "bmo-c-front",
+ "bmo-lower",
+ "bmo-verify",
+]
+
+[[package]]
 name = "bmo-estratos"
 version = "0.1.0"
 dependencies = [

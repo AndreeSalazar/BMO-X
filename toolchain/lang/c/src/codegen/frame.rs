@@ -286,7 +286,12 @@ impl Codegen {
             return;
         }
         // Funcion usada como VALOR (fp = myfunc): decae a su direccion.
-        if self.known_functions.contains(name)
+        //
+        // ** Y una que solo trae PROTOTIPO tambien decae (2026-09-17): en un
+        // objeto vive en otra unidad, y el enlazador pone su direccion. Sin
+        // esto, `int (*p)(void) = otra;` decia que `otra` no estaba declarada
+        // teniendo su prototipo delante.
+        if (self.known_functions.contains(name) || self.solo_prototipo(name))
             && !self.var_offsets.contains_key(name)
             && !self.global_offsets.contains_key(name)
         {

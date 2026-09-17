@@ -454,7 +454,16 @@ impl Codegen {
                 } else if self.global_offsets.contains_key(name) {
                     self.code.extend_from_slice(&[0x48, 0x8D, 0x05, 0, 0, 0, 0]);
                     self.global_fixups.push((self.code.len() - 4, name.clone()));
-                } else { self.emit_xor_eax(); }
+                } else if self.known_functions.contains(name) || self.solo_prototipo(name) {
+                    self.emit_func_addr(name);
+                } else {
+                    // El mismo cero callado que en `direccion.rs`, por el otro
+                    // camino: aqui se pedia la DIRECCION de una expresion.
+                    self.errors.push(format!(
+                        "'{name}' se usa como direccion y no hay ninguna variable ni funcion con ese nombre"
+                    ));
+                    self.emit_xor_eax();
+                }
             }
             Expr::Subscript(name, index) => {
                 self.emit_subscript_addr(name, index);

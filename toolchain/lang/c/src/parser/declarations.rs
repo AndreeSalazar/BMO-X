@@ -180,6 +180,13 @@ impl Parser {
             // Los nombres de un prototipo no llegan a ningun cuerpo: lo que
             // taparon se devuelve ya.
             self.destapar_enums();
+            // ** Kept for separate compilation (E2): a call to a function of
+            // another unit needs these types to pass its arguments right.
+            self.enlace.prototipos.push((
+                name.clone(),
+                params.iter().map(|p| p.typ.clone()).collect(),
+                ret_type.clone(),
+            ));
             self.var_types.insert(name.clone(), ret_type);
             return Ok(Tope::Prototipo);
         }

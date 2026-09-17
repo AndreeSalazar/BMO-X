@@ -8,6 +8,7 @@
 
 use std::collections::HashMap;
 use bmo_abi::bef::writer::{BefBuilder, BefSection};
+use bmo_abi::bef::sections::SectionKind;
 use bmo_abi::bef::relocations::{Relocation, SEC_CODE, SEC_DATA, SEC_RODATA};
 use crate::ast::*;
 use crate::CError;
@@ -68,6 +69,10 @@ mod bex;
 /// C -- solo hay nombres y codigo -- y esa frontera se ve en que ese fichero no
 /// escribe `self` ni una vez. La PASADA sobre las relocs se queda en este.
 mod sintetizadas;
+/// The OBJECT (`.bo`): the same bytes, with the references left for the
+/// linker instead of closed here. E2 of `docs/plan/PLAN_EL_ENLAZADOR.md`.
+mod objeto;
+pub use objeto::compile_to_object;
 
 type Result<T> = core::result::Result<T, CError>;
 
@@ -287,6 +292,14 @@ struct Codegen {
     /// Errores acumulados durante la emision (p.ej. intrinseco desconocido) --
     /// el compilador FALLA con mensaje, jamas emite bytes adivinados.
     errors: Vec<String>,
+    /// Writing an object (`.bo`) instead of an image? See `objeto.rs`.
+    objeto: bool,
+    /// The unit's linkage facts, copied from the program when `objeto`.
+    enlace: Enlace,
+    /// `rel32` fields left for the linker: (offset in code, what they point at).
+    obj_rel32: Vec<(usize, objeto::Destino)>,
+    /// 64-bit pointers in data left for the linker: (offset in data, target, addend).
+    obj_abs64: Vec<(u32, objeto::Destino, i64)>,
 }
 
 impl Codegen {
@@ -335,6 +348,10 @@ impl Codegen {
             intrinsics: bmo_sem_asm::Intrinsics::load_x86_64()
                 .expect("tabla de intrínsecos x86-64 (forge/sem-asm/tables)"),
             errors: Vec::new(),
+            objeto: false,
+            enlace: Enlace::default(),
+            obj_rel32: Vec::new(),
+            obj_abs64: Vec::new(),
         }
     }
 
@@ -638,6 +655,15 @@ impl Codegen {
         // aqui `global_offsets` es lo que resuelve cada `lea`.
         self.separar_bss();
         self.collect_strings(program);
+        // * In an OBJECT, a prototype is how a call to a function of another
+        // unit knows its argument types (a `double` travels as bits, a struct
+        // takes several slots). Only there: an image keeps compiling exactly
+        // as before, and a definition below overwrites it anyway.
+        if self.objeto {
+            for (n, params, ret) in &program.enlace.prototipos {
+                self.firmas.entry(n.clone()).or_insert((params.clone(), ret.clone()));
+            }
+        }
         // registrar todos los nombres de funcion ANTES de emitir: una llamada
         // puede referir a una funcion definida mas abajo (forward reference).
         for func in &program.functions {
@@ -671,7 +697,9 @@ impl Codegen {
         // Ring 0 se exceptua porque un modulo de kernel puede no tener `main`
         // -- hoy nadie construye ese perfil, pero la puerta se deja abierta
         // con su motivo en vez de cerrada por accidente.
+        // (An object is not a program: `main` lives in one unit of many.)
         if self.target == TargetProfile::Ring3App
+            && !self.objeto
             && !program.functions.iter().any(|f| f.name == "main")
         {
             self.errors.push(

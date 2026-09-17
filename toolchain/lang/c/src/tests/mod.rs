@@ -150,6 +150,8 @@ mod probe_keymap;
 mod probe_file_io;
 // ** N0c: la superficie en INTI contra la de C, byte a byte.
 mod gemelos_inti;
+// El OBJETO (.bo): E2 de PLAN_EL_ENLAZADOR.
+mod objeto;
 
 // -- Banco de pruebas: EJECUTAR el programa, no mirarlo --------------
 //

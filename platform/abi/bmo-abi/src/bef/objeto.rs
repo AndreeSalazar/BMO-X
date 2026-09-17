@@ -29,8 +29,14 @@
 //!    binding       Local  -- only this unit sees it (`static` in C)
 //!                  Global -- the linker offers it to the other units
 //!                  Weak   -- REFUSED for now: one promise less to keep
-//!    kind          Function or Object
+//!    kind          Function, Object, or Section
 //! ```
+//!
+//! ** A SECTION symbol is what "somewhere inside this unit" points at: one
+//! Local symbol per loadable section, offset 0. A `lea [rip+string]` becomes
+//! `Rel32` against `.rodata` with the offset as addend, because where that
+//! section lands is only known once every unit is laid out. It is always
+//! Local: a section of one unit is not something another unit can name.
 //!
 //! An undefined symbol must be Global: a local nobody defines is a bug of the
 //! unit, not a question for the linker.
@@ -126,6 +132,8 @@ pub struct ObjectSymbol<'a> {
     pub size: u64,
     pub global: bool,
     pub function: bool,
+    /// The anchor of a whole section of this unit (see the header).
+    pub seccion_ancla: bool,
 }
 
 /// One unit, read and checked. Borrowed from the file bytes: nothing copied.
@@ -243,6 +251,14 @@ pub fn read(bytes: &[u8]) -> Result<Object<'_>, Fault> {
             let function = match kind {
                 k if k == SymbolKind::Function as u8 => true,
                 k if k == SymbolKind::Object as u8 => false,
+                // A section anchor: always Local, and it names a section of
+                // THIS unit, so it can never be undefined.
+                k if k == SymbolKind::Section as u8 => {
+                    if global || section_idx == SECTION_UNDEFINED {
+                        return Err(Fault::SymbolKindOrBinding(i));
+                    }
+                    false
+                }
                 _ => return Err(Fault::SymbolKindOrBinding(i)),
             };
 
@@ -265,7 +281,15 @@ pub fn read(bytes: &[u8]) -> Result<Object<'_>, Fault> {
                 }
                 Some(kind)
             };
-            symbols.push(ObjectSymbol { name, section, offset, size, global, function });
+            symbols.push(ObjectSymbol {
+                name,
+                section,
+                offset,
+                size,
+                global,
+                function,
+                seccion_ancla: kind == SymbolKind::Section as u8,
+            });
         }
     }
 

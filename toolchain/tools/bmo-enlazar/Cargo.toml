@@ -1,0 +1,21 @@
+[package]
+name = "bmo-enlazar"
+version = "0.1.0"
+edition = "2021"
+description = "El enlazador ESTATICO de BMO-X: N objetos (.bo) -> UN .bex. Junta secciones, resuelve simbolos, aplica relocaciones y pasa por bmo-verify antes de escribir."
+license = "Apache-2.0"
+
+[dependencies]
+# El contrato del objeto y el escritor de BEF. Nada mas: un enlazador lee un
+# FORMATO, no un lenguaje.
+bmo-abi = { path = "../../../platform/abi/bmo-abi" }
+# El mismo gate que llaman los frontends. Lo que sale de aqui es un ejecutable,
+# asi que se le exige lo que al kernel.
+bmo-verify = { path = "../../forge/bmo-verify" }
+
+[dev-dependencies]
+# Las pruebas compilan C de verdad y EJECUTAN lo enlazado: un enlazador que
+# solo se prueba contra objetos escritos a mano prueba su propia idea del
+# formato.
+bmo-c-front = { path = "../../lang/c" }
+bmo-lower = { path = "../../forge/bmo-lower", features = ["emulator"] }

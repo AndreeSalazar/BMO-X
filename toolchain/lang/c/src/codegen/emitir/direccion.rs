@@ -105,10 +105,23 @@ impl Codegen {
                         } else if self.global_offsets.contains_key(name) {
                             self.code.extend_from_slice(&[0x48, 0x8D, 0x05, 0, 0, 0, 0]);
                             self.global_fixups.push((self.code.len() - 4, name.clone()));
-                        } else if self.known_functions.contains(name) {
-                            // &myfunc -- direccion de la funcion
+                        } else if self.known_functions.contains(name) || self.solo_prototipo(name) {
+                            // &myfunc -- direccion de la funcion. Un nombre que
+                            // solo trae prototipo es de otra unidad: en un
+                            // objeto sale como reloc, y en una imagen el
+                            // parcheo dira que no existe.
                             self.emit_func_addr(name);
-                        } else { self.emit_xor_eax(); }
+                        } else {
+                            // *** ERA UN CERO CALLADO (2026-09-17). `&x` de un
+                            // nombre que no es ni variable ni funcion emitia
+                            // `xor eax,eax`: el programa recibia la direccion
+                            // CERO y seguia. Es el patron 1b -- un fallo
+                            // convertido en un valor con pinta de dato.
+                            self.errors.push(format!(
+                                "'&{name}': no hay ninguna variable ni funcion con ese nombre"
+                            ));
+                            self.emit_xor_eax();
+                        }
                     }
                     Expr::Subscript(name, idx) => {
                         self.emit_subscript_addr(name, idx);

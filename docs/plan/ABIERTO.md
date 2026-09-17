@@ -7,8 +7,8 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   288 casillas ABIERTAS en 34 planes
-   186 hechas
+   286 casillas ABIERTAS en 34 planes
+   188 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -143,15 +143,6 @@
 - [ ] 4 ada como lib no_std toolchain/lang/ada/src/lib.rs con
 - ... y 4 mas
 
-## [`PLAN_EL_ENLAZADOR.md`](PLAN_EL_ENLAZADOR.md) -- 7 abiertas, 2 hechas
-
-*PLAN EL ENLAZADOR -- la pieza que madura a CINCO lenguajes a la vez*
-
-- [ ] E2 -- BMO C escribe un objeto. toolchain/lang/c: una orden -c que
-- [ ] E3 -- toolchain/tools/bmo-enlazar. N objetos -> un .bex: junta
-- [ ] E4 -- EL METAL. Ese .bex en el Ryzen. **Es la condicion 2 de C++
-- ... y 4 mas
-
 ## [`PLAN_ESTRUCTURA.md`](PLAN_ESTRUCTURA.md) -- 7 abiertas, 1 hechas
 
 *PLAN DE ESTRUCTURA -- el taller de BMO-X, en F1*
@@ -240,6 +231,15 @@
 - [ ] emit_program son 357 lineas dentro de mod.rs, y hace TRES cosas:
 - [ ] emit_stmt son 175 lineas y un match de sentencias. Es hermano de
 - [ ] parser/preprocessor.rs son 1.204 lineas y es el otro monolito.
+- ... y 2 mas
+
+## [`PLAN_EL_ENLAZADOR.md`](PLAN_EL_ENLAZADOR.md) -- 5 abiertas, 4 hechas
+
+*PLAN EL ENLAZADOR -- la pieza que madura a CINCO lenguajes a la vez*
+
+- [ ] E4 -- EL METAL. Ese .bex enlazado, en el Ryzen. Hoy corre en el
+- [ ] E5 -- la libc como biblioteca. Las cabeceras de
+- [ ] E6 -- COBOL CALL estatico. toolchain/lang/cobol/PLAN_BANCA.md, 6.2 y
 - ... y 2 mas
 
 ## [`PLAN_EL_SEMAFORO_COMPLETO.md`](PLAN_EL_SEMAFORO_COMPLETO.md) -- 5 abiertas, 4 hechas

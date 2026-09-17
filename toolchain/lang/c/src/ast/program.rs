@@ -77,11 +77,35 @@ pub struct Program {
     /// que cotejar -- no es un fallo. Lo que SI es un fallo es declararlo y que
     /// no cuadre con lo que el codegen calcula por su cuenta.
     pub disposiciones: std::collections::HashMap<String, DisposicionAgregado>,
+    /// What a separate compilation needs and one unit never did. See [`Enlace`].
+    pub enlace: Enlace,
+}
+
+/// ** WHAT THE PARSER USED TO THROW AWAY, kept for the object (`.bo`).
+///
+/// E2 of `docs/plan/PLAN_EL_ENLAZADOR.md`, 2026-09-17. With ONE translation
+/// unit these three facts changed nothing, so the parser consumed them and
+/// moved on -- the comment on file-scope `static` said so and named this day:
+/// *"el dia que haya compilacion separada, esta linea es el sitio"*.
+///
+/// An image (`.bex`) ignores all of it and comes out byte for byte as before.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Enlace {
+    /// `int f(int);` with no body: name, parameter types, return type. Without
+    /// it a call to a function of another unit would not know that an argument
+    /// is a `double` or a `struct`, and would pass it wrong without a word.
+    pub prototipos: Vec<(String, Vec<TypeSpec>, TypeSpec)>,
+    /// Functions and globals declared `static` at file scope: internal
+    /// linkage, invisible to the other units.
+    pub estaticos: std::collections::BTreeSet<String>,
+    /// Globals that this unit only declares `extern` and never defines: they
+    /// live in another unit.
+    pub solo_externos: std::collections::BTreeSet<String>,
 }
 
 impl Program {
     pub fn new() -> Self {
         Self { globals: Vec::new(), functions: Vec::new(), exported: Vec::new(),
-               disposiciones: std::collections::HashMap::new() }
+               disposiciones: std::collections::HashMap::new(), enlace: Enlace::default() }
     }
 }
