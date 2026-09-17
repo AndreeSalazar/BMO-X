@@ -60,6 +60,13 @@ def main():
         if fuente is None:
             libc_res.append((nombre, cabecera, dest, motivo, None, ""))
             continue
+        # ** WITH ITS HEADER (2026-09-17). The probes used to be
+        # `int main(){exit(0);}` with no `#include`, and C99 removed implicit
+        # declarations: BMO C rejected them for the RIGHT reason and the report
+        # said "no exit" while `exit` lived in `stdlib.h`. A probe has to ask
+        # the question a real program asks.
+        if cabecera:
+            fuente = "#include <%s>\n%s" % (cabecera, fuente)
         ok, err = cc.probar(fuente, nombre)
         libc_res.append((nombre, cabecera, dest, motivo, ok, err))
         print(f"    {'ok  ' if ok else 'NO  '} {nombre}")

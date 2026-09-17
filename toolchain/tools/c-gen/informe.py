@@ -179,8 +179,27 @@ def escribir(lenguaje, libc_res, testigos):
     p.append("de las dos preguntas y la que decide si 35.000 lineas ajenas tienen")
     p.append("alguna posibilidad de entrar.\n")
 
+    # ** THE OUTPUT GOES THROUGH THE SAME TABLE AS THE TREE (2026-09-17).
+    #
+    # The 08-08 sweep made BRECHA.md ASCII by rewriting the FILE, not this
+    # generator -- so regenerating it put the dashes and the accents back, the
+    # ASCII guardian would stop the build, and nobody regenerated it again. It
+    # sat six weeks saying `sprintf` and `exit` did not compile.
+    #
+    # `keep_symbols=True` is what the sweep does for markdown: the star legend
+    # stays, the text becomes ASCII. A character the table does not know is a
+    # FAILURE here, not a pass-through.
+    import collections
+    import sys as _sys
+    _sys.path.insert(0, str(AQUI.parent / "ascii-sweep"))
+    from ascii_sweep import transliterate
+    unknown = collections.Counter()
+    texto = transliterate("\n".join(p) + "\n", unknown, keep_symbols=True)
+    if unknown:
+        raise SystemExit("c-gen: characters the ASCII table does not know: %r" % dict(unknown))
+
     DESTINO.parent.mkdir(parents=True, exist_ok=True)
-    DESTINO.write_text("\n".join(p) + "\n", encoding="utf-8")
+    DESTINO.write_text(texto, encoding="utf-8", newline="\n")
     return DESTINO
 
 

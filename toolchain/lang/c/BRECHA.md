@@ -18,7 +18,7 @@ al hardware. Un informe deducido de las fuentes envejece el dia que alguien
 toca las fuentes; uno que compila se actualiza solo.
 
 
-Medido el **2026-08-02**.
+Medido el **2026-09-17**.
 
 ## El numero
 
@@ -80,8 +80,8 @@ descarta con nombre propio.
 
 | Funcion | Cabecera | Compila? | Para que |
 |---|---|---|---|
-| puts | `stdio.h` | **NO** | una linea y salto; trivial encima de printf |
-| sprintf | `stdio.h` | **NO** | DOOM formatea en buffers, no solo en pantalla |
+| puts | `stdio.h` | **si** | una linea y salto; trivial encima de printf |
+| sprintf | `stdio.h` | **si** | DOOM formatea en buffers, no solo en pantalla |
 | malloc | `stdlib.h` | **si** | ★ DOOM pide UN bloque grande (Z_Zone) y se lo administra el |
 | free | `stdlib.h` | **si** | pareja de malloc; con Z_Zone se llama poquisimo |
 | memset | `string.h` | **si** | limpiar el framebuffer y las estructuras |
@@ -90,9 +90,9 @@ descarta con nombre propio.
 | strcmp | `string.h` | **si** | DOOM busca lumps del WAD por nombre |
 | strcpy | `string.h` | **si** | pareja obligada de strcmp |
 | abs | `stdlib.h` | **si** | el render lo usa a manos llenas |
-| atoi | `stdlib.h` | **NO** | parametros de linea de ordenes |
+| atoi | `stdlib.h` | **si** | parametros de linea de ordenes |
 | fopen/fread | `stdio.h` | -- | ★ el WAD son 4 MB. BMO ya tiene KIND_ARCHIVO |
-| exit | `stdlib.h` | **NO** | I_Quit. BMO ya sale por la puerta normal |
+| exit | `stdlib.h` | **si** | I_Quit. BMO ya sale por la puerta normal |
 
 ### Lo que NO entra, y por que
 
