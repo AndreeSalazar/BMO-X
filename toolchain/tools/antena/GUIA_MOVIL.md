@@ -143,6 +143,50 @@ cartel. Esto es lo que el movil tiene HOY para servir paginas, y lo que no:
 para probar NAVEGAR de punta a punta (N2 y N3); la antena que navega SOLA es
 la app, y es lo primero del movil que pide escribir codigo Android.
 
+### La antena NAVEGA SOLA: `PAGINA <url>` (2026-09-16)
+
+Eddi: *"puedes automatizar en Python + JavaScript?"*. Si, y ya esta hecho:
+`antena.py --navegador <puerto>` maneja un Chromium sin cabeza por su
+protocolo de depuracion (`navegador.py`: un WebSocket escrito con `socket`,
+sin dependencias), carga la url, mete `metricaBMO()` + `lamina.js` y devuelve
+la lamina juzgada. Python mandando al JavaScript, sin app.
+
+```text
+   MEDIDO en Windows con Edge sin cabeza (Chromium 153), 2026-09-16:
+     example.com     0,34 s de punta a punta, lamina IDENTICA a la hecha a mano
+     Wikipedia       1,0 s: 2.136 lineas, 91 KB (cargar + maquetar + juzgar + enviar)
+     url que no carga        NO no cargo: net::ERR_NAME_NOT_RESOLVED
+     sin --navegador         NO la antena no tiene navegador
+```
+
+Como se arranca, en un PC (y es lo que la V2 del Arch hara al encender):
+
+```text
+   chromium --headless=new --disable-gpu --remote-debugging-port=9222 about:blank &
+   python antena.py --carpeta <carpeta> --permitir <IP> --navegador 9222
+   python cliente.py <IP de la antena> --pagina https://example.com
+```
+
+** EN EL MOVIL, dicho entero: Termux NO trae Chromium, asi que `--navegador`
+todavia no tiene con que hablar ahi. Los dos caminos, ninguno probado aun en
+el HONOR:
+
+```text
+   a) proot-distro   `pkg install proot-distro && proot-distro install debian`,
+                     dentro `apt install chromium`, y arrancarlo con
+                     `--headless=new --no-sandbox --remote-debugging-port=9222`.
+                     La antena (fuera del proot, en Termux) no cambia una linea:
+                     el puerto es de la misma maquina. Pesa ~1 GB y la primera
+                     pagina tarda; es lo que se mide
+   b) el Chrome del movil   expone su socket de depuracion SOLO a adb; desde
+                     Termux no se cuenta con el. Si algun dia se puede, es
+                     otra direccion en `--navegador` y nada mas
+```
+
+Hasta que a) se pruebe, el movil sirve las laminas de su carpeta (hechas a
+mano con la seccion L0) y navega solo el PC. Es un ARCH pequeno dentro del
+movil, que es justo la V2 del plan con otro chasis.
+
 ### Arrancar la antena con paginas
 
 Las laminas van en la MISMA carpeta que los videos (`--carpeta`): la antena

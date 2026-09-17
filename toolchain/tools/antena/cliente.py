@@ -7,6 +7,7 @@ un .mpg que se reproduce". Habla ANTENA/1 igual que lo hara BMO-X:
     python cliente.py <IP de la antena>              saluda y lista
     python cliente.py <IP de la antena> v1 -s 20     guarda 20 s de v1 en prueba.mpg
     python cliente.py <IP de la antena> p1           guarda la pagina p1 en pagina.lamina
+    python cliente.py <IP de la antena> --pagina https://example.com   la antena NAVEGA
     python cliente.py --lamina pagina.lamina         juzga una LAMINA (L0)
 
 Si `prueba.mpg` se abre en cualquier reproductor, la antena ya sirve lo que
@@ -41,6 +42,7 @@ def main():
     ap = argparse.ArgumentParser(description="Cliente de prueba ANTENA/1")
     ap.add_argument("antena", nargs="?")
     ap.add_argument("--lamina", help="juzga una lamina escrita por lamina.js (L0)")
+    ap.add_argument("--pagina", help="PAGINA <url>: la antena navega sola y manda la lamina")
     ap.add_argument("id", nargs="?")
     ap.add_argument("-s", "--segundos", type=int, default=20)
     ap.add_argument("-o", "--salida", default="prueba.mpg")
@@ -68,10 +70,13 @@ def main():
     print(cabecera)
     for _ in range(int(cabecera.split()[1]) if cabecera.startswith("LISTA ") else 0):
         print("  " + linea(f))
-    if not args.id:
+    if not args.id and not args.pagina:
         return 0
 
-    c.sendall(("PIDE %s\n" % args.id).encode("ascii"))
+    if args.pagina:
+        c.sendall(("PAGINA %s\n" % args.pagina).encode("ascii"))
+    else:
+        c.sendall(("PIDE %s\n" % args.id).encode("ascii"))
     respuesta = linea(f)
     print(respuesta)
     if respuesta.startswith("LAMINA "):

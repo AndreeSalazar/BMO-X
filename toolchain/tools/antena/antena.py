@@ -15,6 +15,7 @@ El protocolo es ANTENA/1, y su juez esta en `platform/shared/bmo-antena`:
     PIDE <id>                  VIDEO 0 mpeg1 640x360, y el flujo hasta cerrar
                                LAMINA <ancho> <alto> <n>, y n lineas (una PAGINA)
                                NO <motivo>
+    PAGINA <url>               LAMINA ..., o NO: la antena NAVEGA SOLA (16-09)
 
 Desde el 2026-09-16 la carpeta tiene DOS cosas: videos (`v1`, `v2`...) y
 PAGINAS ya maquetadas, ficheros `.lamina` (`p1`, `p2`...). Una lamina la hace
@@ -22,6 +23,12 @@ PAGINAS ya maquetadas, ficheros `.lamina` (`p1`, `p2`...). Una lamina la hace
 la carpeta; la antena la JUZGA con `lamina_juez.py` antes de servirla -- una
 lamina que BMO-X rechazaria no sale de aqui, sale un NO con el motivo. Una
 lamina no acaba la conversacion: BMO-X pide la siguiente con el clic.
+
+Y con `--navegador <puerto>` la antena NAVEGA SOLA: `PAGINA <url>` carga la
+url en un Chromium sin cabeza (`navegador.py`, el protocolo de depuracion,
+Python mandando a `lamina.js`) y devuelve la lamina, juzgada igual que las de
+la carpeta. Sin `--navegador`, `PAGINA` contesta `NO la antena no tiene
+navegador` -- que es verdad, y no se tapa.
 
 ESTRICTA (2026-09-14, Eddi: "MAS ESTRICTO ANTENA"):
   - UNA IP. Otra se cierra sin contestarle ni una palabra, y la antena espera un
@@ -52,7 +59,8 @@ import subprocess
 import sys
 import time
 
-from lamina_juez import juzgar_lamina
+from lamina_juez import juzgar_bytes, juzgar_lamina
+import navegador as nav
 
 VERSION = "ANTENA/1"
 PUERTO = 7117
@@ -66,6 +74,8 @@ CASTIGO_S = 1.0
 ANCHO, ALTO = 640, 360
 EXTENSIONES = (".mp4", ".mkv", ".webm", ".mov", ".mpg", ".avi")
 ID = re.compile(r"^[a-z0-9_-]{1,32}$")
+# La url de PAGINA: como la exige `bmo-antena::url_valida`.
+URL = re.compile(r"^https?://[\x21-\x7e]{1,192}$")
 
 
 class FueraDeProtocolo(Exception):
@@ -190,7 +200,28 @@ def servir_video(conexion, ruta):
           % (enviados, segundos, enviados * 8 / 1e6 / segundos))
 
 
-def atender(conexion, carpeta, nombre):
+def servir_pagina(conexion, navegador, url):
+    """La antena navega: carga la url, saca la lamina y la JUZGA antes de
+    mandar la primera linea. Cualquier fallo es un NO con su motivo."""
+    if navegador is None:
+        enviar(conexion, "NO la antena no tiene navegador (arranca con --navegador)")
+        return
+    try:
+        datos = navegador.lamina_de(url)
+    except nav.SinNavegador as e:
+        enviar(conexion, "NO %s" % limpio(str(e)))
+        return
+    try:
+        juzgar_bytes(datos)
+    except ValueError as e:
+        enviar(conexion, "NO la lamina no vale: %s" % limpio(str(e)))
+        return
+    for l in datos.split(b"\n"):
+        if l:
+            conexion.sendall(l + b"\n")
+
+
+def atender(conexion, carpeta, nombre, navegador=None):
     lineas = Linea(conexion)
     if lineas.leer(SALUDO_S) != "HOLA " + VERSION:
         raise FueraDeProtocolo("no empezo con HOLA " + VERSION)
@@ -218,6 +249,11 @@ def atender(conexion, carpeta, nombre):
                 continue
             servir_video(conexion, ruta)
             return
+        elif linea.startswith("PAGINA "):
+            url = linea[7:]
+            if not URL.match(url):
+                raise FueraDeProtocolo("url mal formada")
+            servir_pagina(conexion, navegador, url)
         else:
             raise FueraDeProtocolo("orden desconocida")
 
@@ -230,7 +266,23 @@ def main():
                     help="la IP de la antena por la que escuchar (mejor la de la LAN)")
     ap.add_argument("--puerto", type=int, default=PUERTO)
     ap.add_argument("--nombre", default="antena")
+    ap.add_argument("--navegador", type=int, default=0,
+                    help="puerto de un Chromium con --remote-debugging-port: PAGINA navega sola")
     args = ap.parse_args()
+    navegador = None
+    if args.navegador:
+        try:
+            lamina_js = nav.cargar_lamina_js(os.path.dirname(os.path.abspath(__file__)))
+        except OSError:
+            print("antena: falta lamina.js al lado de antena.py")
+            return 1
+        navegador = nav.Navegador(args.navegador, lamina_js)
+        try:
+            navegador._http("GET", "/json/version")
+        except nav.SinNavegador as e:
+            print("antena: %s" % e)
+            return 1
+        print("antena: navegador en el puerto %d, PAGINA navega sola" % args.navegador)
     if not os.path.isdir(args.carpeta):
         print("antena: no existe la carpeta")
         return 1
@@ -250,7 +302,7 @@ def main():
                 continue
             print("antena: BMO-X conectado")
             try:
-                atender(conexion, args.carpeta, args.nombre)
+                atender(conexion, args.carpeta, args.nombre, navegador)
             except FueraDeProtocolo as e:
                 print("antena: colgada, fuera de protocolo: %s" % e)
             except (OSError, socket.timeout):

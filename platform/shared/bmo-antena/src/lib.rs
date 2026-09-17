@@ -20,6 +20,7 @@
 //!    PIDE <id>                       VIDEO <bytes> mpeg1 <ancho>x<alto>, y el flujo
 //!                                    LAMINA <ancho> <alto> <n>, y n lineas (2026-09-16)
 //!                                    NO <motivo>
+//!    PAGINA <url>                    LAMINA ..., o NO: la antena NAVEGA sola (16-09)
 //!    (cerrar la conexion)            es PARAR: no hace falta otra palabra
 //! ```
 //!
@@ -29,6 +30,13 @@
 //! conversacion: llegan sus `n` lineas (`lamina::Lector` las juzga una a una,
 //! en Latin-1) y se vuelve a la charla, porque un clic pide la siguiente.
 //! Una antena que solo sabe video contesta `NO` a un `p1`, y eso vale.
+//!
+//! ** `PAGINA <url>` es la antena NAVEGANDO SOLA: carga la url en su navegador,
+//! corre `lamina.js` y contesta como a un `PIDE` de pagina. La url viaja tal
+//! cual, y por eso es lo unico del protocolo que BMO-X manda "largo": hasta
+//! `URL_MAX` bytes, ASCII imprimible sin espacios, y solo `http://` o
+//! `https://`. Lo que la antena haga con ella es de la antena (seccion 12 del
+//! plan: una orden sin dueno es lo que EMPAREJAR existe para impedir).
 //!
 //! # Lista blanca, como `bmo-pila`
 //!
@@ -60,6 +68,8 @@ pub const LINEA_MAX: usize = 256;
 pub const ID_MAX: usize = 32;
 pub const TEXTO_MAX: usize = 160;
 pub const LISTA_MAX: u32 = 64;
+/// Lo mas larga que puede ser una url en `PAGINA`: cabe en una linea con el verbo.
+pub const URL_MAX: usize = 200;
 pub const ANCHO_MAX: u32 = 1280;
 pub const ALTO_MAX: u32 = 720;
 pub const LADO_MIN: u32 = 16;
@@ -83,6 +93,8 @@ pub enum Rechazo {
     Charla,
     /// La conversacion ya se cerro por un rechazo anterior.
     Cerrada,
+    /// Una url que no es `http(s)://`, lleva espacios o bytes raros, o no cabe.
+    Url,
     /// Una zona de la lamina que se sale de la lamina.
     Fuera,
     /// Un color que no es `rrggbb`.
@@ -105,6 +117,7 @@ impl Rechazo {
             Rechazo::Orden => "una linea que no toca ahora: la antena se sale del protocolo",
             Rechazo::Charla => "demasiadas lineas sin llegar a un video",
             Rechazo::Cerrada => "la conversacion ya se cerro por un rechazo",
+            Rechazo::Url => "una url que no es http(s)://, o con espacios, o de mas de 200 bytes",
             Rechazo::Fuera => "una zona que se sale de la lamina",
             Rechazo::Color => "un color que no es rrggbb",
         }
@@ -227,6 +240,16 @@ pub enum Pedido<'a> {
     Hola,
     Lista,
     Pide(&'a [u8]),
+    /// La antena navega sola: carga la url y contesta `LAMINA` o `NO`.
+    Pagina(&'a [u8]),
+}
+
+/// `http://` o `https://`, ASCII imprimible, sin espacios, y cabe en la linea.
+pub fn url_valida(url: &[u8]) -> bool {
+    !url.is_empty()
+        && url.len() <= URL_MAX
+        && url.iter().all(|&c| (0x21..=0x7E).contains(&c))
+        && (url.starts_with(b"http://") || url.starts_with(b"https://"))
 }
 
 /// Escribe un pedido con su `\n`. Un id invalido no se escribe.
@@ -252,6 +275,13 @@ pub fn escribir(dst: &mut [u8], p: &Pedido) -> Result<usize, Rechazo> {
             }
             poner(dst, b"PIDE ")?;
             poner(dst, id)?;
+        }
+        Pedido::Pagina(url) => {
+            if !url_valida(url) {
+                return Err(Rechazo::Url);
+            }
+            poner(dst, b"PAGINA ")?;
+            poner(dst, url)?;
         }
     }
     poner(dst, b"\n")?;
@@ -374,6 +404,8 @@ impl Conversacion {
             (Fase::Inicio, Pedido::Hola) => Fase::Saludo,
             (Fase::Charla, Pedido::Lista) => Fase::Lista { faltan: 0, anunciada: false },
             (Fase::Charla, Pedido::Pide(id)) if id_valido(id) => Fase::Pidiendo,
+            // Una pagina pedida por url espera lo mismo que un `PIDE`: LAMINA o NO.
+            (Fase::Charla, Pedido::Pagina(url)) if url_valida(url) => Fase::Pidiendo,
             _ => return Err(Rechazo::Orden),
         };
         Ok(())
@@ -509,6 +541,14 @@ mod pruebas {
         let n = escribir(&mut b, &Pedido::Pide(b"v3")).unwrap();
         assert_eq!(&b[..n], b"PIDE v3\n");
         assert_eq!(escribir(&mut b, &Pedido::Pide(b"v3; rm")), Err(Rechazo::Id));
+        let mut g = [0u8; 256];
+        let n = escribir(&mut g, &Pedido::Pagina(b"https://example.com/a?b=1")).unwrap();
+        assert_eq!(&g[..n], b"PAGINA https://example.com/a?b=1\n");
+        assert_eq!(escribir(&mut g, &Pedido::Pagina(b"ftp://x")), Err(Rechazo::Url), "solo http(s)");
+        assert_eq!(escribir(&mut g, &Pedido::Pagina(b"https://x y")), Err(Rechazo::Url), "sin espacios");
+        assert_eq!(escribir(&mut g, &Pedido::Pagina(b"https://x\xC3\xB1")), Err(Rechazo::Url), "ASCII");
+        let larga = [b'a'; URL_MAX + 1];
+        assert_eq!(escribir(&mut g, &Pedido::Pagina(&larga)), Err(Rechazo::Url), "no cabe");
         assert_eq!(escribir(&mut [0u8; 4], &Pedido::Hola), Err(Rechazo::Corto));
     }
 
@@ -634,6 +674,21 @@ mod pruebas {
         c.pedir(&Pedido::Pide(b"p2")).unwrap();
         assert_eq!(c.oir(b"NO no hay pagina con ese id"), Ok(Respuesta::No { motivo: b"no hay pagina con ese id" }));
         assert_eq!(c.fase(), Fase::Charla);
+    }
+
+    /// `PAGINA <url>` espera lo mismo que un `PIDE` de pagina: la antena navego
+    /// y trae la lamina, o dice NO (sin navegador, sin red, o la url no carga).
+    #[test]
+    fn una_pagina_por_url_es_como_un_pide() {
+        let mut c = charlando();
+        c.pedir(&Pedido::Pagina(b"https://example.com")).unwrap();
+        assert_eq!(c.fase(), Fase::Pidiendo);
+        c.oir(b"LAMINA 640 100 1").unwrap();
+        assert!(matches!(c.oir(b"CAJA 0 0 640 100 eeeeee"), Ok(Respuesta::Elemento(_))));
+        assert_eq!(c.fase(), Fase::Charla);
+        c.pedir(&Pedido::Pagina(b"https://no.existe")).unwrap();
+        assert_eq!(c.oir(b"NO la antena no tiene navegador"), Ok(Respuesta::No { motivo: b"la antena no tiene navegador" }));
+        assert_eq!(c.pedir(&Pedido::Pagina(b"javascript:alert(1)")), Err(Rechazo::Orden), "una url mala no se manda");
     }
 
     /// Las lineas de una lamina no cuentan para `LINEAS_MAX`: una pagina real

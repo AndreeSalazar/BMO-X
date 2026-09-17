@@ -940,6 +940,25 @@ texto al borde; ahora se saltan.
       byte a byte, mientras una lamina rota contesta `NO la lamina no vale:
       linea 2: Fuera: 700+10 > 640`.
 
+- [x] **L3 -- la antena NAVEGA SOLA: `PAGINA <url>`.** HECHO el 2026-09-16:
+      `Pedido::Pagina` en `platform/shared/bmo-antena` (url http(s), ASCII sin
+      espacios, 200 bytes) y `toolchain/tools/antena/navegador.py`, un
+      cliente del protocolo de depuracion de Chromium sin dependencias que
+      carga la url en un navegador sin cabeza, corre `metricaBMO()` +
+      `lamina.js` y devuelve la lamina; `antena.py --navegador <puerto>`.
+      **Como se sabe:** `cargo test -p bmo-antena` (34); con Edge sin cabeza
+      en Windows, `cliente.py --pagina https://example.com` trae una lamina
+      IDENTICA a `ejemplo.lamina` en 0,34 s, y Wikipedia (2.136 lineas, 91 KB)
+      en 1,0 s; una url que no carga contesta `NO no cargo: net::ERR_...`.
+
+- [ ] **L3b -- la antena navega sola EN EL MOVIL.** Termux no trae Chromium:
+      proot-distro (Debian) con `chromium --headless=new --no-sandbox
+      --remote-debugging-port=9222` y la antena de Termux con `--navegador
+      9222`, sin cambiar una linea (`toolchain/tools/antena/GUIA_MOVIL.md`).
+      **Como se sabe:** `cliente.py <IP del movil> --pagina https://example.com`
+      desde Windows trae la misma lamina que el PC, y se apunta cuanto tarda
+      el HONOR con Wikipedia.
+
 - [ ] **L0 -- el recorrido, en el MOVIL.** Primero SIN app: Chrome en el
       HONOR, depuracion USB y `chrome://inspect` desde el PC, con `lamina.js`
       pegado en la consola remota (paso a paso en
