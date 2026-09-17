@@ -805,28 +805,40 @@ primera linea**. CPython llego a lo mismo (PEP 683) y le costo una version
 entera meterlo a posteriori. Es el argumento mas fuerte para escribir el
 contrato antes que el codigo.
 
-### Los DOS MODOS
+### UN SOLO MODO: el interprete. El AOT de Python SE QUITA (2026-09-17)
 
-Decidido por Eddi el 16-08: modo interprete y modo AOT.
+El 16-08 se decidieron dos modos, interprete y AOT. **El 17-09 el dueno quito
+el segundo**: *"Python AOT quitar eso, es lo mismo como INTI"*.
 
 ```text
-   .py -> lexer -> parser -> AST -> compilador
-                                      +-> bytecode  -> interprete  (REPL, todo el lenguaje)
-                                      +-> AST de C  -> BMO C -> BEF  (AOT, closed world)
+   .py -> lexer -> parser -> AST -> bytecode -> interprete   (REPL, todo el lenguaje)
 ```
 
-- Comparten la mitad delantera. **Y los dos usan EL MISMO runtime.**
-- ★ **El AOT no elimina el runtime**: un `x + y` compilado sigue siendo
-  `call runtime_sumar(x, y)`, porque sigue sin saberse los tipos. El AOT quita
-  **el bucle de despacho**, no el modelo de objetos. Ganancia realista **~2-4x**,
-  no 50x. Para acercarse a C haria falta informacion de tipos, o sea
-  anotaciones y un subconjunto restringido -- eso es Cython/mypyc, y es otro
-  lenguaje.
-- El AOT pierde `eval`/`exec`/REPL: es el modelo **closed-world** de
-  NativeAOT/GraalVM, ya nombrado en [`bmo-ada-plan`] como *"el modelo a copiar"*.
-- ⚠ **Y de ahi el ORDEN: el AOT no se puede hacer primero.** Necesita el
-  runtime, el runtime es el 80% del trabajo, y quien lo estrena es el
-  interprete. Hacer el AOT antes es poner el tejado.
+** Y el motivo ya estaba escrito en este mismo documento, tres lineas mas
+abajo de donde se decidia lo contrario:
+
+- **El AOT de Python no elimina el runtime**: un `x + y` compilado sigue siendo
+  `call runtime_sumar(x, y)`, porque sigue sin saberse los tipos. Ganancia
+  realista **~2-4x**, no 50x. *"Para acercarse a C haria falta informacion de
+  tipos, o sea anotaciones y un subconjunto restringido -- eso es Cython/mypyc,
+  **y es otro lenguaje**."*
+- **Ese otro lenguaje ya existe y se llama INTI**: sintaxis de Python, tipos
+  que el compilador conoce, compilado AOT a `.ibx` nativo sin runtime debajo, y
+  sin UB comprobado en el Ryzen. Ver `docs/maestro/INTI_MAESTRO.md`.
+- Mantener los dos seria pagar dos veces el mismo hueco: un AOT de Python
+  cerrado (sin `eval`, sin REPL) compite con INTI por el mismo programa y lo
+  hace peor, porque no sabe los tipos.
+
+```text
+   quiero Python de verdad, dinamico, con REPL   ->  este documento (interprete)
+                                                     o el TALLER de la antena
+                                                     (PLAN_CLOUD_LOCAL seccion 12)
+   quiero sintaxis de Python compilada a nativo  ->  INTI
+```
+
+[!] Lo que NO cambia: el runtime, la cabecera de objeto inmortal y el formato
+(`Tipos`, `Bytecode`, `Constantes`) siguen siendo del interprete. Lo unico que
+sale es la segunda flecha.
 
 ### El alcance: contrato completo, implementacion semilla
 
@@ -931,6 +943,7 @@ en este alcance, y este es el motivo*.
 | **`subprocess`** | `system()` ya devuelve `-1` con motivo: aqui lanzar es `TASK_OP_EJECUTAR` con una ruta, no una cadena que otro interpreta |
 | **`locale` / `wchar`** | misma razon que en `BRECHA.md`: una libc de verdad empieza aqui y no acaba nunca. Se fuerza modo UTF-8 (PEP 540) |
 | **La suite de tests de CPython** | es mayor que el resto del arbol. El oraculo es CPython corriendo en el anfitrion, no su suite dentro de BMO |
+| **El modo AOT** (quitado el 2026-09-17) | sin tipos solo quita el bucle de despacho (~2-4x); con tipos es otro lenguaje, y ese lenguaje es INTI. Ver *UN SOLO MODO*, seccion 4b |
 
 ---
 
@@ -1036,7 +1049,9 @@ falta de esa fila.
   kernel sin verificar en metal. Va DESPUES de esa foto -- lo que cambio es que
   ya no seria operar sobre una corazonada.
 - **El interprete.** Va detras del paso 1, porque el paso 1 es su cimiento.
-- **El AOT.** Va detras del interprete, porque estrena el mismo runtime.
+- ~~**El AOT.** Va detras del interprete, porque estrena el mismo runtime.~~
+  **QUITADO el 2026-09-17**: el Python compilado a nativo es INTI. Ver *UN SOLO
+  MODO* en la seccion 4b.
 
 ---
 

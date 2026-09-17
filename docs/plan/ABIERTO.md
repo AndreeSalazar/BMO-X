@@ -1,14 +1,14 @@
 <!-- GENERADO por toolchain/tools/planes. No se edita a mano. -->
 
-# LO QUE FALTA -- las casillas abiertas de los 35 planes
+# LO QUE FALTA -- las casillas abiertas de los 37 planes
 
 > Generado por `toolchain/tools/planes`. **El build comprueba que
 > este fichero y los planes dicen lo mismo**, asi que no puede
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   267 casillas ABIERTAS en 32 planes
-   173 hechas
+   291 casillas ABIERTAS en 34 planes
+   183 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -80,6 +80,15 @@
 - [ ] E2 -- (C,T) DECLARADOS Y EL AFORO. Cada tarea trae su compas; el kernel
 - ... y 9 mas
 
+## [`PLAN_LA_DEUDA.md`](PLAN_LA_DEUDA.md) -- 11 abiertas, 6 hechas
+
+*PLAN LA DEUDA -- lo que el arbol debe, medido el 2026-09-17*
+
+- [ ] **D1e -- platform/abi/bmo-abi/src/bef/linker/: 308 lineas que dicen
+- [ ] D2a -- un TRINQUETE. static mut declarados en
+- [ ] D2b -- el reparto, por fichero, cuando SMP se retome. No antes: sin
+- ... y 8 mas
+
 ## [`PLAN_LA_PUERTA_SE_PARTE.md`](PLAN_LA_PUERTA_SE_PARTE.md) -- 11 abiertas, 8 hechas
 
 *PLAN LA PUERTA SE PARTE -- dividir lo que no se puede abaratar*
@@ -105,6 +114,15 @@
 - [ ] C1 -- PLEGAR CONSTANTES. 1 * 8 es 8. Un operador binario con los
 - [ ] C2 -- LITERALES PEQUENOS SIN movabsq. movabsq $0x1,%rax son diez
 - [ ] C3 -- NO PASAR POR LA PILA CUANDO EL OTRO OPERANDO ES CONSTANTE.
+- ... y 6 mas
+
+## [`PLAN_EL_ENLAZADOR.md`](PLAN_EL_ENLAZADOR.md) -- 9 abiertas, 0 hechas
+
+*PLAN EL ENLAZADOR -- la pieza que madura a CINCO lenguajes a la vez*
+
+- [ ] E0 -- LA DECISION. Estatico solamente, o tambien dinamico. La
+- [ ] E1 -- EL CONTRATO DEL OBJETO, en papel antes que en codigo. Que
+- [ ] E2 -- BMO C escribe un objeto. toolchain/lang/c: una orden -c que
 - ... y 6 mas
 
 ## [`PLAN_EL_TROQUEL.md`](PLAN_EL_TROQUEL.md) -- 9 abiertas, 0 hechas
@@ -206,6 +224,15 @@
 - [ ] N3 -- el ANTENISTA. Ultra_userspace/services/antenista: Rust, Ring
 - ... y 3 mas
 
+## [`PLAN_SEGURIDAD.md`](PLAN_SEGURIDAD.md) -- 6 abiertas, 24 hechas
+
+*PLAN SEGURIDAD -- las casillas que faltan, medidas contra el codigo*
+
+- [ ] S-FIRMA-4 -- EL METAL. Un .bex firmado que arranque en el Ryzen y
+- [ ] S-FIRMA-5 -- exige_firma() = true. Lo ultimo, y **no antes de que
+- [ ] C8e -- EL METAL. Los hallazgos 1, 2, 4, 5 y 6 tocan codigo que corre en
+- ... y 3 mas
+
 ## [`PLAN_CODEGEN.md`](PLAN_CODEGEN.md) -- 5 abiertas, 4 hechas
 
 *PLAN DEL CODEGEN DE BMO C -- el censo, los cortes y el numero que los ordena*
@@ -281,13 +308,6 @@
 
 - [ ] 5b <bmo/latido.h> LATIDO + WAIT el tiempo, y la 2a puerta
 - [ ] 5c <bmo/corriente.h> ARCHIVO_ASINC + LISTO leer a ritmo de quien lee
-
-## [`PLAN_SEGURIDAD.md`](PLAN_SEGURIDAD.md) -- 2 abiertas, 20 hechas
-
-*PLAN SEGURIDAD -- las casillas que faltan, medidas contra el codigo*
-
-- [ ] S-FIRMA-4 -- EL METAL. Un .bex firmado que arranque en el Ryzen y
-- [ ] S-FIRMA-5 -- exige_firma() = true. Lo ultimo, y **no antes de que
 
 ## [`PLAN_MAQUETA.md`](PLAN_MAQUETA.md) -- 1 abiertas, 8 hechas
 

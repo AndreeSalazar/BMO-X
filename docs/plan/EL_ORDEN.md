@@ -140,6 +140,22 @@ falsadas y escritas (`sonda_columnas_de_doom.rs`, 22 celdas verdes): no era el
 porque el patron de esta casa dice que un fallo de dibujo casi siempre acaba
 siendo del compilador -- y eso lo paga todo el mundo, no solo DOOM.
 
+## [x] C4 -- la pasada HOSTIL: HECHA el 2026-09-17, y encontro SEIS reales
+
+Diecinueve crates que leen bytes de un tercero, atacados en el banco de
+siempre con `platform/shared/bmo-hostile`. Seis fallos alcanzables desde fuera
+--el anillo RX de Ring 0, un descriptor USB que tumbaba el kernel, un raton que
+movia basura, FAT32 devolviendo la FAT como contenido, el sector de arranque de
+exFAT sin comprobar, y un diagnostico que mentia--, todos cerrados con prueba.
+El detalle vive en [`PLAN_SEGURIDAD.md`](PLAN_SEGURIDAD.md), seccion 5.
+
+## [ ] C5 -- Ada promete `digits 12` y no lo comprueba
+
+`type Saldo is delta 0.01 digits 12` compila y **nadie verifica los doce
+digitos**: un total que se pasa desborda callado. Va en critico por el criterio
+2 --es una promesa que el sistema YA hace y es falsa--, y porque es la prueba de
+fuego entera de Ada. Escalon A1 de `toolchain/lang/ada/PLAN_ADA.md`.
+
 ---
 
 # 3. 🟡 EL SIGUIENTE ARRANQUE -- gratis, y contesta cuatro preguntas
@@ -152,6 +168,8 @@ cuesta lo mismo para una pregunta que para cuatro.
    [ ] M2  cortadas        bajo? entonces el falso compartimiento era el culpable
    [ ] M3  ajenos          QUIENES son los 3 maestros que este kernel no encendio
    [ ] M4  N5b             el plazo de R-DMA-8 sale de `y callo` + margen
+   [ ] M5  C8e (17-09)     la pasada hostil toco Ring 0: teclado y raton
+                           enumeran, DOOM carga su WAD, `red rx` con 0 malas
 ```
 
 [!] **M3 es el que puede sorprender.** Tres aparatos alcanzan la RAM y BMO-X no
@@ -204,6 +222,13 @@ miden con lo que hay:
 *** Con esos tres, *"inteligente"* deja de ser una palabra y pasa a ser una
 desigualdad. Sin ellos es una costumbre que acierta.
 
+## [ ] B4 -- que los `static mut` dejen de crecer sin que nadie lo vea
+
+385 en el kernel el 2026-09-17, contra 253 el 12-08. No se propone quitarlos:
+se propone un trinquete, como el de los avisos del compilador. D2a de
+[`PLAN_LA_DEUDA.md`](PLAN_LA_DEUDA.md), junto con las otras deudas baratas y
+medidas (D1e, D6a, D6b).
+
 ---
 
 # 5. 🔵 GRANDE, Y NO BLOQUEA A NADIE
@@ -219,6 +244,7 @@ hace falsa ninguna promesa.
 | [`PLAN_EL_COMPAS.md`](PLAN_EL_COMPAS.md) | 12 | el turno se CONCEDE en vez de gastarse |
 | [`PLAN_EL_CODEGEN.md`](PLAN_EL_CODEGEN.md) | 9 | 35 instrucciones para escribir 8 bytes |
 | [`PLAN_EL_TROQUEL.md`](PLAN_EL_TROQUEL.md) | 9 | la geometria de los registros, de un golpe |
+| [`PLAN_EL_ENLAZADOR.md`](PLAN_EL_ENLAZADOR.md) | 9 | la compilacion separada. **Desbloquea CINCO lenguajes** -- C, C++, COBOL, Ada y los ports --, y aun asi va aqui: es grande y empieza por una DECISION del dueno (E0), no por codigo |
 
 [!] `EL_PLAZO` y `EL_COMPAS` son **el mismo eje** --quien recibe turno y
 cuando-- y `EL_FANTASMA` ya nombro su fallo: prioridad estricta sin

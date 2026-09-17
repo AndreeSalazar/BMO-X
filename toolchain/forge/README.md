@@ -42,6 +42,11 @@ unica que sabemos con certeza que corrio en el Ryzen real.
 > **Estado: SIN DECIDIR (2026-08-02).** Escrito aqui para que quien la tome
 > --el dueno u otro-- lo haga con los motivos delante y no reconstruyendolos.
 > Cuesta semanas de diferencia segun el camino, y por eso no se decide de paso.
+>
+> **Releido el 2026-09-17**: el argumento de B era DOOM, y DOOM ya se juega en
+> una sola unidad. Lo que queda en la mesa es A, y sus escalones estan en
+> [`docs/plan/PLAN_EL_ENLAZADOR.md`](../../docs/plan/PLAN_EL_ENLAZADOR.md), que
+> empieza por esta misma decision (E0).
 
 ### El hecho, medido
 
