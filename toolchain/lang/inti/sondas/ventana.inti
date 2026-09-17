@@ -1,0 +1,122 @@
+# ventana.inti -- la sonda de la VENTANA: que ve la app de su propia superficie.
+#
+# ===================================================================
+#  Por que existe (2026-09-17)
+# ===================================================================
+#
+# N1 en el Ryzen: NAVEGAR abrio su ventana --el DIRECTOR dijo `[ventana] tid
+# 10 482x141`, o sea que tomo la superficie y leyo bien la cabecera-- y el
+# cuerpo salio BLANCO. Blanco no es "no pinto": el DIRECTOR pinta el cuerpo
+# de azul oscuro antes de pegar, asi que pego pixeles y eran blancos.
+#
+# En el emulador la misma app pinta bien (fondo 141414, texto blanco y
+# naranja, byte a byte lo mismo que C). Lo que difiere es el metal, y hay
+# tres sospechosos que desde Windows no se distinguen:
+#
+#     a) INTI escribe los pixeles en OTRO sitio del que cree
+#     b) el DIRECTOR lee OTRA memoria de la que la app escribe (el prestamo)
+#     c) la app no llego a pintar (murio antes)
+#
+# Esta sonda los separa con lo que la app misma LEE DE VUELTA:
+#
+#     pinta y lee sus pixeles     141414 y ffaa00 -> INTI escribio donde cree (no es a)
+#     espera al DIRECTOR y lee    `tomada` = 1 y `se_ve` = 1 -> el DIRECTOR escribio
+#     su buzon                    EN ESTA memoria: las dos direcciones del prestamo
+#                                 van al mismo sitio (no es b). 0 -> es b
+#     y la ventana en pantalla    si los pixeles se leen bien, tomada = 1 y la
+#                                 ventana sigue blanca, lo que falla esta ENTRE
+#                                 medias: la pagina que el DIRECTOR mapea
+#
+# Se corre con `run inti/ventana.ibx` desde Ejecutar. Se cierra sola a los
+# seis segundos. Sin nadie que componga escribe `sin padre` y sale con 1.
+#
+# ** Como cpu.inti: en `llano` no hay `texto`, asi que las etiquetas son
+# palabras de ocho bytes y los numeros salen en hexadecimal.
+
+perfil llano
+usa bmo
+usa superficie
+
+ANCHO = 64
+ALTO = 32
+RANURAS = 8
+FONDO = 1315860
+AVISO = 16755200
+BLANCO = 16777215
+UN_SEGUNDO_NS = 1000000000
+
+# ===================================================================
+#  1. Contar por consola (calibrado en cpu.inti)
+# ===================================================================
+
+funcion palabra(w es natural64)
+    invoca(mi_tarea, op_consola_escribir, w, 0, 0)
+
+funcion letra(d es natural64) devuelve natural64
+    si d < 10
+        devuelve 48 + d
+    devuelve 87 + d
+
+funcion ocho_hex(v es natural64, desde es natural64) devuelve natural64
+    cambiante w es natural64 = 0
+    cambiante i es natural64 = 0
+    repite mientras i < 8
+        cambiante d es natural64 = 0
+        d = (v desplaza derecha (desde - i * 4)) bits_y 15
+        w = w bits_o (letra(d) desplaza izquierda (i * 8))
+        i = i + 1
+    devuelve w
+
+# Una etiqueta de ocho, el numero en 16 digitos, y salto de linea.
+funcion fila(etiqueta es natural64, v es natural64)
+    palabra(etiqueta)
+    palabra(ocho_hex(v, 60))
+    palabra(ocho_hex(v, 28))
+    palabra(10)
+
+# ===================================================================
+#  2. Lo que se lee de vuelta
+# ===================================================================
+
+# El pixel (px, py) tal y como esta en la memoria de la superficie.
+funcion pixel_leido(s es natural64, px es natural64, py es natural64) devuelve natural64
+    devuelve sup_campo(s, 8 + py * ANCHO + px)
+
+# ===================================================================
+#  3. El programa
+# ===================================================================
+
+funcion principal devuelve entero32
+    cambiante s es natural64 = superficie_crear_con_buzon(ANCHO, ALTO, RANURAS)
+    fila(ocho_bytes("base    "), s)
+    si s = 0
+        palabra(ocho_bytes("sin padr"))
+        palabra(ocho_bytes("e       "))
+        palabra(10)
+        devuelve 1
+    # El dibujo: fondo, una caja naranja en (8,8) de 16x8, y "Hola" en la
+    # fila 16 con la fuente de BMO-X (que lee su tabla de RoData).
+    limpia(s, FONDO)
+    rectangulo(s, 8, 8, 16, 8, AVISO)
+    texto_en(s, 0, 16, ocho_bytes("Hola"), BLANCO)
+    pinta(s)
+    # Lo que la app ve en SU memoria justo despues de pintar.
+    fila(ocho_bytes("secuenc "), sup_campo(s, sup_campo_secuencia))
+    fila(ocho_bytes("pix 0,0 "), pixel_leido(s, 0, 0))
+    fila(ocho_bytes("pix 8,8 "), pixel_leido(s, 8, 8))
+    fila(ocho_bytes("pix 3,22"), pixel_leido(s, 3, 22))
+    fila(ocho_bytes("pix 63,3"), pixel_leido(s, 63, 31))
+    # Un segundo para que el DIRECTOR tome la oferta y escriba su buzon.
+    espera_a(0, 0, UN_SEGUNDO_NS)
+    fila(ocho_bytes("tomada  "), superficie_tomada(s))
+    fila(ocho_bytes("se_ve   "), superficie_se_ve(s))
+    fila(ocho_bytes("estado  "), sup_estado_alto(s))
+    # Y otra vez los pixeles: si alguien los cambio, se sabe.
+    fila(ocho_bytes("pix 0,0 "), pixel_leido(s, 0, 0))
+    fila(ocho_bytes("secuenc "), sup_campo(s, sup_campo_secuencia))
+    # La ventana se queda cinco segundos mas para mirarla, y se va sola.
+    cambiante i es natural64 = 0
+    repite mientras i < 5
+        espera_a(0, 0, UN_SEGUNDO_NS)
+        i = i + 1
+    devuelve 0

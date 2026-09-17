@@ -598,6 +598,11 @@ try {
     Compilar-Ejemplos @(
         @{ src = 'toolchain\lang\inti\sondas\cpu.inti'; out = 'cpu.ibx'; dir = 'inti' },
         @{ src = 'toolchain\lang\inti\sondas\pulso.inti'; out = 'pulso.ibx'; dir = 'inti' },
+        # ** `run inti/ventana.ibx` (2026-09-17): la sonda de la VENTANA. Pinta una
+        # superficie y escribe por consola lo que LEE de vuelta (pixeles, y el
+        # buzon que el DIRECTOR le escribe): separa "INTI escribe en otro sitio"
+        # de "el DIRECTOR lee otra memoria". Nacio del blanco de NAVEGAR (N1).
+        @{ src = 'toolchain\lang\inti\sondas\ventana.inti'; out = 'ventana.ibx'; dir = 'inti' },
         @{ src = 'toolchain\lang\inti\ejemplos\bico.inti'; out = 'bico.ibx'; dir = 'inti' },
         # ** `run inti/musica.ibx [datos/x.mus]` (2026-09-13): el REPRODUCTOR.
         # Suena por el audifono USB (el altavoz de esta placa no suena).

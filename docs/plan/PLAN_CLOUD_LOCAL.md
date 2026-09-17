@@ -162,6 +162,20 @@ pantalla tal cual.
       bufer de mas de 4096 habria escrito en la memoria fisica de al lado. Hoy el
       mayor era 512, y ahora uno mas grande se niega con su linea en el log.
 
+- [ ] **S3b.2d -- LOS DOS xHC.** Visto el 2026-09-17 con el HONOR enchufado
+      al Ryzen: F11 no decia nada y el movil no ofrecia sus opciones de USB.
+      El kernel (`Ultra_kernel_x86-64/kernel/src/ring0/dev/usb/arranque.rs`)
+      censa los dos controladores de la placa (CPU y chipset), se queda con
+      el que MAS aparatos ve --el del teclado y el raton-- y lo que cuelga
+      del otro no se mira jamas; lo grita en `cabina fallos` ("aparatos en
+      OTRO xHC que este kernel no maneja"), no en F11. Como BMO-X nunca lo
+      enumera, Android no recibe el SET_CONFIGURATION y por eso no ofrece
+      "transferir archivos": para el no hay anfitrion. Manejar los dos es
+      la reforma que el propio fichero anuncia (`CTRL` es un `static`
+      unico). Mientras tanto: el movil en un puerto del MISMO controlador
+      que el teclado. **Como se sabe:** con el movil en cualquier puerto,
+      F11 dice que llego.
+
 - [ ] **S3b.2c -- HUBS.** `platform/drivers/usb/xhci/src/enumerar.rs` solo
       direcciona aparatos en los puertos RAIZ: no construye la ruta (route string)
       ni habla con un hub. Un movil, un teclado o un pendrive detras de un hub (o
