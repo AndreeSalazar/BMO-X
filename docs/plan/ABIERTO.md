@@ -8,7 +8,7 @@
 
 ```text
    286 casillas ABIERTAS en 34 planes
-   188 hechas
+   189 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -233,12 +233,12 @@
 - [ ] parser/preprocessor.rs son 1.204 lineas y es el otro monolito.
 - ... y 2 mas
 
-## [`PLAN_EL_ENLAZADOR.md`](PLAN_EL_ENLAZADOR.md) -- 5 abiertas, 4 hechas
+## [`PLAN_EL_ENLAZADOR.md`](PLAN_EL_ENLAZADOR.md) -- 5 abiertas, 5 hechas
 
 *PLAN EL ENLAZADOR -- la pieza que madura a CINCO lenguajes a la vez*
 
 - [ ] E4 -- EL METAL. Ese .bex enlazado, en el Ryzen. Hoy corre en el
-- [ ] E5 -- la libc como biblioteca. Las cabeceras de
+- [ ] E5b -- TIRAR LO QUE NADIE LLAMA. Donde esta el ahorro de verdad, y no
 - [ ] E6 -- COBOL CALL estatico. toolchain/lang/cobol/PLAN_BANCA.md, 6.2 y
 - ... y 2 mas
 

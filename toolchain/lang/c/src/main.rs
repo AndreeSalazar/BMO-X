@@ -22,6 +22,11 @@ fn main() {
     // `-c`, el mismo nombre que en cualquier compilador de C: compila UNA
     // unidad y no enlaza. La salida es un objeto (`.bo`), no un programa.
     let mut solo_objeto = false;
+    // Que hace la unidad con los cuerpos de las cabeceras del sistema. Ver
+    // `bmo_c_front::Libc`: por defecto, cada unidad se queda su copia (E2b).
+    let mut libc = bmo_c_front::Libc::Copia;
+    // `--libc`: compila LA libc, o sea los cuerpos de las cabeceras una vez.
+    let mut soy_la_libc = false;
     let mut solo_preprocesar = false;
 
     let mut i = 1;
@@ -55,6 +60,13 @@ fn main() {
                 quiere_mapa = true;
             }
             "-c" | "--objeto" => {
+                solo_objeto = true;
+            }
+            "--libc-aparte" => {
+                libc = bmo_c_front::Libc::Aparte;
+            }
+            "--libc" => {
+                soy_la_libc = true;
                 solo_objeto = true;
             }
             "--output" | "-o" => {
@@ -92,6 +104,37 @@ fn main() {
             }
         }
         i += 1;
+    }
+
+    // `--libc` no compila un fichero de nadie: compila las cabeceras del
+    // sistema, que son una lista escrita en `bmo_c_front::FUENTE_LIBC`.
+    if soy_la_libc && file_path.is_none() {
+        let destino = out_override.unwrap_or_else(|| PathBuf::from("libc.bo"));
+        match bmo_c_front::compile_libc_object(standard) {
+            Ok(bytes) => {
+                if let bmo_verify::Verdict::Rejected(razones) = bmo_verify::verify_object(&bytes) {
+                    eprintln!("error: la libc no pasa el gate del objeto:");
+                    for r in &razones {
+                        eprintln!("  - {r}");
+                    }
+                    process::exit(1);
+                }
+                match fs::write(&destino, &bytes) {
+                    Ok(()) => {
+                        println!("ok: wrote {} bytes -> {}", bytes.len(), destino.display());
+                        process::exit(0);
+                    }
+                    Err(e) => {
+                        eprintln!("error: cannot write {}: {e}", destino.display());
+                        process::exit(1);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("error: {}", e.message);
+                process::exit(1);
+            }
+        }
     }
 
     let Some(path) = file_path else {
@@ -149,12 +192,14 @@ fn main() {
         }
     }
 
-    let result = if solo_objeto {
+    let result = if soy_la_libc {
+        bmo_c_front::compile_libc_object(standard)
+    } else if solo_objeto {
         if !base_paths.is_empty() || !asm_paths.is_empty() {
             eprintln!("error: -c no se combina con --base ni --asm-path todavia (esos son el camino de modulos)");
             process::exit(2);
         }
-        bmo_c_front::compile_object_with_preprocessor(&source, Path::new(path), standard)
+        bmo_c_front::compile_object_with_preprocessor(&source, Path::new(path), standard, libc)
     } else {
         match (base_paths.is_empty(), asm_paths.is_empty()) {
             (true, true) => {

@@ -154,11 +154,55 @@ sigue siendo del dueno: este plan escribe los escalones para cuando la tome.
       en el anfitrion desde el 17-09** (`APARCADO.md`, 7.2), y se cierra del todo
       con esta casilla.
 
-- [ ] **E5 -- la libc como biblioteca.** Las cabeceras de
-      `toolchain/forge/sem-asm/tables/standards/C/` dejan de traer el cuerpo: se
-      compilan UNA vez a `libc.bo` y se enlazan. **Como se cae**: un `.bex` crece
-      en vez de encoger -- entonces el enlazador no tira lo que no se usa, y eso
-      es E5b, no un detalle.
+- [x] **E2b -- LOS CUERPOS QUE TRAEN LAS CABECERAS. HECHO el 2026-09-17.**
+      Las cabeceras de BMO traen la implementacion dentro --no habia enlazado,
+      asi que la cabecera ERA la implementacion-- y con dos unidades que incluyan
+      `<string.h>` eso son dos `strncpy` definidas. Ahora cada unidad se queda su
+      **copia privada**, que es lo que hace `static inline` en la libc de verdad:
+      el nombre no sale de la unidad y no hay choque. La regla la pone C y no hay
+      que explicarla: `<...>` es del sistema, `"..."` es tuyo. El preprocesador
+      anota en `rangos_sistema` que lineas del texto expandido vinieron de una
+      cabecera del sistema, y la decision se toma DESPUES de parsear
+      (`politica_libc`): el parser no tiene por que saber que existe un
+      enlazador. **Como se sabe**: `dos_unidades_que_incluyen_la_misma_cabecera_no_chocan`.
+
+- [~] **E5 -- la libc como biblioteca. HECHA, y todavia NO paga.** 2026-09-17:
+      `bmo-c-front --libc` compila los cuerpos de las seis cabeceras que tienen
+      cuerpo UNA vez a `libc.bo`, y `-c --libc-aparte` compila una unidad que los
+      deja fuera (su firma se queda como prototipo, el nombre sale indefinido).
+      Enlazado da lo mismo que con la copia:
+      `la_libc_aparte_hace_lo_mismo_que_la_copiada`.
+
+      **Y el numero dice que falta la otra mitad.** Medido con un programa que
+      solo usa `strncpy`:
+
+      ```text
+         la unidad con su copia        5.242 B        el programa    5.100 B
+         la unidad SIN la libc         1.698 B  (3x menos)
+         libc.bo (los cuerpos)        29.306 B
+         el programa + libc entera                                  28.197 B  (5,5x MAS)
+      ```
+
+      La unidad encoge y el programa CRECE, que es literalmente el "como se cae"
+      que esta casilla tenia escrito: el enlazador mete la libc entera porque no
+      sabe tirar lo que nadie llama. Eso es E5b. Y no se deja en una frase: la
+      fila `hoy_la_libc_aparte_sale_mas_grande_y_ese_es_el_trabajo_que_falta`
+      EXIGE hoy que el enlazado salga mas grande, asi que se pondra ROJA el dia
+      que E5b se haga. El numero se da la vuelta ahi, no en una impresion.
+
+      [!] **Se hizo antes que E4, que la seccion 4 llama un error**, por orden
+      del dueno (17-09). El aviso sigue en pie y por eso E5 queda en `[~]` y no
+      en `[x]`: la libc aparte no la ha ejecutado ningun CPU. E4 es su condicion.
+
+- [ ] **E5b -- TIRAR LO QUE NADIE LLAMA.** Donde esta el ahorro de verdad, y no
+      solo para la libc: **un ejemplo de C con dos `#include` se lleva hoy 79
+      funciones dentro** (medido con `--map`), llame a las que llame. El
+      enlazador ya tiene lo que hace falta y no hay que inventar formato: cada
+      simbolo trae su `[offset, size)` y las relocaciones dicen quien llama a
+      quien. Se marca desde `main`, se conserva lo alcanzable --contando que una
+      direccion tomada en `.data` tambien es una llamada-- y se recolocan las
+      secciones. **Como se sabe**: el programa de `strncpy` baja de 28.197 B a la
+      altura de los 5.100, y la fila de E5 se pone roja.
 
 - [ ] **E6 -- COBOL `CALL` estatico.** `toolchain/lang/cobol/PLAN_BANCA.md`, 6.2 y
       6.3, sobre E3. Aqui se prueba que el contrato es de FORMATO: un `.bo` de
@@ -184,6 +228,8 @@ sigue siendo del dueno: este plan escribe los escalones para cuando la tome.
 - **E5 antes que E4.** Mover la libc a una biblioteca sin un enlace probado en
   metal es apilar sobre un camino que nadie ha visto funcionar -- la misma frase
   con la que se aparco C++.
+  ** 17-09: se hizo igual, por orden del dueno. El aviso no se borra ni se
+  rebaja: E5 queda en `[~]`, y lo que lo cierra sigue siendo la foto del Ryzen.
 - **Contar esto como "madurar C++".** C++ sigue aparcado hasta que su condicion
   1 (SSE ejecutado en el emulador) se compruebe tambien. Nota del 17-09: el
   emulador ya decodifica `movsd` (`toolchain/forge/bmo-lower/src/emu/mod.rs`), asi

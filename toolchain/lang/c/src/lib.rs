@@ -46,18 +46,95 @@ pub fn compile_source_to_object(source: &str) -> Result<Vec<u8>, CError> {
     codegen::compile_to_object(&program)
 }
 
+/// **Que hace la unidad con los cuerpos que traen las cabeceras del sistema.**
+///
+/// E2b y E5 de `docs/plan/PLAN_EL_ENLAZADOR.md`. Las cabeceras de BMO traen la
+/// implementacion dentro --no habia enlazado, asi que no habia otro sitio-- y
+/// eso, con varias unidades, es el mismo `strncpy` definido dos veces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Libc {
+    /// **Cada unidad se queda su copia** (E2b). Es lo que ya pasaba con una
+    /// sola unidad, y lo que hace `static inline` en una cabecera de C de
+    /// verdad: el nombre no sale, asi que dos unidades no chocan.
+    Copia,
+    /// **La libc es de otro** (E5): los cuerpos no se emiten aqui, y sus
+    /// nombres salen como indefinidos para que el enlazador los busque en
+    /// `libc.bo`.
+    Aparte,
+    /// **Yo SOY la libc**: los cuerpos se emiten y sus nombres son publicos.
+    /// Es como se construye `libc.bo`.
+    Soy,
+}
+
 /// The same, through the preprocessor -- the path a real `.c` file takes.
 pub fn compile_object_with_preprocessor(
     source: &str,
     file_path: &Path,
     std: CStandard,
+    libc: Libc,
 ) -> Result<Vec<u8>, CError> {
     let features = StandardFeatures::load_standard(std);
     let include_paths = module::discover_include_paths();
     let mut pp = parser::preprocessor::Preprocessor::new(&features, include_paths);
     let expanded = pp.preprocess(source, file_path)?;
-    let program = parse_with_features(&expanded, &features)?;
+    let mut program = parse_with_features(&expanded, &features)?;
+    politica_libc(&mut program, &pp.rangos_sistema, libc);
     codegen::compile_to_object(&program)
+}
+
+/// **El fuente de `libc.bo`**: una unidad que no hace mas que incluir las
+/// cabeceras del sistema para que sus cuerpos se emitan UNA vez.
+///
+/// Se escribe aqui y no en un fichero del arbol porque no es codigo de nadie:
+/// es la lista de cabeceras que TIENEN cuerpo. Las que solo traen constantes
+/// (`limits.h`, `stdint.h`, `errno.h`) no aportan nada y no entran.
+pub const FUENTE_LIBC: &str = "#include <stdio.h>\n\
+                               #include <stdlib.h>\n\
+                               #include <string.h>\n\
+                               #include <strings.h>\n\
+                               #include <ctype.h>\n\
+                               #include <math.h>\n";
+
+/// Compila `libc.bo`: los cuerpos de las cabeceras del sistema, una vez.
+pub fn compile_libc_object(std: CStandard) -> Result<Vec<u8>, CError> {
+    compile_object_with_preprocessor(FUENTE_LIBC, Path::new("libc.c"), std, Libc::Soy)
+}
+
+/// Aplica la politica a las funciones que vinieron de una cabecera del sistema.
+///
+/// * Se decide DESPUES de parsear y no dentro del parser a proposito: el parser
+/// no tiene por que saber que existe un enlazador, y esto es exactamente una
+/// decision de enlace. Lo unico que hace falta es el numero de linea, que el
+/// arbol ya trae.
+fn politica_libc(program: &mut Program, rangos: &[(usize, usize)], libc: Libc) {
+    if libc == Libc::Soy || rangos.is_empty() {
+        return;
+    }
+    let del_sistema = |linea: usize| rangos.iter().any(|(a, b)| linea >= *a && linea <= *b);
+    match libc {
+        Libc::Copia => {
+            for f in &program.functions {
+                if del_sistema(f.line) {
+                    program.enlace.estaticos.insert(f.name.clone());
+                }
+            }
+        }
+        Libc::Aparte => {
+            // Su firma se queda como PROTOTIPO --una llamada necesita los
+            // tipos-- y el cuerpo se va: lo pone `libc.bo`.
+            let (fuera, dentro): (Vec<_>, Vec<_>) =
+                program.functions.drain(..).partition(|f| del_sistema(f.line));
+            program.functions = dentro;
+            for f in fuera {
+                program.enlace.prototipos.push((
+                    f.name.clone(),
+                    f.params.iter().map(|p| p.typ.clone()).collect(),
+                    f.ret_type.clone(),
+                ));
+            }
+        }
+        Libc::Soy => {}
+    }
 }
 
 /// Compile with a specific C standard (C89/C99/C11/C17/C23).

@@ -103,6 +103,18 @@ pub struct Preprocessor {
     /// expansion ocurre a mitad de recorrer el fichero; se acumula y
     /// `preprocess` se niega a entregar el texto si hay algo aqui.
     errores: Vec<CError>,
+    /// **Que lineas del texto expandido vinieron de una cabecera DEL SISTEMA**
+    /// (`#include <...>`), en rangos `(primera, ultima)` de base 1.
+    ///
+    /// E2b de `docs/plan/PLAN_EL_ENLAZADOR.md`, 2026-09-17. Hace falta porque
+    /// las cabeceras de BMO **traen el cuerpo** --no habia enlazado, asi que la
+    /// cabecera ES la implementacion-- y al compilar dos unidades que incluyan
+    /// `<string.h>` las dos definirian `strncpy`. El enlazador no puede
+    /// adivinar cual vale, y no debe.
+    ///
+    /// La regla es la de C, y por eso no hay que explicarsela a nadie:
+    /// `<...>` es del sistema, `"..."` es tuyo.
+    pub rangos_sistema: Vec<(usize, usize)>,
 }
 
 impl Preprocessor {
@@ -113,6 +125,7 @@ impl Preprocessor {
             features: features.clone(),
             line: 0,
             errores: Vec::new(),
+            rangos_sistema: Vec::new(),
         };
         pp.definir_objeto("__BMO__", "1");
         pp.definir_objeto("__STDC__", "1");
@@ -213,9 +226,17 @@ impl Preprocessor {
                     }
                     "include" => {
                         if self.is_active(&skip_active) {
+                            // `<...>` es del sistema; `"..."` es del que compila.
+                            // Ver `rangos_sistema`.
+                            let del_sistema = rest.trim().starts_with('<');
+                            let antes = output.matches('\n').count();
                             let included = self.handle_include(rest, file_path)?;
                             output.push_str(&included);
                             output.push('\n');
+                            if del_sistema {
+                                let despues = output.matches('\n').count();
+                                self.rangos_sistema.push((antes + 1, despues));
+                            }
                         }
                     }
                     "ifdef" => {
@@ -421,6 +442,10 @@ impl Preprocessor {
                     features: self.features.clone(),
                     line: 0,
                     errores: Vec::new(),
+                    // Los rangos del sub-preprocesador no se guardan: el de
+                    // arriba ya anota el bloque ENTERO que esta inclusion
+                    // aporta, y lo que una cabecera incluya cae dentro.
+                    rangos_sistema: Vec::new(),
                 };
                 let texto = sub.preprocess(&content, &p)?;
                 // * Lo que la cabecera DEFINIO se queda.

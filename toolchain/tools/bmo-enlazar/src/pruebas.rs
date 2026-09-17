@@ -205,3 +205,106 @@ fn lo_enlazado_pasa_el_gate_del_kernel() {
     assert!(bmo_verify::verify(&bex).is_ok());
     assert!(bmo_abi::bef::objeto::read(&bex).is_err(), "un programa ya NO es un objeto");
 }
+
+// -- E5: la libc, una vez -------------------------------------------------
+
+fn objeto_con(nombre: &str, fuente: &str, libc: bmo_c_front::Libc) -> (String, Vec<u8>) {
+    let bytes = bmo_c_front::compile_object_with_preprocessor(
+        fuente,
+        std::path::Path::new("prueba.c"),
+        bmo_c_front::CStandard::C11,
+        libc,
+    )
+    .unwrap_or_else(|e| panic!("{nombre} debe compilar: {}", e.message));
+    (nombre.to_string(), bytes)
+}
+
+/// El programa usa `strncpy`, que vive en `<string.h>`. Con la libc APARTE su
+/// cuerpo no viaja en la unidad: lo pone `libc.bo`.
+const USA_LIBC: &str = r#"
+#include <string.h>
+int main() {
+    char destino[8];
+    strncpy(destino, "BMO-X", 6);
+    printf("%s", destino);
+    return 0;
+}
+"#;
+
+/// *** E5: la misma respuesta por los dos caminos. Si la libc enlazada hiciera
+/// algo distinto de la copiada, el que cambia de camino se lo encontraria en
+/// ejecucion y no al compilar.
+#[test]
+fn la_libc_aparte_hace_lo_mismo_que_la_copiada() {
+    let copia = enlazar(&[objeto_con("solo.bo", USA_LIBC, bmo_c_front::Libc::Copia)]).unwrap();
+    assert_eq!(correr(&copia), "BMO-X");
+
+    let libc = (
+        "libc.bo".to_string(),
+        bmo_c_front::compile_libc_object(bmo_c_front::CStandard::C11).expect("la libc debe compilar"),
+    );
+    let aparte = enlazar(&[
+        objeto_con("principal.bo", USA_LIBC, bmo_c_front::Libc::Aparte),
+        libc,
+    ])
+    .unwrap();
+    assert_eq!(correr(&aparte), "BMO-X");
+}
+
+/// *** Y LO QUE E5 NO COMPRA TODAVIA, con su numero: enlazar contra la libc
+/// entera SALE MAS GRANDE que llevarse la copia, porque el enlazador no tira lo
+/// que nadie llama. Eso es E5b, y esta fila existe para que el dia que se haga,
+/// el numero se de la vuelta AQUI y no en una impresion.
+#[test]
+fn hoy_la_libc_aparte_sale_mas_grande_y_ese_es_el_trabajo_que_falta() {
+    let copia = enlazar(&[objeto_con("solo.bo", USA_LIBC, bmo_c_front::Libc::Copia)]).unwrap();
+    let libc = (
+        "libc.bo".to_string(),
+        bmo_c_front::compile_libc_object(bmo_c_front::CStandard::C11).unwrap(),
+    );
+    let aparte = enlazar(&[
+        objeto_con("principal.bo", USA_LIBC, bmo_c_front::Libc::Aparte),
+        libc,
+    ])
+    .unwrap();
+    assert!(
+        aparte.len() > copia.len(),
+        "si esto se pone rojo es que E5b (tirar lo que nadie llama) ya esta hecho: \
+         copiada {} B, enlazada {} B",
+        copia.len(),
+        aparte.len()
+    );
+}
+
+/// Dos unidades que usan la MISMA funcion de cabecera no chocan: cada una se
+/// quedo su copia privada (E2b). Sin eso, el enlazador tendria que elegir
+/// entre dos `strncpy` identicos, y elegir sin motivo es adivinar.
+#[test]
+fn dos_unidades_que_incluyen_la_misma_cabecera_no_chocan() {
+    let una = r#"
+#include <string.h>
+int copia_una(char *d, const char *s) { strncpy(d, s, 4); return 1; }
+"#;
+    let dos = r#"
+#include <string.h>
+int copia_dos(char *d, const char *s) { strncpy(d, s, 4); return 2; }
+"#;
+    let principal = r#"
+int copia_una(char *d, const char *s);
+int copia_dos(char *d, const char *s);
+int main() {
+    char a[8];
+    char b[8];
+    int n = copia_una(a, "uno") + copia_dos(b, "dos");
+    printf("%s %s %d", a, b, n);
+    return 0;
+}
+"#;
+    let bex = enlazar(&[
+        objeto_con("principal.bo", principal, bmo_c_front::Libc::Copia),
+        objeto_con("una.bo", una, bmo_c_front::Libc::Copia),
+        objeto_con("dos.bo", dos, bmo_c_front::Libc::Copia),
+    ])
+    .unwrap();
+    assert_eq!(correr(&bex), "uno dos 3");
+}
