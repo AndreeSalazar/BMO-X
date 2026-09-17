@@ -23,8 +23,9 @@ Y la frase que ordena todo el plan, porque es la prueba de fuego de Ada en
 
 > *esto convierte un fallo de ejecucion en uno de compilacion?*
 
-**Hoy no.** `type Saldo is delta 0.01 digits 12` se declara y **nadie lo
-verifica**: si un total se pasa de doce digitos, desborda callado, exactamente
+**Hasta el 2026-09-17, no** (A1 lo cerro ese mismo dia; se deja el parrafo como
+estaba porque es la razon del plan). `type Saldo is delta 0.01 digits 12` se
+declaraba y **nadie lo verificaba**: si un total se pasa de doce digitos, desborda callado, exactamente
 como en C. El codegen no emite ni un `jo` ni una comparacion contra el tope.
 **Hoy BMO Ada es sintaxis de Ada con la seguridad de C**, que es lo peor de los
 dos -- y por eso la primera casilla no es una caracteristica nueva: es la
@@ -39,7 +40,15 @@ esencia que falta.
       HECHO el 2026-07-30 en el emulador; la foto del Ryzen esta en
       `docs/evidencia/09-ada-cierre-decimal-exacto.jpg`.
 
-- [ ] **A1 -- LAS COMPROBACIONES DE RANGO. La esencia.** Tres formas, y las tres
+- [x] **A1 -- LAS COMPROBACIONES DE RANGO. HECHO el 2026-09-17** en
+      `toolchain/lang/ada/src/codegen.rs` (`comprobar_rango`, `si_desborda`, y la
+      division por cero y `i64::MIN / -1` antes de `idiv`). La matriz va en 38 de
+      38 con seis filas nuevas que EJECUTAN el fallo, y una prueba de que lo que
+      se sabe al compilar NO compila. **Mutado a no-operacion caen 4 filas**, y
+      dicen exactamente el fallo de antes: `-100.00` en un `digits 4`,
+      `2147483648` en un `Integer` y `20037642052058.96` de un desborde de 64 bits.
+      Y de paso: un literal de veinte cifras compilaba como CERO
+      (`parse().unwrap_or(0)`); ahora es un error. Lo que decia la casilla: Tres formas, y las tres
       son un `cmp` y un salto a un bloque que dice QUE tipo y QUE valor y termina
       -- la misma forma que la guarda de `OCCURS` de COBOL:
 

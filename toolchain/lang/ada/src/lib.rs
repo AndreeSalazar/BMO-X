@@ -184,6 +184,45 @@ mod tests {
                 "while I < 3 loop\nT := T + 19.99;\nI := I + 1;\nend loop;\nPut_Line(T);",
                 "59.97\n",
             ),
+            // *** A1, 2026-09-17: EL RANGO SE COMPRUEBA. Lo que cabe sigue
+            // pasando; lo que no, PARA con Constraint_Error y no imprime lo que
+            // venia detras. Antes, las dos ultimas desbordaban callando.
+            (
+                "digits: lo que cabe pasa",
+                "type Saldo is delta 0.01 digits 4;\nS : Saldo := 99.98;",
+                "S := S + 0.01;\nPut_Line(S);",
+                "99.99\n",
+            ),
+            (
+                "digits: pasarse PARA",
+                "type Saldo is delta 0.01 digits 4;\nS : Saldo := 99.99;",
+                "Put_Line(\"antes\");\nS := S + 0.01;\nPut_Line(\"despues\");",
+                "antes\nraised CONSTRAINT_ERROR : range check failed (s fuera de saldo (digits 4))\n",
+            ),
+            (
+                "digits: por abajo tambien",
+                "type Saldo is delta 0.01 digits 4;\nS : Saldo := -99.99;",
+                "S := S - 0.01;\nPut_Line(S);",
+                "raised CONSTRAINT_ERROR : range check failed (s fuera de saldo (digits 4))\n",
+            ),
+            (
+                "Integer son 32 bits",
+                "N : Integer := 2_147_483_647;",
+                "N := N + 1;\nPut_Line(N);",
+                "raised CONSTRAINT_ERROR : range check failed (n fuera de integer)\n",
+            ),
+            (
+                "dividir por cero",
+                "N : Integer := 7;\nZ : Integer := 0;",
+                "N := N / Z;\nPut_Line(N);",
+                "raised CONSTRAINT_ERROR : divide by zero\n",
+            ),
+            (
+                "desborde de 64 bits",
+                "type Grande is delta 0.01 digits 18;\nG : Grande := 9999999999999999.99;",
+                "G := G * 1000;\nPut_Line(G);",
+                "raised CONSTRAINT_ERROR : overflow check failed\n",
+            ),
             ("comentarios", "N : Integer := 1;", "-- esto no cuenta\nN := N + 1; -- ni esto\nPut_Line(N);", "2\n"),
             ("mayusculas dan igual", "Saldo : Integer := 5;", "SALDO := saldo + 1;\nPut_Line(Saldo);", "6\n"),
         ];
@@ -211,6 +250,22 @@ mod tests {
 
     fn error_de(fuente: &str) -> String {
         format!("{}", compilar(fuente).unwrap_err())
+    }
+
+    /// *** A1: un valor que se SABE fuera de rango al compilar no genera la
+    /// comprobacion -- genera un ERROR. Es la mitad de la prueba de fuego de
+    /// Ada que no cuesta ni un ciclo en ejecucion.
+    #[test]
+    fn un_valor_fuera_de_rango_conocido_no_compila() {
+        let tipo = "type Saldo is delta 0.01 digits 4;\n";
+        let e = error_de(&programa(&format!("{tipo}S : Saldo := 100.00;"), "null;"));
+        assert!(e.contains("no cabe en saldo") && e.contains("al compilar"), "{e}");
+        let e = error_de(&programa(&format!("{tipo}S : Saldo;"), "S := -100.00;"));
+        assert!(e.contains("no cabe en saldo") && e.contains("al compilar"), "{e}");
+        let e = error_de(&programa("N : Integer;", "N := 2_147_483_648;"));
+        assert!(e.contains("no cabe en integer"), "{e}");
+        let e = error_de(&programa("N : Integer := 123456789012345678901234;", "null;"));
+        assert!(e.contains("no cabe en 64 bits"), "{e}");
     }
 
     /// `=` compara y `:=` asigna. Confundirlos **no compila**, que es la razon

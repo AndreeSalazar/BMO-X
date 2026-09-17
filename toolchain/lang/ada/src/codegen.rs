@@ -51,6 +51,23 @@ struct Codegen {
     saltos: Vec<(usize, u32)>,
     etiquetas: HashMap<u32, usize>,
     next: u32,
+    /// *** THE RANGE OF EACH VARIABLE, in its scaled units (2026-09-17).
+    /// `(first, last, type name)`. See `comprobar_rango`.
+    rangos: HashMap<String, (i64, i64, String)>,
+    /// The Constraint_Error blocks: one per distinct message, emitted after
+    /// the normal exit. `(label, message)`.
+    fallos: Vec<(u32, String)>,
+}
+
+/// `Integer` is 32 bits, as in GNAT and as the RM expects of a type whose
+/// `'Last` a program can print. Storage stays 64 bits: the check is what
+/// makes the 32 true.
+const INTEGER_FIRST: i64 = i32::MIN as i64;
+const INTEGER_LAST: i64 = i32::MAX as i64;
+
+/// `digits` is capped at 18 by the parser, so `10^digits - 1` fits an `i64`.
+fn limite_decimal(digitos: u32) -> Option<i64> {
+    10i64.checked_pow(digitos).map(|p| p - 1)
 }
 
 impl Codegen {
@@ -64,7 +81,56 @@ impl Codegen {
             saltos: Vec::new(),
             etiquetas: HashMap::new(),
             next: 0,
+            rangos: HashMap::new(),
+            fallos: Vec::new(),
         }
+    }
+
+    // -- Constraint_Error: la razon de que Ada este aqui -----------------
+    //
+    // *** A1 of `PLAN_ADA.md`, 2026-09-17. Until today `type Saldo is delta
+    // 0.01 digits 12` was a declaration nobody checked: a total past twelve
+    // digits wrapped silently, exactly as in C -- Ada syntax with C's safety,
+    // the worst of both. Ada's test in PROPOSITO.md is *does this turn a
+    // run-time failure into a compile-time one?*, and the half that cannot be
+    // decided at compile time has to at least STOP instead of lying.
+    //
+    // The profile is ZFP with `No_Exception_Propagation`: there is no handler
+    // to jump to, so the failure prints what failed and terminates -- the
+    // last-chance handler, and the same shape as the `OCCURS` guard in COBOL.
+
+    /// The label of the block that reports `mensaje` and exits. One block per
+    /// distinct message, however many checks jump to it.
+    fn fallo(&mut self, mensaje: String) -> u32 {
+        if let Some((l, _)) = self.fallos.iter().find(|(_, m)| *m == mensaje) {
+            return *l;
+        }
+        let l = self.etiqueta();
+        self.fallos.push((l, mensaje));
+        l
+    }
+
+    /// `jo` to a Constraint_Error: the 64-bit arithmetic itself overflowed,
+    /// before any range could even be asked about.
+    fn si_desborda(&mut self) {
+        let l = self.fallo("raised CONSTRAINT_ERROR : overflow check failed".into());
+        self.saltar_si(0x80, l); // jo
+    }
+
+    /// `rax` must be inside the range of `name`'s type, or Constraint_Error.
+    fn comprobar_rango(&mut self, name: &str) {
+        let Some((primero, ultimo, tipo)) = self.rangos.get(name).cloned() else { return };
+        let l = self.fallo(format!(
+            "raised CONSTRAINT_ERROR : range check failed ({} fuera de {})",
+            name.to_ascii_lowercase(),
+            tipo
+        ));
+        x86::mov_r64_imm64(&mut self.code, RCX, ultimo as u64);
+        x86::cmp_r64_r64(&mut self.code, RAX, RCX);
+        self.saltar_si(0x8F, l); // jg
+        x86::mov_r64_imm64(&mut self.code, RCX, primero as u64);
+        x86::cmp_r64_r64(&mut self.code, RAX, RCX);
+        self.saltar_si(0x8C, l); // jl
     }
 
     fn etiqueta(&mut self) -> u32 {
@@ -145,23 +211,27 @@ impl Codegen {
     /// **Trunca** los decimales que sobran, que es lo que hace un tipo decimal
     /// cuando le das mas precision de la que declara.
     pub fn escalar(lit: &str, escala: u32) -> i64 {
+        Self::escalar_comprobado(lit, escala).expect("literal fuera de 64 bits: usa escalar_comprobado")
+    }
+
+    /// [`Self::escalar`], or `None` if the literal does not fit 64 bits at that
+    /// scale. ** It used to be `parse().unwrap_or(0)` and a plain `*`: a literal
+    /// with twenty digits compiled as ZERO in release and panicked the compiler
+    /// in debug -- the "fails into a good-looking value" pattern (rule 1b).
+    pub fn escalar_comprobado(lit: &str, escala: u32) -> Option<i64> {
         let t = lit.trim();
         let negativo = t.starts_with('-');
         let s = t.trim_start_matches(['+', '-']);
         let (ent, frac) = s.split_once('.').unwrap_or((s, ""));
-        let entero: i64 = ent.parse().unwrap_or(0);
+        let entero: i64 = if ent.is_empty() { 0 } else { ent.parse().ok()? };
         let mut f = frac.to_string();
         while (f.len() as u32) < escala {
             f.push('0');
         }
         f.truncate(escala as usize);
-        let dec: i64 = if f.is_empty() { 0 } else { f.parse().unwrap_or(0) };
-        let v = entero * 10i64.pow(escala) + dec;
-        if negativo {
-            -v
-        } else {
-            v
-        }
+        let dec: i64 = if f.is_empty() { 0 } else { f.parse().ok()? };
+        let v = entero.checked_mul(10i64.checked_pow(escala)?)?.checked_add(dec)?;
+        Some(if negativo { -v } else { v })
     }
 
     /// Lleva `rax` de una escala a otra multiplicando o dividiendo por 10^n.
@@ -173,6 +243,7 @@ impl Codegen {
             let f = 10u64.pow(a - de);
             x86::mov_r64_imm64(&mut self.code, RCX, f);
             x86::imul_r64_r64(&mut self.code, RAX, RCX);
+            self.si_desborda();
         } else {
             let f = 10u64.pow(de - a);
             x86::mov_r64_imm64(&mut self.code, RCX, f);
@@ -187,7 +258,16 @@ impl Codegen {
     fn expresion(&mut self, e: &Expr, destino: u32) {
         match e {
             Expr::Literal(n) => {
-                let v = Self::escalar(n, destino);
+                let v = match Self::escalar_comprobado(n, destino) {
+                    Some(v) => v,
+                    None => {
+                        self.errores.push(AdaError::nuevo(
+                            0,
+                            format!("el literal {n} no cabe en 64 bits con {destino} decimales"),
+                        ));
+                        0
+                    }
+                };
                 x86::mov_r64_imm64(&mut self.code, RAX, v as u64);
             }
             Expr::Nombre(n) => {
@@ -206,9 +286,11 @@ impl Codegen {
                         self.code.push(0x5A); // pop rdx
                         if *op == '+' {
                             x86::add_r64_r64(&mut self.code, RAX, RDX);
+                            self.si_desborda();
                         } else {
                             // rdx - rax, y el resultado a rax.
                             x86::sub_r64_r64(&mut self.code, RDX, RAX);
+                            self.si_desborda();
                             x86::mov_r64_r64(&mut self.code, RAX, RDX);
                         }
                     }
@@ -220,6 +302,7 @@ impl Codegen {
                         self.expresion(b, destino);
                         self.code.push(0x5A);
                         x86::imul_r64_r64(&mut self.code, RAX, RDX);
+                        self.si_desborda();
                         if destino > 0 {
                             x86::mov_r64_imm64(&mut self.code, RCX, 10u64.pow(destino));
                             x86::cqo(&mut self.code);
@@ -236,8 +319,24 @@ impl Codegen {
                         if destino > 0 {
                             x86::mov_r64_imm64(&mut self.code, RCX, 10u64.pow(destino));
                             x86::imul_r64_r64(&mut self.code, RAX, RCX);
+                            self.si_desborda();
                         }
                         self.code.push(0x59); // pop rcx (divisor)
+                        // ** Division by zero is Constraint_Error in Ada, not
+                        // a #DE that kills the process with a CPU fault.
+                        let cero = self.fallo("raised CONSTRAINT_ERROR : divide by zero".into());
+                        x86::test_r64_r64(&mut self.code, RCX, RCX);
+                        self.saltar_si(0x84, cero); // jz
+                        // And i64::MIN / -1 is the one quotient that does not
+                        // fit: the CPU faults on it too.
+                        let sigue = self.etiqueta();
+                        x86::cmp_r64_imm8(&mut self.code, RCX, -1);
+                        self.saltar_si(0x85, sigue); // jne
+                        x86::mov_r64_imm64(&mut self.code, RDX, i64::MIN as u64);
+                        x86::cmp_r64_r64(&mut self.code, RAX, RDX);
+                        let ovf = self.fallo("raised CONSTRAINT_ERROR : overflow check failed".into());
+                        self.saltar_si(0x84, ovf); // je
+                        self.fijar(sigue);
                         x86::cqo(&mut self.code);
                         x86::idiv_r64(&mut self.code, RCX);
                     }
@@ -315,7 +414,25 @@ impl Codegen {
                     return;
                 }
                 let escala = self.escala_de(n);
+                // * A literal out of range is decided HERE, at compile time:
+                // the half of Ada's test that costs nothing at run time.
+                if let (Expr::Literal(lit), Some((primero, ultimo, tipo))) = (e, self.rangos.get(n).cloned()) {
+                    match Self::escalar_comprobado(lit, escala) {
+                        Some(v) if v < primero || v > ultimo => {
+                            self.errores.push(AdaError::nuevo(
+                                0,
+                                format!(
+                                    "{} := {lit}: el valor no cabe en {tipo} y se sabe al compilar (Constraint_Error)",
+                                    n.to_ascii_lowercase()
+                                ),
+                            ));
+                            return;
+                        }
+                        _ => {}
+                    }
+                }
                 self.expresion(e, escala);
+                self.comprobar_rango(n);
                 self.save(n);
             }
             Sentencia::Si(cond, entonces, si_no) => {
@@ -361,6 +478,31 @@ impl Codegen {
             self.pila += 8;
             self.huecos.insert(d.name.clone(), -self.pila);
             self.escalas.insert(d.name.clone(), d.escala);
+
+            // The range of the declared type, in scaled units.
+            let rango = if d.tipo.eq_ignore_ascii_case("integer") {
+                Some((INTEGER_FIRST, INTEGER_LAST, "integer".to_string()))
+            } else {
+                p.tipos
+                    .iter()
+                    .find(|t| t.name.eq_ignore_ascii_case(&d.tipo))
+                    .and_then(|t| {
+                        limite_decimal(t.digitos).map(|l| (-l, l, format!("{} (digits {})", t.name.to_ascii_lowercase(), t.digitos)))
+                    })
+            };
+            match rango {
+                Some(r) => {
+                    self.rangos.insert(d.name.clone(), r);
+                }
+                // A type this emitter cannot bound is refused, not left
+                // unchecked: an unchecked variable is exactly the bug A1 closes.
+                None => {
+                    return Err(AdaError::nuevo(
+                        0,
+                        format!("'{}': no se sabe el rango del tipo {}", d.name.to_ascii_lowercase(), d.tipo),
+                    ))
+                }
+            }
         }
 
         // Prologo. Se reserva y se alinea a 64 igual que los demas frontends:
@@ -376,9 +518,30 @@ impl Codegen {
         // hacer sin inventar: leer basura de la pila seria peor.
         for d in &p.declaraciones {
             let v = match &d.inicial {
-                Some(lit) => Self::escalar(lit, d.escala),
+                Some(lit) => match Self::escalar_comprobado(lit, d.escala) {
+                    Some(v) => v,
+                    None => {
+                        return Err(AdaError::nuevo(
+                            0,
+                            format!("'{}' := {lit}: el literal no cabe en 64 bits", d.name.to_ascii_lowercase()),
+                        ))
+                    }
+                },
                 None => 0,
             };
+            // * An initial value out of range is known NOW: compile error.
+            if let Some((primero, ultimo, tipo)) = self.rangos.get(&d.name) {
+                if v < *primero || v > *ultimo {
+                    return Err(AdaError::nuevo(
+                        0,
+                        format!(
+                            "'{}' := {}: el valor no cabe en {tipo} y se sabe al compilar (Constraint_Error)",
+                            d.name.to_ascii_lowercase(),
+                            d.inicial.as_deref().unwrap_or("0")
+                        ),
+                    ));
+                }
+            }
             x86::mov_r64_imm64(&mut self.code, RAX, v as u64);
             self.save(&d.name);
         }
@@ -391,6 +554,16 @@ impl Codegen {
         // un #GP -- la red de seguridad provocando justo el fallo del que
         // protege. La puerta gira en `pause`.
         bmo_lower::task::exit(&mut self.code);
+
+        // The Constraint_Error blocks, AFTER the normal exit so the happy path
+        // never falls into one. Each says what failed and leaves by the door.
+        for (l, mensaje) in std::mem::take(&mut self.fallos) {
+            self.fijar(l);
+            let mut bytes = mensaje.into_bytes();
+            bytes.push(b'\n');
+            bmo_lower::console::write_const(&mut self.code, &bytes);
+            bmo_lower::task::exit(&mut self.code);
+        }
         self.resolver_saltos();
 
         if let Some(e) = self.errores.first() {

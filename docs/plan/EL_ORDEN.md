@@ -149,7 +149,10 @@ movia basura, FAT32 devolviendo la FAT como contenido, el sector de arranque de
 exFAT sin comprobar, y un diagnostico que mentia--, todos cerrados con prueba.
 El detalle vive en [`PLAN_SEGURIDAD.md`](PLAN_SEGURIDAD.md), seccion 5.
 
-## [ ] C5 -- Ada promete `digits 12` y no lo comprueba
+## [x] C5 -- Ada promete `digits 12` y no lo comprueba -- HECHO el 2026-09-17
+
+Cerrado el mismo dia que se escribio: `toolchain/lang/ada/PLAN_ADA.md`, A1.
+Mutado a no-operacion caen 4 filas de la matriz. Lo de abajo es el texto original.
 
 `type Saldo is delta 0.01 digits 12` compila y **nadie verifica los doce
 digitos**: un total que se pasa desborda callado. Va en critico por el criterio
