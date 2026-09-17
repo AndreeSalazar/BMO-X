@@ -2,6 +2,10 @@
 
 > Decision del dueno, **2026-08-12**. Igual que Vulkan: no se toca, y existe
 > para no tener que reconstruirlo.
+>
+> **2026-09-17: el dueno le da la oportunidad** (*"podemos darle oportunidad
+> no?"*). Lo que eso cambio, y lo que NO, esta en la seccion 7. Lo de abajo se
+> conserva como estaba: es la razon de que se aparcara.
 
 ---
 
@@ -134,3 +138,68 @@ exactamente que falta.
 Ver `AVANCES.md` (el alcance acotado), `docs/identidad/QUE_DESBLOQUEA.md` (por que no es
 la palanca) y `platform/drivers/gpu/rdna4/PLAN_VULKAN.md`, que es el precedente
 de aparcar bien.
+
+---
+
+# 7. LA OPORTUNIDAD -- 2026-09-17, medida y no prometida
+
+## 7.1 Las dos filas rojas NO eran del compilador
+
+La seccion 5 decia *"el frontend de C++ no recibio el arreglo del de C"*. **Era
+al reves.** Este frontend baja al AST de C y emite con el codegen de C, asi que
+tenia el arreglo desde el primer dia. Lo que no lo tenia era **el arnes de
+pruebas** (`src/tests/mod.rs`): una copia del de C tomada el 08-08, antes de que
+el de C aprendiera a poner cada seccion en su pagina, a tender el `Bss` y a
+aplicar las relocaciones. Las dos filas ejecutaban un programa que el kernel no
+habria cargado asi.
+
+** Mantener el test rojo en vez de borrarlo es lo que hizo que se encontrara en
+una lectura: seguia describiendo el fallo exacto.
+
+## 7.2 Las dos condiciones de la seccion 4
+
+| # | condicion | 2026-09-17 |
+|---|---|---|
+| 1 | SSE ejecutado en el emulador | ✅ **YA SE CUMPLIA, y nadie lo habia dicho**: `toolchain/lang/c/src/tests/flotante.rs` EJECUTA dobles con salida exacta (`un_double_como_parametro_llega_entero` da `25 25`, y cuatro mas) |
+| 2 | Compilacion separada | ❌ sigue sin estar. Es `docs/plan/PLAN_EL_ENLAZADOR.md`, E3-E4 |
+
+O sea: **C++ sale del aparcamiento con TECHO**. Un programa de un fichero
+funciona; una biblioteca, no, hasta el enlazador.
+
+## 7.3 Lo que se hizo
+
+- [x] el arnes carga como el cargador: la matriz pasa de 108 a **110 de 110**, y
+      se quita el `#[ignore]`
+- [x] la linea de ordenes acepta `-o` como los otros frontends. Antes tomaba el
+      segundo argumento como salida: `-o destino.bex` escribia un fichero llamado
+      `-o`, y por eso C++ tampoco podia llegar al disco
+- [x] **el primer programa de C++ para el disco**:
+      `examples/1-clases/cuentas.cpp` -> `cpp/cuentas.bex`, en
+      `Ultra_kernel_x86-64/build/ejemplos.ps1`, con un test que EJECUTA ese mismo
+      fichero y exige su salida exacta
+- [x] y ese programa encontro **DOS huecos reales** en su primera compilacion,
+      que 110 filas no habian tocado:
+  1. **pasar un `Derivada*` donde se pide un `Base*`** decia *"ninguna version
+     acepta esos tipos"* -- asignarlo si funcionaba. Ahora es una CONVERSION en
+     la resolucion de sobrecarga, y una sobrecarga exacta sigue ganando.
+  2. **un derivado no llamaba al destructor de su base**: un `Ahorro` que sale de
+     su ambito no destruia NADA. RAII roto justo en el caso para el que existe la
+     herencia. Ahora la cadena corre en orden (lo propio, luego la base) en todos
+     los niveles, y un `return` dentro del destructor derivado no se salta la
+     base.
+
+  Con sus seis filas nuevas, la matriz va en **116 de 116**.
+
+## 7.4 Lo que falta, en el orden de BRECHA.md
+
+- [ ] **el metal**: `run cpp/cuentas.bex` en el Ryzen, y que salga lo que dice
+      la cabecera de `cuentas.cpp`. Ningun `.bex` de C++ ha tocado un CPU todavia
+- [ ] el paso 4: la lista de inicializacion de miembros (`: Base(x)`), que el
+      ejemplo tuvo que rodear con un metodo `abrir`
+- [ ] los constructores de la base al construir un derivado -- la otra mitad de
+      la cadena del 7.3, y la simetrica del destructor
+- [ ] la compilacion separada, que ya no es de C++: `PLAN_EL_ENLAZADOR`
+
+[!] Y lo que NO cambia: sin excepciones, sin RTTI, sin la bola moderna
+(`PROPOSITO.md`, *"Remember the Vasa"*). Darle la oportunidad es terminar lo
+esencial, no abrir el alcance.

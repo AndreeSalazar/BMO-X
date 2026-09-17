@@ -2,58 +2,107 @@
 //!
 //! Antes imprimia los contadores de un `IrModule` que nadie consumia: decia
 //! "OK: compiled" sin haber producido un solo byte ejecutable. Ahora escribe
-//! el `.bef` o falla diciendo por que.
+//! el `.bex` o falla diciendo por que.
+//!
+//! ** 2026-09-17: the command line is the same as Ada's and C's --
+//! `<fuente> [-o salida]` -- because `build/ejemplos.ps1::Compilar-Ejemplos`
+//! calls every frontend that way. The old form took the SECOND argument as the
+//! output path, so `-o destino.bex` wrote a file literally named `-o`, and the
+//! destination the build then looked for did not exist. That is part of why C++
+//! never reached the disk.
 
-use std::env;
-use std::fs;
 use std::path::PathBuf;
+use std::process;
+
 use bmo_cpp_front::compile_source_to_bef;
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        eprintln!("Uso: bmo-cpp-front <fichero.cpp> [salida.bef]");
-        std::process::exit(1);
+    let args: Vec<String> = std::env::args().collect();
+    let mut fuente: Option<String> = None;
+    let mut salida: Option<PathBuf> = None;
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--output" | "-o" => {
+                i += 1;
+                match args.get(i) {
+                    Some(p) => salida = Some(PathBuf::from(p)),
+                    None => {
+                        eprintln!("error: -o necesita una ruta");
+                        process::exit(2);
+                    }
+                }
+            }
+            otro if fuente.is_none() => fuente = Some(otro.to_string()),
+            otro => {
+                eprintln!("error: argumento de mas: {otro}");
+                process::exit(2);
+            }
+        }
+        i += 1;
     }
 
-    let entrada = PathBuf::from(&args[1]);
-    let fuente = match fs::read_to_string(&entrada) {
-        Ok(s) => s,
-        Err(e) => { eprintln!("no se pudo leer {}: {e}", entrada.display()); std::process::exit(1); }
+    let Some(ruta) = fuente else {
+        eprintln!("uso: bmo-cpp-front <fichero.cpp> [-o salida.bex]");
+        process::exit(2);
     };
 
-    let bef = match compile_source_to_bef(&fuente) {
-        Ok(b) => b,
+    let texto = match std::fs::read_to_string(&ruta) {
+        Ok(t) => t,
         Err(e) => {
-            if e.line > 0 { eprintln!("error en la linea {}: {}", e.line, e.message); }
-            else { eprintln!("error: {}", e.message); }
-            std::process::exit(1);
+            eprintln!("error: no puedo leer {ruta}: {e}");
+            process::exit(1);
         }
     };
 
-    let salida = if args.len() > 2 {
-        PathBuf::from(&args[2])
-    } else {
-        entrada.with_extension("bef")
+    let bef = match compile_source_to_bef(&texto) {
+        Ok(b) => b,
+        Err(e) => {
+            if e.line > 0 {
+                eprintln!("{ruta}: error en la linea {}: {}", e.line, e.message);
+            } else {
+                eprintln!("{ruta}: error: {}", e.message);
+            }
+            process::exit(1);
+        }
     };
 
-                // -- * EL GATE, ANTES DE ESCRIBIR --------------------------
-            //
-            // `bmo-verify` es el "unico checkpoint comun" de la filosofia: el
-            // papel de seguridad que tendria un IR central, pero como CONTRATO
-            // -- cada lenguaje emite su BEF por su cuenta y el verificador lo
-            // revisa por separado. Hasta hoy no lo llamaba ningun frontend.
-            //
-            // Va ANTES del `write` a proposito: verificar despues dejaria un
-            // fichero malo en el disco con un mensaje al lado, y quien lo
-            // encuentre manana vera el `.bex`, no el mensaje.
-            if let bmo_verify::Verdict::Rejected(razones) = bmo_verify::verify(&bef) {
-                eprintln!("error: el BEF no pasa el gate de verificacion:");
-                for r in &razones { eprintln!("  - {r}"); }
-                std::process::exit(1);
+    let destino = salida.unwrap_or_else(|| {
+        let mut p = PathBuf::from(&ruta);
+        p.set_extension("bex");
+        p
+    });
+
+    // -- * EL GATE, ANTES DE ESCRIBIR --------------------------
+    //
+    // `bmo-verify` es el "unico checkpoint comun" de la filosofia: el papel de
+    // seguridad que tendria un IR central, pero como CONTRATO -- cada lenguaje
+    // emite su BEF por su cuenta y el verificador lo revisa por separado.
+    //
+    // Va ANTES del `write` a proposito: verificar despues dejaria un fichero
+    // malo en el disco con un mensaje al lado, y quien lo encuentre manana vera
+    // el `.bex`, no el mensaje.
+    if let bmo_verify::Verdict::Rejected(razones) = bmo_verify::verify(&bef) {
+        eprintln!("error: el BEF no pasa el gate de verificacion:");
+        for r in &razones {
+            eprintln!("  - {r}");
+        }
+        process::exit(1);
+    }
+    if let Some(padre) = destino.parent() {
+        if !padre.as_os_str().is_empty() {
+            if let Err(e) = std::fs::create_dir_all(padre) {
+                eprintln!("error: no puedo crear {}: {e}", padre.display());
+                process::exit(1);
             }
-            match fs::write(&salida, &bef) {
-        Ok(()) => println!("{} — {} bytes", salida.display(), bef.len()),
-        Err(e) => { eprintln!("no se pudo escribir {}: {e}", salida.display()); std::process::exit(1); }
+        }
+    }
+    match std::fs::write(&destino, &bef) {
+        Ok(()) => println!("ok: wrote {} bytes -> {}", bef.len(), destino.display()),
+        Err(e) => {
+            eprintln!("error: no puedo escribir {}: {e}", destino.display());
+            process::exit(1);
+        }
     }
 }

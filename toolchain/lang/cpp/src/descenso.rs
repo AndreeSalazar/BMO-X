@@ -333,6 +333,33 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
             vtabla: !cl.vtabla.is_empty(),
         });
     }
+    // *** A CLASS HAS A DESTRUCTOR IF ANY OF ITS BASES HAS ONE (2026-09-17).
+    //
+    // `class Ahorro : public Cuenta { }` with `~Cuenta()` declared: the implicit
+    // destructor of `Ahorro` has to call `~Cuenta` ([class.dtor]). It did not
+    // exist, so an `Ahorro` going out of scope destroyed NOTHING -- RAII broken
+    // exactly in the case inheritance exists for. The 110 rows of the matrix
+    // never derived from a class with a destructor; `examples/1-clases/cuentas.cpp`,
+    // the first C++ program written to reach the disk, did it on line one.
+    //
+    // Fixed point over single inheritance: at most one pass per class.
+    for _ in 0..p.classes.len() {
+        let mut cambio = false;
+        for cl in &p.classes {
+            let hereda = cl.bases.iter().any(|b| info.get(b).map_or(false, |i| i.dtor));
+            if hereda {
+                if let Some(i) = info.get_mut(&cl.name) {
+                    if !i.dtor {
+                        i.dtor = true;
+                        cambio = true;
+                    }
+                }
+            }
+        }
+        if !cambio {
+            break;
+        }
+    }
 
     // Las tablas virtuales: una global de `n` ranuras por clase con virtuales,
     // y las instrucciones que la rellenan. No se pueden emitir como un
@@ -397,10 +424,56 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
                 &ctor.params.iter().map(|p| p.typ.clone()).collect::<Vec<_>>());
             out.functions.push(f);
         }
-        if let Some(dtor) = &cl.destructor {
-            let mut f = metodo(cl, dtor, &info)?;
-            f.name = mangling::destructor(&[], &cl.name);
-            out.functions.push(f);
+        // The destructor chain: own body first, then the base's -- in that
+        // order, because the derived part is built last and dies first.
+        //
+        //    own ~D, base with ~B   D.~D#        calls D.~D.cuerpo# then B.~B#
+        //                           D.~D.cuerpo# the body the programmer wrote
+        //    no ~D, base with ~B    D.~D#        calls B.~B#
+        //    own ~D, no base dtor   D.~D#        the body, as before
+        //
+        // The body is its own function, and not the base call appended to it,
+        // so that a `return` inside `~D` cannot skip destroying the base.
+        let base_con_dtor = cl
+            .bases
+            .first()
+            .filter(|b| info.get(*b).map_or(false, |i| i.dtor))
+            .cloned();
+        let nombre_dtor = mangling::destructor(&[], &cl.name);
+        let this_param = c::Param {
+            typ: c::TypeSpec::Ptr(Box::new(c::TypeSpec::StructRef(cl.name.clone()))),
+            name: "this".into(),
+        };
+        let llamar = |simbolo: String| {
+            c::Stmt::Expr(c::Expr::Call(simbolo, vec![c::Expr::Var("this".into())]))
+        };
+        match (&cl.destructor, base_con_dtor) {
+            (Some(dtor), None) => {
+                let mut f = metodo(cl, dtor, &info)?;
+                f.name = nombre_dtor;
+                out.functions.push(f);
+            }
+            (propio, Some(base)) => {
+                let mut cuerpo = Vec::new();
+                if let Some(dtor) = propio {
+                    let mut f = metodo(cl, dtor, &info)?;
+                    f.name = mangling::metodo(&[], &cl.name, &format!("~{}.cuerpo", cl.name), &[]);
+                    cuerpo.push(llamar(f.name.clone()));
+                    out.functions.push(f);
+                }
+                cuerpo.push(llamar(mangling::destructor(&[], &base)));
+                out.functions.push(c::Function {
+                    ret_type: c::TypeSpec::Void,
+                    name: nombre_dtor,
+                    params: vec![this_param],
+                    var_count: 0,
+                    var_names: vec!["this".into()],
+                    body: cuerpo,
+                    line: 0,
+                    variadica: false,
+                });
+            }
+            (None, None) => {}
         }
     }
 

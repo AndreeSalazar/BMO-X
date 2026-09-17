@@ -21,30 +21,19 @@ fn correr(fuente: &str) -> String {
     run_cpp(fuente).trim().to_string()
 }
 
-// ** APARCADO el 2026-08-12, y por eso `#[ignore]` en vez de borrado.
+// *** 110 OF 110 SINCE 2026-09-17, and the `#[ignore]` is gone.
 //
-// Va 108 de 110 filas. Las dos que fallan son:
+// Parked on 2026-08-12 at 108 of 110 (a global read 0 instead of 42, an indexed
+// string literal came out empty), with the diagnosis "the C++ frontend did not
+// receive C's fix for .data and relocations". The diagnosis had the right two
+// symptoms and the wrong culprit: the frontend lowers to C's AST and emits with
+// C's codegen, so it HAD the fix. The one that did not was the test harness in
+// `tests/mod.rs`, copied from C's before C's learned to page-align sections,
+// lay down Bss and apply relocations. See `maquina_de_bef`.
 //
-//    un global lee 0 donde deberia leer 42
-//    un literal de cadena indexado sale vacio
-//
-// [!] Y los dos sintomas son EXACTAMENTE los que ya se arreglaron en BMO C --la
-// seccion de datos y las relocations, en `2bc13367` y `46506e51`--. O sea que no
-// es un bug del C++: es que **el frontend de C++ no recibio el arreglo del de
-// C**, y lleva asi desde el 08-08.
-//
-// Se ignora y no se borra por dos razones que van juntas:
-//
-//   * Un ROJO PERMANENTE entrena a no mirar los rojos. Este ya escondio 400
-//     tests una vez: `cargo test` aborta en el primer crate que falla, y este
-//     crate va antes que media suite.
-//   * Un test BORRADO hace desaparecer la unica descripcion que existe del
-//     fallo. Mientras esta aqui, dice exactamente que falta.
-//
-// **Quitar este `#[ignore]` es el primer paso del dia que se retome C++.** Ver
-// `toolchain/lang/cpp/APARCADO.md`, parte 4: las dos condiciones que lo reviven.
+// > Keeping the red test instead of deleting it is what made this findable in
+// > one reading: it still described the failure exactly.
 #[test]
-#[ignore = "C++ APARCADO (ver APARCADO.md): faltan el arreglo de .data y las relocations que C ya tiene"]
 fn matriz_cpp_ejecuta_correctamente() {
     let casos: &[(&str, &str, &str)] = &[
         // -- Aritmetica y literales --
@@ -202,6 +191,17 @@ fn matriz_cpp_ejecuta_correctamente() {
         // * Y por PUNTERO A LA BASE, que es donde el polimorfismo sirve de
         // algo: el tipo estatico es `Animal*` en los dos casos.
         ("virtual-por-puntero-a-base", "@FULL@class Animal { public: int edad; virtual int habla() { return edad; } }; class Perro : public Animal { public: int habla() override { return edad * 2; } }; int main() { Animal a; a.edad = 21; Perro p; p.edad = 21; Animal *x = &a; Animal *y = &p; printf(\"%d %d\", x->habla(), y->habla()); return 0; }", "21 42"),
+        // * 2026-09-17: the derived pointer as an ARGUMENT, not only in an
+        // assignment -- and the exact overload still wins over the conversion.
+        ("derivada-a-base-como-argumento", "@FULL@class A { public: int x; virtual int f() { return x; } }; class B : public A { public: int f() override { return x * 2; } }; int ver(A *a) { return a->f(); } int main() { B b; b.x = 21; printf(\"%d\", ver(&b)); return 0; }", "42"),
+        ("la-sobrecarga-exacta-gana-a-la-base", "@FULL@class A { public: int x; }; class B : public A { }; int ver(A *a) { return 1; } int ver(B *b) { return 2; } int main() { A a; B b; printf(\"%d %d\", ver(&a), ver(&b)); return 0; }", "1 2"),
+        // *** 2026-09-17: THE DESTRUCTOR CHAIN. A derived object dies with its
+        // base's destructor too: own body first, base after, at every level,
+        // and a `return` inside the derived body cannot skip the base.
+        ("dtor-de-la-base-sin-dtor-propio", "@FULL@class A { public: ~A() { printf(\"A\"); } }; class B : public A { }; int main() { { B b; } printf(\"|\"); return 0; }", "A|"),
+        ("dtor-propio-y-luego-la-base", "@FULL@class A { public: ~A() { printf(\"A\"); } }; class B : public A { public: ~B() { printf(\"B\"); } }; int main() { { B b; } return 0; }", "BA"),
+        ("dtor-tres-niveles", "@FULL@class A { public: ~A() { printf(\"A\"); } }; class B : public A { }; class C : public B { public: ~C() { printf(\"C\"); } }; int main() { { C c; } return 0; }", "CA"),
+        ("dtor-return-no-salta-la-base", "@FULL@class A { public: ~A() { printf(\"A\"); } }; class B : public A { public: int n; ~B() { if (n > 0) { return; } printf(\"B\"); } }; int main() { { B b; b.n = 1; } return 0; }", "A"),
         ("virtual-no-redefinida-se-hereda", "@FULL@class A { public: int x; virtual int f() { return x; } }; class B : public A { }; int main() { B b; b.x = 42; A *p = &b; printf(\"%d\", p->f()); return 0; }", "42"),
         ("virtual-dos-ranuras", "@FULL@class A { public: int x; virtual int uno() { return 1; } virtual int dos() { return 2; } }; class B : public A { public: int dos() override { return 40; } }; int main() { B b; b.x = 0; A *p = &b; printf(\"%d\", p->uno() + p->dos() + 1); return 0; }", "42"),
         ("virtual-desde-un-metodo", "@FULL@class A { public: int x; virtual int f() { return x; } int doble() { return f() * 2; } }; class B : public A { public: int f() override { return x + 1; } }; int main() { B b; b.x = 20; A *p = &b; printf(\"%d\", p->doble()); return 0; }", "42"),

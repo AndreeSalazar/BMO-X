@@ -43,29 +43,110 @@ fn ejecutar_bef(bef: &[u8]) -> String {
     maquina_de_bef(bef).console
 }
 
+/// *** THE LOADER, AS THE REAL ONE LOADS (2026-09-17).
+///
+/// C++ was parked on 2026-08-12 at 108 of 110 rows, with the diagnosis *"the C++
+/// frontend did not receive C's fix for .data and relocations"*. **It was the
+/// other way round**: this frontend lowers to C's AST and emits with C's
+/// codegen, so it had the fix all along. What had NOT received it was this
+/// HARNESS -- a copy of C's taken on 08-08, before C's harness learned three
+/// things the loader does:
+///
+/// ```text
+///    every section starts on its own page      `ring0/task/proc.rs`
+///    Bss is zeros after the last section       `Codegen::separar_bss`
+///    relocations are applied by the loader     a global `int g = 42` was 0
+/// ```
+///
+/// The two red rows were the harness running a program the kernel would never
+/// run. Still a deliberate COPY of `toolchain/lang/c/src/tests/mod.rs`
+/// (`maquina_de_bef_con`), per `HERENCIA.md` rule 4: each language owns its
+/// bench.
 fn maquina_de_bef(bef: &[u8]) -> Machine {
+    const PAGE: usize = 4096;
     let hdr = unsafe { &*(bef.as_ptr() as *const bmo_abi::bef::header::BefHeader) };
     let entry = hdr.entry_offset as usize;
     let sec_off = hdr.section_table_offset as usize;
 
     let mut code = Vec::new();
-    for kind in [SectionKind::Code, SectionKind::RoData, SectionKind::Data] {
+    // Where each section landed, indexed by the RELOCATION section code
+    // (0 = code, 1 = data, 2 = rodata) -- not by `SectionKind`.
+    let mut base = [usize::MAX; 3];
+    for (kind, reloc_code) in [
+        (SectionKind::Code, 0usize),
+        (SectionKind::RoData, 2usize),
+        (SectionKind::Data, 1usize),
+        (SectionKind::Bss, usize::MAX),
+    ] {
         for i in 0..hdr.section_count as usize {
             let e = sec_off + i * SectionEntry::SIZE;
             if bef[e] == kind as u8 {
                 let off = u64::from_le_bytes(bef[e + 8..e + 16].try_into().unwrap()) as usize;
                 let size = u64::from_le_bytes(bef[e + 16..e + 24].try_into().unwrap()) as usize;
+                let mem = u64::from_le_bytes(bef[e + 24..e + 32].try_into().unwrap()) as usize;
+                while !code.is_empty() && code.len() % PAGE != 0 {
+                    code.push(0xCC);
+                }
+                if reloc_code != usize::MAX {
+                    base[reloc_code] = code.len();
+                }
                 code.extend_from_slice(&bef[off..off + size]);
+                code.resize(code.len() + mem.saturating_sub(size), 0);
             }
         }
     }
     assert!(!code.is_empty(), "el BEF no tiene seccion CODE");
+
+    for i in 0..hdr.section_count as usize {
+        let e = sec_off + i * SectionEntry::SIZE;
+        if bef[e] != SectionKind::Relocs as u8 {
+            continue;
+        }
+        let off = u64::from_le_bytes(bef[e + 8..e + 16].try_into().unwrap()) as usize;
+        let size = u64::from_le_bytes(bef[e + 16..e + 24].try_into().unwrap()) as usize;
+        let rsize = bmo_abi::bef::relocations::Relocation::SIZE;
+        for k in 0..size / rsize {
+            let r = off + k * rsize;
+            let at_off = u64::from_le_bytes(bef[r..r + 8].try_into().unwrap()) as usize;
+            let target_sec = u32::from_le_bytes(bef[r + 8..r + 12].try_into().unwrap()) as usize;
+            let kind = bef[r + 12];
+            let at_sec = bef[r + 13] as usize;
+            let addend = i64::from_le_bytes(bef[r + 16..r + 24].try_into().unwrap());
+            assert_eq!(
+                kind,
+                bmo_abi::bef::relocations::RelocationKind::SeccionAbs64 as u8,
+                "the harness only applies SeccionAbs64; got kind={kind}"
+            );
+            assert!(at_sec < 3 && target_sec < 3, "reloc section code out of range");
+            assert!(
+                base[at_sec] != usize::MAX && base[target_sec] != usize::MAX,
+                "a reloc names a section this .bex does not carry"
+            );
+            let at = base[at_sec] + at_off;
+            let value = (base[target_sec] as i64 + addend) as u64;
+            assert!(at + 8 <= code.len(), "reloc outside the image");
+            code[at..at + 8].copy_from_slice(&value.to_le_bytes());
+        }
+    }
 
     let mut machine = Machine::new(code);
     machine.rip = entry;
     let machine = run(machine, 500_000);
     assert!(machine.exited, "el programa debe terminar por INVOKE(EXIT)");
     machine
+}
+
+/// *** THE EXAMPLE THAT GOES TO THE DISK says what its header promises, byte
+/// for byte. `build/ejemplos.ps1` compiles this same file to `cpp/cuentas.bex`,
+/// so a change that breaks it is caught here and not in a photo of the Ryzen.
+#[test]
+fn el_ejemplo_cuentas_dice_lo_que_promete() {
+    let ruta = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/1-clases/cuentas.cpp");
+    let fuente = std::fs::read_to_string(ruta).expect("the example must exist");
+    assert_eq!(
+        run_cpp(&fuente),
+        "abre corriente\nabre ahorro\ncorriente 12000\nahorro 10300\ntotal 22300\ncierra ahorro\ncierra corriente\n"
+    );
 }
 
 // -- Paso 0: que emita un byte ---------------------------------------

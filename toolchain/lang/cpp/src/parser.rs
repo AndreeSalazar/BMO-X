@@ -38,6 +38,11 @@ use crate::lexer::{tokenizar, Token};
 use crate::CppError;
 use std::collections::{HashMap, HashSet};
 
+// ** Overload resolution lives in its own file since 2026-09-17: it grew
+// the derived-to-base conversion, and the L6a ratchet said NO to this file
+// growing. Paid by moving the whole question out, not by raising the ceiling.
+mod sobrecarga;
+
 /// El nombre del puntero a la vtabla dentro del objeto.
 ///
 /// Lleva un punto --ilegal en C++-- para que no pueda chocar con un campo que
@@ -128,30 +133,6 @@ struct Firma {
     simbolo: String,
 }
 
-/// Lo bien que encaja un argumento en un parametro. **Menos es mejor.**
-///
-/// === Como lo hace GCC, y que se le quita ===
-///
-/// `gcc/cp/call.cc` --uno de los ficheros mas grandes del frontend de C++, y
-/// sorprende que lo sea-- construye para cada argumento una *secuencia de
-/// conversion implicita* con hasta tres eslabones (lvalue, promocion,
-/// cualificacion) y luego ordena secuencias parcialmente. Eso es lo que hace
-/// falta para resolver contra plantillas, conversiones definidas por el
-/// usuario y ADL.
-///
-/// BMO no tiene ninguna de las tres, asi que el orden colapsa a **tres
-/// escalones** que se comparan sumando. Es lo que `MAESTROS.md` fijo como
-/// alcance: *ranking minimo -- exacto > promocion > conversion*.
-#[derive(PartialEq, PartialOrd, Clone, Copy)]
-enum Encaje {
-    Exacto,
-    /// `char`/`short` -> `int`, `float` -> `double`. No pierde informacion.
-    Promocion,
-    /// Cualquier aritmetico a cualquier aritmetico. **Puede perder**, y por eso
-    /// es el ultimo escalon: si hay una alternativa mejor, gana la otra.
-    Conversion,
-}
-
 struct Parser {
     toks: Vec<Token>,
     lineas: Vec<usize>,
@@ -226,91 +207,6 @@ impl Parser {
     #[allow(dead_code)]
     fn es_plantilla(&self, name: &str) -> bool {
         self.plantillas.contains(name)
-    }
-
-    // -- Resolucion de sobrecarga ------------------------------------
-
-    /// Es un tipo con el que se puede hacer aritmetica?
-    fn es_numero(t: &TypeSpec) -> bool {
-        use TypeSpec as T;
-        matches!(t, T::Bool | T::Char | T::UnsignedChar | T::Short | T::UnsignedShort
-            | T::Int | T::UnsignedInt | T::Long | T::UnsignedLong
-            | T::LongLong | T::UnsignedLongLong | T::Float | T::Double)
-    }
-
-    /// Lo bien que un argumento de tipo `dado` encaja en un parametro `quiere`.
-    fn encaje(dado: &TypeSpec, quiere: &TypeSpec) -> Option<Encaje> {
-        use TypeSpec as T;
-        if dado == quiere { return Some(Encaje::Exacto); }
-        // Una referencia se ata al valor: `f(int&)` acepta un `int`. Encaja
-        // exacto porque no hay conversion ninguna -- solo se pasa la direccion.
-        if let T::Ref(d) = quiere {
-            if &**d == dado { return Some(Encaje::Exacto); }
-        }
-        // Un array decae a puntero a su elemento, que es lo que C hace en toda
-        // llamada. Sin esto, `f(char*)` no aceptaria un `char[8]`.
-        if let (T::Array(e, _), T::Ptr(p)) = (dado, quiere) {
-            if e == p { return Some(Encaje::Exacto); }
-        }
-        if !Self::es_numero(dado) || !Self::es_numero(quiere) { return None; }
-        // La promocion entera y la de coma flotante: NO pierden informacion.
-        let promociona = matches!(
-            (dado, quiere),
-            (T::Char | T::UnsignedChar | T::Short | T::UnsignedShort | T::Bool, T::Int)
-            | (T::Float, T::Double)
-        );
-        Some(if promociona { Encaje::Promocion } else { Encaje::Conversion })
-    }
-
-    /// Elige la firma que mejor encaja, o dice por que no puede.
-    ///
-    /// El criterio es la **suma** de los escalones de cada argumento, y el
-    /// empate es un error con los dos candidatos escritos. Una ambiguedad que
-    /// se resolviera sola --eligiendo "el primero", por ejemplo-- haria que
-    /// anadir una sobrecarga cambiara a que funcion va una llamada existente,
-    /// en silencio.
-    fn resolver<'f>(&self, que: &str, firmas: &'f [Firma], args: &[TypeSpec])
-        -> Result<&'f Firma, CppError>
-    {
-        let mut mejor: Option<(u32, &Firma)> = None;
-        let mut empate = false;
-        let mut hubo_aridad = false;
-
-        for f in firmas {
-            if f.params.len() != args.len() { continue; }
-            hubo_aridad = true;
-            let mut coste = 0u32;
-            let mut vale = true;
-            for (a, p) in args.iter().zip(f.params.iter()) {
-                match Self::encaje(a, p) {
-                    Some(e) => coste += e as u32,
-                    None => { vale = false; break; }
-                }
-            }
-            if !vale { continue; }
-            match mejor {
-                None => mejor = Some((coste, f)),
-                Some((c, _)) if coste < c => { mejor = Some((coste, f)); empate = false; }
-                Some((c, _)) if coste == c => empate = true,
-                _ => {}
-            }
-        }
-
-        if empate {
-            let opciones: Vec<String> = firmas.iter()
-                .filter(|f| f.params.len() == args.len())
-                .map(|f| f.simbolo.clone()).collect();
-            return Err(self.err(format!(
-                "la llamada a `{que}` es ambigua entre {}: ninguna encaja mejor que la otra",
-                opciones.join(" y "))));
-        }
-        match mejor {
-            Some((_, f)) => Ok(f),
-            None if hubo_aridad => Err(self.err(format!(
-                "ninguna version de `{que}` acepta esos tipos de argumento"))),
-            None => Err(self.err(format!(
-                "`{que}` no tiene ninguna version con {} argumento(s)", args.len()))),
-        }
     }
 
     /// El tipo de una expresion. Se usa para resolver `.` y para tipar los
@@ -720,7 +616,7 @@ impl Parser {
 
         // -- Vuelta 2: los cuerpos, con la clase ya registrada --
         let vuelta = self.pos;
-        let mut cuerpo_de = |p: &mut Self, inicio: usize, m: &mut Method| -> Result<(), CppError> {
+        let cuerpo_de = |p: &mut Self, inicio: usize, m: &mut Method| -> Result<(), CppError> {
             p.pos = inicio;
             p.clase_actual = Some(name.clone());
             p.ambitos.entrar();

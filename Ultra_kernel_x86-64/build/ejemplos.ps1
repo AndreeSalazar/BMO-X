@@ -146,6 +146,16 @@ $cobolEjemplos = @(
 $adaEjemplos = @(
     @{ src = 'toolchain\lang\ada\examples\1-basico\cierre.adb'; out = 'cierre.bex' ; dir = 'ada' }
 )
+# -- Programas C++ de ejemplo -------------------------------------
+#
+# ** 2026-09-17: el primer .bex de C++ que llega al disco. C++ estuvo APARCADO
+# desde el 12-08 con dos filas rojas que resultaron ser del ARNES de pruebas y
+# no del compilador, y su linea de ordenes tomaba `-o` como nombre de fichero.
+# Este ejemplo encontro ademas que un derivado no llamaba al destructor de su
+# base. Ver toolchain/lang/cpp/APARCADO.md, seccion 7.
+$cppEjemplos = @(
+    @{ src = 'toolchain\lang\cpp\examples\1-clases\cuentas.cpp'; out = 'cuentas.bex' ; dir = 'cpp' }
+)
 # -- Programas C de ejemplo ---------------------------------------
 #
 # * Este paso NO EXISTIA. COBOL y Ada llegaban al disco y C no, asi que los
@@ -573,6 +583,9 @@ try {
 
     Step 'Building ADA example programs...'
     Compilar-Ejemplos $adaEjemplos 'bmo-ada-front' 'ada' 'ok:|error|linea' $dataBase $repo
+
+    Step 'Building C++ example programs...'
+    Compilar-Ejemplos $cppEjemplos 'bmo-cpp-front' 'cpp' 'ok:|error|linea' $dataBase $repo
 
     Step 'Building C example programs...'
     # Sin --base ni --asm-path: ese camino usa el PREPROCESADOR, que es lo que
