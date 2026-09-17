@@ -283,13 +283,41 @@ sigue siendo del dueno: este plan escribe los escalones para cuando la tome.
       COBOL y uno de C en el mismo `.bex`, cada uno con su convencion de llamada
       declarada y ninguno sabiendo del otro.
 
+      [!] **Y esto NO sale a cuatro lineas como C++**, medido el 17-09: C++ baja
+      al arbol de BMO C y hereda su emisor, pero COBOL tiene el suyo --2.947
+      lineas en `codegen.rs`-- y **no escribe ni un simbolo ni una reloc**: hoy
+      cierra todas sus referencias porque nunca hubo otra cosa. Lo que
+      le falta es lo mismo que aprendio BMO C en E2: dejar abierto lo que no es
+      suyo y publicar lo que si.
+
 - [ ] **E7 -- Ada `package` en dos ficheros.** `toolchain/lang/ada/PLAN_ADA.md`,
       escalon A6. El orden de elaboracion (RM 10.2.1) lo decide el enlazador por
       las dependencias `with`, y un ciclo es un error con los dos nombres.
 
+      [!] Mismo aviso que E6: `ada/src/codegen.rs` son 602 lineas propias, sin
+      simbolos ni relocaciones. Y ademas Ada pide algo que C no: la
+      ELABORACION es codigo que corre antes del programa -- o sea la misma
+      pregunta que E9 le hizo a C++ con las tablas de clase, y conviene que la
+      conteste UNA vez para los dos.
+
 - [ ] **E8 -- INTI decide.** INTI compila hoy un fichero con sus modulos dentro;
       si quiere objetos, los pide aqui. No es obligatorio: el formato es
       opcional para quien no lo necesite (regla 2).
+
+---
+
+## 3b. Quien sabe escribir un objeto hoy (17-09)
+
+```text
+   BMO C      SI    `-c`        E2
+   BMO C++    SI    `-c`        E5e -- gratis: usa el codegen de C
+   COBOL      NO                E6 -- codegen propio, 2.947 lineas, 0 relocs
+   Ada        NO                E7 -- codegen propio, 602 lineas, 0 relocs
+   INTI       NO                E8 -- y es OPCIONAL a proposito (regla 2)
+```
+
+Las dos columnas de la derecha son la respuesta a "por que C++ fue barato y los
+otros no": no es el lenguaje, es **de quien es el emisor**.
 
 ---
 
