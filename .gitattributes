@@ -1,0 +1,3 @@
+# Los guiones de shell viajan al movil (Termux) y bash no traga CR: LF siempre,
+# sin importar el autocrlf de quien los saque del repo (2026-09-16).
+*.sh text eol=lf
