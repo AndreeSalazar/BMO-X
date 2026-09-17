@@ -137,7 +137,16 @@ fn apuntar_censo(censados: u32, vistos: u32, huerfanos: u32, elegido: Option<pci
 
 fn wait_for_connection(nports: u8, budget_ms: u64) -> (u64, u64) {
     const SWEEP_MS: u64 = 10;
+    // ** Y SE ESPERA A QUE SE ASIENTEN (2026-09-17). Esto volvia en cuanto UN
+    // puerto decia CCS=1, y el censo --y la enumeracion del arranque-- se
+    // hacian con lo que hubiera en ese instante: un teclado que tarda 150 ms
+    // mas que el raton en engancharse no estaba, y el arranque lo dejaba
+    // para el barrido. Ahora, visto el primero, se sigue mirando hasta que
+    // la cuenta no cambie en `ASENTAR_MS`, con el mismo tope total.
+    const ASENTAR_MS: u64 = 150;
     let mut waited = 0u64;
+    let mut ultima = 0u64;
+    let mut estable_ms = 0u64;
     loop {
         let mut connected = 0u64;
         for p in 0..nports {
@@ -146,10 +155,18 @@ fn wait_for_connection(nports: u8, budget_ms: u64) -> (u64, u64) {
             }
         }
         if connected > 0 {
-            return (connected, waited);
+            if connected == ultima {
+                estable_ms += SWEEP_MS;
+                if estable_ms >= ASENTAR_MS {
+                    return (connected, waited);
+                }
+            } else {
+                ultima = connected;
+                estable_ms = 0;
+            }
         }
         if waited >= budget_ms {
-            return (0, waited);
+            return (connected, waited);
         }
         delay_ms(SWEEP_MS);
         waited += SWEEP_MS;

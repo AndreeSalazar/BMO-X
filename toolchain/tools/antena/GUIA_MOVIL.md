@@ -229,6 +229,20 @@ de movil bajo proot) ya no es costumbre de navegador: es trabajo, y
 acelerarlo seria optimizar -- lo ultimo. Cada `PAGINA` se sigue apuntando
 en `medidas.txt`, asi que si un dia hace falta, el numero ya esta.
 
+### NINGUNA orden: la antena arranca sola con el movil (2026-09-17)
+
+Eddi: *"un comando simple que active en python siempre activo"*. Mejor que
+un comando: ninguno. `termux-boot.sh` (en la misma carpeta) se copia UNA vez
+a `~/.termux/boot/antena.sh` con la app Termux:Boot instalada, se le pone la
+IP permitida, y desde entonces la antena --con su Chromium-- esta en el 7117
+a los pocos segundos de encender el movil. Las cuatro lineas de instalacion
+estan en su cabecera.
+
+Lo que eso NO automatiza, y por que: el modo de USB del movil (anclaje,
+archivos...) lo decide Android y sin root no se toca desde Termux. Se fija
+UNA vez en Ajustes > Opciones de desarrollador > Configuracion USB
+predeterminada > Anclaje USB, y ya se presenta asi siempre.
+
 ### UNA orden para todo: `arrancar.sh` (2026-09-16)
 
 Eddi: *"en Termux necesitaria automatizar eso, para que guie"*. Hecho:

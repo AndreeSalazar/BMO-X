@@ -69,6 +69,26 @@ pub unsafe fn port_power_solo(port: u8) {
     w32(c.mmio + pb + PORTSC as u64, r32(c.mmio + pb + PORTSC as u64) | PORTSC_PP);
 }
 
+/// **Corta la corriente del puerto** (PP = 0). Con `port_power_on` despues es
+/// lo mismo que desenchufar y enchufar: el aparato arranca de cero, sin
+/// direccion ni estado que arrastre de antes.
+///
+/// Existe desde el 2026-09-17 para el segundo intento sobre un puerto que no
+/// contesta: un teclado que se quedo a medias en un reinicio en caliente no
+/// vuelve por resetearlo mas, vuelve por quitarle la corriente. Es lo que
+/// hace el dueno con la mano cuando "no prende".
+///
+/// # Safety
+/// Toca MMIO del xHC.
+pub unsafe fn port_power_off(port: u8) {
+    let c = match CTRL.as_mut() { Some(c) => c, None => return };
+    let pb = c.op_base as u64 + 0x400 + port as u64 * 0x10;
+    let sc = r32(c.mmio + pb + PORTSC as u64);
+    // Solo PP fuera; los bits de cambio (CSC/PRC...) se escriben con 1 para
+    // borrarlos, asi que se enmascaran para NO tocarlos aqui.
+    w32(c.mmio + pb + PORTSC as u64, sc & !PORTSC_PP & !(PORTSC_CSC | PORTSC_PRC));
+}
+
 /// Reset del puerto con TIEMPOS REALES. Un reset USB2 tarda ~10-50 ms; el
 /// firmware/PHY latchea PED solo cuando termina. Poll a 1 ms, hasta 120 ms.
 pub unsafe fn port_reset(port: u8) -> bool {

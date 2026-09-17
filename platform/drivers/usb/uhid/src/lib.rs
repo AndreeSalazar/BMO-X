@@ -315,7 +315,10 @@ impl UsbHidHal {
         if !bmo_xhci::hay_dispositivo(port) {
             return cosecha;
         }
-        let slot = match enumera::direccionar_puerto(port) {
+        // Del segundo intento en adelante, con ciclo de corriente. El intento
+        // ya esta anotado (`anotar_intento` va antes de tocar el bus).
+        let reintento = self.puertos.intentos(port) >= 2;
+        let slot = match enumera::direccionar_puerto(port, reintento) {
             Some(s) => s,
             None => {
                 // `iface` = 0xFF: no llego a haber interfaz que mirar. Ver

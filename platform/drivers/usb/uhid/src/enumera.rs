@@ -367,8 +367,19 @@ pub unsafe fn leer_descriptores(
 /// un puerto que falla al resetear, uno vacio y uno que no acepta direccion se
 /// veian **exactamente igual**, o sea nada. El vacio sigue callado porque no es
 /// un fallo.
-pub unsafe fn direccionar_puerto(port: u8) -> Option<u8> {
+pub unsafe fn direccionar_puerto(port: u8, reintento: bool) -> Option<u8> {
     let h = bmo_xhci::hal();
+    if reintento {
+        // ** SEGUNDO INTENTO: SE LE QUITA LA CORRIENTE (2026-09-17). Un
+        // reinicio en caliente del Ryzen dejo el teclado sin responder y el
+        // dueno lo vio como "no prendio": un aparato que se quedo a medias
+        // no vuelve por resetearlo otra vez, vuelve por apagarlo. Es lo que
+        // hace la mano al sacar y meter el cable, hecho aqui. 200 ms sin
+        // VBUS es lo que tarda un firmware en darse por apagado.
+        h.log_u64("[uhid] reintento: corto la corriente del puerto ", port as u64);
+        bmo_xhci::port_power_off(port);
+        h.delay_ms(200);
+    }
     bmo_xhci::port_power_on(port);
     // ** 100 ms de DEBOUNCE antes del reset (USB 2.0, 7.1.7.3), 2026-09-17.
     // Aqui habia un spin de 50.000 vueltas: microsegundos. Un raton con
