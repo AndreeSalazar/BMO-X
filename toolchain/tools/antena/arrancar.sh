@@ -44,6 +44,29 @@ finally:
 PY
 }
 
+# proot-distro escribe "Alias: debian" e "Installed: yes" en DOS lineas, asi
+# que no se busca en su listado ni se supone su carpeta: se le pide ENTRAR.
+# Si entra, hay Debian.
+hay_debian() {
+    command -v proot-distro >/dev/null 2>&1         && proot-distro login debian -- true >/dev/null 2>&1
+}
+
+# Solo puede haber UNA antena en el 7117; si ya hay otra (otra sesion de
+# Termux), se dice quien y como quitarla en vez de un traceback.
+if python - <<'PY'
+import socket, sys
+s = socket.socket(); s.settimeout(0.5)
+try:
+    sys.exit(0 if s.connect_ex(("127.0.0.1", 7117)) == 0 else 1)
+finally:
+    s.close()
+PY
+then
+    echo "antena: ya hay una antena en el 7117 (otra sesion de Termux). Quitala con:"
+    echo "        pkill -f antena.py"
+    exit 1
+fi
+
 CHROMIUM_PID=""
 if escucha; then
     echo "antena: ya hay un navegador en el $PUERTO, lo uso"
@@ -55,12 +78,19 @@ elif command -v chromium-browser >/dev/null 2>&1; then
     echo "antena: enciendo chromium-browser"
     chromium-browser $FLAGS > "$HOME/chromium.log" 2>&1 &
     CHROMIUM_PID=$!
-elif command -v proot-distro >/dev/null 2>&1 && proot-distro list 2>/dev/null | grep -qi "debian.*installed"; then
+elif hay_debian && proot-distro login debian -- sh -c "command -v chromium" >/dev/null 2>&1; then
+    # Dentro de proot no hay zygote que valga (no puede crear espacios de
+    # nombres), asi que se le dice que no lo intente. El puerto es el mismo:
+    # proot comparte la red de Termux.
     echo "antena: enciendo el chromium del Debian de proot"
-    proot-distro login debian -- chromium $FLAGS > "$HOME/chromium.log" 2>&1 &
+    proot-distro login debian -- chromium --no-zygote $FLAGS < /dev/null > "$HOME/chromium.log" 2>&1 &
     CHROMIUM_PID=$!
+elif hay_debian; then
+    echo "antena: hay Debian en proot pero sin chromium (proot-distro login debian -- apt install -y chromium): PAGINA contestara NO"
 else
     echo "antena: no hay chromium (ni en Termux ni en proot): PAGINA contestara NO"
+    echo "        proot-distro: $(command -v proot-distro || echo 'no esta en el PATH')"
+    echo "        login debian: $(proot-distro login debian -- true >/dev/null 2>&1 && echo entra || echo 'no entra (proot-distro list)')"
 fi
 
 NAVEGADOR=""

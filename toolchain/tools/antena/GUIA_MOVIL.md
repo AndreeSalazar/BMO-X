@@ -167,25 +167,31 @@ Como se arranca, en un PC (y es lo que la V2 del Arch hara al encender):
    python cliente.py <IP de la antena> --pagina https://example.com
 ```
 
-** EN EL MOVIL, dicho entero: Termux NO trae Chromium, asi que `--navegador`
-todavia no tiene con que hablar ahi. Los dos caminos, ninguno probado aun en
-el HONOR:
+** EN EL MOVIL (HECHO el 2026-09-16 en el HONOR X7a): Termux NO trae
+Chromium, y el Chrome del movil expone su socket de depuracion SOLO a adb,
+asi que el navegador es el de un Debian dentro del movil (proot-distro).
+Se instala UNA vez, ~1 GB:
 
 ```text
-   a) proot-distro   `pkg install proot-distro && proot-distro install debian`,
-                     dentro `apt install chromium`, y arrancarlo con
-                     `--headless=new --no-sandbox --remote-debugging-port=9222`.
-                     La antena (fuera del proot, en Termux) no cambia una linea:
-                     el puerto es de la misma maquina. Pesa ~1 GB y la primera
-                     pagina tarda; es lo que se mide
-   b) el Chrome del movil   expone su socket de depuracion SOLO a adb; desde
-                     Termux no se cuenta con el. Si algun dia se puede, es
-                     otra direccion en `--navegador` y nada mas
+   pkg install proot-distro
+   proot-distro install debian
+   proot-distro login debian -- bash -c "apt update && apt install -y chromium"
 ```
 
-Hasta que a) se pruebe, el movil sirve las laminas de su carpeta (hechas a
-mano con la seccion L0) y navega solo el PC. Es un ARCH pequeno dentro del
-movil, que es justo la V2 del plan con otro chasis.
+La antena (fuera del proot, en Termux) no cambia una linea: el puerto 9222
+es de la misma maquina porque proot comparte la red de Termux. Dentro de
+proot el Chromium va con `--no-sandbox --no-zygote` (no puede crear espacios
+de nombres); eso lo pone `arrancar.sh`. Es un ARCH pequeno dentro del movil:
+la V2 del plan con otro chasis.
+
+```text
+   MEDIDO en el HONOR X7a (Chromium 152 en proot), 2026-09-16, desde Windows:
+     example.com     4,1 s la primera vez, 3,1 s despues; lamina IDENTICA a la del PC
+     Wikipedia       7,7 s y 6,8 s: 2.137 lineas, 91 KB   (el PC: 1,0 s -- SIETE veces)
+     nombre que no resuelve   NO no cargo: net::ERR_INTERNET_DISCONNECTED
+                     (Chromium dentro de proot no ve la tarjeta y lo llama asi;
+                      la pagina anterior acababa de llegar por esa misma red)
+```
 
 ### UNA orden para todo: `arrancar.sh` (2026-09-16)
 
@@ -203,6 +209,12 @@ salir (Ctrl+C) apaga el navegador que encendio.
 [!] Un `antena.py` copiado por MTP NO sustituye al que ya esta corriendo:
 Python lo cargo al arrancar. Tras copiar ficheros nuevos, Ctrl+C y otra vez
 `arrancar.sh` -- el 16-09 la antena vieja colgo al oir `PAGINA` por esto.
+[!] Solo cabe UNA antena en el 7117: si otra sesion de Termux tiene una viva,
+`arrancar.sh` lo dice y manda `pkill -f antena.py` en vez de un traceback.
+[!] `proot-distro list` escribe `Alias: debian` e `Installed: yes` en DOS
+lineas; por eso `arrancar.sh` no lee el listado: le pide ENTRAR
+(`proot-distro login debian -- true`). Y si no encuentra navegador, dice
+que miro.
 
 ### Arrancar la antena con paginas (a mano, sin arrancar.sh)
 

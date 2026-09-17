@@ -951,13 +951,19 @@ texto al borde; ahora se saltan.
       IDENTICA a `ejemplo.lamina` en 0,34 s, y Wikipedia (2.136 lineas, 91 KB)
       en 1,0 s; una url que no carga contesta `NO no cargo: net::ERR_...`.
 
-- [ ] **L3b -- la antena navega sola EN EL MOVIL.** Termux no trae Chromium:
-      proot-distro (Debian) con `chromium --headless=new --no-sandbox
-      --remote-debugging-port=9222` y la antena de Termux con `--navegador
-      9222`, sin cambiar una linea (`toolchain/tools/antena/GUIA_MOVIL.md`).
-      **Como se sabe:** `cliente.py <IP del movil> --pagina https://example.com`
-      desde Windows trae la misma lamina que el PC, y se apunta cuanto tarda
-      el HONOR con Wikipedia.
+- [x] **L3b -- la antena navega sola EN EL MOVIL.** HECHO el 2026-09-16:
+      Termux no trae Chromium, asi que es el de un Debian de proot-distro
+      (`apt install chromium`, 152) con `--headless=new --no-sandbox
+      --no-zygote --remote-debugging-port=9222`, y la antena de Termux con
+      `--navegador 9222` sin cambiar una linea; `arrancar.sh` lo enciende
+      y lo apaga (`toolchain/tools/antena/GUIA_MOVIL.md`).
+      **Como se sabe:** desde Windows, `cliente.py <IP del movil> --pagina
+      https://example.com` trae una lamina IDENTICA a `ejemplo.lamina`.
+      MEDIDO en el HONOR X7a: example.com 4,1 s la primera y 3,1 s despues;
+      Wikipedia (2.137 lineas, 91 KB) 7,7 s y 6,8 s -- SIETE veces el PC
+      (1,0 s); una url que no resuelve contesta `NO no cargo:
+      net::ERR_INTERNET_DISCONNECTED` (asi llama Chromium dentro de proot a
+      un nombre que no resuelve: ahi no ve la tarjeta de red).
 
 - [ ] **L0 -- el recorrido, en el MOVIL.** Primero SIN app: Chrome en el
       HONOR, depuracion USB y `chrome://inspect` desde el PC, con `lamina.js`

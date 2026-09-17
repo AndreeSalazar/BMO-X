@@ -748,7 +748,11 @@ the page **already laid out** -- boxes, text runs, images -- the way Opera Mini
 did in 2005, except the server is your own phone on your own LAN. Measured on
 2026-09-16 in a desktop browser: a Wikipedia article at 640 px is ~2.100 lines and
 90 KB once the page is laid out with BMO-X's own 8x16 font metrics, and the
-reader (`bmo-antena/src/lamina.rs`, 30 tests) accepts every line.
+reader (`bmo-antena/src/lamina.rs`, 30 tests) accepts every line. And the
+phone already does it by itself: `PAGINA <url>` to a HONOR X7a running the
+antenna in Termux (Chromium inside a proot Debian) returns that Wikipedia
+article laid out in ~7 s over the LAN, seven times slower than a desktop --
+the honest number, measured 2026-09-16.
 
 The plan, with a check next to every step:
 **[PLAN_CLOUD_LOCAL.md](docs/plan/PLAN_CLOUD_LOCAL.md)**.
