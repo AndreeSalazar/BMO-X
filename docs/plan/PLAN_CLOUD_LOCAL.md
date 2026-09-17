@@ -965,6 +965,20 @@ texto al borde; ahora se saltan.
       net::ERR_INTERNET_DISCONNECTED` (asi llama Chromium dentro de proot a
       un nombre que no resuelve: ahi no ve la tarjeta de red).
 
+- [x] **L3c -- DONDE van los 7 s del movil (ley 24: medir antes de tocar).**
+      HECHO el 2026-09-16: `navegador.py` apunta cuanto tarda cada tramo
+      (pestana, carga con html/dom/todo del propio navegador, lamina,
+      cerrar) y `antena.py` anade juicio y envio, lo imprime y lo escribe
+      en `medidas.txt` de su carpeta. **Como se sabe:** Wikipedia tres veces
+      en el HONOR (6,3 / 6,8 / 7,1 s): pestana 0,7-0,9; red (html) 0,2-0,9;
+      parsear 0,4-0,7; **esperar imagenes y demas (dom->todo) 1,7-3,2**;
+      sondeo 0,1-0,5; **lamina.js 1,7-2,3** (20x el PC, no cuadra con el
+      CPU); juicio 0,11; envio 0,03. La LAN no es nada. Las puertas, por
+      lo que pagan y NINGUNA es optimizar: (1) no cargar imagenes, con la
+      lamina byte a byte igual o no vale; (2) pestana fija + esperar el
+      evento de carga en vez de sondear; (3) mirar por que lamina.js va a
+      20x, midiendo dentro del script. Cual se abre lo decide Eddi.
+
 - [ ] **L0 -- el recorrido, en el MOVIL.** Primero SIN app: Chrome en el
       HONOR, depuracion USB y `chrome://inspect` desde el PC, con `lamina.js`
       pegado en la consola remota (paso a paso en

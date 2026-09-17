@@ -193,6 +193,26 @@ la V2 del plan con otro chasis.
                       la pagina anterior acababa de llegar por esa misma red)
 ```
 
+Y DONDE van esos 7 s (cada `PAGINA` se apunta en `medidas.txt` de la
+carpeta de la antena, con los tramos; ley 24, medir antes de tocar):
+
+```text
+   Wikipedia en el HONOR, tres veces (6,3 / 6,8 / 7,1 s)      HONOR        PC
+     pestana    arrancar el renderer (peaje de proot)          0,7-0,9    0,05
+     html       bajar el HTML por la WiFi                      0,2-0,9    0,26
+     html->dom  parsear + CSS + scripts                        0,4-0,7    0,16
+     dom->todo  ESPERAR IMAGENES y demas que nadie vera        1,7-3,2    0,01
+     sondeo     readyState cada 0,2 s                          0,1-0,5    0,06
+     lamina     lamina.js dentro del navegador                 1,7-2,3    0,10
+     juicio     lamina_juez.py en Termux                       0,11       0,01
+     envio      91 KB por la LAN                               0,03       0,02
+```
+
+La LAN no cuenta. Lo que cuenta es lo que un navegador hace POR COSTUMBRE
+y la antena no necesita: cargar imagenes (2 s), abrir un proceso por
+pagina (0,8 s). Y `lamina.js` a 20x el PC es una pregunta, no un dato:
+se mide dentro del script antes de tocarlo.
+
 ### UNA orden para todo: `arrancar.sh` (2026-09-16)
 
 Eddi: *"en Termux necesitaria automatizar eso, para que guie"*. Hecho:

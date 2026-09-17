@@ -200,25 +200,45 @@ def servir_video(conexion, ruta):
           % (enviados, segundos, enviados * 8 / 1e6 / segundos))
 
 
-def servir_pagina(conexion, navegador, url):
+def servir_pagina(conexion, navegador, url, carpeta=None):
     """La antena navega: carga la url, saca la lamina y la JUZGA antes de
-    mandar la primera linea. Cualquier fallo es un NO con su motivo."""
+    mandar la primera linea. Cualquier fallo es un NO con su motivo.
+
+    Y MIDE: cuanto tardo cada tramo (los del navegador mas juzgar y enviar)
+    sale por pantalla y se anade a `medidas.txt` en la carpeta, para saber
+    donde va el tiempo antes de tocar nada (ley 24)."""
     if navegador is None:
         enviar(conexion, "NO la antena no tiene navegador (arranca con --navegador)")
         return
+    inicio = time.time()
     try:
         datos = navegador.lamina_de(url)
     except nav.SinNavegador as e:
         enviar(conexion, "NO %s" % limpio(str(e)))
         return
+    marca = time.time()
     try:
         juzgar_bytes(datos)
     except ValueError as e:
         enviar(conexion, "NO la lamina no vale: %s" % limpio(str(e)))
         return
+    juicio = time.time() - marca
+    marca = time.time()
     for l in datos.split(b"\n"):
         if l:
             conexion.sendall(l + b"\n")
+    envio = time.time() - marca
+    tramos = list(navegador.medida.items()) + [("juicio", juicio), ("envio", envio)]
+    medida = "PAGINA %s  %s  = %.2f s, %d lineas, %d bytes" % (
+        url, "  ".join("%s %.2f" % (k, v) for k, v in tramos),
+        time.time() - inicio, datos.count(b"\n"), len(datos))
+    print("antena: " + medida)
+    if carpeta:
+        try:
+            with open(os.path.join(carpeta, "medidas.txt"), "a") as f:
+                f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + medida + "\n")
+        except OSError:
+            pass
 
 
 def atender(conexion, carpeta, nombre, navegador=None):
@@ -253,7 +273,7 @@ def atender(conexion, carpeta, nombre, navegador=None):
             url = linea[7:]
             if not URL.match(url):
                 raise FueraDeProtocolo("url mal formada")
-            servir_pagina(conexion, navegador, url)
+            servir_pagina(conexion, navegador, url, carpeta)
         else:
             raise FueraDeProtocolo("orden desconocida")
 

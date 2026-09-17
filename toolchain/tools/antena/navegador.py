@@ -37,6 +37,15 @@ de terceros dentro de la antena es codigo que no se leyo).
   - no espera JavaScript infinito: 15 s para cargar y 5 s para la lamina, y
     despues NO con el motivo
   - no deja pestanas abiertas: cada PAGINA abre una y la cierra
+
+== Lo que mide ==
+
+Cada `lamina_de` deja en `self.medida` cuanto tardo cada tramo, en segundos:
+`pestana` (abrir y fijar el ancho), `carga` (navegar hasta readyState
+complete), `lamina` (metricaBMO + lamina.js dentro del navegador) y
+`cerrar`. Ley 24: antes de abrir una puerta de rendimiento se mira cual
+tramo la paga -- el 16-09 el HONOR tardo 7 s en Wikipedia y no se sabia
+donde.
 """
 import base64
 import json
@@ -177,6 +186,15 @@ class Navegador:
     def lamina_de(self, url):
         """La LAMINA (bytes, con sus `\\n`) de esa url, o `SinNavegador`."""
         # Una pestana nueva por pagina: lo que quede en ella se cierra al final.
+        self.medida = {}
+        marca = time.monotonic()
+
+        def tramo(nombre):
+            nonlocal marca
+            ahora = time.monotonic()
+            self.medida[nombre] = ahora - marca
+            marca = ahora
+
         try:
             nueva = json.loads(self._http("PUT", "/json/new?about:blank"))
         except ValueError:
@@ -188,6 +206,7 @@ class Navegador:
             # y no se reescala nada despues.
             self._orden(ws, "Emulation.setDeviceMetricsOverride",
                         {"width": ANCHO_LAMINA, "height": 800, "deviceScaleFactor": 1, "mobile": False})
+            tramo("pestana")
             r = self._orden(ws, "Page.navigate", {"url": url}, CARGA_S)
             if r.get("errorText"):
                 raise SinNavegador("no cargo: %s" % r["errorText"])
@@ -201,6 +220,19 @@ class Navegador:
                 if time.monotonic() > fin:
                     raise SinNavegador("la pagina no termino de cargar en %d s" % CARGA_S)
                 time.sleep(0.2)
+            tramo("carga")
+            # Dentro de `carga`, lo que el navegador mismo apunta (ms desde
+            # que pidio la url): `html` = ultimo byte del documento (la RED),
+            # `dom` = parseado y maquetable, `todo` = imagenes y demas
+            # cargados. Sin esto no se sabe si `carga` es la WiFi o esperar
+            # a imagenes que nadie va a ver.
+            r = self._orden(ws, "Runtime.evaluate", {
+                "expression": "(function(){var n=performance.getEntriesByType('navigation')[0];"
+                              "return n?[n.responseEnd,n.domContentLoadedEventEnd,n.loadEventEnd]:[]})()",
+                "returnByValue": True}, 5)
+            hitos = r.get("result", {}).get("value") or []
+            for nombre, ms in zip(("html", "dom", "todo"), hitos):
+                self.medida[nombre] = ms / 1000.0
             # metricaBMO() primero, o el texto se sale (medido el 16-09).
             expresion = self.lamina_js + "\n;metricaBMO(); JSON.stringify(lamina({ancho: %d}));" % ANCHO_LAMINA
             r = self._orden(ws, "Runtime.evaluate",
@@ -208,6 +240,7 @@ class Navegador:
             if "exceptionDetails" in r:
                 raise SinNavegador("lamina.js fallo: %s" % r["exceptionDetails"].get("text", "?"))
             resultado = json.loads(r["result"]["value"])
+            tramo("lamina")
             if resultado.get("truncada"):
                 raise SinNavegador("la pagina no cabe en una lamina (mas de 4096 lineas)")
             # Latin-1: la lamina viaja en bytes, y lamina.js ya dejo solo
@@ -219,6 +252,7 @@ class Navegador:
                 self._http("GET", "/json/close/" + nueva["id"])
             except SinNavegador:
                 pass
+            tramo("cerrar")
 
 
 def cargar_lamina_js(carpeta_del_programa):
