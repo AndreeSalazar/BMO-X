@@ -236,7 +236,11 @@ impl Puertos {
         }
         let i = port as usize;
         if self.doblados[i] >= ABANDONO_DESCANSOS {
-            // Abandonado: ni cuenta ni vuelve. Solo desenchufar lo levanta.
+            // Abandonado: ni vuelve ni se cuenta. Solo desenchufar lo levanta.
+            // `enfriando` pasa a 1 para que `recien_abandonado` sea verdad UNA
+            // sola vez: el Ryzen enseno el mismo aviso cuarenta veces
+            // (2026-09-17) porque aqui no se movia nada.
+            self.enfriando[i] = 1;
             return false;
         }
         self.enfriando[i] = self.enfriando[i].saturating_add(1);
@@ -433,10 +437,11 @@ mod tests {
             assert!(!p.enfriar(5));
         }
         assert!(p.abandonado(5));
-        assert!(p.recien_abandonado(5));
+        assert!(p.recien_abandonado(5), "una vez: el barrido que lo decidio");
         assert!(!p.se_puede_intentar(5));
         for _ in 0..1000 {
             assert!(!p.enfriar(5), "abandonado no vuelve solo");
+            assert!(!p.recien_abandonado(5), "y no vuelve a ser 'recien'");
         }
         p.release(5);
         assert!(!p.abandonado(5));
