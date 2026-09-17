@@ -25,6 +25,12 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 
+// ** The Symbols section is checked in its own file since 2026-09-17: fixing its
+// eight-byte shift made this file grow, and the L6a ratchet said NO. Paid by
+// moving the whole question out, not by raising the ceiling.
+mod simbolos;
+use simbolos::validate_symbol_section;
+
 /// Resultado individual de validacion.
 #[derive(Debug, Clone)]
 pub struct ValidationIssue {
@@ -173,7 +179,14 @@ pub fn validate(bytes: &[u8]) -> ValidationResult {
             SectionKind::Code => {}
             SectionKind::Imports => validate_import_section(entry, bytes, i, &mut r),
             SectionKind::Exports => validate_export_section(entry, bytes, i, &mut r),
-            SectionKind::Symbols => validate_symbol_section(entry, bytes, &entries, i, &mut r),
+            SectionKind::Symbols => validate_symbol_section(
+                entry,
+                bytes,
+                &entries,
+                i,
+                BefFlags::from_bits_truncate(header.flags).contains(BefFlags::OBJECT),
+                &mut r,
+            ),
             SectionKind::Relocs => validate_reloc_section(entry, bytes, &entries, i, &mut r),
             SectionKind::Bss => validate_bss_section(entry, i, &mut r),
             SectionKind::Signature => validate_signature(entry, bytes, &mut r),
@@ -442,8 +455,16 @@ fn validate_header(header: &BefHeader, bytes: &[u8], r: &mut ValidationResult) {
     }
 
     let flags = BefFlags::from_bits_truncate(header.flags);
-    if !flags.contains(BefFlags::EXECUTABLE) && !flags.contains(BefFlags::SHARED_LIBRARY) {
-        r.warn("neither EXECUTABLE nor SHARED_LIBRARY flag set");
+    // ** 2026-09-17: BMO-X links STATICALLY. A file is either an image
+    // (EXECUTABLE) or an unlinked object (OBJECT, see `bef::objeto`) -- never
+    // both, never neither, and never a shared library.
+    if flags.contains(BefFlags::SHARED_LIBRARY) {
+        r.error("SHARED_LIBRARY: BMO-X enlaza estatico -- una biblioteca son objetos (.bo) que bmo-enlazar mete dentro del .bex");
+    }
+    match (flags.contains(BefFlags::EXECUTABLE), flags.contains(BefFlags::OBJECT)) {
+        (true, true) => r.error("EXECUTABLE y OBJECT a la vez: o es una imagen o es un objeto sin enlazar"),
+        (false, false) => r.warn("neither EXECUTABLE nor OBJECT flag set"),
+        _ => {}
     }
     if header.flags & !(BefFlags::all().bits()) != 0 {
         r.warn(format!(
@@ -725,97 +746,6 @@ fn validate_export_section(
                     idx,
                     format!("export[{}]: symbol name length {} exceeds strings", i, slen),
                 );
-            }
-        }
-    }
-}
-
-fn validate_symbol_section(
-    entry: &SectionEntry,
-    bytes: &[u8],
-    sections: &[SectionEntry],
-    idx: usize,
-    r: &mut ValidationResult,
-) {
-    let data = match get_section_data(entry, bytes) {
-        Some(d) => d,
-        None => {
-            r.error_at(idx, "Symbols section data unavailable");
-            return;
-        }
-    };
-    let entry_sz = Symbol::SIZE;
-    if data.len() < entry_sz {
-        r.error_at(
-            idx,
-            format!("Symbols section too small: {} bytes", data.len()),
-        );
-        return;
-    }
-    let raw = data.as_ptr() as *const Symbol;
-    // ** LA CABECERA MANDA. Antes esto era `data.len() / entry_sz`, que da por
-    // hecho que TODO el dato son entradas -- y entonces las cadenas empiezan
-    // donde acaba la seccion y miden cero. Ver `TablaCadenas`.
-    let Some((count, string_start)) = TablaCadenas::leer(data, entry_sz) else {
-        r.error_at(idx, "la cabecera de la seccion declara mas entradas de las que caben");
-        return;
-    };
-
-    for i in 0..count {
-        let sym = unsafe { &*raw.add(i) };
-        let off = sym.name_off as usize;
-        let abs_off = string_start + off;
-        if abs_off + 2 > data.len() {
-            r.error_at(
-                idx,
-                format!("symbol[{}]: name_off {:#x} out of strings range", i, off),
-            );
-        }
-        if sym.kind() == None {
-            r.warn_at(
-                idx,
-                format!("symbol[{}]: unknown symbol kind {:#04x}", i, sym.kind),
-            );
-        }
-        if sym.binding() == None {
-            r.warn_at(
-                idx,
-                format!("symbol[{}]: unknown binding {:#04x}", i, sym.binding),
-            );
-        }
-        if !matches!(sym.visibility, 0x00..=0x03) {
-            r.warn_at(
-                idx,
-                format!("symbol[{}]: unknown visibility {:#04x}", i, sym.visibility),
-            );
-        }
-        match sym.section_idx {
-            0xFF => {} // ABS
-            0xFE => {} // COMMON
-            si => {
-                let si_u = si as usize;
-                if si_u >= sections.len() {
-                    r.error_at(
-                        idx,
-                        format!(
-                            "symbol[{}]: section_idx {} out of range (sections count {})",
-                            i,
-                            si,
-                            sections.len()
-                        ),
-                    );
-                } else if sym.size > 0 && sections[si_u].mem_size > 0 {
-                    let end = sym.virt_addr + sym.size;
-                    if end > sections[si_u].mem_size {
-                        r.warn_at(
-                            idx,
-                            format!(
-                            "symbol[{}]: virt_addr {:#x} + size {} exceeds section[{}] mem_size {}",
-                            i, sym.virt_addr, sym.size, si_u, sections[si_u].mem_size
-                        ),
-                        );
-                    }
-                }
             }
         }
     }

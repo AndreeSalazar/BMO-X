@@ -71,17 +71,14 @@ antes que lo que FALTA**, porque lo que falta se nota y lo que miente no.
       que el diagnostico hacia falta. Es el hallazgo 6 de `PLAN_SEGURIDAD`,
       seccion 5; aqui solo se cuenta como mentira cerrada.
 
-- [ ] **D1e -- `platform/abi/bmo-abi/src/bef/linker/`: 308 lineas que dicen
-      *"Debe llamarse una vez al boot"* y no las llama NADIE.** Es un enlazador
-      DINAMICO (un registro global de exports que resuelve imports al cargar),
-      con `#![allow(dead_code)]` en la cabecera, un `static mut SYMBOLS: Vec` y
-      un cerrojo que es un `static mut LOCK: bool`. Y contradice una decision
-      escrita: *"no hay enlazado dinamico y es una decision, no una carencia"*
-      (`docs/maestro/PYTHON_MAESTRO.md`, seccion 6).
-
-  **La decision es del dueno**, y son dos salidas: borrarlo con epitafio en el
-  `Cargo.toml`, como los seis crates del 02-08, o que `PLAN_EL_ENLAZADOR` lo
-  reclame. Lo que no puede es seguir afirmando que se llama al arrancar.
+- [x] **D1e -- CERRADA el 2026-09-17: el dueno decidio ESTATICO y se borro.**
+      Epitafio en `platform/abi/bmo-abi/src/bef/mod.rs`. Lo que decia: el
+      enlazador dinamico de `bmo-abi`, 308 lineas que decian *"Debe llamarse una
+      vez al boot"* y no las llamaba NADIE: un registro global de exports que
+      resolvia imports al cargar, con `#![allow(dead_code)]`, un
+      `static mut SYMBOLS: Vec` y un cerrojo que era un `static mut LOCK: bool`.
+      Contradecia una decision escrita: *"no hay enlazado dinamico y es una
+      decision, no una carencia"* (`docs/maestro/PYTHON_MAESTRO.md`, seccion 6).
 
 ---
 
@@ -129,7 +126,7 @@ hoy, sin tocar:
    1869  toolchain/lang/cobol/src/codegen.rs
    1565  toolchain/lang/cobol/src/parser.rs
    1179  platform/abi/bmo-abi/src/bef/validator.rs
-   1177  toolchain/lang/cpp/src/parser.rs         (aparcado: no se toca)
+   1108  toolchain/lang/cpp/src/parser.rs         (bajo de 1177 el 17-09: salio parser/sobrecarga.rs)
 ```
 
 - [ ] **D3a -- el codegen de COBOL.** Es el mayor, y es el que va a crecer con

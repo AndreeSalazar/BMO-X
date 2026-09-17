@@ -75,7 +75,8 @@ Y lo que NO es lo que parece:
 
 ```text
    tools/bmo-linker      un REGISTRO de simbolos ELF, fuera del workspace
-   bef/linker/           308 lineas de enlazador DINAMICO que no llama nadie,
+   el enlazador dinamico 308 lineas en bmo-abi que no llamaba nadie -- BORRADO
+                         el 2026-09-17 (E0). Lo que sigue es lo que decia:
                          contra la decision escrita "todo estatico"
                          (PLAN_LA_DEUDA, D1e)
    tools/bex-link        ELF de Rust -> imagen YA enlazada a base fija: dos de
@@ -97,13 +98,24 @@ sigue siendo del dueno: este plan escribe los escalones para cuando la tome.
 
 ## 3. Los escalones -- lo que no toca nada va primero
 
-- [ ] **E0 -- LA DECISION.** Estatico solamente, o tambien dinamico. La
-      recomendacion es **estatico**, por lo ya escrito (`PYTHON_MAESTRO.md`
-      seccion 6: *"no hay enlazado dinamico y es una decision"*) y porque un
-      `.bex` firmado tiene que llevar dentro todo lo que ejecuta. Si se decide
-      estatico, `platform/abi/bmo-abi/src/bef/linker/` se borra con epitafio.
+- [x] **E0 -- LA DECISION: ESTATICO.** Tomada por el dueno el 2026-09-17:
+      *"si, estatico, borra lo dinamico y empieza"*. Un `.bex` lleva dentro todo
+      lo que ejecuta, asi que la firma lo cubre entero y corre igual en cualquier
+      BMO-X. El enlazador dinamico de `bmo-abi` se borro con epitafio en
+      `platform/abi/bmo-abi/src/bef/mod.rs`, y `BefFlags::SHARED_LIBRARY` queda
+      RETIRADA: el validador la rechaza.
 
-- [ ] **E1 -- EL CONTRATO DEL OBJETO, en papel antes que en codigo.** Que
+- [x] **E1 -- EL CONTRATO DEL OBJETO. HECHO el 2026-09-17** en
+      `platform/abi/bmo-abi/src/bef/objeto.rs`: la forma entera en la cabecera
+      del fichero, `BefFlags::OBJECT` (bit 11), `SECTION_UNDEFINED` (0xFD) y
+      `objeto::read`, que rechaza con motivo un objeto mal formado (seis pruebas,
+      una hostil). El gate del kernel (`bmo-bex-gate`) dice
+      *"es un OBJETO sin enlazar: pasalo por bmo-enlazar"*, y el validador acepta
+      un objeto y rechaza el mismo fichero marcado como imagen.
+      Dos fallos que salieron al escribirlo: el validador leia TODA seccion
+      `Symbols` desplazada 8 bytes desde el 08-14 (y con una referencia sin
+      alinear), y `SymbolTable::name_of` leia un prefijo de longitud que ningun
+      productor escribe. Lo que decia la casilla: Que
       distingue un `.bo` (objeto) de un `.bex` (imagen): una bandera en la
       cabecera BEF, simbolos INDEFINIDOS (`section_idx` sin seccion), y
       relocaciones contra simbolo en vez de contra seccion. Va en
@@ -153,7 +165,7 @@ sigue siendo del dueno: este plan escribe los escalones para cuando la tome.
 
 - **Un IR comun "para que el enlazador lo tenga facil".** Es el cerebro que la
   regla 2 prohibe. El enlazador lee BEF, y nada mas.
-- **Empezar por el dinamico** porque `bef/linker/` ya existe. Existe y no lo
+- **Empezar por el dinamico** porque ya habia uno escrito. Existia y no lo
   llama nadie, y va contra una decision tomada.
 - **E5 antes que E4.** Mover la libc a una biblioteca sin un enlace probado en
   metal es apilar sobre un camino que nadie ha visto funcionar -- la misma frase

@@ -39,9 +39,19 @@ pub mod blake3;
 pub mod exports;
 pub mod header;
 pub mod imports;
-pub mod linker;
+// ** `linker` -- BORRADO el 2026-09-17 por decision del dueno: *"estatico, borra
+// lo dinamico"*. Eran 308 lineas de enlazador DINAMICO (un registro global de
+// exports que resolvia imports al cargar, con `static mut SYMBOLS: Vec` y un
+// cerrojo que era un `static mut LOCK: bool`), marcadas `allow(dead_code)`,
+// que decian "debe llamarse una vez al boot" y no las llamaba nadie. BMO-X
+// enlaza ESTATICO: todo lo que un `.bex` ejecuta viaja dentro de el, y por eso
+// la firma lo cubre entero. El enlazador de verdad es una HERRAMIENTA del
+// anfitrion: docs/plan/PLAN_EL_ENLAZADOR.md. Esta en el historial de git.
 pub mod loader;
 pub mod manifest;
+/// The unlinked object (`.bo`): the contract of static linking. E1 of
+/// `docs/plan/PLAN_EL_ENLAZADOR.md`.
+pub mod objeto;
 pub mod paquete;
 pub mod katanas;
 pub mod recursos;

@@ -176,6 +176,9 @@ pub fn se_lee(kind: u8) -> bool {
 // -- Banderas de la cabecera -------------------------------------------------
 
 pub const FLAG_EJECUTABLE: u32 = 1 << 0;
+/// An unlinked OBJECT (`.bo`, `BefFlags::OBJECT`). It is never loaded: it goes
+/// through `bmo-enlazar` first. See `bmo_abi::bef::objeto`.
+pub const FLAG_OBJETO: u32 = 1 << 11;
 pub const FLAG_COMPRIMIDO: u32 = 1 << 4;
 pub const FLAG_FIRMADO: u32 = 1 << 5;
 pub const FLAG_RECARGABLE: u32 = 1 << 7;
@@ -213,6 +216,8 @@ pub enum Falta {
     ExtensionDeCpuQueNoSePreserva,
     OtraVersionDelAbi,
     NoEsEjecutable,
+    /// An object that nobody linked: the fix is `bmo-enlazar`, not a flag.
+    EsUnObjetoSinEnlazar,
     /// Ver [`FLAGS_NO_IMPLEMENTADAS`].
     PideAlgoQueNadieImplementa,
     /// Dice `FIRMADO` y no trae seccion de firma.
@@ -248,6 +253,7 @@ impl Falta {
             Falta::ExtensionDeCpuQueNoSePreserva => "pide una extension de CPU que no se preserva",
             Falta::OtraVersionDelAbi => "otra version del ABI",
             Falta::NoEsEjecutable => "no esta marcado como ejecutable",
+            Falta::EsUnObjetoSinEnlazar => "es un OBJETO sin enlazar (.bo): pasalo por bmo-enlazar",
             Falta::PideAlgoQueNadieImplementa => "la cabecera pide algo que este sistema no hace",
             Falta::CabeceraQueSeDesmiente => "dice venir firmado y no trae firma",
             Falta::DemasiadasSecciones => "demasiadas secciones",
@@ -410,6 +416,11 @@ pub fn revisar(prologo: &[u8], tam_fichero: usize) -> Result<Revisada<'_>, Falta
     }
     if !abi_admisible(abi_mayor, abi_menor) {
         return Err(Falta::OtraVersionDelAbi);
+    }
+    // ** Before "not executable": an object is a file the user MEANT to
+    // build, and the useful answer names the missing step.
+    if flags & FLAG_OBJETO != 0 {
+        return Err(Falta::EsUnObjetoSinEnlazar);
     }
     if flags & FLAG_EJECUTABLE == 0 {
         return Err(Falta::NoEsEjecutable);

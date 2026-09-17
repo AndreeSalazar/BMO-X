@@ -71,7 +71,8 @@ pub struct Symbol {
     pub binding: bx_u8,
     /// `SymbolVisibility`.
     pub visibility: bx_u8,
-    /// Indice de seccion donde vive (0xFF = ABS, 0xFE = COMMON).
+    /// Indice de seccion donde vive, en la TABLA de secciones del fichero
+    /// (0xFF = ABS, 0xFE = COMMON, [`SECTION_UNDEFINED`] = no vive aqui).
     pub section_idx: bx_u8,
     /// Reservado.
     pub _reserved: bx_u32,
@@ -93,6 +94,12 @@ const _: () = assert!(core::mem::size_of::<Symbol>() == 32);
 ///
 /// [!] Una colision NO es un fallo: el que busca compara el nombre igualmente.
 /// El hash decide a quien NO mirar, nunca a quien aceptar.
+/// `section_idx` of a symbol this object USES and does not define: the linker
+/// has to find it in another object. Only legal in an object
+/// ([`crate::bef::header::BefFlags::OBJECT`]); a `.bex` with one is refused.
+/// 0xFF and 0xFE were already taken by ABS and COMMON.
+pub const SECTION_UNDEFINED: bx_u8 = 0xFD;
+
 pub fn name_hash(name: &str) -> bx_u32 {
     let mut h: u32 = 0x811C_9DC5; // offset basis
     for b in name.as_bytes() {
@@ -149,13 +156,17 @@ impl<'a> SymbolTable<'a> {
         Ok(Self { entries, strings })
     }
 
+    /// The name, NUL-terminated.
+    ///
+    /// ** 2026-09-17: this read a two-byte LENGTH PREFIX, and the only producer
+    /// of this section in the tree --BMO C, `codegen/bex.rs::seccion_de_simbolos`--
+    /// writes names ending in ZERO. Nobody called this, so nothing broke; the
+    /// day the linker did, every name would have been read two bytes off. A
+    /// format with a writer and a reader that never met is not defined, only
+    /// written (the lesson of `TablaCadenas`). The contract is the producer's.
     pub fn name_of(&self, sym: &Symbol) -> Option<&'a str> {
-        let off = sym.name_off as usize;
-        if off + 2 > self.strings.len() {
-            return None;
-        }
-        let len = u16::from_le_bytes(self.strings[off..off + 2].try_into().ok()?) as usize;
-        let s = &self.strings[off + 2..off + 2 + len];
-        core::str::from_utf8(s).ok()
+        let rest = self.strings.get(sym.name_off as usize..)?;
+        let end = rest.iter().position(|&b| b == 0)?;
+        core::str::from_utf8(&rest[..end]).ok()
     }
 }

@@ -269,6 +269,14 @@ fn lo_basico_de_la_cabecera() {
     no_ejecutable.flags = 0;
     assert_eq!(no_ejecutable.puerta(), Err(Falta::NoEsEjecutable));
 
+    // * An unlinked object is refused naming the missing step, and even if a
+    // confused producer also set EXECUTABLE (2026-09-17).
+    let mut objeto = Imagen::buena();
+    objeto.flags = FLAG_OBJETO;
+    assert_eq!(objeto.puerta(), Err(Falta::EsUnObjetoSinEnlazar));
+    objeto.flags = FLAG_OBJETO | FLAG_EJECUTABLE;
+    assert_eq!(objeto.puerta(), Err(Falta::EsUnObjetoSinEnlazar));
+
     let b = Imagen::buena().bytes();
     let mut magia = b.clone();
     magia[0] = b'X';

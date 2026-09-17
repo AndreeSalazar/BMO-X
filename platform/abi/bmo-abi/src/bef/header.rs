@@ -48,7 +48,13 @@ bitflags::bitflags! {
     pub struct BefFlags: bx_u32 {
         /// El binario es ejecutable (vs. libreria compartida).
         const EXECUTABLE         = 1 << 0;
-        /// Es una libreria compartida (.bef.so equivalent).
+        /// ~~Es una libreria compartida (.bef.so equivalent).~~
+        ///
+        /// ** RETIRADA el 2026-09-17: BMO-X enlaza ESTATICO, por decision del
+        /// dueno. El bit no se reutiliza para otra cosa -- un `.bex` viejo que lo
+        /// llevara significaria lo que significaba -- y el validador lo RECHAZA
+        /// con motivo. Una biblioteca en BMO-X es un conjunto de objetos
+        /// ([`BefFlags::OBJECT`]) que el enlazador mete DENTRO del `.bex`.
         const SHARED_LIBRARY     = 1 << 1;
         /// Tiene seccion de manifest TOML valida.
         const HAS_MANIFEST       = 1 << 2;
@@ -95,6 +101,15 @@ bitflags::bitflags! {
         /// `#define`, que expande a un literal -- pero el hueco existe y queda
         /// escrito en vez de descubierto.
         const WANTS_SCREEN       = 1 << 10;
+        /// * **Es un OBJETO sin enlazar (`.bo`), no un ejecutable.** 2026-09-17,
+        /// escalon E1 de `docs/plan/PLAN_EL_ENLAZADOR.md`.
+        ///
+        /// Lo escribe un frontend cuando compila UNA unidad para enlazarla con
+        /// otras; lo consume `bmo-enlazar`, que produce un `.bex` normal. Nunca
+        /// va con `EXECUTABLE` a la vez, y el gate del kernel lo rechaza diciendo
+        /// que es un objeto y no "no es ejecutable" a secas. El contrato entero
+        /// esta en [`crate::bef::objeto`].
+        const OBJECT             = 1 << 11;
         /// Origen: PE devorado (set por el loader, no por el compilador).
         const PROVENANCE_PE      = 1 << 14;
         /// Origen: ELF devorado.
