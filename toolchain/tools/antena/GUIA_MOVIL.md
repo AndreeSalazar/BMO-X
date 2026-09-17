@@ -187,7 +187,24 @@ Hasta que a) se pruebe, el movil sirve las laminas de su carpeta (hechas a
 mano con la seccion L0) y navega solo el PC. Es un ARCH pequeno dentro del
 movil, que es justo la V2 del plan con otro chasis.
 
-### Arrancar la antena con paginas
+### UNA orden para todo: `arrancar.sh` (2026-09-16)
+
+Eddi: *"en Termux necesitaria automatizar eso, para que guie"*. Hecho:
+`arrancar.sh` enciende el Chromium sin cabeza (el de Termux si esta, si no el
+del Debian de proot-distro, y si no hay ninguno lo dice y sigue sin el),
+espera a que el 9222 conteste y arranca la antena con `--navegador`. Al
+salir (Ctrl+C) apaga el navegador que encendio.
+
+```text
+   bash ~/storage/shared/bmo-antena/arrancar.sh <IP del PC o de BMO-X>
+```
+
+[!] Con `bash` delante: el almacenamiento compartido no permite ejecutables.
+[!] Un `antena.py` copiado por MTP NO sustituye al que ya esta corriendo:
+Python lo cargo al arrancar. Tras copiar ficheros nuevos, Ctrl+C y otra vez
+`arrancar.sh` -- el 16-09 la antena vieja colgo al oir `PAGINA` por esto.
+
+### Arrancar la antena con paginas (a mano, sin arrancar.sh)
 
 Las laminas van en la MISMA carpeta que los videos (`--carpeta`): la antena
 lista los `.mp4`... como `v1, v2...` y los `.lamina` como `p1, p2...`.
