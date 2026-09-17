@@ -40,8 +40,16 @@ param(
     #
     # Corregido el 2026-09-04, el mismo dia en que un comentario sobre una
     # proteccion ya retirada --en `usb/rescate.rs`-- costo tres dias.
-    [string]$Arranque = 'D',
-    [string]$Datos = 'A',
+    #
+    # ** Y el 2026-09-16 la letra por defecto del ARRANQUE se QUITA: decia `D`
+    # desde que D: era el Ventoy, y ese dia D: era ya un disco NTFS del dueno
+    # llamado "Personal" (desde el 27-08). Un `desplegar.ps1 -Si` a secas
+    # habria escrito EFI\BOOT en un disco que no es de BMO. Las letras que
+    # siempre son las mismas se tecleaban igual (`-Arranque A -Datos A`); lo
+    # que cambia es que ahora, sin letra, se NIEGA con el motivo en vez de
+    # adivinar. Un valor por defecto es una decision que nadie tomo hoy.
+    [string]$Arranque = '',
+    [string]$Datos = '',
     # ** EL KERNEL DE MEDIDA. Devuelve los dos `rdtsc` a `dispatch`, o sea el
     # REPARTO de una puerta entre su mitad Rust y el resto -- lo unico que puede
     # decir donde se van los ~945 ciclos.
@@ -75,6 +83,15 @@ function Bien($m)   { Write-Host "   OK  $m" -ForegroundColor DarkGray }
 function Muere($m)  { Write-Host "   [X] $m" -ForegroundColor Red; exit 1 }
 
 Write-Host "BMO-X -- comprobar y construir" -ForegroundColor White
+
+# -- LAS UNIDADES SE DICEN, NO SE ADIVINAN -- y se comprueba ANTES del banco,
+# que tarda 90 s: negarse despues de comprobar todo es hacer esperar para nada.
+if ($Desplegar -and (-not $Arranque -or -not $Datos)) {
+    Write-Host '   sin -Arranque <letra> y -Datos <letra> no se despliega:' -ForegroundColor Red
+    Write-Host '   en esta maquina el disco de BMO es A: (.\desplegar.ps1 -Si -Arranque A -Datos A)' -ForegroundColor Red
+    Write-Host '   y ninguna otra letra es suya. Ver bmo-maquina-y-discos.' -ForegroundColor Red
+    exit 1
+}
 
 # -- 0. EL CONTRATO, QUE ES MAS BARATO QUE EL BANCO ---------------------
 #
@@ -265,7 +282,8 @@ $build = Join-Path $raiz 'Ultra_kernel_x86-64\build.ps1'
 if (-not (Test-Path $build)) { Muere "no esta build.ps1" }
 
 if ($Desplegar) {
-    # [!] LAS UNIDADES SE DICEN, NO SE ADIVINAN.
+    # [!] LAS UNIDADES SE DICEN, NO SE ADIVINAN. Y desde el 16-09,
+    # literalmente: sin letra el script se nego arriba, antes del banco.
     #
     # En esta maquina el NVMe es el Windows del dueno y BMO vive en un Kingston
     # SATA. Un build que eligiera unidad por su cuenta seria la unica orden de

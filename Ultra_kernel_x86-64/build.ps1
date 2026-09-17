@@ -503,16 +503,21 @@ try {
 # La comprobacion es una RESTA, no una lista: cualquier `.bex` mas viejo que el
 # arranque de este build es algo que ya no se produce. Un guardian con lista
 # tendria el mismo fallo que vigila.
-$fantasmas = @(Get-ChildItem -Path $dataBase -Recurse -Filter '*.bex' -ErrorAction SilentlyContinue |
-    Where-Object { $_.LastWriteTime -lt $buildStart })
+#
+# ** Y "cualquier .bex" tambien era una lista, de UNA extension (2026-09-16):
+# INTI paso de `.ibex` a `.ibx` el 13-09 y tres `.ibex` viejos se quedaron en
+# staging tres dias, al lado de los nuevos, sin que este guardian los viera.
+# Ahora mira todo lo que el escritorio puede LANZAR: .bex, .ibx y .ibex.
+$fantasmas = @(Get-ChildItem -Path $dataBase -Recurse -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Extension -in '.bex', '.ibx', '.ibex' -and $_.LastWriteTime -lt $buildStart })
 if ($fantasmas.Count -gt 0) {
-    Write-Host ('    [!] {0} .bex en staging que este build NO ha producido:' -f $fantasmas.Count) -ForegroundColor Yellow
+    Write-Host ('    [!] {0} ejecutable(s) en staging que este build NO ha producido:' -f $fantasmas.Count) -ForegroundColor Yellow
     foreach ($f in $fantasmas) {
         Write-Host ('        {0}' -f $f.FullName.Substring($dataBase.Length + 1)) -ForegroundColor Yellow
     }
     Write-Host '        Este build no los produce. Comprobar si alguno TAPA a uno bueno.' -ForegroundColor Yellow
 } else {
-    Write-Host '    staging: ningun .bex sobrante de un build anterior' -ForegroundColor DarkGray
+    Write-Host '    staging: ningun ejecutable (.bex/.ibx/.ibex) sobrante de un build anterior' -ForegroundColor DarkGray
 }
 
 # -- ** QUE LE HIZO ESTE CAMBIO A LOS 25 PROGRAMAS ------------------
