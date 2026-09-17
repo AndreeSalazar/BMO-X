@@ -198,7 +198,17 @@ funciona; una biblioteca, no, hasta el enlazador.
       ejemplo tuvo que rodear con un metodo `abrir`
 - [ ] los constructores de la base al construir un derivado -- la otra mitad de
       la cadena del 7.3, y la simetrica del destructor
-- [ ] la compilacion separada, que ya no es de C++: `PLAN_EL_ENLAZADOR`
+- [x] **la compilacion separada: HECHA el 2026-09-17** (E5e del plan del
+      enlazador), y costo cuatro lineas -- C++ baja al arbol de BMO C y usa su
+      codegen, asi que E2 se la habia pagado sin saberlo. `bmo-cpp-front -c`
+      escribe un `.bo` y dos unidades de C++ enlazan y corren.
+      Con DOS techos, los dos dichos al compilar y no en el metal:
+      - una unidad con clases y sin `main` no tiene donde rellenar sus tablas
+        (E9: inicializacion estatica entre unidades)
+      - los nombres van DECORADOS (`cobrar#i.i`), asi que C todavia no puede
+        llamar a C++ (E10: `extern "C"`) -- o sea que **"librerias en C++ para
+        programas en C", el motivo por el que esto no se borro, sigue sin
+        cumplirse**
 
 [!] Y lo que NO cambia: sin excepciones, sin RTTI, sin la bola moderna
 (`PROPOSITO.md`, *"Remember the Vasa"*). Darle la oportunidad es terminar lo

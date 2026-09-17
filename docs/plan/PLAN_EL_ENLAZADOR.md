@@ -253,6 +253,31 @@ sigue siendo del dueno: este plan escribe los escalones para cuando la tome.
       **Como se cierra**: un cuarto codigo, y el cargador del kernel sabiendo
       aplicarlo -- toca Ring 0, y por eso es casilla y no un apano.
 
+- [x] **E5e -- C++ COMPILA POR SEPARADO. HECHO el 2026-09-17**, y costo cuatro
+      lineas: C++ baja al arbol de BMO C y usa SU codegen, asi que quien decide
+      si las referencias salen abiertas o cerradas es el de C. **La compilacion
+      separada de C++ la pago E2 sin saberlo.** `bmo-cpp-front -c` escribe un
+      `.bo`, y la fila `dos_unidades_de_cpp_se_llaman_y_el_programa_corre`
+      compila dos unidades, las enlaza y las EJECUTA.
+      Con esto cae la ultima condicion de `toolchain/lang/cpp/APARCADO.md` 7.4
+      que no era el metal.
+
+- [ ] **E9 -- LO QUE HAY QUE HACER ANTES DE `main`.** Salio al hacer E5e y es el
+      techo de C++ en varias unidades: las tablas de clase se rellenan al entrar
+      en `main`, asi que una unidad con clases y sin `main` no tiene donde
+      rellenarlas. Hoy eso **para con su nombre** al compilar, en vez de
+      entregar un `.bex` que salta a una tabla de ceros en el metal. Lo que
+      falta se llama inicializacion estatica entre unidades.
+      **Como se sabe**: una unidad con una clase virtual y sin `main`, enlazada
+      con otra que si lo tiene, llama al metodo virtual y acierta.
+
+- [ ] **E10 -- `extern "C"`.** C++ DECORA los nombres con la firma
+      (`cobrar#i.i`), que es lo que hace posible sobrecargar -- y por eso un
+      `.bo` de C que pida `cobrar` no lo encuentra. Es el caso de "librerias en
+      C++ para programas en C" que `APARCADO.md` daba como motivo para existir,
+      asi que sin esto ese motivo sigue sin cumplirse.
+      **Como se sabe**: la fila de dos unidades, pero con una en C.
+
 - [ ] **E6 -- COBOL `CALL` estatico.** `toolchain/lang/cobol/PLAN_BANCA.md`, 6.2 y
       6.3, sobre E3. Aqui se prueba que el contrato es de FORMATO: un `.bo` de
       COBOL y uno de C en el mismo `.bex`, cada uno con su convencion de llamada

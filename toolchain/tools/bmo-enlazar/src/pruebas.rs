@@ -387,3 +387,42 @@ int main() {
     );
     assert_eq!(correr(&i.bytes), "42");
 }
+
+/// *** C++ TAMBIEN COMPILA POR SEPARADO, y no tuvo que escribir un emisor: baja
+/// al arbol de BMO C y usa su codegen, asi que la compilacion separada de C++ la
+/// pago E2 sin saberlo. Aqui una unidad define una clase y la otra la usa.
+///
+/// ** Y lo que esta fila NO dice: llamar a esto desde C. C++ DECORA los nombres
+/// con la firma (`cobrar#i.i`), que es lo que hace posible sobrecargar, asi que
+/// un `.bo` de C pide `cobrar` y no lo encuentra. Lo que falta para eso es
+/// `extern "C"`, y es casilla E10 del plan -- no un arreglo del enlazador.
+#[test]
+fn dos_unidades_de_cpp_se_llaman_y_el_programa_corre() {
+    const CLASE: &str = r#"
+class Cuenta {
+    int saldo;
+public:
+    void abrir(int s) { saldo = s; }
+    int ingresar(int cuanto) { saldo = saldo + cuanto; return saldo; }
+};
+int cobrar(int base, int extra) {
+    Cuenta c;
+    c.abrir(base);
+    return c.ingresar(extra);
+}
+"#;
+    const PRINCIPAL_CPP: &str = r#"
+int cobrar(int base, int extra);
+int main() {
+    printf("%d", cobrar(20, 22));
+    return 0;
+}
+"#;
+    let uno = bmo_cpp_front::compile_source_to_object(CLASE)
+        .unwrap_or_else(|e| panic!("el C++ debe compilar a objeto: {}", e.message));
+    let dos = bmo_cpp_front::compile_source_to_object(PRINCIPAL_CPP)
+        .unwrap_or_else(|e| panic!("el C++ debe compilar a objeto: {}", e.message));
+    let bex = enlazar(&[("principal.bo".to_string(), dos), ("cuenta.bo".to_string(), uno)])
+        .expect("tiene que enlazar");
+    assert_eq!(correr(&bex), "42");
+}

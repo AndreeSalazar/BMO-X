@@ -304,6 +304,14 @@ impl<'a> Cuerpo<'a> {
 
 /// Traduce un programa de C++ al `Program` de BMO C que el codegen entiende.
 pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
+    descender_unidad(p, false)
+}
+
+/// Lo mismo, para UNA unidad de un programa de varias (`objeto` en `true`).
+///
+/// La unica diferencia es quien tiene que traer `main`: un programa, si; una
+/// unidad, no -- vive en otra. Ver donde se comprueba, mas abajo.
+pub fn descender_unidad(p: &cpp::Program, objeto: bool) -> Result<c::Program, CppError> {
     if !p.includes.is_empty() {
         return Err(pendiente("#include", 1, "el preprocesador de C++"));
     }
@@ -499,15 +507,37 @@ pub fn descender(p: &cpp::Program) -> Result<c::Program, CppError> {
     // test y su fila en la matriz DE C, no de rebote desde aqui. Que C++ se
     // defienda de su lado no toca a nadie; arreglarlo dentro de C seria
     // combinarlos.
-    let Some(main) = out.functions.iter_mut().find(|f| f.name == "main") else {
-        return Err(CppError::new(0,
-            "no hay `main`: un programa sin punto de entrada no es un programa"));
-    };
-    // Las tablas se rellenan lo PRIMERO de todo, antes de cualquier sentencia
-    // del programa: construir un objeto ya necesita que su tabla exista.
-    if !relleno.is_empty() {
-        relleno.extend(std::mem::take(&mut main.body));
-        main.body = relleno;
+    //
+    // * Y en una UNIDAD de un programa de varias, `main` vive en otra: eso no
+    // es un error. Lo que si lo es esta tres lineas mas abajo.
+    match out.functions.iter_mut().find(|f| f.name == "main") {
+        Some(main) => {
+            // Las tablas se rellenan lo PRIMERO de todo, antes de cualquier
+            // sentencia del programa: construir un objeto ya necesita que su
+            // tabla exista.
+            if !relleno.is_empty() {
+                relleno.extend(std::mem::take(&mut main.body));
+                main.body = relleno;
+            }
+        }
+        None if !objeto => {
+            return Err(CppError::new(0,
+                "no hay `main`: un programa sin punto de entrada no es un programa"));
+        }
+        None => {
+            // [!] AQUI ESTA EL TECHO DE LA COMPILACION SEPARADA DE C++, y se
+            // dice en vez de colarse: las tablas de esta unidad se rellenan al
+            // entrar en `main`, y `main` esta en otra. Rellenarlas desde el
+            // constructor seria adivinar el orden; dejarlas vacias seria un
+            // `.bex` que compila y salta a una tabla de ceros EN EL METAL.
+            //
+            // Lo que falta tiene nombre --inicializacion estatica entre
+            // unidades-- y esta en `PLAN_EL_ENLAZADOR.md`, casilla E9.
+            if !relleno.is_empty() {
+                return Err(CppError::new(0,
+                    "esta unidad tiene tablas de clase que hay que rellenar antes de `main`,                      y `main` no esta aqui: eso pide inicializacion estatica entre unidades,                      que BMO-X no tiene todavia (E9 del plan del enlazador)"));
+            }
+        }
     }
 
     Ok(out)

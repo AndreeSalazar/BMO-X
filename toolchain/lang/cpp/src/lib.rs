@@ -71,6 +71,19 @@ pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CppError> {
         .map_err(|e| CppError::new(e.line, e.message))
 }
 
+/// **Lo mismo, a un OBJETO (`.bo`)** para que `bmo-enlazar` lo junte con otros.
+///
+/// Es la misma frontera de arriba: quien decide si las referencias salen
+/// cerradas o abiertas es el codegen de BMO C, no este frontend. Por eso esto
+/// son cuatro lineas y no un compilador -- la compilacion separada de C++ la
+/// pago E2 sin saberlo.
+pub fn compile_source_to_object(source: &str) -> Result<Vec<u8>, CppError> {
+    let programa = parse(source)?;
+    let en_c = descenso::descender_unidad(&programa, true)?;
+    bmo_c_front::codegen::compile_to_object(&en_c)
+        .map_err(|e| CppError::new(e.line, e.message))
+}
+
 #[derive(Debug, Clone)]
 pub struct CppError {
     pub line: usize,

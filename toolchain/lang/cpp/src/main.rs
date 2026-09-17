@@ -14,12 +14,15 @@
 use std::path::PathBuf;
 use std::process;
 
-use bmo_cpp_front::compile_source_to_bef;
+use bmo_cpp_front::{compile_source_to_bef, compile_source_to_object};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut fuente: Option<String> = None;
     let mut salida: Option<PathBuf> = None;
+    // `-c`: una UNIDAD (`.bo`) en vez de un programa, para `bmo-enlazar`.
+    // Mismo nombre de bandera que BMO C y que cualquier compilador de C.
+    let mut objeto = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -34,6 +37,7 @@ fn main() {
                     }
                 }
             }
+            "-c" | "--objeto" => objeto = true,
             otro if fuente.is_none() => fuente = Some(otro.to_string()),
             otro => {
                 eprintln!("error: argumento de mas: {otro}");
@@ -44,7 +48,7 @@ fn main() {
     }
 
     let Some(ruta) = fuente else {
-        eprintln!("uso: bmo-cpp-front <fichero.cpp> [-o salida.bex]");
+        eprintln!("uso: bmo-cpp-front <fichero.cpp> [-o salida.bex] [-c]");
         process::exit(2);
     };
 
@@ -56,7 +60,7 @@ fn main() {
         }
     };
 
-    let bef = match compile_source_to_bef(&texto) {
+    let bef = match if objeto { compile_source_to_object(&texto) } else { compile_source_to_bef(&texto) } {
         Ok(b) => b,
         Err(e) => {
             if e.line > 0 {
@@ -70,7 +74,7 @@ fn main() {
 
     let destino = salida.unwrap_or_else(|| {
         let mut p = PathBuf::from(&ruta);
-        p.set_extension("bex");
+        p.set_extension(if objeto { "bo" } else { "bex" });
         p
     });
 

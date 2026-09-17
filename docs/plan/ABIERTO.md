@@ -7,8 +7,8 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   287 casillas ABIERTAS en 34 planes
-   190 hechas
+   289 casillas ABIERTAS en 34 planes
+   191 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -125,6 +125,15 @@
 - [ ] S3 -- EL PRIMER CLIENTE: INTI. Porque puede declarar el alias. Y
 - ... y 6 mas
 
+## [`PLAN_EL_ENLAZADOR.md`](PLAN_EL_ENLAZADOR.md) -- 8 abiertas, 7 hechas
+
+*PLAN EL ENLAZADOR -- la pieza que madura a CINCO lenguajes a la vez*
+
+- [ ] E4 -- EL METAL. Ese .bex enlazado, en el Ryzen. Hoy corre en el
+- [ ] E5c -- EL ARBOL ENTERO POR EL CAMINO DEL OBJETO. Los 41 ejecutables
+- [ ] E5d -- EL bss NO SE SABE NOMBRAR. Salio al hacer E5b: una reloc del
+- ... y 5 mas
+
 ## [`PLAN_VATIOS.md`](PLAN_VATIOS.md) -- 8 abiertas, 4 hechas
 
 *PLAN_VATIOS -- lo que gasta el CPU en reposo, y por que*
@@ -186,15 +195,6 @@
 - [ ] pendiente [~] a medias, y se dice cuanto [x] hecho, con fecha
 - [ ] DOOM EN UNA VENTANA -- escrito el 2026-09-11, sin metal todavia
 - [ ] 2 A: tipar la binaria las 3 casillas nuevas en verde, y 449 sin
-- ... y 3 mas
-
-## [`PLAN_EL_ENLAZADOR.md`](PLAN_EL_ENLAZADOR.md) -- 6 abiertas, 6 hechas
-
-*PLAN EL ENLAZADOR -- la pieza que madura a CINCO lenguajes a la vez*
-
-- [ ] E4 -- EL METAL. Ese .bex enlazado, en el Ryzen. Hoy corre en el
-- [ ] E5c -- EL ARBOL ENTERO POR EL CAMINO DEL OBJETO. Los 41 ejecutables
-- [ ] E5d -- EL bss NO SE SABE NOMBRAR. Salio al hacer E5b: una reloc del
 - ... y 3 mas
 
 ## [`PLAN_EL_NEUTRO_VIGILADO.md`](PLAN_EL_NEUTRO_VIGILADO.md) -- 6 abiertas, 12 hechas
