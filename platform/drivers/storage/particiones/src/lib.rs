@@ -141,7 +141,12 @@ pub fn cabecera(sec: &[u8]) -> Result<Gpt, GptError> {
 /// `off` es el desplazamiento de la entrada DENTRO del sector, e `indice` el
 /// numero de particion que le toca (1 para la primera).
 pub fn entrada(sec: &[u8], off: usize, indice: u32) -> Option<Partition> {
-    if off + 128 > sec.len() {
+    // ** `checked_add`, found by the hostile pass (2026-09-17). `off + 128`
+    // wraps in the kernel's release build, and a wrapped sum is SMALL: the
+    // check passed and `le32` read far outside the sector. Not reachable from
+    // a disk today -- the only caller passes `slot * entry_size`, both bounded
+    // -- but the check was written in the one form that breaks.
+    if off.checked_add(128).map_or(true, |end| end > sec.len()) {
         return None;
     }
     let type_lo = le32(sec, off);
@@ -314,5 +319,22 @@ mod censo {
         let s = [0u8; 64];
         assert_eq!(cabecera(&s), Err(GptError::SectorCorto));
         assert!(entrada(&s, 0, 1).is_none());
+    }
+
+    /// ** HOSTILE PASS (2026-09-17): the partition table is whatever the last
+    /// program to write the disk left there. Entry counts, sizes and offsets
+    /// broken on purpose. Checked: nothing panics.
+    #[test]
+    fn hostile_tables_never_panic() {
+        let head = cabecera_buena();
+        let mut entries = [0u8; SECTOR];
+        entrada_en(&mut entries, 0, 0xC12A_7328, 2048, 4096, "EFI");
+        entrada_en(&mut entries, 128, 0x0FC6_3DAF, 4097, 900_000, "BMO");
+        bmo_hostile::attack("gpt", bmo_hostile::DEFAULT_SEED, 30_000, &[&head, &entries], SECTOR + 64, |x| {
+            let _ = cabecera(x);
+            for (off, i) in [(0usize, 0u32), (128, 1), (384, 3), (SECTOR - 1, 7), (usize::MAX, u32::MAX)] {
+                let _ = entrada(x, off, i);
+            }
+        });
     }
 }

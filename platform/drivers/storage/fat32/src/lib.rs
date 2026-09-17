@@ -203,19 +203,35 @@ pub fn mount(dev: &'static dyn BlockDevice, escribible: bool, part_lba: u64) -> 
 fn mount_exfat(dev: &'static dyn BlockDevice, escribible: bool, part_lba: u64, buf: &[u8; 512]) -> Option<FatVolume> {
     let epb = unsafe { &*(buf.as_ptr() as *const ExFatBpb) };
     if epb.boot_signature != 0xAA55 { return None; }
+    // *** FOUND 2026-09-17 while reading for the hostile pass: the FAT32 path
+    // checks five things from its boot sector and this one checked NONE.
+    //
+    //    bytes_per_sector_shift   `1u16 << 16` wraps in the release kernel; and
+    //                             a legal 4K exFAT mounted as if it were 512
+    //                             reads the wrong sector for every cluster.
+    //                             This driver reads 512-byte sectors, so 9 is
+    //                             the only shift it can honour.
+    //    sectors_per_cluster      `1u8 << 8` wraps the same way
+    //    cluster_count + 1        wraps at u32::MAX
+    //    root_cluster             the FAT32 path's "fifth producer", unchecked
+    //
+    // Each one is a volume that mounts and then reads from somewhere else.
     let bps_shift = epb.bytes_per_sector_shift;
+    if bps_shift != 9 { return None; }
     let bytes_per_sector: u16 = 1u16 << bps_shift;
     let spc_shift = epb.sectors_per_cluster_shift;
+    if spc_shift > 7 { return None; }
     let sectors_per_cluster: u8 = 1u8 << spc_shift;
     let fat_start = epb.fat_offset;
     let fat_size_sectors = epb.fat_length;
     let data_start = epb.cluster_heap_offset;
     let root_cluster = epb.first_cluster_of_root_directory;
     let num_fats = epb.number_of_fats;
-
+    if epb.cluster_count == 0 || data_start == 0 { return None; }
 
     // exFAT lo dice en su propio BPB, sin tener que deducirlo.
-    let max_cluster = epb.cluster_count + 1;
+    let max_cluster = epb.cluster_count.checked_add(1)?;
+    if root_cluster < 2 || root_cluster > max_cluster { return None; }
     Some(FatVolume { dev, escribible, part_lba, fs_type: FsType::ExFat, bytes_per_sector, sectors_per_cluster,
         num_fats, fat_start, fat_size_sectors, data_start, root_cluster, max_cluster, fallos_mudos: 0, buf: [0; 512], fat_cache: [0; 512], fat_cache_lba: SIN_CACHE })
 }
@@ -422,6 +438,29 @@ impl FatVolume {
         cluster >= 2 && cluster <= self.max_cluster
     }
 
+    /// **The sector of a cluster, or `None` if this volume does not have it.**
+    ///
+    /// *** FOUND 2026-09-17 by the hostile pass, reachable from the disk. The
+    /// five producers above let `0` through on purpose -- it is how FAT32 says
+    /// "empty file" -- and the CONSUMERS trusted it: a directory entry with
+    /// cluster 0 and a size of 3.000 made `read_file` compute `0 - 2`, which
+    /// wraps in the release kernel, and return the sectors just BEFORE the data
+    /// region -- the FAT itself -- as the file's contents. The same bug as #4 of
+    /// the 24-08 audit, from the other side of the pipe: closing the producers
+    /// was right, and not enough while a zero could be legal.
+    ///
+    /// Every loop that turns a cluster it did not allocate into a sector goes
+    /// through here now. The two in `escribir.rs` that use a cluster the
+    /// allocator just handed out keep `cluster_to_lba`.
+    #[inline]
+    fn lba_valido(&self, cluster: u32) -> Option<u64> {
+        if self.cluster_valido(cluster) {
+            Some(self.cluster_to_lba(cluster))
+        } else {
+            None
+        }
+    }
+
     /// [!] **PRECONDICION: `cluster_valido(cluster)`.** Ver ahi por que.
     fn cluster_to_lba(&self, cluster: u32) -> u64 {
         debug_assert!(self.cluster_valido(cluster), "cluster fuera de rango en cluster_to_lba");
@@ -491,7 +530,7 @@ impl FatVolume {
         let mut cluster = start_cluster;
         let spc = self.sectors_per_cluster as u64;
         loop {
-            let lba = self.cluster_to_lba(cluster);
+            let Some(lba) = self.lba_valido(cluster) else { return None };
             for s in 0..spc {
                 unsafe {
                     if !self.read_sector(lba + s, Buf::buf) { continue; }
@@ -530,7 +569,7 @@ impl FatVolume {
         let spc = self.sectors_per_cluster as u64;
         let _entry_buf = [0u8; 32];
         loop {
-            let lba = self.cluster_to_lba(cluster);
+            let Some(lba) = self.lba_valido(cluster) else { return None };
             for s in 0..spc {
                 unsafe {
                     if !self.read_sector(lba + s, Buf::buf) { continue; }
@@ -683,7 +722,7 @@ impl FatVolume {
             if offset >= ya + tope {
                 return (offset - ya, cluster);
             }
-            let lba = self.cluster_to_lba(cluster);
+            let Some(lba) = self.lba_valido(cluster) else { return (offset - ya, cluster) };
             let de_este = (fin - offset).min(del_cluster);
             let enteros = de_este / 512;
             if enteros > 0 {
@@ -736,8 +775,15 @@ impl FatVolume {
     /// > Un diagnostico que miente cuesta mas que no tenerlo: manda a buscar el
     /// > fallo al otro lado del mapa. Ahora este numero se puede comparar con el
     /// > de `disk` y con el de la GPT sin sumar nada de cabeza.
-    pub fn lba_de_cluster(&self, cluster: u32) -> u64 {
-        self.abs(self.cluster_to_lba(cluster))
+    ///
+    /// *** And `None` for a cluster this volume does not have (2026-09-17,
+    /// found by the hostile pass). This was the one PUBLIC door into
+    /// `cluster_to_lba`, whose precondition only a `debug_assert` guarded: in
+    /// the release kernel a cluster of 0 --an empty file, a garbage directory
+    /// entry-- computed `0 - 2`, wrapped, and printed an LBA from nowhere. The
+    /// diagnostic exists for the day something is wrong, and that day it lied.
+    pub fn lba_de_cluster(&self, cluster: u32) -> Option<u64> {
+        self.lba_valido(cluster).map(|lba| self.abs(lba))
     }
 
     /// Abre un cursor al principio de un archivo.
@@ -813,7 +859,7 @@ impl FatVolume {
             }
             let dentro = pos - cur.base; // donde caemos DENTRO del cluster
             let de_este = (fin - pos).min(del_cluster - dentro);
-            let lba = self.cluster_to_lba(cur.cluster);
+            let Some(lba) = self.lba_valido(cur.cluster) else { return pos - offset };
 
             // -- La cabeza: lo que va desde mitad de sector hasta su final --
             let sector = dentro / 512;
@@ -884,7 +930,7 @@ impl FatVolume {
         let spc = self.sectors_per_cluster as usize;
         let tope = (file_size as usize).min(dst.len());
         while offset < tope {
-            let lba = self.cluster_to_lba(cluster);
+            let Some(lba) = self.lba_valido(cluster) else { break };
             // Lo que queda de este cluster, y lo que queda por leer.
             let del_cluster = spc * 512;
             let queda = tope - offset;

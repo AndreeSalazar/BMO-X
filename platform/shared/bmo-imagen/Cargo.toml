@@ -9,3 +9,7 @@ license = "Apache-2.0"
 # ficheros rotos. Un decodificador que solo se prueba en el metal se prueba con
 # las imagenes buenas, que son justo las que no hacen dano.
 [dependencies]
+
+# Only for the hostile tests: nothing that runs on the machine links it.
+[dev-dependencies]
+bmo-hostile = { path = "../bmo-hostile" }

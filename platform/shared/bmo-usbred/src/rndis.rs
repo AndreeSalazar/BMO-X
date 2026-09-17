@@ -356,4 +356,21 @@ mod pruebas {
             let _ = leer_inicio(&m, 1);
         }
     }
+
+    /// ** HOSTILE PASS (2026-09-17): the phone on the other end of the cable
+    /// writes every byte these read. Mutations of the good answers, with their
+    /// length and offset fields broken on purpose. Checked: nothing panics.
+    #[test]
+    fn hostile_answers_never_panic() {
+        let m = [0x02, 0x11, 0x22, 0x33, 0x44, 0x55];
+        let (a, b, c) = (inicio_cmplt(7, 0, 0), query_cmplt(7, &m, 16), query_cmplt(7, &[0u8; 64], 20));
+        bmo_hostile::attack("rndis", bmo_hostile::DEFAULT_SEED, 30_000, &[&a, &b, &c], 512, |x| {
+            let _ = leer_inicio(x, 7);
+            let _ = leer_puesto(x, 7);
+            if let Ok(info) = leer_respuesta(x, 7) {
+                let _ = mac(info);
+            }
+            let _ = mac(x);
+        });
+    }
 }

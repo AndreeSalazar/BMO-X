@@ -170,6 +170,29 @@ impl Plan {
     ///
     /// *** Aqui es donde se pone `EOR`, y es el unico sitio. Ver la cabecera:
     /// es el bit cuyo fallo se sale del corral.
+    /// **Where the frame the card says it left in buffer `i` lives**, or `None`
+    /// if `len` does not fit in THAT buffer.
+    ///
+    /// *** FOUND 2026-09-17 by the hostile pass. Ring 0 checked the length the
+    /// card wrote with `contiene(buf, len)`, and `contiene` compares against the
+    /// whole CORRAL -- sixteen buffers -- not against the one buffer the frame
+    /// is in. `LEN_MASK` lets the card declare up to 16.383 bytes, so a length of
+    /// 3.000 in buffer 0 passed, and the kernel read 952 bytes of buffer 1 --
+    /// an older frame, maybe from another sender -- and delivered them as this
+    /// frame's tail. It never left the corral, which is why nothing crashed; it
+    /// crossed a frame boundary, which is what the check existed to stop.
+    ///
+    /// It is the pattern of the 24-08 audit, word for word: *a limit is as good
+    /// as the number it is compared with.* `para_enviar` on the TX side already
+    /// compared against the right one.
+    pub fn recibida(&self, i: usize, len: u16) -> Option<u64> {
+        let buf = self.bufer(i)?;
+        if len as u64 > BUFER || !self.contiene(buf, len as u64) {
+            return None;
+        }
+        Some(buf)
+    }
+
     pub fn descriptor(&self, i: usize) -> Option<super::RxDesc> {
         let buf = self.bufer(i)?;
         // Cinturon: el bufer que acabamos de calcular tiene que caer dentro. Si
@@ -297,5 +320,34 @@ mod pruebas {
         assert!(!p.contiene(base - 1, 1), "acepto un byte de menos");
         assert!(p.contiene(fin - 1, 1));
         assert!(!p.contiene(fin, 1), "acepto justo el byte siguiente");
+    }
+
+    /// *** THE BUG OF 2026-09-17, kept as a test: a length that fits in the
+    /// corral but not in its own buffer must be refused.
+    #[test]
+    fn a_frame_longer_than_its_buffer_is_refused_even_inside_the_corral() {
+        let p = plan();
+        let over = (BUFER + 1) as u16;
+        assert!(p.contiene(p.bufer(0).unwrap(), over as u64), "the old check let this through");
+        assert_eq!(p.recibida(0, over), None, "buffer 0 would read into buffer 1");
+        assert_eq!(p.recibida(0, crate::rx::LEN_MASK as u16), None);
+        assert_eq!(p.recibida(0, BUFER as u16), p.bufer(0));
+        assert_eq!(p.recibida(ANILLO - 1, BUFER as u16), p.bufer(ANILLO - 1));
+        assert_eq!(p.recibida(ANILLO, 60), None, "an index that does not exist");
+    }
+
+    /// Every descriptor the card can write, every index: the answer is either
+    /// `None` or a range inside ONE buffer.
+    #[test]
+    fn no_declared_length_crosses_a_buffer() {
+        let p = plan();
+        for i in 0..=ANILLO {
+            for len in 0..=crate::rx::LEN_MASK as u16 {
+                if let Some(b) = p.recibida(i, len) {
+                    assert_eq!(Some(b), p.bufer(i));
+                    assert!(b + len as u64 <= b + BUFER);
+                }
+            }
+        }
     }
 }

@@ -485,7 +485,7 @@ mod tests {
     /// Un descriptor de longitud 0 colgaria el bucle. Llega de fuera: no se le
     /// supone nada.
     #[test]
-    fn un_bLength_de_cero_no_cuelga() {
+    fn un_blength_de_cero_no_cuelga() {
         let malo = [0u8, 0x02, 0, 0];
         assert!(find_audio_control(&malo).is_none());
     }
@@ -622,5 +622,21 @@ mod tests {
             }
             assert!(v >= -2000 && v <= -500, "{p}% dio {v}, fuera de [-2000,-500]");
         }
+    }
+
+    /// ** HOSTILE PASS (2026-09-17): the configuration descriptor is written by
+    /// the device, before anyone decided it can be trusted. Checked: nothing
+    /// panics, whatever `bLength` and `wTotalLength` say.
+    #[test]
+    fn hostile_configurations_never_panic() {
+        let good = config_tipica();
+        bmo_hostile::attack("uaudio", bmo_hostile::DEFAULT_SEED, 30_000, &[&good], 512, |x| {
+            if let Some(ac) = find_audio_control(x) {
+                let _ = get_volume(&ac, 0, 0x81);
+                let _ = set_volume(&ac, 1, -1000);
+                let _ = set_mute(&ac, 2, true);
+            }
+            let _ = crate::stream::find_playback(x);
+        });
     }
 }

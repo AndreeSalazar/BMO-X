@@ -15,3 +15,7 @@ description = "Lo que la placa base le cuenta a BMO-X -- y lo que BMO-X se niega
 [lib]
 name = "bmo_firmware"
 path = "src/lib.rs"
+
+# Only for the hostile tests: nothing that runs on the machine links it.
+[dev-dependencies]
+bmo-hostile = { path = "../bmo-hostile" }

@@ -23,6 +23,8 @@ bmo-hash = { path = "../../shared/bmo-hash" }
 bmo-carga-juicio = { path = "../../shared/bmo-carga-juicio" }
 
 [dev-dependencies]
+# Only for the hostile tests: nothing that runs on the machine links it.
+bmo-hostile = { path = "../../shared/bmo-hostile" }
 # Solo para las PRUEBAS: los offsets compartidos con el cargador del kernel.
 # No es dependencia de la libreria -- el contrato no depende de la puerta.
 bmo-bex-gate = { path = "../bmo-bex-gate" }

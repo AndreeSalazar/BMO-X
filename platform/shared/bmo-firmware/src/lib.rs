@@ -941,4 +941,38 @@ mod pruebas {
         }
     }
 
+    /// ** HOSTILE PASS (2026-09-17): the firmware writes these tables and
+    /// Ring 0 reads them at boot, before anything can report a crash. Every
+    /// mutation is tried twice: raw, and with the ACPI checksum re-squared so
+    /// the mutation reaches the entries behind it. Checked: nothing panics,
+    /// and no reader claims more entries than its output has room for.
+    #[test]
+    fn hostile_tables_never_panic() {
+        let a = mcfg(&[(0xE000_0000, 0, 0, 255)]);
+        let b = ivrs(&[(0x10, 32, 0xFEB8_0000), (0x40, 40, 0xFEB9_0000)]);
+        let c = madt(&[(0, 8, 0, 1), (0, 8, 1, 1), (9, 16, 2, 1), (1, 12, 0, 0)]);
+        let d = tabla(b"FACP", b"ALASKA", 116);
+        bmo_hostile::attack("acpi", bmo_hostile::DEFAULT_SEED, 30_000, &[&a, &b, &c, &d], 512, |x| {
+            let mut fixed = x.to_vec();
+            if fixed.len() >= CABECERA_LEN {
+                fixed[9] = 0;
+                let s: u8 = fixed.iter().fold(0u8, |acc, &v| acc.wrapping_add(v));
+                fixed[9] = 0u8.wrapping_sub(s);
+            }
+            for t in [x, &fixed[..]] {
+                let _ = Cabecera::leer(t);
+                let _ = revisar(t);
+                let _ = ivinfo(t);
+                let mut r = [RangoEcam { base: 0, segmento: 0, bus_desde: 0, bus_hasta: 0 }; 2];
+                assert!(leer_mcfg(t, &mut r) <= r.len());
+                let mut v = [Ivhd { tipo: 0, banderas: 0, largo: 0, id_dispositivo: 0, base_mmio: 0, segmento: 0 }; 2];
+                assert!(leer_ivrs(t, &mut v) <= v.len());
+                let mut n = [NucleoDeclarado { apic: 0, habilitado: false }; 3];
+                assert!(leer_madt(t, &mut n) <= n.len());
+                if t.len() >= 16 {
+                    let _ = recortar(&t[10..16]);
+                }
+            }
+        });
+    }
 }

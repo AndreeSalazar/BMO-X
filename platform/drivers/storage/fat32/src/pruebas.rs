@@ -319,7 +319,7 @@ fn leer_de_una_particion_que_no_empieza_en_cero() {
     // un cluster nunca puede caer antes del principio de su particion, y esa
     // linea lo decia sin que chirriara.
     assert!(
-        v.lba_de_cluster(primero) >= BASE,
+        v.lba_de_cluster(primero).expect("a file cluster of this volume") >= BASE,
         "lba_de_cluster devuelve un sector anterior a su propia particion"
     );
 }
@@ -898,4 +898,105 @@ fn la_cadena_de_la_fat_no_entrega_un_cluster_imposible() {
         None,
         "*** la cadena entrego un cluster que este volumen no tiene"
     );
+}
+
+/// ** HOSTILE PASS (2026-09-17): the boot sector, the FAT and the directory are
+/// whatever the last program to write the stick left there. A real volume with
+/// two files, its first sixteen sectors mutated, mounted READ-ONLY and walked:
+/// find, read, and follow the chain. Checked: nothing panics, and a read never
+/// reports more bytes than the buffer it was given.
+#[test]
+fn hostile_volumes_never_panic() {
+    let (_turno, mut v) = volumen();
+    let datos: std::vec::Vec<u8> = (0..3000u32).map(|i| i as u8).collect();
+    v.create_file_in_dir(2, &name("LARGO   BIN"), &datos).expect("debe crear");
+    v.create_file_in_dir(2, &name("CORTO   TXT"), b"hola").expect("debe crear");
+    drop(v);
+    const REGION: usize = 16 * 512;
+    let snapshot = disco()[..REGION].to_vec();
+    bmo_hostile::attack("fat32", bmo_hostile::DEFAULT_SEED, 2_000, &[&snapshot], REGION, |x| {
+        disco()[..REGION].fill(0);
+        disco()[..x.len()].copy_from_slice(x);
+        let Some(mut vol) = mount(&DISPOSITIVO, false, 0) else { return };
+        let mut dst = [0u8; 4096];
+        for n in ["LARGO   BIN", "CORTO   TXT", "NOHAY   XXX"] {
+            if let Some((primero, tam)) = vol.find_file(&name(n)) {
+                let leidos = vol.read_file(primero, tam, &mut dst);
+                assert!(leidos <= dst.len(), "read_file said {} bytes into a {} byte buffer", leidos, dst.len());
+                assert_eq!(vol.lba_de_cluster(primero).is_some(), (2..=vol.max_cluster).contains(&primero));
+            }
+        }
+        let _ = vol.find_subdir(b"SUB        ");
+        let _ = vol.fallos_mudos();
+    });
+    disco().fill(0);
+}
+
+/// *** THE BUG OF 2026-09-17, named: a directory entry that says cluster 0 (the
+/// legal "empty file") and a size of 3.000. `read_file` used to read the FAT as
+/// the file's contents; now it reads nothing.
+#[test]
+fn a_file_at_cluster_zero_with_a_size_reads_nothing() {
+    let (_turno, mut v) = volumen();
+    let mut dst = [0xEEu8; 4096];
+    assert_eq!(v.read_file(0, 3000, &mut dst), 0, "cluster 0 has no sectors");
+    assert!(dst.iter().all(|&b| b == 0xEE), "and not one byte of the FAT reached the buffer");
+    assert_eq!(v.read_file(v.max_cluster + 1, 3000, &mut dst), 0);
+    assert_eq!(v.lba_de_cluster(0), None);
+}
+
+/// A minimal exFAT boot sector, by the offsets of `forma.rs::ExFatBpb`.
+fn exfat_sector(bps_shift: u8, spc_shift: u8, clusters: u32, root: u32) -> [u8; 512] {
+    let mut s = [0u8; 512];
+    s[3..11].copy_from_slice(b"EXFAT   ");
+    s[80..84].copy_from_slice(&24u32.to_le_bytes()); // fat_offset
+    s[84..88].copy_from_slice(&8u32.to_le_bytes()); // fat_length
+    s[88..92].copy_from_slice(&64u32.to_le_bytes()); // cluster_heap_offset
+    s[92..96].copy_from_slice(&clusters.to_le_bytes());
+    s[96..100].copy_from_slice(&root.to_le_bytes());
+    s[108] = bps_shift;
+    s[109] = spc_shift;
+    s[110] = 1;
+    s[510..512].copy_from_slice(&0xAA55u16.to_le_bytes());
+    s
+}
+
+/// *** THE exFAT BOOT SECTOR, 2026-09-17: the FAT32 path checked five things
+/// and this one none. Each bad field is a volume that used to MOUNT and then
+/// read from somewhere else.
+#[test]
+fn an_exfat_boot_sector_that_lies_does_not_mount() {
+    let (_turno, _v) = volumen();
+    let probar = |s: [u8; 512]| {
+        assert!(write(0, 1, &s));
+        mount(&DISPOSITIVO, false, 0).is_some()
+    };
+    assert!(probar(exfat_sector(9, 0, 100, 4)), "the good one mounts, or the rest prove nothing");
+    assert!(!probar(exfat_sector(12, 0, 100, 4)), "4K sectors read as 512");
+    assert!(!probar(exfat_sector(16, 0, 100, 4)), "1 << 16 wraps");
+    assert!(!probar(exfat_sector(9, 8, 100, 4)), "1u8 << 8 wraps");
+    assert!(!probar(exfat_sector(9, 0, u32::MAX, 4)), "cluster_count + 1 wraps");
+    assert!(!probar(exfat_sector(9, 0, 0, 4)), "no clusters");
+    assert!(!probar(exfat_sector(9, 0, 100, 0)), "root cluster 0");
+    assert!(!probar(exfat_sector(9, 0, 100, 102)), "root past the last cluster");
+    disco().fill(0);
+}
+
+/// And the hostile pass over the exFAT door, which the FAT32 samples never open.
+#[test]
+fn hostile_exfat_sectors_never_panic() {
+    let (_turno, _v) = volumen();
+    let good = exfat_sector(9, 0, 100, 4);
+    bmo_hostile::attack("exfat", bmo_hostile::DEFAULT_SEED ^ 2, 5_000, &[&good], 512, |x| {
+        let mut s = [0u8; 512];
+        s[..x.len()].copy_from_slice(x);
+        assert!(write(0, 1, &s));
+        if let Some(mut v) = mount(&DISPOSITIVO, false, 0) {
+            let mut dst = [0u8; 1024];
+            if let Some((c, n)) = v.find_file(&name("HOLA    TXT")) {
+                let _ = v.read_file(c, n, &mut dst);
+            }
+        }
+    });
+    disco().fill(0);
 }

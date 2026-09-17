@@ -204,3 +204,29 @@ fn ningun_byte_corrompido_tumba_el_gate() {
         }
     }
 }
+
+/// ** HOSTILE PASS (2026-09-17): the signature section is the one block no hash
+/// covers, so it is the one an attacker writes freely. Fewer cases than the
+/// other crates because a mutation that keeps the shape reaches a real Ed25519
+/// verification, and that is slow in a debug build. Checked: nothing panics,
+/// and nothing mutated is ever accepted as signed by the anchor.
+#[test]
+fn hostile_signature_sections_never_panic() {
+    let (good, pk) = firmada_por(&SEMILLA_A, &CADENA, 3);
+    let unsigned = seccion(2, ALGO_NINGUNO, None);
+    let anchor = [pk];
+    bmo_hostile::attack("firma", bmo_hostile::DEFAULT_SEED, 3_000, &[&good, &unsigned], 512, |x| {
+        let _ = donde_esta_la_firma(x);
+        let v = examinar(x, &CADENA, &anchor);
+        let _ = (v.permite_ejecutar(true), v.permite_ejecutar(false), v.motivo());
+        if x != good.as_slice() {
+            if let Veredicto::Firmado { .. } = v {
+                // Only the signature itself or the hash list may change for this
+                // to be legitimate: same chain, same key, same 64 bytes.
+                let at = donde_esta_la_firma(x).expect("signed but no signature?");
+                let g = donde_esta_la_firma(&good).unwrap();
+                assert_eq!(&x[at..at + 96], &good[g..g + 96], "a mutated signature was accepted");
+            }
+        }
+    });
+}

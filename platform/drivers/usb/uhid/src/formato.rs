@@ -67,8 +67,14 @@ impl Campo {
     /// Los bits tal cual, sin interpretar. Para los botones, que son banderas.
     pub fn leer_crudo(&self, informe: &[u8]) -> u32 {
         let mut v = 0u32;
-        for i in 0..self.bits as u16 {
-            let bit = self.bit + i;
+        // *** FOUND 2026-09-17 by the hostile pass: `Report Size` is the
+        // device's, and a field of 128 bits made `1 << i` shift past 31. The
+        // kernel builds with `overflow-checks = false`, so it did not panic --
+        // it WRAPPED: bits landed in the wrong place and the pointer moved with
+        // garbage, the "answers wrong" failure (L6f SILENCIO). A `u32` holds 32
+        // bits, so 32 are read; and `bit + i` no longer wraps either.
+        for i in 0..(self.bits as u16).min(32) {
+            let Some(bit) = self.bit.checked_add(i) else { break };
             let byte = (bit / 8) as usize;
             if byte >= informe.len() {
                 break;

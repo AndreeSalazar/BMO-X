@@ -302,3 +302,24 @@ fn ningun_byte_corrompido_hace_estallar_al_lector() {
         }
     }
 }
+
+/// ** HOSTILE PASS (2026-09-17): a face travels inside a `.bex` and is read by
+/// the DIRECTOR. Mutations with the counts and offsets broken on purpose, and
+/// every stroke and hit asked for, in range and out. Checked: nothing panics.
+#[test]
+fn hostile_faces_never_panic() {
+    let good = buena();
+    bmo_hostile::attack("cara", bmo_hostile::DEFAULT_SEED, 30_000, &[&good], 1024, |x| {
+        for (w, h) in [(1920u16, 1080u16), (0, 0), (u16::MAX, u16::MAX)] {
+            if let Ok(c) = leer(x, w, h) {
+                let _ = c.lienzo();
+                for i in 0..c.trazos() + 2 {
+                    let _ = c.trazo(i);
+                }
+                for i in 0..c.golpes() + 2 {
+                    let _ = c.golpe(i);
+                }
+            }
+        }
+    });
+}

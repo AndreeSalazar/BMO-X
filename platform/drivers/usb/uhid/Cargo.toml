@@ -9,3 +9,7 @@ description = "BMO USB HID Driver -- boot protocol keyboard/mouse via xHCI"
 [dependencies]
 bmo-xhci = { path = "../xhci" }
 bmo-input = { path = "../input" }
+
+# Only for the hostile tests: nothing that runs on the machine links it.
+[dev-dependencies]
+bmo-hostile = { path = "../../../shared/bmo-hostile" }

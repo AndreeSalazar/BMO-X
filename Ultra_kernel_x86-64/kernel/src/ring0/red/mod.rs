@@ -595,8 +595,13 @@ fn rx_poll_con(entregar: &mut dyn FnMut(&[u8])) -> u32 {
             // fuera decide cuanta memoria se lee. Una trama de 2049 bytes en un
             // bufer de 2048 sale del corral por un byte, y ese byte se lo cree
             // el parser de Ethernet como si fuera suyo.
+            //
+            // *** And until 2026-09-17 this compared against the CORRAL, not the
+            // buffer: `contiene` let a 3.000-byte length in buffer 0 read the
+            // tail of buffer 1 -- another frame. `recibida` compares against the
+            // frame's own buffer, and is tested in `bmo-net`.
             let Some(buf_fis) = plan.bufer(RX_NEXT) else { break };
-            if !plan.contiene(buf_fis, largo as u64) {
+            if plan.recibida(RX_NEXT, largo).is_none() {
                 // Tambien se devuelve: parar aqui era el mismo atasco por otra
                 // puerta. No se lee ni un byte de ella.
                 crate::ring0::cabina::fault("red", "la tarjeta declara una trama que NO CABE en su bufer", largo as u64);

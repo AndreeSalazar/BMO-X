@@ -17,3 +17,7 @@ description = "BMO FAT32/exFAT reader -- cadenas de clusteres, nombres 8.3, sobr
 # de ficheros a un hardware -- es lo contrario: lo ata a la frontera.
 # Ver `docs/plan/PLAN_ALMACENAMIENTO.md`, paso 0.
 bmo-block = { path = "../block" }
+
+# Only for the hostile tests: nothing that runs on the machine links it.
+[dev-dependencies]
+bmo-hostile = { path = "../../../shared/bmo-hostile" }

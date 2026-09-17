@@ -120,10 +120,11 @@ que firmara, no habia nada que anclar.
 | **`.bex` al ejecutar** | BLAKE3 por seccion al aterrizar, y el gate rechaza sin firma en ESTRATOS | **autoria**: no hay clave |
 | **`.bex` al EMITIR** | `bmo-verify`, que llaman los **cinco** frontends antes de escribir | que lo use el **kernel** (ver C5) |
 | **`.bex` en FAT32** | nada: `veredicto` es `None` y el gate no corre | -- (limitacion del formato, ver C5) |
-| **Syscalls** | capabilities con derechos, `sonda.bex` los empuja | `EJECUTAR` y `REINICIAR` sin atar |
+| **Syscalls** | capabilities con derechos, `sonda.bex` los empuja; `EJECUTAR` y `REINICIAR` atados desde C4 (25-08) | una pasada hostil en el anfitrion: hoy solo los empuja el metal (C8f) |
 | **Memoria del proceso** | separacion de anillos, y ★ **los CUATRO bits encendidos** (25-08): NX/W^X, SMEP, SMAP, UMIP | ASLR, y esta fuera a proposito (ver 4) |
-| **Dispositivos** (HID, GPT, MADT) | se parsean sin desconfiar | ninguna sonda |
-| **Red** | ⚠ **ya NO es cero** (25-08): el anillo RX recibio 16 tramas / 7.967 bytes en metal. Lo que la acota hoy: **no se transmite**, y el DMA va a un corral | la que deja de ser la linea buena de la tabla. Ver 4 |
+| **Dispositivos** (HID, GPT, MADT) | ~~se parsean sin desconfiar~~ **pasada HOSTIL (17-09)**: `uhid`, `uaudio`, `particiones`, `bmo-firmware` atacados con miles de descriptores mutados, y **dos fallos reales cerrados** en `uhid`. Ver seccion 5 | `bmo-xhci` y `placa.rs` siguen sin pasada (C8f) |
+| **Red** | ⚠ ya NO es cero (25-08), y desde el 14-09 **transmite**. **Pasada HOSTIL (17-09)** sobre `bmo-pila`, `bmo-net`, `bmo-antena`, `bmo-usbred` y el buzon de `bmo-puerta-red`: un fallo real cerrado en el anillo RX de Ring 0. Ver seccion 5 | la relectura de C6 con red la hizo la seccion 5; falta el metal (C8e) |
+| **Disco** (FAT32, exFAT, ESTRATOS, `.bex`) | **pasada HOSTIL (17-09)**: dos fallos reales cerrados en FAT32/exFAT | el metal (C8e) |
 
 ---
 
@@ -887,3 +888,120 @@ probarla.
 
   [!] **La relectura entera NO se hizo en esta pasada, a peticion del dueno**
   (*"no toques en RED"*). Queda como la primera casilla de la siguiente.
+
+---
+
+# 5. C8 -- LA CUARTA PASADA: BYTES HOSTILES (2026-09-17)
+
+> Peticion del dueno: *"eliminar vulnerabilidad por completo"*.
+>
+> **Lo que esta seccion NO promete**: que ya no quede ninguna. "Por completo" no
+> es un estado que se alcanza: es una pasada que se repite. Lo que si se puede
+> prometer es mas estrecho y se comprueba: **los parsers que leen bytes de un
+> tercero se atacan en cada `bmo.ps1`**, y lo que la pasada encontro esta
+> cerrado con una prueba que lleva su nombre.
+
+La auditoria del 24-08 dejo escrito su propio limite: *"leer codigo encuentra
+lo que se parece a un fallo conocido. Los caminos que solo aparecen ejecutando
+piden fuzzing"*. Y la seccion 4 dejo escrita la condicion para releer este plan
+entero: que la red dejara de ser cero. Las dos cosas se hicieron el mismo dia.
+
+## 5.1 La herramienta: `bmo-hostile`, y por que no `cargo fuzz`
+
+`platform/shared/bmo-hostile`: sin dependencias, solo `[dev-dependency]`, nada
+que corra en la maquina lo enlaza. Genera casos **deterministas** (semilla fija)
+a partir de MUESTRAS BUENAS: trunca, voltea bits, pone bytes extremos, rompe
+campos de 16/32 bits con `0`, `len-1`, `len`, `len+1`, `0xFFFF..`, alarga y
+recorta. Si el objetivo entra en panico, dice el caso, la semilla y la entrada
+en hex.
+
+```text
+   cargo fuzz   pide nightly con sanitizers, libFuzzer y un corpus. NO corre
+                dentro de bmo.ps1 -- y lo que se corre a mano se deja de correr
+   bmo-hostile  corre en el banco de siempre, en segundos, y un fallo se
+                reproduce con el mismo `cargo test` para siempre
+```
+
+*** **Y cada fichero de pasada lleva su GUARDIAN**: una prueba que exige que las
+muestras sean BUENAS (`the_samples_are_good`, `the_samples_are_valid_binaries`,
+...). Sin ella, una muestra rota hace que todas las mutaciones mueran en la
+primera comprobacion y la pasada salga verde atacando solo la puerta. Paso dos
+veces escribiendo esta seccion, y las dos lo cazo el guardian.
+
+[!] **La propiedad que comprueba es "no entra en panico"**, no "contesta bien".
+En Ring 0 un panico ES la maquina caida, asi que ahi no es una propiedad debil.
+Pero el kernel compila con `overflow-checks = false`, y por eso la pasada
+tambien caza lo que en release no revienta sino que **miente** (hallazgo 3).
+
+## 5.2 Lo que encontro -- los REALES, alcanzables desde fuera
+
+| # | donde | quien lo dispara | que pasaba | el arreglo |
+|---|---|---|---|---|
+| 1 | `ring0/red/mod.rs` + `bmo-net/anillo.rs` | la tarjeta (su DMA) | el largo que ESCRIBE LA TARJETA se comparaba contra el CORRAL entero y no contra su bufer: un largo de 3.000 en el bufer 0 leia la cola del bufer 1 -- otra trama -- y la entregaba como propia | `Plan::recibida(i, largo)`, con prueba sobre los 16.384 largos posibles |
+| 2 | `uhid/enumera.rs` | **cualquier aparato USB** | `wTotalLength = 3`: el kernel cortaba el descriptor a 3 bytes y leia `[3]` -- **panico en Ring 0**, la maquina caida por enchufar un aparato | `declared_total`, y `leer_descriptores` rechaza un total < 9 |
+| 3 | `uhid/formato.rs` | un raton USB | un campo de mas de 32 bits: `1 << i` daba la vuelta en release y el puntero se movia con basura (SILENCIO, L6f) | se leen 32 bits como mucho, y `bit + i` sin vuelta |
+| 4 | `fat32/lib.rs` (10 sitios) | un pendrive, el disco | una entrada con cluster `0` (legal: fichero vacio) y tamano 3.000: `0 - 2` daba la vuelta y **`read_file` devolvia la FAT como contenido del fichero**. Es el #4 del 24-08 visto desde el consumidor | `lba_valido` en todo bucle que traduce un cluster que no asigno el mismo |
+| 5 | `fat32/lib.rs::mount_exfat` | un pendrive exFAT | la ruta FAT32 comprueba cinco campos del sector de arranque; la exFAT, **ninguno**: desplazamientos que dan la vuelta, un exFAT de 4K montado como de 512, `cluster_count + 1` sin tope, `root_cluster` sin mirar | los cinco, con una prueba por campo |
+| 6 | `fat32::lba_de_cluster` + `task/launch.rs` | un directorio corrupto | el diagnostico que existe para cuando algo va mal imprimia un LBA inventado justo cuando algo iba mal | `Option`, y CABINA dice *"ese cluster NO es de este volumen"* |
+
+## 5.3 Lo que encontro -- BLINDAJE, hoy NO alcanzable
+
+Tres funciones publicas con la aritmetica en la unica forma que se rompe, pero
+cuyos llamantes de hoy no pueden llegar al numero malo. Se arreglaron igual
+porque son una linea cada una, y el llamante de manana no leera este parrafo:
+
+- `particiones::entrada` -- `off + 128` sin `checked_add`
+- `uaudio::Playback::bytes_per_interval` -- producto sin saturar (la frecuencia
+  viaja en 3 bytes, asi que hoy cabe)
+- `bef::katanas::katana` -- `i * KATANA_LEN` sin comprobar
+
+## 5.4 Lo que se ataco y AGUANTO -- no repetir el trabajo
+
+`bmo-pila` (Ethernet, ARP, IPv4, ICMP, UDP, DHCP, DNS, el `Nodo` entero y TCP
+con conexion viva y relojes), `bmo-antena` (lineas, conversacion y lamina como
+flujo de bytes), `bmo-usbred` (RNDIS), `bmo-imagen` (BICO, BMP, QOI),
+`bmo-sonido` (WAV), `bmo-firmware` (MCFG, IVRS, MADT, con la suma recuadrada),
+`bmo-maqueta-cara`, `bmo-config`, `bmo-puerta-red` (un PROCESO que miente en el
+buzon compartido), `bmo-abi` (el validador BEF con los `.bex` reales del arbol,
+paquete, katanas, objetos dinamicos), `bmo-bex-gate`, `bmo-firma` (ninguna firma
+mutada se acepta), `bmo-estratos` (objetos, superbloques, y el descenso sobre un
+disco que miente), `bmo-uaudio`, `bmo-particiones`.
+
+*** `bmo-pila` merece la nota: se ataco **con las sumas recalculadas** --un
+atacante de verdad las calcula-- y no cayo ni una vez. Su ley 2 (lista blanca)
+se nota en los numeros.
+
+## 5.5 Las casillas
+
+- [x] **C8a -- la herramienta.** `platform/shared/bmo-hostile`, HECHO 2026-09-17.
+- [x] **C8b -- la red.** `bmo-pila`, `bmo-net`, `bmo-antena`, `bmo-usbred`, `bmo-puerta-red`. HECHO 2026-09-17, hallazgo 1.
+- [x] **C8c -- los aparatos.** `bmo-uhid`, `bmo-uaudio`, `bmo-firmware`. HECHO 2026-09-17, hallazgos 2 y 3.
+- [x] **C8d -- el disco y el formato.** `bmo-fat32`, `bmo-particiones`, `bmo-estratos`, `bmo-abi`, `bmo-bex-gate`, `bmo-firma`, `bmo-imagen`, `bmo-sonido`, `bmo-maqueta-cara`, `bmo-config`. HECHO 2026-09-17, hallazgos 4, 5 y 6.
+- [ ] **C8e -- EL METAL.** Los hallazgos 1, 2, 4, 5 y 6 tocan codigo que corre en
+      Ring 0 (`ring0/red/mod.rs`, `bmo-uhid`, `bmo-fat32`, `fsys/fs.rs`,
+      `task/launch.rs`). El banco esta verde; falta **un arranque** que diga que
+      sigue igual: teclado y raton enumeran, DOOM carga su WAD, `red rx` cuenta
+      tramas con 0 malas.
+- [ ] **C8f -- lo que esta pasada NO cubrio.** `bmo-xhci` (los TRB y el anillo de
+      eventos los escribe el controlador), `ring0/plat/placa.rs` (401 lineas, 0
+      pruebas, sigue en Ring 0: es la mitad pendiente de C6), `uhid/teclado.rs` y
+      `uhid/raton.rs` como FLUJO de informes, `bmo-input`, y los argumentos de los
+      syscalls (hoy solo los empuja `sonda_C.c` en metal).
+- [ ] **C8g -- dos crates de seguridad sin ni una prueba.** `bmo-ahci` (el disco
+      que se escribe) y `bmo-firmar` (la herramienta que firma). Los nombra el
+      banco en cada `bmo.ps1`; ver `docs/plan/PLAN_LA_DEUDA.md`, D4.
+- [ ] **C8h -- los compiladores con fuente hostil.** Un `.c` o un `.inti` malo
+      que tumba al compilador no tumba la maquina, y por eso va al final. Pero el
+      dia que ESTRUCTURA compile DENTRO de BMO-X (`docs/plan/PLAN_ESTRUCTURA.md`),
+      el compilador pasa a ser Ring 3 leyendo ficheros de cualquiera.
+
+## 5.6 El patron, otra vez
+
+De los seis reales, **cuatro son el patron del 24-08 al pie de la letra**: *un
+limite es tan bueno como el numero con el que se compara* -- el corral en vez
+del bufer (1), `len >= 2` antes de leer el byte 3 (2), un cero legal que el
+consumidor no distingue de uno malo (4), y una ruta que copio la forma de su
+hermana sin copiar sus comprobaciones (5).
+
+> Cerrar el productor era correcto. No bastaba mientras el mismo numero pudiera
+> ser legal en un sitio y veneno en otro.

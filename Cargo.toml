@@ -70,6 +70,7 @@ members = [
     # quien marca el paso. E0 de `docs/maestro/INTI_Y_LA_GPU.md` sec. 6, y
     # vive aqui por la misma razon que la resta: aqui se PRUEBA.
     "platform/shared/bmo-ritmo",
+    "platform/shared/bmo-hostile",
     # LAS IMAGENES del visor: BICO, BMP y QOI a pixeles, probados aqui contra
     # ficheros ROTOS. Un decodificador probado solo en el metal se prueba con
     # las imagenes buenas, que son las que no hacen dano.

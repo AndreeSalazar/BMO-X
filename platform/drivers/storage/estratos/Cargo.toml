@@ -12,3 +12,7 @@ description = "ESTRATOS -- el formato en disco del sistema de ficheros de BMO-X"
 bmo-hash = { path = "../../../shared/bmo-hash" }
 # El contrato de bloques: ESTRATOS habla con un dispositivo, no con SATA.
 bmo-block = { path = "../block" }
+
+# Only for the hostile tests: nothing that runs on the machine links it.
+[dev-dependencies]
+bmo-hostile = { path = "../../../shared/bmo-hostile" }

@@ -17,6 +17,8 @@ license = "Apache-2.0"
 bmo-cripto = { path = "../../shared/bmo-cripto" }
 
 [dev-dependencies]
+# Only for the hostile tests: nothing that runs on the machine links it.
+bmo-hostile = { path = "../../shared/bmo-hostile" }
 # Para las pruebas SI hace falta firmar: no se puede comprobar un gate contra
 # firmas que no existen. Ver la cabecera de `lib.rs`.
 bmo-cripto = { path = "../../shared/bmo-cripto", features = ["firmar"] }

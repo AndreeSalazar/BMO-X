@@ -450,11 +450,14 @@ pub fn abrir_rangos(path: &str) -> Result<(bmo_fat32::Cursor, u32), LoadError> {
 ///
 /// El tercer numero --donde empieza la particion-- es el que distingue "el
 /// fichero esta en otro sitio" de **"estamos leyendo el volumen equivocado"**.
-pub fn donde(cur: &bmo_fat32::Cursor) -> (u32, u64, u64) {
+///
+/// The LBA is `None` when the cluster is not one this volume has (2026-09-17):
+/// before, that case printed a wrapped, made-up sector number.
+pub fn donde(cur: &bmo_fat32::Cursor) -> (u32, Option<u64>, u64) {
     let v = unsafe {
         match (*core::ptr::addr_of_mut!(DATA_VOLUME)).as_mut() {
             Some(v) => v,
-            None => return (0, 0, 0),
+            None => return (0, None, 0),
         }
     };
     let c = cur.cluster();

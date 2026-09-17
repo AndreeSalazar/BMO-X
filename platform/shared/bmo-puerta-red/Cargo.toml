@@ -8,3 +8,7 @@ license = "Apache-2.0"
 # Sin dependencias, a proposito. Lo enlazan el kernel (que lo JUZGA) y Ring 3
 # (que lo USA), y L8 no deja que Ring 3 enlace `bmo-net`, que es un driver.
 [dependencies]
+
+# Only for the hostile tests: nothing that runs on the machine links it.
+[dev-dependencies]
+bmo-hostile = { path = "../bmo-hostile" }

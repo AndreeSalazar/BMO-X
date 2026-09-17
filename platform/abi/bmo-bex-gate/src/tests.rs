@@ -428,3 +428,28 @@ fn un_offset_imposible_no_da_la_vuelta() {
     assert!(!super::reloc_cabe(u64::MAX, 8, 0x400, 0x400));
     assert!(!super::reloc_cabe(u64::MAX - 3, 8, u64::MAX, u64::MAX));
 }
+
+/// ** HOSTILE PASS (2026-09-17): the gate reads the prologue of every `.bex`
+/// before anything else in the kernel trusts it. A good image and a two-section
+/// one, mutated, and the file size told the truth, a byte short and absurd.
+/// Checked: nothing panics.
+#[test]
+fn hostile_prologues_never_panic() {
+    let one = Imagen::buena().bytes();
+    let mut two = Imagen::buena();
+    two.secciones.push((DATA, 0, 768, 256, 256, 8));
+    two.total_size = 1024;
+    let two = two.bytes();
+    bmo_hostile::attack("bex gate", bmo_hostile::DEFAULT_SEED, 30_000, &[&one, &two], 256, |x| {
+        for size in [x.len(), x.len().saturating_sub(1), 768, 1024, usize::MAX] {
+            if let Ok(r) = revisar(x, size) {
+                let _ = (r.entry_offset(), r.cuantas(), r.hasta_donde_hace_falta());
+                for i in 0..r.cuantas() + 2 {
+                    let _ = r.seccion(i);
+                }
+                let _ = r.secciones().count();
+                let _ = (r.buscar(CODE), r.buscar(DATA), r.buscar(0xFF));
+            }
+        }
+    });
+}

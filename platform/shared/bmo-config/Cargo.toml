@@ -8,3 +8,7 @@ license = "Apache-2.0"
 # Sin dependencias y `no_std`, por lo mismo que `bmo-imagen`: un fichero que
 # edita una persona es un fichero ROTO algun dia, y eso se prueba aqui.
 [dependencies]
+
+# Only for the hostile tests: nothing that runs on the machine links it.
+[dev-dependencies]
+bmo-hostile = { path = "../bmo-hostile" }

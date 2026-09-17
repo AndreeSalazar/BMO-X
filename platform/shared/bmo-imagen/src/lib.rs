@@ -419,4 +419,27 @@ mod pruebas {
         assert_eq!(decodificar(&b, &mut dst).unwrap_err(), Error::NoCabe);
         assert_eq!(dst, vec![0, 0, 0], "no toco el bufer");
     }
+
+    /// ** HOSTILE PASS (2026-09-17): an image can come from the antenna, so its
+    /// bytes are a stranger's. Every format, mutated, decoded into a buffer
+    /// that is sometimes big enough and sometimes one pixel short. Checked:
+    /// nothing panics, and a decode never claims more pixels than it was given.
+    #[test]
+    fn hostile_images_never_panic() {
+        let a = bico(2, 2, &[0xFF11_2233, 0, 0x8044_5566, 0xFFFF_FFFF]);
+        let b = bmp(2, 2, 24, 0, &[1, 2, 3, 4, 5, 6, 0, 0, 7, 8, 9, 10, 11, 12, 0, 0]);
+        let c = qoi(2, 2, &[0xFE, 10, 20, 30, 0xC0 | 2]);
+        for (name, good) in [("bico", &a), ("bmp", &b), ("qoi", &c)] {
+            assert!(dec(good).is_ok(), "the {} sample must be a GOOD image, or the mutations never pass the header: {:?}", name, dec(good));
+        }
+        bmo_hostile::attack("imagen", bmo_hostile::DEFAULT_SEED, 30_000, &[&a, &b, &c], 512, |x| {
+            let _ = medir(x);
+            for cap in [0usize, 3, 4, 64] {
+                let mut dst = vec![0u32; cap];
+                if let Ok(m) = decodificar(x, &mut dst) {
+                    assert!((m.ancho as usize) * (m.alto as usize) <= cap, "claimed more pixels than the buffer holds");
+                }
+            }
+        });
+    }
 }

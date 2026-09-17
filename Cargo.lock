@@ -16,6 +16,7 @@ dependencies = [
  "bmo-bex-gate",
  "bmo-carga-juicio",
  "bmo-hash",
+ "bmo-hostile",
 ]
 
 [[package]]
@@ -34,6 +35,9 @@ version = "0.1.0"
 [[package]]
 name = "bmo-antena"
 version = "0.1.0"
+dependencies = [
+ "bmo-hostile",
+]
 
 [[package]]
 name = "bmo-audio"
@@ -49,6 +53,9 @@ dependencies = [
 [[package]]
 name = "bmo-bex-gate"
 version = "1.0.0"
+dependencies = [
+ "bmo-hostile",
+]
 
 [[package]]
 name = "bmo-bex-link"
@@ -102,6 +109,9 @@ dependencies = [
 [[package]]
 name = "bmo-config"
 version = "0.1.0"
+dependencies = [
+ "bmo-hostile",
+]
 
 [[package]]
 name = "bmo-cpp-front"
@@ -142,6 +152,7 @@ version = "0.1.0"
 dependencies = [
  "bmo-block",
  "bmo-hash",
+ "bmo-hostile",
 ]
 
 [[package]]
@@ -157,6 +168,7 @@ name = "bmo-fat32"
 version = "0.1.0"
 dependencies = [
  "bmo-block",
+ "bmo-hostile",
 ]
 
 [[package]]
@@ -164,6 +176,7 @@ name = "bmo-firma"
 version = "1.0.0"
 dependencies = [
  "bmo-cripto",
+ "bmo-hostile",
 ]
 
 [[package]]
@@ -178,6 +191,9 @@ dependencies = [
 [[package]]
 name = "bmo-firmware"
 version = "0.1.0"
+dependencies = [
+ "bmo-hostile",
+]
 
 [[package]]
 name = "bmo-fisica-juicio"
@@ -211,12 +227,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-hostile"
+version = "0.1.0"
+
+[[package]]
 name = "bmo-identify"
 version = "0.1.0"
 
 [[package]]
 name = "bmo-imagen"
 version = "0.1.0"
+dependencies = [
+ "bmo-hostile",
+]
 
 [[package]]
 name = "bmo-input"
@@ -311,6 +334,9 @@ dependencies = [
 [[package]]
 name = "bmo-maqueta-cara"
 version = "1.0.0"
+dependencies = [
+ "bmo-hostile",
+]
 
 [[package]]
 name = "bmo-maqueta-cascade"
@@ -397,12 +423,16 @@ dependencies = [
 [[package]]
 name = "bmo-particiones"
 version = "0.1.0"
+dependencies = [
+ "bmo-hostile",
+]
 
 [[package]]
 name = "bmo-pila"
 version = "0.1.0"
 dependencies = [
  "bmo-cripto",
+ "bmo-hostile",
 ]
 
 [[package]]
@@ -412,6 +442,9 @@ version = "0.1.0"
 [[package]]
 name = "bmo-puerta-red"
 version = "0.1.0"
+dependencies = [
+ "bmo-hostile",
+]
 
 [[package]]
 name = "bmo-ritmo"
@@ -446,6 +479,9 @@ dependencies = [
 [[package]]
 name = "bmo-sonido"
 version = "1.0.0"
+dependencies = [
+ "bmo-hostile",
+]
 
 [[package]]
 name = "bmo-trim"
@@ -454,11 +490,15 @@ version = "0.1.0"
 [[package]]
 name = "bmo-uaudio"
 version = "1.0.0"
+dependencies = [
+ "bmo-hostile",
+]
 
 [[package]]
 name = "bmo-uhid"
 version = "0.1.0"
 dependencies = [
+ "bmo-hostile",
  "bmo-input",
  "bmo-xhci",
 ]
@@ -466,6 +506,9 @@ dependencies = [
 [[package]]
 name = "bmo-usbred"
 version = "0.1.0"
+dependencies = [
+ "bmo-hostile",
+]
 
 [[package]]
 name = "bmo-verify"

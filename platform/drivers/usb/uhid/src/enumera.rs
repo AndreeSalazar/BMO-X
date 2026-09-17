@@ -28,11 +28,29 @@ pub fn le_u16(buf: &[u8], off: usize) -> u16 {
     (buf[off] as u16) | ((buf[off + 1] as u16) << 8)
 }
 
+/// `wTotalLength`, the bytes 2 and 3 of a configuration descriptor, or 0 if the
+/// buffer does not even have them.
+///
+/// *** FOUND 2026-09-17 by the hostile pass, and reachable from a device. The
+/// three walkers below asked `cfg.len() >= 2` and then read bytes 2 AND 3. A
+/// device that answers `wTotalLength = 3` gets its descriptor sliced to three
+/// bytes by `lib.rs` (`&cfg[..largo]`), and the next read is `cfg[3]`: an index
+/// out of bounds in Ring 0 -- a panic, so the machine going down because of
+/// what a USB device said about itself. `leer_descriptores` also refuses a
+/// total under nine bytes now; this is the second wall, not the only one.
+fn declared_total(cfg: &[u8]) -> usize {
+    if cfg.len() >= 4 {
+        le_u16(cfg, 2) as usize
+    } else {
+        0
+    }
+}
+
 /// Las interfaces de un config descriptor completo:
 /// `(numero, clase, subclase, protocolo)`.
 pub fn interfaces(cfg: &[u8], out: &mut [(u8, u8, u8, u8); MAX_IFACES]) -> usize {
     let mut n = 0;
-    let total = if cfg.len() >= 2 { le_u16(cfg, 2) as usize } else { 0 };
+    let total = declared_total(cfg);
     let limit = if total > 0 && total <= cfg.len() { total } else { cfg.len() };
     let mut off = if !cfg.is_empty() { cfg[0] as usize } else { 9 };
     while off + 3 <= limit && n < MAX_IFACES {
@@ -56,7 +74,7 @@ pub fn interfaces(cfg: &[u8], out: &mut [(u8, u8, u8, u8); MAX_IFACES]) -> usize
 /// Sin llevar la cuenta, un teclado compuesto daria el endpoint de su interfaz
 /// de medios para la de teclado -- y esa solo habla si pulsas subir volumen.
 pub fn intr_in(cfg: &[u8], iface_num: u8) -> Option<(u8, u16, u8, u8)> {
-    let total = if cfg.len() >= 2 { le_u16(cfg, 2) as usize } else { 0 };
+    let total = declared_total(cfg);
     let limit = if total > 0 && total <= cfg.len() { total } else { cfg.len() };
     let mut off = if !cfg.is_empty() { cfg[0] as usize } else { 9 };
     let mut iface_actual = 0u8;
@@ -95,7 +113,7 @@ pub fn intr_in(cfg: &[u8], iface_num: u8) -> Option<(u8, u16, u8, u8)> {
 /// teclado compuesto trae dos descriptores HID y el de su interfaz de medios no
 /// describe el mismo informe.
 pub fn hid_report_len(cfg: &[u8], iface_num: u8) -> Option<u16> {
-    let total = if cfg.len() >= 2 { le_u16(cfg, 2) as usize } else { 0 };
+    let total = declared_total(cfg);
     let limit = if total > 0 && total <= cfg.len() { total } else { cfg.len() };
     let mut off = if !cfg.is_empty() { cfg[0] as usize } else { 9 };
     let mut iface_actual = 0xFFu8;
@@ -347,6 +365,12 @@ pub unsafe fn leer_descriptores(
     h.log_u64(" cfg_val=", cfg_val as u64);
     h.log_u64(" total_len=", total_len as u64);
 
+    // ** A configuration descriptor is at least its own nine-byte header. A
+    // smaller total is a device lying about itself (see `declared_total`).
+    if total_len < 9 {
+        h.log("[uhid] cfg too small\n");
+        return None;
+    }
     if total_len > MAX_CFG {
         h.log("[uhid] cfg too big\n");
         return None;

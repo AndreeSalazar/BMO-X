@@ -16,3 +16,7 @@ license = "Apache-2.0"
 # que sepa abrir ficheros acaba abriendolos, y entonces ya no se puede probar en
 # el anfitrion sin montar un disco.
 [dependencies]
+
+# Only for the hostile tests: nothing that runs on the machine links it.
+[dev-dependencies]
+bmo-hostile = { path = "../bmo-hostile" }

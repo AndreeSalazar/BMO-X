@@ -563,7 +563,10 @@ fn con_buffer(path: &str, autoridad: u64) -> Informe {
         if let Some(cur) = fuente.cursor() {
             let (cluster, lba, base) = crate::ring0::fsys::fs::donde(cur);
             crate::ring0::cabina::info("lanzar", "el directorio dice: cluster", cluster as u64);
-            crate::ring0::cabina::info("lanzar", "que en el disco es el LBA", lba);
+            match lba {
+                Some(lba) => crate::ring0::cabina::info("lanzar", "que en el disco es el LBA", lba),
+                None => crate::ring0::cabina::warn("lanzar", "[!] ese cluster NO es de este volumen: el directorio miente", cluster as u64),
+            }
             crate::ring0::cabina::info("lanzar", "y la particion empieza en", base);
             crate::ring0::cabina::info("lanzar", "y el fichero mide", tam as u64);
         }

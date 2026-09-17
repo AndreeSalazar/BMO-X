@@ -31,7 +31,7 @@ impl FatVolume {
         let mut cluster = dir_cluster;
         let spc = self.sectors_per_cluster as u64;
         loop {
-            let lba = self.cluster_to_lba(cluster);
+            let Some(lba) = self.lba_valido(cluster) else { return None };
             for s in 0..spc {
                 unsafe {
                     if !self.read_sector(lba + s, Buf::buf) { continue; }
@@ -58,7 +58,7 @@ impl FatVolume {
         let mut cluster = dir_cluster;
         let spc = self.sectors_per_cluster as u64;
         loop {
-            let lba = self.cluster_to_lba(cluster);
+            let Some(lba) = self.lba_valido(cluster) else { return None };
             for s in 0..spc {
                 unsafe {
                     if !self.read_sector(lba + s, Buf::buf) { continue; }
@@ -149,7 +149,7 @@ impl FatVolume {
         let spc = self.sectors_per_cluster as u64;
         let mut vistas = 0usize;
         loop {
-            let lba = self.cluster_to_lba(cluster);
+            let Some(lba) = self.lba_valido(cluster) else { return None };
             for s in 0..spc {
                 unsafe {
                     if !self.read_sector(lba + s, Buf::buf) { continue; }

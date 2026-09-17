@@ -225,3 +225,23 @@ fn ningun_byte_corrompido_tumba_el_lector() {
         let _ = reconocer(&base[..n]);
     }
 }
+
+/// ** HOSTILE PASS (2026-09-17): the shared generator over the same reader,
+/// with length fields broken on purpose -- the loop above mutates bytes, this
+/// one also breaks the four-byte chunk sizes. Checked: nothing panics.
+#[test]
+fn hostile_wavs_never_panic() {
+    let good = bueno();
+    let two = wav(&[
+        (b"LIST", std::vec![0x20u8; 33]),
+        (b"fmt ", fmt(1, 1, 44100, 8)),
+        (b"data", std::vec![0x7Fu8; 101]),
+    ]);
+    bmo_hostile::attack("wav", bmo_hostile::DEFAULT_SEED, 30_000, &[&good, &two], 2048, |x| {
+        let _ = reconocer(x);
+        if let Ok(p) = leer_wav(x) {
+            let _ = (p.bytes_por_cuadro(), p.bytes_por_ms(), p.dura_ms());
+            let _ = p.cabe_en(48000, 2, 16);
+        }
+    });
+}

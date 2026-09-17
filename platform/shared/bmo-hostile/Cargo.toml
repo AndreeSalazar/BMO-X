@@ -1,0 +1,11 @@
+[package]
+name = "bmo-hostile"
+version = "0.1.0"
+edition = "2021"
+description = "Hostile bytes for host tests: every parser that reads what a STRANGER wrote is fed deterministic garbage and mutations of a good sample, and must never panic."
+license = "Apache-2.0"
+
+# No dependencies, and it is only ever a [dev-dependency]. Nothing that runs on
+# the machine links this crate: it exists so that a parser can be attacked in a
+# 3-second `cargo test` instead of by a device on the bus.
+[dependencies]

@@ -10,3 +10,7 @@ license = "Apache-2.0"
 # Independiente a proposito: aqui no se toca hardware. Este crate SOLO lee
 # descriptores y construye peticiones -- lo que las manda es el kernel, con
 # `bmo_xhci::control_transfer`. Asi todo lo de aqui se prueba en el anfitrion.
+
+# Only for the hostile tests: nothing that runs on the machine links it.
+[dev-dependencies]
+bmo-hostile = { path = "../../../shared/bmo-hostile" }

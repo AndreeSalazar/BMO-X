@@ -206,8 +206,12 @@ pub fn cuantas(seccion: &[u8]) -> Result<usize, Falta> {
 
 /// La katana `i`, si existe.
 pub fn katana(seccion: &[u8], i: usize) -> Option<Katana> {
-    let e = CABECERA_LEN + i * KATANA_LEN;
-    if e + KATANA_LEN > seccion.len() {
+    // ** Checked, found by the hostile pass (2026-09-17): `i * KATANA_LEN`
+    // wrapped for a huge `i`, and a wrapped offset is SMALL, so the bound
+    // passed. Every caller today stays under `cuantas`, so nothing reached it;
+    // the arithmetic was still the one form that breaks.
+    let e = i.checked_mul(KATANA_LEN).and_then(|x| x.checked_add(CABECERA_LEN))?;
+    if e.checked_add(KATANA_LEN).map_or(true, |end| end > seccion.len()) {
         return None;
     }
     Some(Katana {

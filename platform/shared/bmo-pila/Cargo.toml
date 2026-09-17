@@ -10,3 +10,7 @@ license = "Apache-2.0"
 # criptografia sin vectores.
 [dependencies]
 bmo-cripto = { path = "../bmo-cripto" }
+
+# Only for the hostile tests: nothing that runs on the machine links it.
+[dev-dependencies]
+bmo-hostile = { path = "../bmo-hostile" }

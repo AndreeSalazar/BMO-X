@@ -151,7 +151,12 @@ impl Playback {
     /// `interval` is assumed to be 1 ms, which is what a full-speed isochronous
     /// endpoint uses. See [`Self::fits`].
     pub fn bytes_per_interval(&self, rate: u32) -> u32 {
-        (rate / 1000) * self.channels as u32 * self.subframe as u32
+        // ** Saturating, found by the hostile pass (2026-09-17). Not reachable
+        // from a device today -- a rate is 3 bytes on the wire, and
+        // 16.777 * 255 * 255 fits -- but `rate` is a plain `u32` argument, and
+        // a product that wraps would make `fits` say YES to an absurd rate.
+        // Saturated, the answer is "does not fit", which is the true one.
+        (rate / 1000).saturating_mul(self.channels as u32).saturating_mul(self.subframe as u32)
     }
 
     /// Does one interval at that rate fit in what the device accepts?
@@ -505,5 +510,19 @@ mod tests {
         for cut in 1..d.len() {
             let _ = find_playback(&d[..cut]);
         }
+    }
+
+    /// ** HOSTILE PASS (2026-09-17): the headset's own descriptor, mutated.
+    #[test]
+    fn hostile_headsets_never_panic() {
+        let good = headset();
+        bmo_hostile::attack("uaudio stream", bmo_hostile::DEFAULT_SEED ^ 1, 30_000, &[&good], 512, |x| {
+            if let Some(p) = find_playback(x) {
+                for rate in [0, 1, 44_100, 48_000, u32::MAX] {
+                    let _ = p.bytes_per_interval(rate);
+                    let _ = p.fits(rate);
+                }
+            }
+        });
     }
 }

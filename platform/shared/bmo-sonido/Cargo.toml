@@ -9,3 +9,7 @@ license = "Apache-2.0"
 # tiene asignador-- y el anfitrion, que si. Aqui no se abre un fichero ni se
 # habla con un aparato: entran bytes y sale que son.
 [dependencies]
+
+# Only for the hostile tests: nothing that runs on the machine links it.
+[dev-dependencies]
+bmo-hostile = { path = "../bmo-hostile" }

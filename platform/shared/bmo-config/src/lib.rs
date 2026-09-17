@@ -461,4 +461,16 @@ mod pruebas {
         assert_eq!(e, BASE);
         assert!(inf.n > 0);
     }
+
+    /// ** HOSTILE PASS (2026-09-17): the style file is text anyone can edit.
+    /// Checked: nothing panics, whatever the file says.
+    #[test]
+    fn hostile_style_files_never_panic() {
+        let good: &[u8] = b"fondo_imagen = sys/fondo.qoi   # la del atardecer";
+        bmo_hostile::attack("estilo", bmo_hostile::DEFAULT_SEED, 30_000, &[good], 1024, |x| {
+            let mut e = BASE;
+            let _ = e.aplicar(x);
+            let _ = Ruta::de(x);
+        });
+    }
 }
