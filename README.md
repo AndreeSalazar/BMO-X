@@ -751,8 +751,10 @@ did in 2005, except the server is your own phone on your own LAN. Measured on
 reader (`bmo-antena/src/lamina.rs`, 30 tests) accepts every line. And the
 phone already does it by itself: `PAGINA <url>` to a HONOR X7a running the
 antenna in Termux (Chromium inside a proot Debian) returns that Wikipedia
-article laid out in ~7 s over the LAN, seven times slower than a desktop --
-the honest number, measured 2026-09-16.
+article laid out in 2.5 s over the LAN (7 s before the antenna stopped
+loading images nobody would see and stopped opening a process per page --
+no optimization, just subtraction; the layout is byte-for-byte the same).
+The desktop does it in 0.5 s. Honest numbers, measured 2026-09-16.
 
 The plan, with a check next to every step:
 **[PLAN_CLOUD_LOCAL.md](docs/plan/PLAN_CLOUD_LOCAL.md)**.

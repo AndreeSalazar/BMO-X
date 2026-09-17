@@ -8,7 +8,7 @@
 
 ```text
    264 casillas ABIERTAS en 32 planes
-   172 hechas
+   173 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -17,7 +17,7 @@
 
 # Los planes VIVOS, el que mas debe primero
 
-## [`PLAN_CLOUD_LOCAL.md`](PLAN_CLOUD_LOCAL.md) -- 38 abiertas, 15 hechas
+## [`PLAN_CLOUD_LOCAL.md`](PLAN_CLOUD_LOCAL.md) -- 38 abiertas, 16 hechas
 
 *PLAN CLOUD LOCAL -- el movil es la ANTENA, BMO-X es la pantalla*
 

@@ -979,6 +979,24 @@ texto al borde; ahora se saltan.
       evento de carga en vez de sondear; (3) mirar por que lamina.js va a
       20x, midiendo dentro del script. Cual se abre lo decide Eddi.
 
+- [x] **L3d -- las puertas 1 y 2, abiertas: de 6,8 a 2,5 s SIN optimizar.**
+      HECHO el 2026-09-16: `arrancar.sh` enciende el Chromium con
+      `--blink-settings=imagesEnabled=false` (la antena mastica, no
+      muestra) y `navegador.py` usa UNA pestana fija y espera el evento
+      de carga de esa navegacion (`Page.lifecycleEvent` + loaderId) en vez
+      de sondear. **Como se sabe:** en Windows, la misma antena contra un
+      Edge con y sin imagenes da laminas byte a byte iguales (`cmp`); en
+      el HONOR, la Wikipedia sin imagenes es byte a byte la de la tarde
+      con imagenes. MEDIDO en el HONOR: Wikipedia caliente 2,5-2,6 s
+      (carga 1,1 + lamina 1,2-1,4), fria 4,95; Hacker News 1,8 (antes 3,7);
+      example.com 0,52 (antes 1,9-3,0). La puerta 3, medida por dentro del
+      script: de los 1,2-1,4 s de lamina, metrica 0,3-0,4 + maqueta 0,8 son
+      el trabajo del script (relayout + getClientRects) y ~0,2 compilar y
+      traer el JSON: no hay peaje escondido, es CPU de movil bajo proot, y
+      acelerarlo seria optimizar de verdad -- lo ultimo, y hoy no hace falta.
+      Frente al PC difieren 20 anchos de ENLACE en 1 px (Chromium 152
+      arm64 contra Edge 153 x64): ni una letra.
+
 - [ ] **L0 -- el recorrido, en el MOVIL.** Primero SIN app: Chrome en el
       HONOR, depuracion USB y `chrome://inspect` desde el PC, con `lamina.js`
       pegado en la consola remota (paso a paso en

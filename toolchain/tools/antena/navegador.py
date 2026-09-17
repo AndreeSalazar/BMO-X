@@ -18,8 +18,9 @@ de terceros dentro de la antena es codigo que no se leyo).
 
 == Donde corre el navegador ==
 
-   en un PC (V2, el Arch)    chromium --headless=new --remote-debugging-port=9222
-   en Windows (probar)       msedge.exe --headless=new --remote-debugging-port=9222
+   en un PC (V2, el Arch)    chromium --headless=new --remote-debugging-port=9222 \
+                                 --blink-settings=imagesEnabled=false
+   en Windows (probar)       msedge.exe (las mismas banderas)
    en el movil               Termux no trae Chromium. Dos caminos, y los dos se
                              prueban en el movil, no aqui:
                                a) proot-distro (Debian) con chromium arm64 y el
@@ -36,16 +37,30 @@ de terceros dentro de la antena es codigo que no se leyo).
     la pidio (solo la IP permitida), y la antena solo saca la lamina
   - no espera JavaScript infinito: 15 s para cargar y 5 s para la lamina, y
     despues NO con el motivo
-  - no deja pestanas abiertas: cada PAGINA abre una y la cierra
+  - no carga imagenes: la antena MASTICA, no muestra, y el 16-09 esperar
+    las imagenes de Wikipedia eran 2 de los 7 s del HONOR. Es una bandera
+    del navegador (`--blink-settings=imagesEnabled=false`, la pone
+    arrancar.sh); los `<img>` conservan su caja y la lamina sale byte a
+    byte igual (comprobado con cmp en Windows). BMO-X pedira las imagenes
+    que quiera aparte, en QOI (seccion 11 del plan)
+  - no abre una pestana por pagina: UNA pestana fija, que se reutiliza;
+    abrir una costaba 0,7-0,9 s en el HONOR (arrancar un proceso bajo
+    proot). Si algo falla a mitad, se tira esa pestana y la siguiente
+    PAGINA abre otra limpia
+  - no sondea `document.readyState`: espera el evento de carga del propio
+    navegador (`Page.lifecycleEvent` con el loaderId de ESA navegacion,
+    para no confundirse con el de la pagina anterior)
 
 == Lo que mide ==
 
 Cada `lamina_de` deja en `self.medida` cuanto tardo cada tramo, en segundos:
-`pestana` (abrir y fijar el ancho), `carga` (navegar hasta readyState
-complete), `lamina` (metricaBMO + lamina.js dentro del navegador) y
-`cerrar`. Ley 24: antes de abrir una puerta de rendimiento se mira cual
-tramo la paga -- el 16-09 el HONOR tardo 7 s en Wikipedia y no se sabia
-donde.
+`pestana` (solo la primera vez, o tras un fallo), `carga` (navegar hasta el
+evento de carga; dentro, `html`/`dom`/`todo` del propio navegador),
+`lamina` (metricaBMO + lamina.js dentro del navegador; y dentro, `metrica`
+y `maqueta` medidos por el script mismo, con lo que la diferencia es
+compilar el script y traer el JSON). Ley 24: antes de abrir una puerta de
+rendimiento se mira cual tramo la paga -- el 16-09 el HONOR tardo 7 s en
+Wikipedia y no se sabia donde.
 """
 import base64
 import json
@@ -157,6 +172,9 @@ class Navegador:
         self.base = "http://127.0.0.1:%d" % puerto
         self.lamina_js = lamina_js
         self.siguiente = 1
+        self.ws = None
+        self.pestana = None
+        self.medida = {}
 
     def _http(self, metodo, ruta):
         peticion = urllib.request.Request(self.base + ruta, method=metodo)
@@ -166,16 +184,22 @@ class Navegador:
         except OSError as e:
             raise SinNavegador("el navegador no contesta en %s: %s" % (self.base, e))
 
+    def _mensaje(self, ws, fin):
+        """El siguiente mensaje del navegador, o None si se acabo el tiempo."""
+        ws.s.settimeout(max(0.1, fin - time.monotonic()))
+        try:
+            return json.loads(ws.recibir())
+        except socket.timeout:
+            return None
+
     def _orden(self, ws, metodo, params=None, espera=CARGA_S):
         yo = self.siguiente
         self.siguiente += 1
         ws.enviar(json.dumps({"id": yo, "method": metodo, "params": params or {}}))
         fin = time.monotonic() + espera
         while time.monotonic() < fin:
-            ws.s.settimeout(max(0.1, fin - time.monotonic()))
-            try:
-                m = json.loads(ws.recibir())
-            except socket.timeout:
+            m = self._mensaje(ws, fin)
+            if m is None:
                 break
             if m.get("id") == yo:
                 if "error" in m:
@@ -183,9 +207,57 @@ class Navegador:
                 return m.get("result", {})
         raise SinNavegador("%s no contesto en %d s" % (metodo, espera))
 
+    def _espera_carga(self, ws, loader, espera):
+        """Hasta el evento `load` de ESA navegacion (por su loaderId)."""
+        fin = time.monotonic() + espera
+        while time.monotonic() < fin:
+            m = self._mensaje(ws, fin)
+            if m is None:
+                break
+            if m.get("method") != "Page.lifecycleEvent":
+                continue
+            p = m.get("params", {})
+            if p.get("name") == "load" and p.get("loaderId") == loader:
+                return
+        raise SinNavegador("la pagina no termino de cargar en %d s" % espera)
+
+    def _abrir_pestana(self):
+        """La pestana fija: se abre una vez y se fija su ancho una vez."""
+        try:
+            nueva = json.loads(self._http("PUT", "/json/new?about:blank"))
+        except ValueError:
+            raise SinNavegador("el navegador no supo abrir una pestana")
+        ws = WebSocket(nueva["webSocketDebuggerUrl"], CARGA_S)
+        try:
+            self._orden(ws, "Page.enable")
+            self._orden(ws, "Page.setLifecycleEventsEnabled", {"enabled": True})
+            # El ancho de la lamina es el del navegador: se fija ANTES de cargar,
+            # y no se reescala nada despues.
+            self._orden(ws, "Emulation.setDeviceMetricsOverride",
+                        {"width": ANCHO_LAMINA, "height": 800, "deviceScaleFactor": 1, "mobile": False})
+        except SinNavegador:
+            ws.cerrar()
+            raise
+        self.ws = ws
+        self.pestana = nueva["id"]
+
+    def _tirar_pestana(self):
+        if self.ws is not None:
+            self.ws.cerrar()
+            self.ws = None
+        if self.pestana is not None:
+            try:
+                self._http("GET", "/json/close/" + self.pestana)
+            except SinNavegador:
+                pass
+            self.pestana = None
+
+    def cerrar(self):
+        self._tirar_pestana()
+
     def lamina_de(self, url):
-        """La LAMINA (bytes, con sus `\\n`) de esa url, o `SinNavegador`."""
-        # Una pestana nueva por pagina: lo que quede en ella se cierra al final.
+        """La LAMINA (bytes, con sus `\\n`) de esa url, o `SinNavegador`.
+        Deja en `self.medida` lo que tardo cada tramo."""
         self.medida = {}
         marca = time.monotonic()
 
@@ -196,30 +268,14 @@ class Navegador:
             marca = ahora
 
         try:
-            nueva = json.loads(self._http("PUT", "/json/new?about:blank"))
-        except ValueError:
-            raise SinNavegador("el navegador no supo abrir una pestana")
-        ws = WebSocket(nueva["webSocketDebuggerUrl"], CARGA_S)
-        try:
-            self._orden(ws, "Page.enable")
-            # El ancho de la lamina es el del navegador: se fija ANTES de cargar,
-            # y no se reescala nada despues.
-            self._orden(ws, "Emulation.setDeviceMetricsOverride",
-                        {"width": ANCHO_LAMINA, "height": 800, "deviceScaleFactor": 1, "mobile": False})
-            tramo("pestana")
+            if self.ws is None:
+                self._abrir_pestana()
+                tramo("pestana")
+            ws = self.ws
             r = self._orden(ws, "Page.navigate", {"url": url}, CARGA_S)
             if r.get("errorText"):
                 raise SinNavegador("no cargo: %s" % r["errorText"])
-            # Esperar a que el documento este completo, con tope.
-            fin = time.monotonic() + CARGA_S
-            while True:
-                estado = self._orden(ws, "Runtime.evaluate",
-                                     {"expression": "document.readyState", "returnByValue": True}, 5)
-                if estado.get("result", {}).get("value") == "complete":
-                    break
-                if time.monotonic() > fin:
-                    raise SinNavegador("la pagina no termino de cargar en %d s" % CARGA_S)
-                time.sleep(0.2)
+            self._espera_carga(ws, r.get("loaderId"), CARGA_S)
             tramo("carga")
             # Dentro de `carga`, lo que el navegador mismo apunta (ms desde
             # que pidio la url): `html` = ultimo byte del documento (la RED),
@@ -233,26 +289,30 @@ class Navegador:
             hitos = r.get("result", {}).get("value") or []
             for nombre, ms in zip(("html", "dom", "todo"), hitos):
                 self.medida[nombre] = ms / 1000.0
-            # metricaBMO() primero, o el texto se sale (medido el 16-09).
-            expresion = self.lamina_js + "\n;metricaBMO(); JSON.stringify(lamina({ancho: %d}));" % ANCHO_LAMINA
+            # metricaBMO() primero, o el texto se sale (medido el 16-09). El
+            # script se cronometra a si mismo: `metrica` y `maqueta` en ms.
+            expresion = (self.lamina_js + "\n;(function(){var a=performance.now();metricaBMO();"
+                         "var b=performance.now();var l=lamina({ancho:%d});var c=performance.now();"
+                         "l.metrica=b-a;l.maqueta=c-b;return JSON.stringify(l);})()" % ANCHO_LAMINA)
             r = self._orden(ws, "Runtime.evaluate",
                             {"expression": expresion, "returnByValue": True, "awaitPromise": False}, LAMINA_S)
             if "exceptionDetails" in r:
                 raise SinNavegador("lamina.js fallo: %s" % r["exceptionDetails"].get("text", "?"))
             resultado = json.loads(r["result"]["value"])
             tramo("lamina")
+            for nombre in ("metrica", "maqueta"):
+                if nombre in resultado:
+                    self.medida[nombre] = resultado[nombre] / 1000.0
             if resultado.get("truncada"):
                 raise SinNavegador("la pagina no cabe en una lamina (mas de 4096 lineas)")
             # Latin-1: la lamina viaja en bytes, y lamina.js ya dejo solo
             # ASCII y 0xA0..0xFF en las tiras.
             return resultado["lamina"].encode("latin-1", "replace")
-        finally:
-            ws.cerrar()
-            try:
-                self._http("GET", "/json/close/" + nueva["id"])
-            except SinNavegador:
-                pass
-            tramo("cerrar")
+        except SinNavegador:
+            # Lo que quede en esa pestana no se reutiliza: la siguiente
+            # PAGINA abre otra limpia.
+            self._tirar_pestana()
+            raise
 
 
 def cargar_lamina_js(carpeta_del_programa):

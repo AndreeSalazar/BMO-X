@@ -29,7 +29,10 @@ if [ -z "$PERMITIR" ]; then
 fi
 AQUI="$(cd "$(dirname "$0")" && pwd)"
 PUERTO=9222
-FLAGS="--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --remote-debugging-port=$PUERTO about:blank"
+# Sin imagenes: la antena mastica, no muestra, y esperar las imagenes de
+# Wikipedia eran 2 de los 7 s del HONOR (medido el 16-09). La lamina sale
+# byte a byte igual con o sin ellas.
+FLAGS="--headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --blink-settings=imagesEnabled=false --remote-debugging-port=$PUERTO about:blank"
 
 command -v termux-wake-lock >/dev/null 2>&1 && termux-wake-lock
 

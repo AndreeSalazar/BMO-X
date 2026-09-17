@@ -210,8 +210,24 @@ carpeta de la antena, con los tramos; ley 24, medir antes de tocar):
 
 La LAN no cuenta. Lo que cuenta es lo que un navegador hace POR COSTUMBRE
 y la antena no necesita: cargar imagenes (2 s), abrir un proceso por
-pagina (0,8 s). Y `lamina.js` a 20x el PC es una pregunta, no un dato:
-se mide dentro del script antes de tocarlo.
+pagina (0,8 s). Las dos cosas se quitaron esa misma noche (imagenes
+apagadas por bandera, UNA pestana fija, esperar el evento de carga en vez
+de sondear) y la lamina siguio siendo byte a byte la misma:
+
+```text
+   HONOR, despues (2026-09-16 noche)                     antes      ahora
+     Wikipedia caliente (2.137 lineas, 91 KB)            6,3-7,1    2,5-2,6
+       carga 1,1 (html 0,2 / parsear 0,6 / todo +0,25)
+       lamina 1,2-1,4 (metrica 0,3-0,4 + maqueta 0,8 + ~0,2 de traer el JSON)
+     Wikipedia fria (primera visita)                     6,3-7,1    4,95
+     Hacker News                                         3,7-3,8    1,8
+     example.com caliente                                1,9-3,0    0,52
+```
+
+Lo que queda (lamina.js: relayout + getClientRects de 1.600 tiras en un CPU
+de movil bajo proot) ya no es costumbre de navegador: es trabajo, y
+acelerarlo seria optimizar -- lo ultimo. Cada `PAGINA` se sigue apuntando
+en `medidas.txt`, asi que si un dia hace falta, el numero ya esta.
 
 ### UNA orden para todo: `arrancar.sh` (2026-09-16)
 
