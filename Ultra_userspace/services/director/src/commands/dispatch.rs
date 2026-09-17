@@ -74,6 +74,7 @@ pub(crate) fn dispatch(dsk: &mut Desktop, p: &bmo::Pantalla, cmd: Command) -> Af
         Command::Ext => system::ext(dsk, p),
         Command::Consumo => system::consumo(dsk, p),
         Command::Apps => system::apps(dsk, p),
+        Command::Ventanas => system::ventanas(dsk, p),
         Command::Memoria => system::memory(dsk, p),
         Command::Smp(arg) => system::smp(dsk, p, arg),
         Command::Banda => system::banda(dsk, p),

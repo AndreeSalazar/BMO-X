@@ -376,6 +376,59 @@ pub(crate) fn apps(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     After::Settle
 }
 
+/// **`ventanas`: lo que el DIRECTOR LEE de cada superficie viva.**
+///
+/// La otra mitad de `inti/ventana.ibx` (2026-09-17): la app dice lo que ve en
+/// su memoria; esto, lo que ve el que la pega, por su propio mapeo y por la
+/// misma cuenta que `compose`. `secuencia` es la de la app y `pegada` la
+/// ultima que se pego: iguales = ya se pego lo ultimo.
+pub(crate) fn ventanas(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
+    let s = &mut dsk.out.grid;
+    s.with_ink(INK_ECHO);
+    s.text(b"  ventanas -- lo que el DIRECTOR lee de cada superficie, por su mapeo\n");
+    s.with_ink(INK_PLAIN);
+    let mut vivas = 0u32;
+    for hueco in 0..crate::scene::surface::MAX {
+        let Some((tid, base, bytes, seq, pegada, w, h, stride, p00, p88, pc)) = dsk.table.sonda(hueco) else {
+            continue;
+        };
+        vivas += 1;
+        s.text(b"    hueco ");
+        s.dec(hueco as u64);
+        s.text(b"  tid ");
+        s.dec(tid as u64);
+        s.text(b"  base ");
+        s.hex(base, 16);
+        s.text(b"  bytes ");
+        s.dec(bytes);
+        s.byte(b'\n');
+        s.text(b"      ");
+        s.dec(w as u64);
+        s.byte(b'x');
+        s.dec(h as u64);
+        s.text(b"  stride ");
+        s.dec(stride as u64);
+        s.text(b"  secuencia ");
+        s.dec(seq as u64);
+        s.text(b"  pegada ");
+        s.dec(pegada as u64);
+        s.byte(b'\n');
+        s.text(b"      pix 0,0 ");
+        s.hex(p00 as u64, 8);
+        s.text(b"  pix 8,8 ");
+        s.hex(p88 as u64, 8);
+        s.text(b"  centro ");
+        s.hex(pc as u64, 8);
+        s.byte(b'\n');
+    }
+    if vivas == 0 {
+        s.text(b"    ninguna superficie viva\n");
+    }
+    paint_status(&p, &dsk.run_box, "ventanas", INK_DIM);
+    dsk.field.n = 0;
+    After::Settle
+}
+
 pub(crate) fn consumo(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     super::reports::report_consumo(&mut dsk.out.grid, &dsk.tick);
     paint_status(&p, &dsk.run_box, "consumo", INK_DIM);

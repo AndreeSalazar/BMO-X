@@ -145,6 +145,8 @@ pub(crate) enum Command<'a> {
     /// fuga que se cerro el 14-08: un programa que muere tiene que desaparecer
     /// de esta tabla.
     Apps,
+    /// `ventanas`: lo que el DIRECTOR lee de cada superficie viva (sonda).
+    Ventanas,
     /// **Los nucleos.** Sin argumento solo censa; con `all` o con un numero,
     /// despierta. Es la unica orden de esta caja que puede tardar casi un
     /// segundo, y por eso el mensaje va ANTES de llamar.
@@ -486,6 +488,8 @@ pub(crate) fn parse(line: &[u8]) -> Command<'_> {
         b"ext" | b"extensiones" => Command::Ext,
         b"consumo" | b"gasto" | b"w" => Command::Consumo,
         b"apps" | b"programas" => Command::Apps,
+        // La otra mitad de la sonda de la ventana: lo que el DIRECTOR lee.
+        b"ventanas" => Command::Ventanas,
         b"mem" | b"ram" | b"memoria" => Command::Memoria,
         b"reboot" | b"reinicia" | b"reiniciar" => Command::Reboot,
         // `smp` a secas CENSA y no toca nada; `smp all` despierta a todos;

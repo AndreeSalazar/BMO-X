@@ -788,6 +788,28 @@ impl Table {
         self.sup.iter_mut().filter_map(|s| s.as_mut())
     }
 
+    /// **La otra mitad de la sonda de la ventana** (2026-09-17): lo que el
+    /// DIRECTOR LEE de cada superficie viva, por su propio mapeo. La app
+    /// (`inti/ventana.ibx`) dice lo que ella ve en su memoria; esto dice lo
+    /// que ve el que la pega. Si no coinciden, el fallo esta en el mapeo; si
+    /// coinciden y la ventana sale mal, esta en pintar.
+    ///
+    /// Por hueco: `(tid, base, bytes, secuencia, pegada, ancho, alto, stride,
+    /// pixel (0,0), pixel (8,8), pixel (ancho/2, alto/2))`. Los pixeles se
+    /// leen tal cual, por la MISMA cuenta que `compose`.
+    pub(crate) fn sonda(&self, hueco: usize) -> Option<(u32, u64, u64, u32, u32, u32, u32, u32, u32, u32, u32)> {
+        let s = self.sup.get(hueco)?.as_ref()?;
+        let cab = Header::read(s.base, s.bytes)?;
+        let px = |x: u32, y: u32| -> u32 {
+            let src = s.base + HEADER_TAG + (y as u64 * cab.stride as u64 + x as u64) * 4;
+            unsafe { core::ptr::read_volatile(src as *const u32) }
+        };
+        Some((
+            s.tid, s.base, s.bytes, cab.sequence, s.stuck, cab.width, cab.height, cab.stride,
+            px(0, 0), px(8.min(cab.width - 1), 8.min(cab.height - 1)), px(cab.width / 2, cab.height / 2),
+        ))
+    }
+
     /// **De que superficie es este golpe, y en que pixel suyo.**
     ///
     /// Paso 2c.1 de `docs/plan/PLAN_DIRECTOR.md`, y su prueba es literalmente
