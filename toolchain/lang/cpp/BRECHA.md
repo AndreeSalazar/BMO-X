@@ -223,7 +223,17 @@ fichero vacio.
    p.leer()` devolveria lo que quedara en la pila), y `break` y `continue` no
    destruyen lo mismo: un `switch` para al primero y no al segundo.
    ⏳ Esperan al paso 4: la lista de inicializacion (`P() : x(0)`), varios
-   constructores, y el de copia. `new`/`delete` esperan a que haya asignador.
+   constructores, y el de copia.
+   ★ **`new`/`delete` YA NO esperan a nadie (medido el 2026-09-17).** Decia
+   aqui que esperaban "a que haya asignador", y el asignador existe: `malloc`,
+   `free`, `calloc` y `realloc` son un asignador de verdad en
+   `<bmo/monton.h>`, con filas del banco que los EJECUTAN, y los cuatro salen
+   publicos en `libc.bo`. El segundo estorbo tambien cayo solo: C++ no tiene
+   preprocesador, asi que no podia incluir esa cabecera -- pero desde E5e
+   **`new` puede emitir `call malloc` como simbolo INDEFINIDO y que lo resuelva
+   el enlazador**. O sea que `new P()` es literalmente `malloc` mas el
+   constructor, y `delete p` el destructor mas `free`, y se puede senalar con el
+   dedo en el enlace. Lo que falta es escribirlo.
 4. ✅ **HECHO -- mangling y sobrecarga.** Esquema propio y **no el de Itanium**:
    este existe para enlazar objetos de compiladores distintos, y BMO no enlaza
    nada de nadie. Se heredan sus **propiedades** --determinista, sin colisiones,
