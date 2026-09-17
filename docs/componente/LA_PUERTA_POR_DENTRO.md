@@ -472,6 +472,66 @@ diseno.
 
 ---
 
+## 5d. ** INVOKE y WAIT, madurados: lo que contesta cada puerta y lo que cada lado LEE (2026-09-17)
+
+Eddi: *"analiza la mayoria y madura INVOKE y WAIT, para que funcionen"*. Se
+miro el contrato de las dos puertas de punta a punta --el kernel que contesta,
+y los TRES lados que leen: el escritorio (Rust), BMO C e INTI--, y esto es lo
+que salio.
+
+**Lo que contesta el kernel, las dos puertas igual** (`dispatch`):
+
+```text
+   rax = codigo (32 bits bajos) | banderas (32 altos)    rdx = valor
+   codigo 0 = si. Otro = no, y las banderas traen el MOTIVO (L6i/R22).
+   ok_value y err no encienden banderas; negado si.
+```
+
+**Lo que lee cada lado, y lo que mentia:**
+
+```text
+   escritorio   `invoke()` parte rax en code y flags; `.valor()` es None si code != 0     BIEN
+   BMO C        `bmo_codigo` devuelve rax ENTERO (codigo | banderas)                     documentado
+                `bmo_valor` devuelve rdx                                                  BIEN
+   INTI         `invoca` recogia rax ENTERO: un `si invoca(...) = X` con banderas        ARREGLADO
+                encendidas mentia; `invoca_valor` recoge rdx                              BIEN
+```
+
+INTI recorta ahora el codigo a 32 bits (`mov eax, eax` tras la puerta cuando
+recoge codigo; 2 bytes por puerta, medido en `tests/manifiesto.rs`). En C se
+deja como esta a proposito: `bmo_prestar` devuelve ese entero como "motivo"
+y sus llamantes comparan con 0, que sigue siendo verdad; el dia que alguien
+compare con un codigo concreto, esta fila dice donde mirar.
+
+**WAIT, por clase de handle** (`syscall/mod.rs::wait`):
+
+```text
+   0            dormir `ns`; y AHORA `ns = 0` es CEDER EL TURNO (antes: Blocked con
+                llave 0 y sin plazo, que nadie despierta = cuelgue silencioso de
+                un `espera_a(0, 0, 0)`)
+   ENDPOINT     esperar un mensaje                       codigo y valor del endpoint
+   LATIDO       esperar el latido `> visto`              valor = secuencia
+   RED          esperar la puerta de red `> visto`       valor = secuencia; negado si no vigente
+   CHANNEL      esperar el canal `> visto`               valor = secuencia
+   otro         NO SOPORTADO (dicho, no callado)
+```
+
+El plazo se calcula saturado (un `ns` enorme no puede dar la vuelta y
+volverse "ya"); la conversion ya iba en 128 bits.
+
+**Lo que WAIT no sabe todavia, y por eso las apps sondean**: no hay clase de
+handle para el BUZON de una superficie (KIND_MEMORIA/PRESTADO). NAVEGAR duerme
+16 ms y mira; `espera_tecla` duerme 4 ms y mira. Funciona y gasta poco (R21),
+pero es una espera ADVISORY de verdad: el DIRECTOR no puede despertar a la app
+cuando le escribe. Es la pieza que falta para que una app INTI duerma hasta
+que pase algo, y esta apuntada.
+
+**Lo que se comprobo y no hacia falta tocar**: `wait_current_checked` no
+duerme si la secuencia ya se movio (sin carrera entre mirar y dormir); un
+handle invalido en WAIT contesta `cap_err`, no un valor plausible; el sondeo
+de `document.readyState` del lado de la antena no tiene que ver con estas
+puertas.
+
 ## 6. Lo que este documento NO afirma
 
 - **Que los 969 ciclos sean caros o baratos.** Sin el reparto de P1 no se puede

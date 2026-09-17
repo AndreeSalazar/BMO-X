@@ -366,6 +366,16 @@ pub(crate) fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) 
                         // codigo y un valor a la vez, por registros distintos.
                         if let Some(d) = destino {
                             let de = p.recogida(taller.recoge.recoge(n));
+                            // ** EL CODIGO SON 32 BITS (2026-09-17). El kernel
+                            // contesta `rax = codigo | banderas << 32` (las
+                            // banderas traen el MOTIVO de un no, L6i). `invoca`
+                            // recogia rax entero: un `si invoca(...) = X` con
+                            // banderas encendidas mentia. Se recorta a la mitad
+                            // baja, que es lo que el ABI llama codigo; el valor
+                            // (rdx) no se toca.
+                            if taller.recoge.recoge(n) != Some("valor") {
+                                x86::mov_r32_r32(out, de, de);
+                            }
                             guarda_temporal(out, de, *d, &marco);
                         }
                         continue;

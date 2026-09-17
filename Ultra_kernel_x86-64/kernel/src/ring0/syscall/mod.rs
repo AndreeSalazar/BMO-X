@@ -1014,9 +1014,21 @@ fn wait(frame: &TrapFrame) -> BmoStatus {
     let deadline = if timeout_ns == 0 {
         0
     } else {
-        scheduler::rdtsc() + scheduler::ns_to_tsc(timeout_ns)
+        // Saturado: un plazo enorme no puede dar la vuelta y volverse "ya".
+        scheduler::rdtsc().saturating_add(scheduler::ns_to_tsc(timeout_ns))
     };
     if frame.rdi == 0 {
+        // ** DORMIR CERO NANOSEGUNDOS ES CEDER EL TURNO, no dormir para siempre
+        // (2026-09-17). `deadline == 0` significa "sin plazo" para las esperas
+        // con handle --esperar un evento que puede tardar lo que sea--, pero
+        // sin handle no hay evento que esperar: `WAIT(0, _, 0)` quedaba
+        // Blocked con llave 0 y sin plazo, y nadie despierta la llave 0. Un
+        // `espera_a(0, 0, 0)` en INTI era un cuelgue silencioso. Como
+        // `nanosleep(0)`: vuelve en el acto, habiendo cedido.
+        if timeout_ns == 0 {
+            scheduler::yield_current();
+            return BmoStatus::ok_value(0);
+        }
         scheduler::wait_current(0, deadline);
         return BmoStatus::ok_value(0);
     }

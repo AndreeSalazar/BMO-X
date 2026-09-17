@@ -91,6 +91,24 @@ pub fn test_r64_r64(out: &mut Vec<u8>, a: u8, b: u8) {
 }
 
 /// `xor <r32>, <r32>` -- el idioma de 2 bytes para poner un registro a cero.
+/// `mov r32, r32`: copia los 32 bajos y **pone a cero los 32 altos** del
+/// destino (es lo que hace el silicio con cualquier destino de 32 bits).
+/// Con `dst == src` es la forma corta de quedarse con la mitad baja.
+pub fn mov_r32_r32(out: &mut Vec<u8>, dst: u8, src: u8) {
+    let mut rex = 0x40u8;
+    if src >= 8 {
+        rex |= 0x04;
+    }
+    if dst >= 8 {
+        rex |= 0x01;
+    }
+    if rex != 0x40 {
+        out.push(rex);
+    }
+    out.push(0x89);
+    out.push(modrm_reg_direct(src, dst));
+}
+
 pub fn zero_r32(out: &mut Vec<u8>, reg: u8) {
     if reg >= 8 {
         out.push(0x45); // REX.R + REX.B (mismo registro en ambos campos)

@@ -249,7 +249,20 @@ fn la_sonda_del_ryzen_emite_los_mismos_bytes_que_antes_de_p1() {
     // compara las secciones `Code`-- asi que las medidas del Ryzen del 22-08 y
     // el 23-08 **siguen comparando contra lo mismo**. Lo unico que engorda es
     // el fichero.
-    assert_eq!(sin.len(), 10528, "la emision de la sonda cambio de tamano");
+    //
+    //     10.536  con el codigo de la puerta recortado a 32 bits (2026-09-17)
+    //
+    // ** ESTOS +8 SON CODIGO: un `mov eax, eax` (2 bytes) detras de cada
+    // `invoca`/`espera_a` que recoge el CODIGO. El kernel contesta `rax =
+    // codigo | banderas << 32`, y las banderas traen el motivo de un no
+    // (L6i); `invoca` recogia rax entero, asi que un `si invoca(...) = X` con
+    // banderas encendidas mentia. Ahora `codigo` es lo que el ABI llama
+    // codigo. La sonda cruza la puerta cuatro veces recogiendo codigo.
+    //
+    // [!] Y aqui SI cambia la seccion `Code`: `cpu.ibx` deja de ser el fichero
+    // que corrio en el Ryzen el 22-08. Las medidas de aquel dia siguen siendo
+    // verdad de aquel fichero; la proxima se compara contra ESTE.
+    assert_eq!(sin.len(), 10536, "la emision de la sonda cambio de tamano");
 }
 
 /// **EL CODIGO NO CAMBIA POR LLEVAR MANIFIESTO.**
