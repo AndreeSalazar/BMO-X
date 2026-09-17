@@ -747,17 +747,21 @@ def informe(fichas, techos, exentos, nuevos, crecidos, encogidos, salidos, subid
         print('  [^] techo levantado  %s' % s)
 
     for f, techo in encogidos:
-        print('  [+] ENCOGIO   %s: %d -> %d' % (f.ruta, techo, f.lineas))
+        print('  [+] ENCOGIO   %s: %d -> %d de codigo' % (f.ruta, techo, f.codigo))
     for ruta, techo in salidos:
         print('  [+] YA NO ESTA %s (estaba en %d)' % (ruta, techo))
     if encogidos or salidos:
         print('      -> `--sellar` para que el trinquete no permita volver atras.')
 
     for f in nuevos:
-        print('  [X] NUEVO     %s: %d lineas, y no estaba en la linea base' % (f.ruta, f.lineas))
+        print('  [X] NUEVO     %s: %d lineas de codigo (%d en total), y no estaba en la linea base' % (f.ruta, f.codigo, f.lineas))
         print('                %s -> %s' % (especie(f), COMO_SE_PARTE[especie(f)]))
     for f, techo in crecidos:
-        print('  [X] CRECIO    %s: %d -> %d (+%d)' % (f.ruta, techo, f.lineas, f.lineas - techo))
+        # ** EL CODIGO, que es lo que se juzga (2026-09-17). Imprimia el TOTAL al
+        # lado de un techo de CODIGO: `cpp/parser.rs` salio como +482 cuando habia
+        # crecido 27. El veredicto era bueno y el numero mentia -- y el numero es
+        # lo que se lee para decidir donde recortar.
+        print('  [X] CRECIO    %s: %d -> %d de codigo (+%d; %d en total)' % (f.ruta, techo, f.codigo, f.codigo - techo, f.lineas))
 
 
 def main():
