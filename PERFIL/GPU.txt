@@ -44,7 +44,25 @@ POR QUE AMD Y NO LA QUE YA TIENE
       codigo del modulo del kernel
 
   ** Y LO MAS IMPORTANTE: la 3060 NO BLOQUEA NADA de lo que se esta
-  construyendo. El cuello de hoy es el blit, y eso no necesita sombreadores.
+  construyendo. El cuello de hoy no necesita sombreadores.
+
+  [!] 2026-09-17, afinado con el numero del Ryzen que ya estaba medido en
+  docs/plan/PLAN_EL_CODEGEN.md: decir "el cuello es el blit" se queda corto y
+  apunta al sitio equivocado. Partido:
+
+      fotograma      14.948 us   (66 fps)
+        blit          7.833 us   -> 52 % del fotograma
+          expansion   6.738 us   -> 86 % del blit      <- ESCALAR
+          volcado     1.063 us   -> 14 % del blit
+
+  El VOLCADO ya va a 6,0 GB/s hacia memoria write-combining y no tiene nada que
+  ganar: es `rep movsb`. Lo caro es ESCALAR de 320x200 a 1600x1000, que es
+  trabajo de CPU y son 157 ciclos por escritura util.
+
+  Eso cambia que compraria la meta A: no "mover bytes al panel" --eso ya esta
+  resuelto-- sino ESCALAR. Y tiene un competidor barato que no es la GPU: el
+  propio codegen de BMO C, que es de donde salen esos 157 ciclos. Cual de los
+  dos vale mas se mira con el mismo `[perf]`, y se mira ANTES de gastar un euro.
 
 
 EL MURO, MEDIDO

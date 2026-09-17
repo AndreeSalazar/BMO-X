@@ -205,6 +205,36 @@ Porque un Vulkan sin `malloc` de verdad no se puede ni escribir, y porque un
 sistema que todavia no sabe correr un banco no deberia estar escribiendo un
 compilador de sombreadores.
 
+### ★★ 2026-09-17 -- EL DISPARADOR SE CUMPLIO EN DOS TERCIOS, Y EN UN DIA
+
+| | estado |
+|---|---|
+| **enlazador** | ✅ `toolchain/tools/bmo-enlazar`. N objetos -> un `.bex`, y desde E5c el arbol entero se construye asi |
+| **libc** | ✅ E5: `bmo-c-front --libc` la compila UNA vez a `libc.bo`, con `malloc`, `free`, `calloc` y `realloc` de verdad dentro (`<bmo/monton.h>`) |
+| **indice** | ◐ el formato esta (`Resources = 0x0B`) y `bmo-pack` lo escribe; **falta leerlo en ejecucion** |
+
+** Y lo que de verdad cambia para B1 no es la comodidad: **hasta este dia BMO C
+compilaba UNA sola unidad de traduccion**. Un Vulkan por software no es un
+fichero. O sea que B1 no estaba "dificil": estaba **imposible de escribir**, y
+la casilla que lo impedia no vivia en esta carpeta ni mencionaba la GPU.
+
+Dos cosas mas que caen del mismo sitio y que esta ruta va a usar:
+
+- **la poda (E5b)**: una implementacion de Vulkan trae mucho que un programa
+  concreto no llama. El enlazador ya tira lo que nadie llama -- medido, entre
+  un -1,8 % y un -68,9 % segun el programa.
+- **C++ tambien compila por separado** (E5e), y las dos implementaciones que
+  esta ruta cita como referencia --SwiftShader y lavapipe-- son C++.
+
+### Lo que NO se movio, para que nadie lo cuente dos veces
+
+- **`KIND_CODIGO` + `SELLAR` (W^X) siguen solo DISENADOS.** Cuidado con el
+  nombre: el `SELLAR` que existe en el kernel es `ESTRATOS_SELLAR`, que cierra
+  una transaccion del sistema de ficheros y no tiene nada que ver. El de las
+  paginas ejecutables no esta escrito.
+- **Los hilos tampoco**: 51 operaciones de tarea en el kernel y ninguna crea un
+  hilo. Las piezas 3 y 6 de B1 siguen enteras.
+
 ## Y la medida que decide si vale la pena
 
 `perf` en la caja de Ejecutar dice **KiB por fotograma y peor caso**. La caja
@@ -291,6 +321,56 @@ Dicho eso, cada nivel corresponde grosso modo a una epoca:
 de una generacion entera. No es un ejercicio: es DOOM.
 
 Y **1.2 es el escalon que mas abre**.
+
+---
+
+# ★ LOS MOTORES GRANDES (UE5 y compania) -- y por que el numero de lineas NO es la medida
+
+> Del dueno, 2026-09-17: *"40 millones de codigos no significa que todos se
+> compile asi, porque en Windows y BMO-X cambian por completo"*. Tiene razon, y
+> la correccion es de LEY 24: **una estimacion generica es una estimacion de
+> OTRO proyecto**. Contar las lineas de un motor y concluir algo es justo eso.
+
+## Lo que un numero de lineas NO dice
+
+- **Nadie compila el motor entero.** Un objetivo de juego no construye el
+  editor, ni los backends de las plataformas que no son la suya, ni las
+  herramientas. Lo que se compila es un subconjunto que decide la
+  configuracion, no el repositorio.
+- **El mismo codigo cuesta cosas distintas aqui y en Windows**, que es lo que
+  dice el dueno: lo que en Windows es una llamada a una DLL del sistema, aqui o
+  no existe o es una linea de REX. El coste esta en la FRONTERA, no en el
+  cuerpo.
+
+## Lo que SI decide, y ya estaba escrito arriba
+
+La misma regla que este documento aplica a los juegos: **un motor no pide una
+version, pide una LISTA DE CARACTERISTICAS, y si le falta una no arranca**. Esa
+lista es finita, esta en su codigo y se puede LEER -- que es trabajo de lectura,
+como el de `amdgpu`, y no adivinanza.
+
+Y dos hechos que van contra lo que se supone por defecto:
+
+- **Unreal se construye con excepciones y RTTI DESACTIVADOS** en sus valores
+  por defecto: tiene su propio sistema de reflexion porque el de C++ no le
+  servia. O sea que **las dos cosas que BMO C++ no va a tener a proposito no
+  son las que le cierran la puerta a un motor asi**.
+- Lo que si le hace falta a BMO-X para siquiera intentarlo son piezas que ya
+  tienen nombre en este plan y en otros: **plantillas** (paso 6 de
+  `toolchain/lang/cpp/BRECHA.md`), **hilos** (pieza 6 de B1, hoy cero de 51 operaciones),
+  la **superficie** de ficheros, audio y entrada, y por supuesto B1 o B2.
+
+## Como se sabe, en vez de opinar
+
+Se coge el motor, se lee su capa de Vulkan y **se escribe la lista de
+caracteristicas y extensiones que exige**. Sale un numero y una lista, no una
+impresion -- y entonces se compara con lo que B1 puede dar. Hasta que esa lista
+este escrita, cualquier frase sobre si un motor grande "cabe" es una estimacion
+de otro proyecto.
+
+⚠ Y el orden no cambia por esto: sigue siendo meta A, W^X, hilos, B1, B2. Un
+motor grande no es el disparador de nada; es lo que se mide DESPUES de que B1
+ensene algo moviendose.
 
 ---
 
