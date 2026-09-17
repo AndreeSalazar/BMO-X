@@ -623,6 +623,7 @@ impl UsbHidHal {
                 es_mio: self.puerto_teclado == Some(port) || self.puerto_raton == Some(port),
                 tomado: self.puertos.tomado(port),
                 intentos: self.puertos.intentos(port),
+                esperando: self.puertos.esperando(port),
                 // Se pregunta DENTRO del bucle: soltar un fantasma en el puerto 2
                 // cambia la respuesta para el puerto 4, y esa es justamente la
                 // secuencia que repara un teclado perdido en el mismo barrido.
@@ -655,7 +656,12 @@ impl UsbHidHal {
                 Accion::Enfriar => {
                     if self.puertos.enfriar(port) {
                         r.reabiertos = r.reabiertos.saturating_add(1);
+                    } else if self.puertos.recien_descansando(port) {
+                        r.descansando = r.descansando.saturating_add(1);
                     }
+                }
+                Accion::Esperar => {
+                    let _ = self.puertos.esperar(port);
                 }
             }
         }

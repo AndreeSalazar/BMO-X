@@ -72,17 +72,17 @@ pub(crate) fn report_usb(s: &mut Output) {
         return;
     }
     s.with_ink(INK_ECHO);
-    s.text(b"      puerto  vid:pid    que es       que se hizo\n");
+    s.text(b"      puerto  vid:pid    que es       que se hizo   (puerto como en F11: el 1 es el primero)\n");
     s.with_ink(INK_PLAIN);
     let mut txt = [0u8; 96];
+    // ** Se recorren las `escritas`, sin cortar en un cero: una ficha de un
+    // puerto 0 sin vid empaqueta exactamente 0, y el 17-09 el Ryzen enseno
+    // `fichas 10` con la tabla VACIA por cortar en la primera.
     for i in 0..escritas.min(FICHAS) {
         let papeles = bmo::info(bmo::INFO_USB_FICHA | (i << 8));
-        if papeles == 0 {
-            break;
-        }
         let veredicto = bmo::info(bmo::INFO_USB_FICHA_VEREDICTO | (i << 8));
         s.text(b"      ");
-        s.dec_right((papeles >> 24) & 0xFF, 4);
+        s.dec_right(((papeles >> 24) & 0xFF) + 1, 4);
         s.text(b"    ");
         s.hex(papeles >> 48, 4);
         s.byte(b':');

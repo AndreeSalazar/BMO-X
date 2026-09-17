@@ -74,6 +74,26 @@ pub const MAX_INTENTOS: u8 = 3;
 /// deja que lo lento acabe entrando.
 pub const ENFRIAMIENTO_BARRIDOS: u8 = 10;
 
+/// **Cuantos descansos seguidos doblan el siguiente** (2026-09-17, tarde).
+///
+/// La primera version del enfriamiento descansaba SIEMPRE cinco segundos, y
+/// el Ryzen lo enseno al momento: un aparato que no contesta recibia tres
+/// resets en 1,5 s, cinco segundos de paz, y otros tres -- para siempre, con
+/// un aviso en CABINA cada cinco segundos. Eddi: *"es cada 5 segundos sin
+/// sentido"*. Ahora cada descanso cumplido dobla el siguiente (5, 10, 20, 40
+/// s) hasta este tope de doblados, y desenchufar lo devuelve todo a cero.
+pub const MAX_DOBLADOS: u8 = 3;
+
+/// **Barridos de espera entre un intento fallido y el siguiente**: `1 <<
+/// intentos` (2, 4, 8 barridos = 1, 2, 4 s). Antes los tres intentos caian
+/// seguidos --uno por barrido y otro por el aviso del propio reset-- en
+/// menos de 1,5 s, que es menos de lo que tarda un movil en volver a
+/// presentarse tras cambiar de modo. Un aviso de enchufe que llegue durante
+/// la espera NO gasta intento: `se_puede_intentar` dice que no.
+pub fn espera_tras(intentos: u8) -> u8 {
+    1u8 << intentos.min(3)
+}
+
 /// Que puertos estan tomados y cuantas veces se ha intentado cada uno.
 #[derive(Debug, Clone, Copy)]
 pub struct Puertos {
@@ -81,6 +101,10 @@ pub struct Puertos {
     intentos: [u8; MAX_PUERTOS],
     /// Barridos que lleva descansando un puerto con los intentos gastados.
     enfriando: [u8; MAX_PUERTOS],
+    /// Descansos cumplidos seguidos: cada uno dobla el siguiente.
+    doblados: [u8; MAX_PUERTOS],
+    /// Barridos que faltan antes de poder intentar otra vez.
+    espera: [u8; MAX_PUERTOS],
 }
 
 impl Default for Puertos {
@@ -91,7 +115,13 @@ impl Default for Puertos {
 
 impl Puertos {
     pub const fn nuevo() -> Self {
-        Self { tomados: 0, intentos: [0; MAX_PUERTOS], enfriando: [0; MAX_PUERTOS] }
+        Self {
+            tomados: 0,
+            intentos: [0; MAX_PUERTOS],
+            enfriando: [0; MAX_PUERTOS],
+            doblados: [0; MAX_PUERTOS],
+            espera: [0; MAX_PUERTOS],
+        }
     }
 
     fn cabe(port: u8) -> bool {
@@ -114,7 +144,41 @@ impl Puertos {
     /// intento lo suficiente. Un puerto fuera de rango tampoco: mejor no
     /// enumerar que enumerar a ciegas.
     pub fn se_puede_intentar(&self, port: u8) -> bool {
-        Self::cabe(port) && !self.tomado(port) && self.intentos[port as usize] < MAX_INTENTOS
+        Self::cabe(port)
+            && !self.tomado(port)
+            && self.intentos[port as usize] < MAX_INTENTOS
+            && self.espera[port as usize] == 0
+    }
+
+    /// Esta esperando entre intentos? (y cuantos barridos le quedan)
+    pub fn esperando(&self, port: u8) -> u8 {
+        if Self::cabe(port) { self.espera[port as usize] } else { 0 }
+    }
+
+    /// Esta descansando con los intentos gastados?
+    pub fn descansando(&self, port: u8) -> bool {
+        Self::cabe(port) && !self.tomado(port) && self.intentos[port as usize] >= MAX_INTENTOS
+    }
+
+    /// **Un barrido mas de espera** entre intentos. `true` si ya puede.
+    pub fn esperar(&mut self, port: u8) -> bool {
+        if !Self::cabe(port) {
+            return false;
+        }
+        let i = port as usize;
+        if self.espera[i] > 0 {
+            self.espera[i] -= 1;
+        }
+        self.espera[i] == 0
+    }
+
+    /// Cuantos segundos va a descansar este puerto en su proximo descanso, a
+    /// medio segundo por barrido. Para decirlo en CABINA con el numero.
+    pub fn descanso_s(&self, port: u8) -> u8 {
+        if !Self::cabe(port) {
+            return 0;
+        }
+        (ENFRIAMIENTO_BARRIDOS << self.doblados[port as usize].min(MAX_DOBLADOS)) / 2
     }
 
     /// Se va a intentar. Cuenta el intento **antes** de tocar el bus: si la
@@ -122,7 +186,11 @@ impl Puertos {
     /// contado y el bucle no puede volver eternamente por el mismo sitio.
     pub fn anotar_intento(&mut self, port: u8) {
         if Self::cabe(port) {
-            self.intentos[port as usize] = self.intentos[port as usize].saturating_add(1);
+            let i = port as usize;
+            self.intentos[i] = self.intentos[i].saturating_add(1);
+            // Si este intento falla, el siguiente espera; si acierta, `take`
+            // o `aparcar` lo dejan sin efecto (el puerto queda tomado).
+            self.espera[i] = espera_tras(self.intentos[i]);
         }
     }
 
@@ -130,6 +198,7 @@ impl Puertos {
     pub fn take(&mut self, port: u8) {
         if Self::cabe(port) {
             self.tomados |= 1 << port;
+            self.espera[port as usize] = 0;
         }
     }
 
@@ -145,18 +214,28 @@ impl Puertos {
 
     /// **Un barrido mas de descanso** para un puerto con los intentos gastados.
     /// Devuelve `true` cuando el descanso se cumplio y los intentos vuelven.
+    /// Cada descanso cumplido dobla el siguiente, hasta `MAX_DOBLADOS`.
     pub fn enfriar(&mut self, port: u8) -> bool {
         if !Self::cabe(port) {
             return false;
         }
         let i = port as usize;
         self.enfriando[i] = self.enfriando[i].saturating_add(1);
-        if self.enfriando[i] >= ENFRIAMIENTO_BARRIDOS {
+        let tope = ENFRIAMIENTO_BARRIDOS << self.doblados[i].min(MAX_DOBLADOS);
+        if self.enfriando[i] >= tope {
             self.enfriando[i] = 0;
             self.intentos[i] = 0;
+            self.espera[i] = 0;
+            self.doblados[i] = self.doblados[i].saturating_add(1);
             return true;
         }
         false
+    }
+
+    /// Acaba de entrar en descanso? (el primer barrido de este descanso).
+    /// Para avisar UNA vez por descanso y no en cada evento.
+    pub fn recien_descansando(&self, port: u8) -> bool {
+        Self::cabe(port) && self.enfriando[port as usize] == 1
     }
 
     /// Se desenchufo: el puerto vuelve a estar libre **y con los intentos
@@ -167,6 +246,8 @@ impl Puertos {
             self.tomados &= !(1 << port);
             self.intentos[port as usize] = 0;
             self.enfriando[port as usize] = 0;
+            self.doblados[port as usize] = 0;
+            self.espera[port as usize] = 0;
         }
     }
 }
@@ -192,10 +273,7 @@ mod tests {
     #[test]
     fn un_puerto_que_no_da_nada_se_intenta_un_numero_finito_de_veces() {
         let mut p = Puertos::nuevo();
-        for _ in 0..MAX_INTENTOS {
-            assert!(p.se_puede_intentar(3));
-            p.anotar_intento(3);
-        }
+        gastar(&mut p, 3);
         assert!(!p.se_puede_intentar(3), "aqui es donde se corta la realimentacion");
     }
 
@@ -206,6 +284,8 @@ mod tests {
     fn se_reintenta_mas_de_una_vez() {
         let mut p = Puertos::nuevo();
         p.anotar_intento(1);
+        // Tras el fallo se espera (2026-09-17), pero se vuelve a poder.
+        while !p.esperar(1) {}
         assert!(p.se_puede_intentar(1), "el primer fallo no puede ser el ultimo");
     }
 
@@ -237,13 +317,22 @@ mod tests {
         assert!(p.se_puede_intentar(6), "este no tiene nada que ver");
     }
 
+    /// Gasta los intentos de un puerto pasando por las esperas, como haria el
+    /// barrido: intento, esperar lo que toque, intento...
+    fn gastar(p: &mut Puertos, port: u8) {
+        for _ in 0..MAX_INTENTOS {
+            assert!(p.se_puede_intentar(port));
+            p.anotar_intento(port);
+            while !p.esperar(port) {}
+        }
+    }
+
     #[test]
     fn los_intentos_gastados_se_enfrian_y_vuelven() {
         let mut p = Puertos::nuevo();
-        for _ in 0..MAX_INTENTOS {
-            p.anotar_intento(2);
-        }
+        gastar(&mut p, 2);
         assert!(!p.se_puede_intentar(2));
+        assert!(p.descansando(2));
         for _ in 0..ENFRIAMIENTO_BARRIDOS - 1 {
             assert!(!p.enfriar(2), "todavia descansa");
             assert!(!p.se_puede_intentar(2));
@@ -251,6 +340,49 @@ mod tests {
         assert!(p.enfriar(2), "se cumplio el descanso");
         assert!(p.se_puede_intentar(2), "y los intentos volvieron");
         assert_eq!(p.intentos(2), 0);
+    }
+
+    /// Entre un intento fallido y el siguiente se espera, y cada vez mas: un
+    /// aviso de enchufe en medio no gasta intento.
+    #[test]
+    fn entre_intentos_se_espera_y_cada_vez_mas() {
+        let mut p = Puertos::nuevo();
+        p.anotar_intento(1);
+        assert!(!p.se_puede_intentar(1), "recien fallado: se espera");
+        assert_eq!(p.esperando(1), espera_tras(1));
+        assert!(espera_tras(2) > espera_tras(1) && espera_tras(3) > espera_tras(2));
+        for _ in 0..espera_tras(1) - 1 {
+            assert!(!p.esperar(1));
+        }
+        assert!(p.esperar(1), "ya paso la espera");
+        assert!(p.se_puede_intentar(1));
+    }
+
+    /// Cada descanso cumplido dobla el siguiente, con tope; desenchufar lo
+    /// devuelve a cinco segundos.
+    #[test]
+    fn cada_descanso_dobla_el_siguiente_hasta_el_tope() {
+        let mut p = Puertos::nuevo();
+        let mut anteriores = 0u32;
+        for ciclo in 0..MAX_DOBLADOS as u32 + 2 {
+            gastar(&mut p, 3);
+            let mut barridos = 0u32;
+            while !p.enfriar(3) {
+                barridos += 1;
+            }
+            barridos += 1;
+            let esperado = (ENFRIAMIENTO_BARRIDOS as u32) << ciclo.min(MAX_DOBLADOS as u32);
+            assert_eq!(barridos, esperado, "ciclo {ciclo}");
+            assert!(barridos >= anteriores);
+            anteriores = barridos;
+        }
+        p.release(3);
+        gastar(&mut p, 3);
+        let mut barridos = 0u32;
+        while !p.enfriar(3) {
+            barridos += 1;
+        }
+        assert_eq!(barridos + 1, ENFRIAMIENTO_BARRIDOS as u32, "desenchufar devuelve el descanso corto");
     }
 
     #[test]

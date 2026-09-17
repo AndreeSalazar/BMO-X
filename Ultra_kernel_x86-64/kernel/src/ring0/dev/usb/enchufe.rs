@@ -167,11 +167,19 @@ fn atender_enchufe(puerto: u8) {
     // no contesto (se reintenta, y tras tres fallos descansa cinco segundos
     // y vuelve), o el aviso llego en un puerto que no se toca -- el del
     // teclado que escribe, o uno aparcado.
+    let (esperando, descansando) = unsafe {
+        let hid = &*core::ptr::addr_of!(HID);
+        (hid.puertos().esperando(idx), hid.puertos().descansando(idx))
+    };
     if adopcion == bmo_uhid::Adopcion::NoContesto {
         crate::ring0::cabina::info("usb", "puerto: ENCHUFADO y NO contesto: se reintenta", puerto as u64);
         crate::ring0::cabina::id("usb", "  ...intentos gastados en el", intentos as u64);
-    } else if cerrado && intentos >= bmo_uhid::puertos::MAX_INTENTOS {
-        crate::ring0::cabina::warn("usb", "puerto: ENCHUFADO, tres fallos: descansa 5 s y se reintenta", puerto as u64);
+    } else if cerrado && descansando {
+        // Descansando: el aviso de que ENTRO en descanso lo da el barrido,
+        // una vez. Aqui solo se apunta que el evento llego en medio.
+        crate::ring0::cabina::info("usb", "puerto: aviso mientras descansa (tres fallos): se ignora", puerto as u64);
+    } else if cerrado && esperando > 0 {
+        crate::ring0::cabina::info("usb", "puerto: aviso mientras espera entre intentos: se ignora", puerto as u64);
     } else {
         crate::ring0::cabina::info("usb", "puerto: aviso en un puerto que no se toca (mio o aparcado)", puerto as u64);
         crate::ring0::cabina::bits("usb", "  ...creo tener teclado:raton", estado);
@@ -287,6 +295,11 @@ pub(crate) fn barrer_si_toca() {
     }
     if r.reabiertos != 0 {
         crate::ring0::cabina::info("usb", "BARRIDO: puertos reabiertos (vacios, o que ya descansaron)", r.reabiertos as u64);
+    }
+    if r.descansando != 0 {
+        // UNA vez por descanso. La primera version avisaba en cada evento y
+        // el Ryzen enseno un aviso cada cinco segundos (2026-09-17).
+        crate::ring0::cabina::warn("usb", "BARRIDO: puertos que no contestan y entran en descanso (5 s, y cada vez mas)", r.descansando as u64);
     }
     if r.aparcados != 0 {
         crate::ring0::cabina::info("usb", "BARRIDO: aparatos que contestaron y no son mios, aparcados", r.aparcados as u64);

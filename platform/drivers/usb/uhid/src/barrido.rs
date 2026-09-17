@@ -62,6 +62,8 @@ pub struct Vista {
     pub es_mio: bool,
     /// El libro de puertos lo da por tomado (de aqui salio algo que funciona).
     pub tomado: bool,
+    /// Esta esperando entre dos intentos (barridos que le quedan).
+    pub esperando: u8,
     /// Intentos de adopcion gastados en este puerto.
     pub intentos: u8,
     /// Me falta algun aparato? (`!completo()`)
@@ -82,6 +84,8 @@ pub enum Accion {
     /// Hay algo, los intentos estan gastados: un barrido mas de descanso, y
     /// cuando se cumpla el descanso vuelven los intentos (2026-09-17).
     Enfriar,
+    /// Hay algo, fallo hace poco: un barrido mas de espera antes de insistir.
+    Esperar,
 }
 
 /// **La decision.** Todo el barrido es esto, una vez por puerto.
@@ -127,6 +131,11 @@ pub fn decidir(v: &Vista) -> Accion {
         // ver `puertos::ENFRIAMIENTO_BARRIDOS`.
         return Accion::Enfriar;
     }
+    if v.esperando > 0 {
+        // Fallo hace poco: se le da tiempo antes de volver a resetearlo. Ver
+        // `puertos::espera_tras`.
+        return Accion::Esperar;
+    }
     Accion::Adoptar
 }
 
@@ -144,6 +153,8 @@ pub struct Resumen {
     pub fallidos: u8,
     /// Aparatos que contestaron, no eran mios y quedaron aparcados.
     pub aparcados: u8,
+    /// Puertos que ACABAN de entrar en descanso (para avisar una vez).
+    pub descansando: u8,
 }
 
 impl Resumen {
@@ -154,6 +165,7 @@ impl Resumen {
             || self.adoptados != 0
             || self.fallidos != 0
             || self.aparcados != 0
+            || self.descansando != 0
     }
 }
 
@@ -169,6 +181,7 @@ mod tests {
             es_mio: false,
             tomado: false,
             intentos: 0,
+            esperando: 0,
             falta_algo: false,
         }
     }
@@ -260,6 +273,15 @@ mod tests {
     /// se ENFRIAN en vez de cerrarse: un aparato que no contesta descansa y se
     /// vuelve a intentar; uno que no sabemos adoptar ya no llega aqui, porque
     /// contesto y quedo aparcado.
+    /// Entre dos intentos se espera: el barrido no insiste al medio segundo.
+    #[test]
+    fn tras_un_fallo_se_espera_antes_de_insistir() {
+        let v = Vista { intentos: 1, esperando: 2, ..vista() };
+        assert_eq!(decidir(&v), Accion::Esperar);
+        let v = Vista { intentos: 1, esperando: 0, ..vista() };
+        assert_eq!(decidir(&v), Accion::Adoptar);
+    }
+
     #[test]
     fn un_aparato_que_no_contesta_se_enfria_en_vez_de_cerrarse() {
         let v = Vista { falta_algo: true, intentos: MAX_INTENTOS, ..vista() };
@@ -286,13 +308,13 @@ mod tests {
         let mut es_mio = true;
         let mut intentos = 1u8;
         assert_eq!(
-            decidir(&Vista { hay_dispositivo: true, es_mio, tomado, intentos, falta_algo: false }),
+            decidir(&Vista { hay_dispositivo: true, es_mio, tomado, intentos, esperando: 0, falta_algo: false }),
             Accion::Nada
         );
 
         // 2. Lo desenchufa y el aviso se pierde. El barrido ve el puerto vacio.
         assert_eq!(
-            decidir(&Vista { hay_dispositivo: false, es_mio, tomado, intentos, falta_algo: false }),
+            decidir(&Vista { hay_dispositivo: false, es_mio, tomado, intentos, esperando: 0, falta_algo: false }),
             Accion::Soltar,
             "el fantasma se va, y con el la mentira de completo()"
         );
@@ -304,13 +326,13 @@ mod tests {
 
         // 3. Sigue vacio: ya no hay nada que reparar.
         assert_eq!(
-            decidir(&Vista { hay_dispositivo: false, es_mio, tomado, intentos, falta_algo: true }),
+            decidir(&Vista { hay_dispositivo: false, es_mio, tomado, intentos, esperando: 0, falta_algo: true }),
             Accion::Nada
         );
 
         // 4. Lo vuelve a enchufar. Ahora SI falta algo, y la puerta esta abierta.
         assert_eq!(
-            decidir(&Vista { hay_dispositivo: true, es_mio, tomado, intentos, falta_algo: true }),
+            decidir(&Vista { hay_dispositivo: true, es_mio, tomado, intentos, esperando: 0, falta_algo: true }),
             Accion::Adoptar,
             "y aqui es donde antes salia 'nada que adoptar'"
         );
