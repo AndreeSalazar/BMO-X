@@ -84,6 +84,15 @@ pub const ENFRIAMIENTO_BARRIDOS: u8 = 10;
 /// s) hasta este tope de doblados, y desenchufar lo devuelve todo a cero.
 pub const MAX_DOBLADOS: u8 = 3;
 
+/// **Tras cuantos descansos cumplidos se ABANDONA el puerto** hasta que se
+/// desenchufe (2026-09-17, noche). Con `ENFRIAMIENTO_BARRIDOS` y
+/// `MAX_DOBLADOS` son 5 + 10 + 20 + 40 = 75 segundos de intentos. Un aparato
+/// de verdad contesta en segundos; uno que lleva mas de un minuto mudo no va a
+/// entrar a base de resets, y cada reset congela el bus --y el teclado--
+/// medio segundo. El Ryzen lo enseno con algo en el puerto 1 que acepta
+/// direccion y no da descriptores. Desenchufar lo devuelve todo.
+pub const ABANDONO_DESCANSOS: u8 = 4;
+
 /// **Barridos de espera entre un intento fallido y el siguiente**: `1 <<
 /// intentos` (2, 4, 8 barridos = 1, 2, 4 s). Antes los tres intentos caian
 /// seguidos --uno por barrido y otro por el aviso del propio reset-- en
@@ -160,6 +169,12 @@ impl Puertos {
         Self::cabe(port) && !self.tomado(port) && self.intentos[port as usize] >= MAX_INTENTOS
     }
 
+    /// Abandonado: no contesto en `ABANDONO_DESCANSOS` descansos. No se toca
+    /// hasta que se desenchufe.
+    pub fn abandonado(&self, port: u8) -> bool {
+        Self::cabe(port) && self.doblados[port as usize] >= ABANDONO_DESCANSOS
+    }
+
     /// **Un barrido mas de espera** entre intentos. `true` si ya puede.
     pub fn esperar(&mut self, port: u8) -> bool {
         if !Self::cabe(port) {
@@ -220,16 +235,32 @@ impl Puertos {
             return false;
         }
         let i = port as usize;
+        if self.doblados[i] >= ABANDONO_DESCANSOS {
+            // Abandonado: ni cuenta ni vuelve. Solo desenchufar lo levanta.
+            return false;
+        }
         self.enfriando[i] = self.enfriando[i].saturating_add(1);
         let tope = ENFRIAMIENTO_BARRIDOS << self.doblados[i].min(MAX_DOBLADOS);
         if self.enfriando[i] >= tope {
             self.enfriando[i] = 0;
+            self.doblados[i] = self.doblados[i].saturating_add(1);
+            if self.doblados[i] >= ABANDONO_DESCANSOS {
+                // El ultimo descanso no devuelve los intentos: se abandona.
+                return false;
+            }
             self.intentos[i] = 0;
             self.espera[i] = 0;
-            self.doblados[i] = self.doblados[i].saturating_add(1);
             return true;
         }
         false
+    }
+
+    /// Acaba de ser abandonado? (el barrido en que se decidio). Para avisar
+    /// una vez.
+    pub fn recien_abandonado(&self, port: u8) -> bool {
+        Self::cabe(port)
+            && self.doblados[port as usize] == ABANDONO_DESCANSOS
+            && self.enfriando[port as usize] == 0
     }
 
     /// Acaba de entrar en descanso? (el primer barrido de este descanso).
@@ -364,7 +395,7 @@ mod tests {
     fn cada_descanso_dobla_el_siguiente_hasta_el_tope() {
         let mut p = Puertos::nuevo();
         let mut anteriores = 0u32;
-        for ciclo in 0..MAX_DOBLADOS as u32 + 2 {
+        for ciclo in 0..ABANDONO_DESCANSOS as u32 - 1 {
             gastar(&mut p, 3);
             let mut barridos = 0u32;
             while !p.enfriar(3) {
@@ -383,6 +414,33 @@ mod tests {
             barridos += 1;
         }
         assert_eq!(barridos + 1, ENFRIAMIENTO_BARRIDOS as u32, "desenchufar devuelve el descanso corto");
+    }
+
+    /// Tras `ABANDONO_DESCANSOS` descansos sin contestar, el puerto se abandona:
+    /// no vuelve a intentarse hasta desenchufar. Un reset cada poco congela el
+    /// teclado, y un mudo de un minuto no va a entrar por resetearlo mas.
+    #[test]
+    fn un_puerto_mudo_se_abandona_hasta_desenchufar() {
+        let mut p = Puertos::nuevo();
+        for _ in 0..ABANDONO_DESCANSOS - 1 {
+            gastar(&mut p, 5);
+            while !p.enfriar(5) {}
+            assert!(!p.abandonado(5));
+        }
+        gastar(&mut p, 5);
+        // El ultimo descanso no devuelve los intentos.
+        for _ in 0..(ENFRIAMIENTO_BARRIDOS as u32) << MAX_DOBLADOS {
+            assert!(!p.enfriar(5));
+        }
+        assert!(p.abandonado(5));
+        assert!(p.recien_abandonado(5));
+        assert!(!p.se_puede_intentar(5));
+        for _ in 0..1000 {
+            assert!(!p.enfriar(5), "abandonado no vuelve solo");
+        }
+        p.release(5);
+        assert!(!p.abandonado(5));
+        assert!(p.se_puede_intentar(5), "desenchufar lo levanta");
     }
 
     #[test]

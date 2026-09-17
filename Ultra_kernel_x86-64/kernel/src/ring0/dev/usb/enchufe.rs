@@ -167,13 +167,15 @@ fn atender_enchufe(puerto: u8) {
     // no contesto (se reintenta, y tras tres fallos descansa cinco segundos
     // y vuelve), o el aviso llego en un puerto que no se toca -- el del
     // teclado que escribe, o uno aparcado.
-    let (esperando, descansando) = unsafe {
+    let (esperando, descansando, abandonado) = unsafe {
         let hid = &*core::ptr::addr_of!(HID);
-        (hid.puertos().esperando(idx), hid.puertos().descansando(idx))
+        (hid.puertos().esperando(idx), hid.puertos().descansando(idx), hid.puertos().abandonado(idx))
     };
     if adopcion == bmo_uhid::Adopcion::NoContesto {
         crate::ring0::cabina::info("usb", "puerto: ENCHUFADO y NO contesto: se reintenta", puerto as u64);
         crate::ring0::cabina::id("usb", "  ...intentos gastados en el", intentos as u64);
+    } else if cerrado && abandonado {
+        crate::ring0::cabina::info("usb", "puerto: aviso en un puerto ABANDONADO (mudo): se ignora hasta desenchufar", puerto as u64);
     } else if cerrado && descansando {
         // Descansando: el aviso de que ENTRO en descanso lo da el barrido,
         // una vez. Aqui solo se apunta que el evento llego en medio.
@@ -295,6 +297,9 @@ pub(crate) fn barrer_si_toca() {
     }
     if r.reabiertos != 0 {
         crate::ring0::cabina::info("usb", "BARRIDO: puertos reabiertos (vacios, o que ya descansaron)", r.reabiertos as u64);
+    }
+    if r.abandonados != 0 {
+        crate::ring0::cabina::warn("usb", "BARRIDO: puertos MUDOS tras 75 s de intentos, ABANDONADOS hasta desenchufar", r.abandonados as u64);
     }
     if r.descansando != 0 {
         // UNA vez por descanso. La primera version avisaba en cada evento y

@@ -656,6 +656,8 @@ impl UsbHidHal {
                 Accion::Enfriar => {
                     if self.puertos.enfriar(port) {
                         r.reabiertos = r.reabiertos.saturating_add(1);
+                    } else if self.puertos.recien_abandonado(port) {
+                        r.abandonados = r.abandonados.saturating_add(1);
                     } else if self.puertos.recien_descansando(port) {
                         r.descansando = r.descansando.saturating_add(1);
                     }

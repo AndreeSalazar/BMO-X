@@ -155,6 +155,8 @@ pub struct Resumen {
     pub aparcados: u8,
     /// Puertos que ACABAN de entrar en descanso (para avisar una vez).
     pub descansando: u8,
+    /// Puertos que ACABAN de abandonarse: mudos tras todos los descansos.
+    pub abandonados: u8,
 }
 
 impl Resumen {
@@ -166,6 +168,7 @@ impl Resumen {
             || self.fallidos != 0
             || self.aparcados != 0
             || self.descansando != 0
+            || self.abandonados != 0
     }
 }
 
