@@ -89,11 +89,11 @@ fn tarea() -> &'static mut Tarea {
     unsafe { &mut *addr_of_mut!(TAREA) }
 }
 
-fn nodo() -> &'static mut Option<Nodo> {
+pub(crate) fn nodo() -> &'static mut Option<Nodo> {
     unsafe { &mut *addr_of_mut!(NODO) }
 }
 
-fn ahora_ms() -> u64 {
+pub(crate) fn ahora_ms() -> u64 {
     let hz = bmo::info(bmo::INFO_TSC_HZ);
     if hz < 1000 {
         return 0;
@@ -115,8 +115,8 @@ fn u32ip(ip: Ip) -> u32 {
 
 /// **Lo comun a ping y dns**: hay IP, hay pase, hay nodo, y a quien se le
 /// pregunta por ARP. `None` si no se puede, ya dicho en pantalla.
-fn preparar(s: &mut Output, destino: Ip) -> Option<Ip> {
-    if tarea().fase != QUIETO {
+pub(crate) fn preparar(s: &mut Output, destino: Ip) -> Option<Ip> {
+    if tarea().fase != QUIETO || crate::commands::red_tcp::activa() {
         s.text(b"  ya hay un ping o una pregunta en marcha: sale aqui abajo segun avanza\n");
         return None;
     }
@@ -344,12 +344,14 @@ pub(crate) fn cada_vuelta() {
     if t.fase == PINGANDO && t.esperando {
         crate::commands::red_pase::drenar();
     }
+    // Y el saludo TCP (G5), que necesita el buzon cada vuelta.
+    crate::commands::red_tcp::cada_vuelta();
 }
 
 /// **Una trama del buzon.** La llama `red_pase::drenar` con TODAS.
 pub(crate) fn oir(trama: &[u8]) {
     let t = tarea();
-    if t.fase == QUIETO {
+    if t.fase == QUIETO && !crate::commands::red_tcp::activa() {
         return;
     }
     let Some(n) = nodo().as_mut() else { return };
@@ -389,6 +391,10 @@ pub(crate) fn oir(trama: &[u8]) {
                 t.rechazo_servidor = Some(bmo_pila::Rechazo::NoEsParaMi);
             }
         }
+        // Un segmento TCP es del saludo (G5): el nodo ya lo demultiplexo.
+        Ok(Hecho::Tcp { origen, destino, segmento }) => {
+            crate::commands::red_tcp::segmento(origen, destino, segmento);
+        }
         Err(r) if del_servidor => t.rechazo_servidor = Some(r),
         _ => {}
     }
@@ -396,6 +402,7 @@ pub(crate) fn oir(trama: &[u8]) {
 
 /// **Un cuarto de segundo.**
 pub(crate) fn latir(s: &mut Output) {
+    crate::commands::red_tcp::latir(s);
     let t = tarea();
     if t.fase == QUIETO {
         return;

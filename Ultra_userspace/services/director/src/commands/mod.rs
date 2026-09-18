@@ -32,6 +32,8 @@ pub(crate) mod red_pase;
 pub(crate) mod red_ip;
 /// `red ping` y `red dns`: la pila propia sobre el buzon (G3 y G4).
 pub(crate) mod red_nodo;
+/// `red hola <ip>`: TCP de verdad contra la antena (G5).
+pub(crate) mod red_tcp;
 pub(crate) mod reports;
 /// Lo que `save` no decia y CABINA si: usb, prestamos, avisos (2026-09-17).
 pub(crate) mod save_cabina;

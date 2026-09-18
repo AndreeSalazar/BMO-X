@@ -243,3 +243,91 @@ fn veinte_mil_mutaciones_no_revientan() {
         assert!(rx <= BUFER && tx <= BUFER);
     }
 }
+
+/// *** POR EL CABLE ENTERO (G5, 2026-09-18): dos NODOS con su pila TCP,
+/// hablando por tramas Ethernet de verdad -- lo que `red hola` hace sobre el
+/// buzon, sin el buzon. Cada segmento sale por `Tcp::salida`, se envuelve con
+/// `Nodo::envolver` (Ethernet + IPv4) y entra por `Nodo::atender`, que lo
+/// demultiplexa como `Hecho::Tcp` y lo entrega a `Tcp::entrada`. Si alguna
+/// de las cuatro costuras se equivocara de byte, los tres pasos no cerrarian.
+#[test]
+fn el_saludo_entero_por_tramas_ethernet_y_cierre_limpio() {
+    use crate::nodo::{Hecho, Nodo, CARGA};
+    const MC: [u8; 6] = [0x02, 0, 0, 0, 0, 0x0C];
+    const MS: [u8; 6] = [0x02, 0, 0, 0, 0, 0x05];
+    let mut nc = Nodo::nuevo(MC, CLI);
+    let mut ns = Nodo::nuevo(MS, SRV);
+    let mut c = Box::new(Tcp::nueva([3; 32]));
+    let mut s = Box::new(Tcp::nueva([5; 32]));
+    let e = s.escuchar(SRV, 7117).unwrap();
+    let k = c.conectar(CLI, SRV, 7117, 0).unwrap();
+
+    // Un lado manda todo lo que su pila quiera, envuelto; el otro lo atiende.
+    fn cruza(de: &mut Tcp, nodo_de: &mut Nodo, mac_a: [u8; 6], a: &mut Tcp, nodo_a: &mut Nodo, ahora: u64) -> bool {
+        let mut algo = false;
+        let mut buf = [0u8; 1514];
+        let mut resp = [0u8; 1514];
+        while let Some((_, su_ip, n)) = de.salida(ahora, &mut buf[CARGA..]) {
+            algo = true;
+            let total = nodo_de.envolver(&mut buf, mac_a, su_ip, crate::ipv4::TCP, n).unwrap();
+            match nodo_a.atender(&buf[..total], ahora, &mut resp).unwrap() {
+                Hecho::Tcp { origen, destino, segmento } => a.entrada(origen, destino, segmento, ahora).unwrap(),
+                otro => panic!("el nodo no lo vio como TCP: {:?}", otro),
+            }
+        }
+        algo
+    }
+    let mut ahora = 0u64;
+    let mut vueltas = 0;
+    loop {
+        let a = cruza(&mut c, &mut nc, MS, &mut s, &mut ns, ahora);
+        let b = cruza(&mut s, &mut ns, MC, &mut c, &mut nc, ahora);
+        if !a && !b {
+            break;
+        }
+        vueltas += 1;
+        ahora += 16;
+        assert!(vueltas < 100, "no se callan");
+    }
+    let a = s.aceptar(e).expect("el servidor acepta");
+    assert_eq!(c.estado(k), Estado::Establecida);
+    assert_eq!(s.estado(a), Estado::Establecida);
+    // SYN y ACK al servidor, SYN+ACK al cliente: tres, y los tres por el nodo.
+    assert_eq!(nc.cuentas.tcp + ns.cuentas.tcp, 3, "los tres pasos pasaron por los nodos");
+
+    // HOLA, y la respuesta de vuelta, como la antena.
+    c.enviar(k, b"HOLA ANTENA/1\n").unwrap();
+    for _ in 0..10 {
+        cruza(&mut c, &mut nc, MS, &mut s, &mut ns, ahora);
+        cruza(&mut s, &mut ns, MC, &mut c, &mut nc, ahora);
+        ahora += 16;
+    }
+    let mut buf = [0u8; 64];
+    let n = s.recibir(a, &mut buf).unwrap();
+    assert_eq!(&buf[..n], b"HOLA ANTENA/1\n");
+    s.enviar(a, b"HOLA ANTENA/1 honor\n").unwrap();
+    for _ in 0..10 {
+        cruza(&mut s, &mut ns, MC, &mut c, &mut nc, ahora);
+        cruza(&mut c, &mut nc, MS, &mut s, &mut ns, ahora);
+        ahora += 16;
+    }
+    let n = c.recibir(k, &mut buf).unwrap();
+    assert_eq!(&buf[..n], b"HOLA ANTENA/1 honor\n");
+
+    // El cierre limpio, desde el cliente, como `red hola`.
+    c.cerrar(k).unwrap();
+    for _ in 0..10 {
+        cruza(&mut c, &mut nc, MS, &mut s, &mut ns, ahora);
+        cruza(&mut s, &mut ns, MC, &mut c, &mut nc, ahora);
+        ahora += 16;
+    }
+    assert_eq!(s.estado(a), Estado::CierreEspera);
+    s.cerrar(a).unwrap();
+    for _ in 0..10 {
+        cruza(&mut s, &mut ns, MC, &mut c, &mut nc, ahora);
+        cruza(&mut c, &mut nc, MS, &mut s, &mut ns, ahora);
+        ahora += 16;
+    }
+    assert_eq!(s.estado(a), Estado::Cerrada(Cierre::Normal));
+    assert_eq!(c.estado(k), Estado::TiempoEspera, "los dos FIN cruzaron: TIME-WAIT");
+}

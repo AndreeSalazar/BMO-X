@@ -360,6 +360,7 @@ pub(crate) fn orden(s: &mut Output, what: &[u8]) -> bool {
         b"ip" => crate::commands::red_ip::empezar(s, resto),
         b"ping" => crate::commands::red_nodo::ping(s, resto),
         b"dns" => crate::commands::red_nodo::dns(s, resto),
+        b"hola" => crate::commands::red_tcp::hola(s, resto),
         b"ver" => ver(s, false),
         b"tapar" => ver(s, true),
         b"opciones" | b"ayuda" | b"?" => opciones(s),
@@ -376,9 +377,10 @@ pub(crate) fn orden(s: &mut Output, what: &[u8]) -> bool {
 /// **TODAS LAS OPCIONES DE `red`**, en una pantalla.
 pub(crate) fn opciones(s: &mut Output) {
     section(s, b"RED -- LAS OPCIONES");
-    let filas: [(&[u8], &[u8]); 14] = [
+    let filas: [(&[u8], &[u8]); 15] = [
         (b"red ping <ip>", b"cuatro ecos con la pila propia, con su tiempo (pide `red ip`)"),
         (b"red dns <nombre>", b"pregunta la IPv4 de un nombre al DNS del router (pide `red ip`)"),
+        (b"red hola <ip>", b"TCP de verdad: HOLA ANTENA/1 a la antena en 7117, y cierre limpio (pide `red ip`)"),
         (b"red", b"el informe: tarjeta, enlace, receptor y lo que llega"),
         (b"red perfil", b"lo que la maquina sabe de su red, recortado"),
         (b"red rx", b"arma el receptor y cuenta lo nuevo"),
