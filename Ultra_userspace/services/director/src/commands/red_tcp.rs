@@ -1,4 +1,5 @@
-//! **`red hola <ip>`: TCP de verdad contra un servidor real** (G5, 2026-09-18).
+//! **`red hola <ip>` y `red pagina <ip> <url>`: TCP de verdad contra la
+//! antena** (G5 y N3a, 2026-09-18).
 //!
 //! [consumo] NADA      trabaja solo mientras hay un saludo en marcha
 //!
@@ -20,11 +21,20 @@
 //! (`cada_vuelta`, 16 ms) y los plazos se miran cada cuarto de segundo
 //! (`latir`). El RTO de la pila es 1 s, asi que un RTT de 16-32 ms no le
 //! cuesta ni un reintento. Lo que no hace: mas de una conexion a la vez.
-//! Es una sonda, no el ANTENISTA (N3): el ANTENISTA es un servicio en Rust
-//! que hara exactamente esto por otros, y esta sonda es lo que lo prueba.
+//!
+//! ** Y `red pagina <ip> <url>` es el ANTENISTA DE BOLSILLO (N3a): la misma
+//! conexion, y despues del saludo pide `PAGINA <url>`; la respuesta pasa por
+//! `bmo_antena::Conversacion` (el protocolo) y por su `lamina::Lector` (el
+//! juez), linea a linea, y si la lamina es entera y valida se guarda en
+//! `datos/pagina.lam` -- que es de donde NAVEGAR la pinta. El disco hace de
+//! buzon entre los dos: no es el ANTENISTA del plan (un servicio que OFRECE
+//! la lamina en un bloque), pero cierra la cadena entera antena -> TCP ->
+//! juez -> NAVEGAR con lo que hay, y lo que el servicio hara es esto mismo
+//! sin el disco en medio.
 
 use core::ptr::addr_of_mut;
 
+use bmo_antena::{Conversacion, Fase, Lineas, Pedido, Respuesta};
 use bmo_pila::ether::Mac;
 use bmo_pila::ipv4::{self, Ip};
 use bmo_pila::nodo::CARGA;
@@ -41,15 +51,26 @@ const CERRANDO: u8 = 4;
 
 /// El puerto de ANTENA/1.
 pub(crate) const PUERTO_ANTENA: u16 = 7117;
-const SALUDO: &[u8] = b"HOLA ANTENA/1\n";
 const ESPERA_ARP_MS: u64 = 6_000;
 const ESPERA_CONEXION_MS: u64 = 10_000;
 const ESPERA_RESPUESTA_MS: u64 = 5_000;
+/// Una pagina la antena la NAVEGA: 2,5 s medidos en el HONOR sin imagenes,
+/// 7 con. Veinte segundos es el doble del peor caso visto.
+const ESPERA_PAGINA_MS: u64 = 20_000;
 const ESPERA_CIERRE_MS: u64 = 10_000;
 const LINEA_MAX: usize = 256;
+/// Lo que cabe de lamina: la de Wikipedia mide 90 KB (L3c).
+const LAMINA_MAX: usize = 256 * 1024;
+/// Donde queda lo que trajo la antena, y de donde NAVEGAR lo pinta. 8.3.
+const RUTA_LAMINA: &[u8] = b"datos/pagina.lam";
+
+/// Que se le pide a la antena despues del saludo.
+const GUION_HOLA: u8 = 0;
+const GUION_PAGINA: u8 = 1;
 
 struct Saludo {
     fase: u8,
+    guion: u8,
     destino: Ip,
     salto: Ip,
     mac: Mac,
@@ -59,14 +80,32 @@ struct Saludo {
     fase_ms: u64,
     dejadas: u64,
     recibidas: u64,
+    /// La linea del saludo (`red hola`), para ensenarla.
     linea: [u8; LINEA_MAX],
     largo: usize,
     completa: bool,
+    // -- red pagina --
+    url: [u8; bmo_antena::URL_MAX],
+    largo_url: usize,
+    conv: Conversacion,
+    lineas: Lineas,
+    /// Bytes de lamina guardados en `LAMINA` (las lineas tal cual llegaron).
+    lam_largo: usize,
+    lam_ancho: u32,
+    lam_alto: u32,
+    lam_elementos: u32,
+    lam_lineas: u32,
+    /// La antena dijo NO, con este motivo.
+    no: [u8; 64],
+    largo_no: usize,
+    /// La antena se salio del protocolo, o la lamina no paso el juez.
+    rechazo: Option<bmo_antena::Rechazo>,
 }
 
 const fn quieto() -> Saludo {
     Saludo {
         fase: QUIETO,
+        guion: GUION_HOLA,
         destino: [0; 4],
         salto: [0; 4],
         mac: [0; 6],
@@ -79,10 +118,24 @@ const fn quieto() -> Saludo {
         linea: [0; LINEA_MAX],
         largo: 0,
         completa: false,
+        url: [0; bmo_antena::URL_MAX],
+        largo_url: 0,
+        conv: Conversacion::nueva(),
+        lineas: Lineas::nueva(),
+        lam_largo: 0,
+        lam_ancho: 0,
+        lam_alto: 0,
+        lam_elementos: 0,
+        lam_lineas: 0,
+        no: [0; 64],
+        largo_no: 0,
+        rechazo: None,
     }
 }
 
 static mut SALUDO_EN_MARCHA: Saludo = quieto();
+/// La lamina tal cual llega, linea a linea. Ceros: `.bss`, no pesa.
+static mut LAMINA: [u8; LAMINA_MAX] = [0; LAMINA_MAX];
 /// La pila TCP: ocho conexiones con sus buferes (~130 KB). Vive aqui y no
 /// en el nodo, porque el nodo es de ping y dns tambien y no sabe de asas.
 ///
@@ -125,11 +178,31 @@ pub(crate) fn hola(s: &mut Output, resto: &[u8]) {
         s.text(b"  uso: red hola 192.168.0.103   (la antena, puerto 7117)\n");
         return;
     };
+    empezar(s, ip.to_be_bytes(), GUION_HOLA, &[]);
+}
+
+/// **`red pagina <ip> <url>`**: el antenista de bolsillo (N3a).
+pub(crate) fn pagina(s: &mut Output, resto: &[u8]) {
+    let (ip_txt, url) = match resto.iter().position(|&b| b == b' ') {
+        Some(i) => (&resto[..i], resto[i + 1..].trim_ascii()),
+        None => (resto, &b""[..]),
+    };
+    let Some(ip) = crate::commands::red_pase::ipv4(ip_txt) else {
+        s.text(b"  uso: red pagina 192.168.0.103 https://example.com\n");
+        return;
+    };
+    if !bmo_antena::url_valida(url) {
+        s.text(b"  la url tiene que empezar por http:// o https://, sin espacios, y medir menos de 200\n");
+        return;
+    }
+    empezar(s, ip.to_be_bytes(), GUION_PAGINA, url);
+}
+
+fn empezar(s: &mut Output, destino: Ip, guion: u8, url: &[u8]) {
     if activa() {
         s.text(b"  ya hay un saludo en marcha: sale aqui abajo segun avanza\n");
         return;
     }
-    let destino = ip.to_be_bytes();
     let Some(salto) = crate::commands::red_nodo::preparar(s, destino) else { return };
     let Some(k) = crate::commands::red_ip::concesion() else { return };
     // El secreto del ISN (RFC 6528): el reloj y la MAC, que nadie de fuera
@@ -145,6 +218,9 @@ pub(crate) fn hola(s: &mut Output, resto: &[u8]) {
     let t = saludo();
     *t = quieto();
     t.fase = RESOLVIENDO;
+    t.guion = guion;
+    t.url[..url.len()].copy_from_slice(url);
+    t.largo_url = url.len();
     t.destino = destino;
     t.salto = salto;
     t.mi_ip = k.ip;
@@ -168,24 +244,118 @@ pub(crate) fn segmento(origen: Ip, destino: Ip, bytes: &[u8]) {
     let Some(p) = tcp() else { return };
     t.recibidas += 1;
     let _ = p.entrada(origen, destino, bytes, ahora());
-    // Lo que haya llegado de datos se recoge en el acto, hasta el salto de
-    // linea: la antena contesta UNA linea.
+    // Lo que haya llegado de datos se recoge en el acto, linea a linea, y
+    // cada linea pasa por el protocolo (`Conversacion`) -- que es quien sabe
+    // si lo que dice la antena es lo que toca decir ahora.
     if t.fase == HABLANDO && !t.completa {
-        let mut buf = [0u8; 128];
+        let mut buf = [0u8; 256];
+        let mut linea = [0u8; LINEA_MAX + 2];
         while let Ok(n) = p.recibir(t.asa, &mut buf) {
             if n == 0 {
                 break;
             }
             for &b in &buf[..n] {
-                if b == b'\n' {
-                    t.completa = true;
-                } else if !t.completa && t.largo < LINEA_MAX {
-                    t.linea[t.largo] = b;
-                    t.largo += 1;
+                if t.completa {
+                    break;
                 }
+                let paso = match t.lineas.empujar(b) {
+                    None => continue,
+                    Some(Err(r)) => {
+                        t.rechazo = Some(r);
+                        t.completa = true;
+                        break;
+                    }
+                    Some(Ok(l)) => {
+                        let k = l.len().min(linea.len());
+                        linea[..k].copy_from_slice(&l[..k]);
+                        k
+                    }
+                };
+                oir_linea(t, p, &linea[..paso]);
             }
         }
     }
+}
+
+/// Manda un pedido por la conexion, y la conversacion se entera.
+fn pedir(t: &mut Saludo, p: &mut Tcp, pedido: &Pedido) {
+    let _ = t.conv.pedir(pedido);
+    let mut out = [0u8; bmo_antena::URL_MAX + 16];
+    if let Ok(n) = bmo_antena::escribir(&mut out, pedido) {
+        let _ = p.enviar(t.asa, &out[..n]);
+    }
+}
+
+/// **Una linea de la antena.** El protocolo decide que es; aqui se decide
+/// que se hace con ella segun el guion.
+fn oir_linea(t: &mut Saludo, p: &mut Tcp, linea: &[u8]) {
+    match t.conv.oir(linea) {
+        Ok(Respuesta::Hola { nombre }) => {
+            let k = nombre.len().min(LINEA_MAX);
+            t.linea[..k].copy_from_slice(&nombre[..k]);
+            t.largo = k;
+            if t.guion == GUION_PAGINA {
+                let mut url = [0u8; bmo_antena::URL_MAX];
+                url[..t.largo_url].copy_from_slice(&t.url[..t.largo_url]);
+                let largo = t.largo_url;
+                pedir(t, p, &Pedido::Pagina(&url[..largo]));
+            } else {
+                t.completa = true;
+            }
+        }
+        Ok(Respuesta::Lamina(cab)) => {
+            t.lam_ancho = cab.ancho;
+            t.lam_alto = cab.alto;
+            t.lam_elementos = cab.elementos;
+            guardar_linea(t, linea);
+            // Una lamina de cero elementos ya esta entera.
+            if matches!(t.conv.fase(), Fase::Charla) {
+                t.completa = true;
+            }
+        }
+        Ok(Respuesta::Elemento(_)) => {
+            guardar_linea(t, linea);
+            if matches!(t.conv.fase(), Fase::Charla) {
+                t.completa = true;
+            }
+        }
+        Ok(Respuesta::No { motivo }) => {
+            let k = motivo.len().min(t.no.len());
+            t.no[..k].copy_from_slice(&motivo[..k]);
+            t.largo_no = k;
+            t.completa = true;
+        }
+        Ok(_) => {}
+        Err(r) => {
+            t.rechazo = Some(r);
+            t.completa = true;
+        }
+    }
+}
+
+/// Una linea de la lamina, tal cual, al bufer (con su salto de linea).
+fn guardar_linea(t: &mut Saludo, linea: &[u8]) {
+    let lam = unsafe { &mut *addr_of_mut!(LAMINA) };
+    if t.lam_largo + linea.len() + 1 > LAMINA_MAX {
+        t.rechazo = Some(bmo_antena::Rechazo::Largo);
+        t.completa = true;
+        return;
+    }
+    lam[t.lam_largo..t.lam_largo + linea.len()].copy_from_slice(linea);
+    lam[t.lam_largo + linea.len()] = b'\n';
+    t.lam_largo += linea.len() + 1;
+    t.lam_lineas += 1;
+}
+
+/// **La lamina, al disco**: `datos/pagina.lam`. Devuelve los bytes escritos.
+fn guardar_lamina(t: &Saludo) -> usize {
+    let lam = unsafe { &*core::ptr::addr_of!(LAMINA) };
+    let Ok(f) = bmo::Archivo::create(RUTA_LAMINA) else { return 0 };
+    let n = f.write(&lam[..t.lam_largo]);
+    if !f.close() {
+        return 0;
+    }
+    n
 }
 
 /// **Lo que la pila quiera mandar, al cable.** Cada vuelta del escritorio
@@ -284,7 +454,7 @@ pub(crate) fn latir(s: &mut Output) {
                     s.dec(ahora.saturating_sub(t.fase_ms));
                     s.text(b" ms: los tres pasos\n");
                     s.with_ink(INK_PLAIN);
-                    let _ = p.enviar(t.asa, SALUDO);
+                    pedir(t, p, &Pedido::Hola);
                     t.fase = HABLANDO;
                     t.fase_ms = ahora;
                     bombear(t);
@@ -314,11 +484,7 @@ pub(crate) fn latir(s: &mut Output) {
         HABLANDO => {
             let Some(p) = tcp() else { terminar(); return };
             if t.completa {
-                s.with_ink(INK_GOOD);
-                s.text(b"  [hola] la antena dice: ");
-                s.text(&t.linea[..t.largo]);
-                s.byte(b'\n');
-                s.with_ink(INK_PLAIN);
+                contar_lo_que_paso(s, t);
                 let _ = p.cerrar(t.asa);
                 t.fase = CERRANDO;
                 t.fase_ms = ahora;
@@ -335,9 +501,14 @@ pub(crate) fn latir(s: &mut Output) {
                 terminar();
                 return;
             }
-            if ahora.saturating_sub(t.fase_ms) >= ESPERA_RESPUESTA_MS {
+            let espera = if t.guion == GUION_PAGINA { ESPERA_PAGINA_MS } else { ESPERA_RESPUESTA_MS };
+            if ahora.saturating_sub(t.fase_ms) >= espera {
                 s.with_ink(INK_ERR);
-                s.text(b"  [hola] conectada, pero sin respuesta al HOLA en 5 s\n");
+                s.text(if t.guion == GUION_PAGINA {
+                    b"  [pagina] conectada, pero la antena no acabo la lamina en 20 s\n"
+                } else {
+                    b"  [hola] conectada, pero sin respuesta al HOLA en 5 s\n"
+                });
                 s.with_ink(INK_PLAIN);
                 let _ = p.abortar(t.asa);
                 bombear(t);
@@ -381,6 +552,53 @@ pub(crate) fn latir(s: &mut Output) {
         }
         _ => terminar(),
     }
+}
+
+/// Lo que la antena contesto, dicho segun el guion.
+fn contar_lo_que_paso(s: &mut Output, t: &Saludo) {
+    if let Some(r) = t.rechazo {
+        s.with_ink(INK_ERR);
+        s.text(b"  [antena] se salio del protocolo, o la lamina no paso el juez: ");
+        s.text(r.texto().as_bytes());
+        s.text(b"\n  [antena] linea ");
+        s.dec(t.lam_lineas as u64 + 1);
+        s.text(b" de la lamina; no se guarda nada\n");
+        s.with_ink(INK_PLAIN);
+        return;
+    }
+    if t.largo_no > 0 {
+        s.with_ink(INK_ERR);
+        s.text(b"  [antena] dice NO: ");
+        s.text(&t.no[..t.largo_no]);
+        s.byte(b'\n');
+        s.with_ink(INK_PLAIN);
+        return;
+    }
+    s.with_ink(INK_GOOD);
+    s.text(b"  [antena] HOLA ANTENA/1 ");
+    s.text(&t.linea[..t.largo]);
+    s.byte(b'\n');
+    if t.guion == GUION_PAGINA {
+        s.text(b"  [antena] LAMINA ");
+        s.dec(t.lam_ancho as u64);
+        s.byte(b'x');
+        s.dec(t.lam_alto as u64);
+        s.text(b", ");
+        s.dec(t.lam_elementos as u64);
+        s.text(b" elementos, ");
+        s.dec(t.lam_largo as u64);
+        s.text(b" bytes, juzgada entera\n");
+        let n = guardar_lamina(t);
+        if n == t.lam_largo {
+            s.text(b"  [antena] guardada en datos/pagina.lam -- `run apps/navegar.ibx` la pinta\n");
+        } else {
+            s.with_ink(INK_ERR);
+            s.text(b"  [antena] NO se pudo guardar en datos/pagina.lam (escritos ");
+            s.dec(n as u64);
+            s.text(b")\n");
+        }
+    }
+    s.with_ink(INK_PLAIN);
 }
 
 fn resumen(s: &mut Output, t: &Saludo) {

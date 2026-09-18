@@ -671,8 +671,10 @@ try {
     Write-Host '    [datos] tema.mus (Vivaldi, para inti/musica.ibx)' -ForegroundColor DarkGray
     # La lamina de example.com, la misma que sirve la antena: NAVEGAR la pinta
     # si esta (N2 de PLAN_NAVEGAR). Texto, en el repo, y se lee en un diff.
-    Copy-Item (Join-Path $repo 'toolchain\tools\antena\ejemplo.lamina') (Join-Path $imgDst 'ejemplo.lamina') -Force
-    Write-Host '    [datos] ejemplo.lamina (example.com, para apps/navegar.ibx)' -ForegroundColor DarkGray
+    # [!] 8.3: el FAT32 de BMO-X busca por nombre corto y se salta las
+    # entradas de nombre largo, asi que `ejemplo.lamina` no lo encontraria.
+    Copy-Item (Join-Path $repo 'toolchain\tools\antena\ejemplo.lamina') (Join-Path $imgDst 'ejemplo.lam') -Force
+    Write-Host '    [datos] ejemplo.lam (example.com, para apps/navegar.ibx)' -ForegroundColor DarkGray
     # El aspecto del escritorio: lo lee el DIRECTOR al arrancar. Texto, en el
     # repo, y se edita ahi -- el despliegue pisa el de A:\sys\.
     $sysDst = Join-Path $dataBase 'sys'

@@ -151,13 +151,14 @@ fn lamina_ejemplo() -> Vec<u8> {
 }
 
 /// Corre NAVEGAR con un DIRECTOR de mentira, la lamina dada en
-/// `datos/ejemplo.lamina`, y los eventos que se le entreguen antes de la `q`.
+/// `datos/ejemplo.lam` (8.3: el FAT32 de BMO-X no lee nombres largos), y los
+/// eventos que se le entreguen antes de la `q`.
 fn con_lamina(lamina: &[u8], eventos: &[u64]) -> Machine {
     use bmo_abi::syscalls::surface::SUP_EV_CARACTER;
     let e = emitido(&fuente());
     let mut m = maquina(&e);
     m.padre = 7;
-    m.poner_archivo("datos/ejemplo.lamina", lamina);
+    m.poner_archivo("datos/ejemplo.lam", lamina);
     for &ev in eventos {
         m.buzon_pendiente.push_back(ev);
     }

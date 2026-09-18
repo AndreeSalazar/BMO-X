@@ -38,3 +38,5 @@ bmo-config = { path = "../../../platform/shared/bmo-config" }
 # La pila TCP/IP propia: hoy DHCP (`red ip`). Fuera por lo de siempre: alli se
 # prueba contra servidores de mentira, y aqui no corre un test.
 bmo-pila = { path = "../../../platform/shared/bmo-pila" }
+# ANTENA/1: la conversacion y el juez de la lamina, para `red pagina` (N3a).
+bmo-antena = { path = "../../../platform/shared/bmo-antena" }

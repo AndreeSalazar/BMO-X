@@ -223,7 +223,8 @@ de esta casa; prometer 60 fps por ESPEJO es S6 y cuesta lo que dice la seccion
 
 - [x] **N2 -- Navegar pinta una lamina DE FICHERO.** HECHO el 2026-09-18
       en el emulador, esperando el Ryzen. Dos cambios sobre lo escrito, dichos:
-      la lamina viene de DATOS (`datos/ejemplo.lamina`, la copia el build)
+      la lamina viene de DATOS (`datos/ejemplo.lam` -- 8.3, el FAT32 de BMO-X
+      no lee nombres largos --, la copia el build)
       y no del `.ibx`, porque `paquete.recurso` no tiene cuerpo en INTI; y el
       recorrido vive en `tables/lang/inti/runtime/lamina/lamina.inti` (`usa
       lamina`) y no en la carpeta de la app, porque `usa` solo trae piezas
@@ -237,12 +238,26 @@ de esta casa; prometer 60 fps por ESPEJO es S6 y cuesta lo que dice la seccion
       escala 2 en 121..153, el enlace en su azul; la flecha abajo la sube 32
       px; una caja fuera y un color malo se niegan con su nombre y su linea
       en naranja, y lo de fuera no se pinta. En el Ryzen: `run
-      apps/navegar.ibx` con `datos/ejemplo.lamina` en el disco.
+      apps/navegar.ibx` con `datos/ejemplo.lam` en el disco.
 
+- [~] **N3a -- el ANTENISTA DE BOLSILLO** (2026-09-18, en codigo, esperando
+      el Ryzen): `red pagina <ip> <url>` en
+      `Ultra_userspace/services/director/src/commands/red_tcp.rs`. La misma
+      conexion de G5; tras el saludo pide `PAGINA <url>`, cada linea pasa por
+      `bmo_antena::Conversacion` (el protocolo) y su `lamina::Lector` (el
+      juez), y la lamina entera y valida se guarda en `datos/pagina.lam`, que
+      es lo primero que NAVEGAR mira antes de `ejemplo.lam`. El DISCO hace
+      de buzon entre los dos: cierra la cadena antena -> TCP -> juez ->
+      NAVEGAR con lo que hay. Una antena que se sale del protocolo o una
+      lamina que no pasa el juez se dicen con su falta y su linea, y no se
+      guarda nada. **Como se sabe:** `red pagina 192.168.0.103
+      https://example.com` dice `LAMINA 640x800, 7 elementos, guardada`, y
+      `run apps/navegar.ibx` pinta example.com traido por el HONOR.
 - [ ] **N3 -- el ANTENISTA.** `Ultra_userspace/services/antenista`: Rust, Ring
       3, habla ANTENA/1 por `bmo-pila` (G5), aplica `cuarentena.rs`, pide
       `PAGINA <url>`, valida la lamina con `lamina.rs` y la OFRECE a Navegar en
-      un bloque; recoge `CLIC`/`TECLA` del buzon de Navegar. **Como se sabe:**
+      un bloque (sin el disco de N3a en medio); recoge `CLIC`/`TECLA` del
+      buzon de Navegar. **Como se sabe:**
       una pagina real de la antena del movil se pinta en Navegar, y una antena
       que manda una linea basura aparece en CABINA con su falta y Navegar
       ensena "antena en cuarentena, N s".

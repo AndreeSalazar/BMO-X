@@ -19,7 +19,7 @@
 #
 # La version 1 (N1, vista en el Ryzen el 18-09) abria la ventana con el
 # mensaje. Esta ademas PINTA UNA LAMINA: si en el disco hay
-# `datos/ejemplo.lamina` (la de example.com, la misma que la antena manda),
+# `datos/ejemplo.lam` (la de example.com, la misma que la antena manda),
 # la recorre con `usa lamina` --las reglas de `lamina.rs`, en INTI-- y la
 # ensena en una ventana de 640x400 con desplazamiento (flechas, AvPag/RePag).
 #
@@ -206,13 +206,21 @@ funcion dibuja_lamina(s es natural64, base es natural64, largo es natural64, des
 #  3. El fichero
 # ===================================================================
 
-# `datos/ejemplo.lamina` entero al bloque. Devuelve cuantos bytes, o
-# SIN_LAMINA si no esta o no cabe.
+# `datos/pagina.lam` (lo ultimo que trajo la antena, `red pagina`) o, si no
+# esta, `datos/ejemplo.lam` (example.com, la copia el build): entero al
+# bloque. Devuelve cuantos bytes, o SIN_LAMINA si no hay ninguna o no cabe.
+#
+# [!] Nombres 8.3: el FAT32 de BMO-X busca por nombre corto y se salta los
+# largos. `ejemplo.lamina` no se encontraria nunca; `ejemplo.lam` si.
 funcion lee_lamina(bloque es natural64) devuelve natural64
-    invoca(mi_tarea, op_ruta, ocho_bytes("datos/ej"), 0, 0)
-    invoca(mi_tarea, op_ruta, ocho_bytes("emplo.la"), 0, 0)
-    invoca(mi_tarea, op_ruta, ocho_bytes("mina"), 0, 0)
-    f es natural64 = invoca_valor(mi_tarea, op_archivo_abrir, 0, 0, 0)
+    invoca(mi_tarea, op_ruta, ocho_bytes("datos/pa"), 0, 0)
+    invoca(mi_tarea, op_ruta, ocho_bytes("gina.lam"), 0, 0)
+    cambiante f es natural64 = invoca_valor(mi_tarea, op_archivo_abrir, 0, 0, 0)
+    si f = 0
+        invoca(mi_tarea, op_ruta, ocho_bytes("datos/ej"), 0, 0)
+        invoca(mi_tarea, op_ruta, ocho_bytes("emplo.la"), 0, 0)
+        invoca(mi_tarea, op_ruta, ocho_bytes("m"), 0, 0)
+        f = invoca_valor(mi_tarea, op_archivo_abrir, 0, 0, 0)
     si f = 0
         devuelve SIN_LAMINA
     medida es natural64 = invoca_valor(f, op_arch_tamano, 0, 0, 0)
