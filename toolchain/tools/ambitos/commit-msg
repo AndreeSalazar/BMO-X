@@ -19,4 +19,9 @@
 # En Windows con Git for Windows no hace falta chmod: `sh` lo ejecuta igual.
 # Para saltarselo una vez: `git commit --no-verify`.
 
+# ** Y la PRIVACIDAD del mensaje (2026-09-18): ni una IP de casa ni una MAC de
+# fabricante. Un mensaje no lo mira el build -- mira ficheros --, y lo que entra
+# en la historia publicada ya no sale sin reescribirla.
+python "$(git rev-parse --show-toplevel)/toolchain/tools/privacidad/privacidad.py" --msg "$1" || exit 1
+
 exec python "$(git rev-parse --show-toplevel)/toolchain/tools/ambitos/ambitos.py" --msg "$1"

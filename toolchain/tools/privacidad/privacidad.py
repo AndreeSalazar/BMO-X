@@ -5,11 +5,16 @@
 La regla es del dueno, del 2026-09-13: *ni MAC entera ni IP en el repo
 PUBLICO*. La pantalla y CABINA recortan la MAC al fabricante desde entonces.
 
-Y el 2026-09-18 se rompio SIN QUE NADA AVISARA: `192.168.0.103` --la IP de la
-antena del dueno-- entro en cuatro sitios en un solo dia (dos textos de uso en
+Y el 2026-09-18 se rompio SIN QUE NADA AVISARA: la IP de la antena del dueno
+--una `192.168.0.x`-- entro en cuatro sitios en un solo dia (dos textos de uso en
 `red_tcp.rs` y dos "como se sabe" en los planes), y dos de ellos llegaron a
 GitHub. La regla existia y estaba bien escrita; lo que no tenia era quien la
 mirara. Una regla que solo vive en un texto se incumple sin ruido.
+
+** Y este mismo fichero la volvio a meter: esta cabecera traia la IP literal
+al contar el incidente, y el guardian paso limpio mientras el fichero no
+estaba en git -- solo mira lo publicado. Al hacer el commit, se cazo a si
+mismo. Contar un dato sensible tambien es publicarlo.
 
 == Que mira ==
 
@@ -147,10 +152,40 @@ def comprobar():
     return 0
 
 
+def mensaje(ruta):
+    """Juzga un MENSAJE DE COMMIT, antes de que el commit exista.
+
+    ** El paso del build mira ficheros, y un mensaje no es un fichero: el
+    2026-09-18 el commit que arreglaba esto CONTO el incidente con la IP
+    literal en su mensaje, el build paso limpio, y alguien lo subio. Lo que hay
+    en la historia publicada solo se quita reescribiendola; lo barato es no
+    dejar que entre. Por eso esto va en el hook `commit-msg`.
+    """
+    with open(ruta, encoding="utf-8", errors="replace") as f:
+        lineas = [l for l in f.read().splitlines() if not l.startswith("#")]
+    quejas = []
+    for n, linea in enumerate(lineas, 1):
+        quejas += ["linea %d: IP de una red privada: %s" % (n, ip) for ip in ip_privada(linea)]
+        quejas += ["linea %d: MAC de fabricante: %s" % (n, m) for m in mac_de_fabricante(linea)]
+    if quejas:
+        for q in quejas:
+            print("  [X] mensaje de commit, " + q)
+        print("privacidad: el mensaje publicaria un dato de la red de casa. Escribelo con un "
+              "hueco (<ip-de-la-antena>); el commit NO se ha hecho.")
+        return 1
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description="Ni IP de casa ni MAC de fabricante en el repo.")
     ap.add_argument("--check", action="store_true", help="lo que llama el build")
-    ap.parse_args()
+    ap.add_argument("--msg", metavar="FICHERO", help="juzga un mensaje de commit (hook commit-msg)")
+    args = ap.parse_args()
+    if args.msg:
+        if autoprueba():
+            print("guardian MUERTO: su propia expresion falla")
+            return 1
+        return mensaje(args.msg)
     return comprobar()
 
 
