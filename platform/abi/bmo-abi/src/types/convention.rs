@@ -53,13 +53,9 @@ pub enum CallingConvention {
     /// Red zone: 256 bytes. Stack alignment: 64 bytes. No shadow space.
     BmoX86_64 = 0,
 
-    /// BMO native ARM64 (AArch64): X0-X7 args, X0-X1 return.
-    /// Reserved for future ARM64 port.
-    BmoArm64 = 1,
-
-    /// BMO native RISC-V (RV64GC): A0-A7 args, A0-A1 return.
-    /// Reserved for future RISC-V port.
-    BmoRiscV64 = 2,
+    // ** 1 y 2 eran ARM64 y RISC-V "para el futuro puerto". Desde el 2026-09-18
+    // este repositorio es SOLO x86-64 (`toolchain/tools/isa`): otra CPU es otro
+    // repositorio, con su propia convencion. Los numeros no se reutilizan.
 
     /// System V AMD64 ABI (Linux compatibility): RDI, RSI, RDX, RCX, R8, R9.
     /// Used for ELF binary compatibility shims.
@@ -72,7 +68,6 @@ impl CallingConvention {
         match self {
             Self::BmoX86_64 => 7,
             Self::SystemVAmd64 => 6,
-            Self::BmoArm64 | Self::BmoRiscV64 => 8,
         }
     }
 
@@ -81,8 +76,6 @@ impl CallingConvention {
         match self {
             Self::BmoX86_64 => &["rdi", "rsi", "rdx", "rcx", "r8", "r9", "r10"],
             Self::SystemVAmd64 => &["rdi", "rsi", "rdx", "rcx", "r8", "r9"],
-            Self::BmoArm64 => &["x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7"],
-            Self::BmoRiscV64 => &["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"],
         }
     }
 
@@ -90,7 +83,6 @@ impl CallingConvention {
     pub fn return_registers(self) -> &'static [&'static str] {
         match self {
             Self::BmoX86_64 | Self::SystemVAmd64 => &["rax", "rdx"],
-            Self::BmoArm64 | Self::BmoRiscV64 => &["x0", "x1"],
         }
     }
 
@@ -98,7 +90,6 @@ impl CallingConvention {
     pub const fn stack_align(self) -> bx_u32 {
         match self {
             Self::BmoX86_64 | Self::SystemVAmd64 => 64,
-            Self::BmoArm64 | Self::BmoRiscV64 => 16,
         }
     }
 
@@ -107,7 +98,6 @@ impl CallingConvention {
         match self {
             Self::BmoX86_64 => 256,
             Self::SystemVAmd64 => 128,
-            _ => 0,
         }
     }
 
@@ -115,21 +105,15 @@ impl CallingConvention {
     pub fn name(self) -> &'static str {
         match self {
             Self::BmoX86_64 => "bmo-x86_64",
-            Self::BmoArm64 => "bmo-arm64",
-            Self::BmoRiscV64 => "bmo-riscv64",
             Self::SystemVAmd64 => "systemv-amd64",
         }
     }
 
-    /// The default calling convention for the current architecture.
-    #[cfg(target_arch = "x86_64")]
+    /// La convencion de BMO-X. ** Hasta el 2026-09-18 dependia de la CPU del
+    /// que COMPILABA: en un Mac ARM, las herramientas habrian creido que BMO-X
+    /// era ARM64 y emitido con otra convencion. Lo que BMO-X ejecuta no depende
+    /// de donde corre el compilador.
     pub const NATIVE: CallingConvention = CallingConvention::BmoX86_64;
-
-    #[cfg(target_arch = "aarch64")]
-    pub const NATIVE: CallingConvention = CallingConvention::BmoArm64;
-
-    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-    pub const NATIVE: CallingConvention = CallingConvention::BmoRiscV64;
 }
 
 /// Scalar types that can be passed in a single GPR.

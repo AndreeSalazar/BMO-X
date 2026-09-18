@@ -196,6 +196,12 @@ Guardian 'Validating CODEOWNERS covers what the kernel links' `
     'toolchain\tools\codeowners\codeowners.py' 'el cerrojo de Ring 0' `
     'codeowners: la lista de Ring 0 no dice lo que el kernel enlaza (ver arriba)'
 
+# ** Una arquitectura, un repositorio (2026-09-18): este es SOLO x86-64, y otra
+# CPU es otro repositorio. Ver su cabecera.
+Guardian 'Validating this repository is x86-64 only' `
+    'toolchain\tools\isa\isa.py' 'que el repo sea de una sola arquitectura' `
+    'isa: hay codigo, un target o una carpeta para otra CPU (ver arriba)'
+
 # ---------------------------------------------------------------------------
 # ** EL QUINTO GUARDIAN: LAS CITAS A DOCUMENTOS (2026-08-17).
 #

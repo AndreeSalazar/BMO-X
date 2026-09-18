@@ -125,9 +125,11 @@ pub enum BefArch {
     Reserved = 0x00,
     /// AMD64 / x86-64 (baseline BMO).
     X86_64 = 0x01,
-    /// AArch64 (futuro, no implementado).
+    /// AArch64. ** No es de este repositorio (2026-09-18: SOLO x86-64): el
+    /// numero se queda para que una imagen de ARM se RECONOZCA y se rechace
+    /// con su nombre, y para que otro repositorio no lo reutilice.
     Aarch64 = 0x02,
-    /// RISC-V 64-bit (futuro).
+    /// RISC-V 64-bit. Lo mismo que el de arriba.
     Rv64gc = 0x03,
 }
 
@@ -166,9 +168,13 @@ pub enum BefArch {
 ///
 /// Este enum. Una imagen **declara para que CPU es**, y el cargador del kernel
 /// **ya lo comprueba** (`bex::inspect` -> `UnsupportedArchitecture`). O sea que
-/// el dia que exista `Ultra_kernel_aarch64`, un `.bex` de x86 y uno de ARM
-/// pueden convivir en el mismo disco y cada maquina rechaza el que no es suyo,
+/// el dia que exista un BMO-X de ARM, un `.bex` de x86 y uno de ARM pueden
+/// convivir en el mismo disco y cada maquina rechaza el que no es suyo,
 /// **con un mensaje y no con un cuelgue**.
+///
+/// ** Y desde el 2026-09-18, ese BMO-X de ARM es OTRO REPOSITORIO, no una
+/// carpeta al lado de esta (`toolchain/tools/isa`). Lo unico que comparten es
+/// este byte.
 ///
 /// Ese es el gancho entero, y lleva puesto desde que se diseno el formato.
 

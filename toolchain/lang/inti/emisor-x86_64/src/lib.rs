@@ -14,9 +14,10 @@
 //!    (esto)                nombra x86-64 en cada linea, porque ES x86-64.
 //! ```
 //!
-//! El dia de otra arquitectura, `emisor-aarch64/` al lado y **el frontend no se
-//! toca**. Esa es la mitad B de la portabilidad de la seccion 7 del maestro,
-//! convertida en dos carpetas.
+//! El dia de otra arquitectura, **el frontend se copia sin tocarlo** y el emisor
+//! nuevo nace en OTRO repositorio: desde el 2026-09-18 este es SOLO x86-64
+//! (`toolchain/tools/isa`). Esa es la mitad B de la portabilidad de la seccion 7
+//! del maestro: un frontend que no nombra ninguna maquina se copia sin choques.
 //!
 //! ## ** Y lo que se emite que ningun otro lenguaje emite
 //!

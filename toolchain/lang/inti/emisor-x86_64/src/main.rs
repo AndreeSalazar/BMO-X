@@ -16,9 +16,9 @@
 //! ## Por que vive en el crate del EMISOR y no en el frontend
 //!
 //! Porque produce bytes de una maquina, y el frontend tiene prohibido nombrar
-//! ninguna. El dia que exista `emisor-aarch64` tendra su propio `inti` al lado,
-//! y el nombre del directorio dira cual es cual -- igual que `usa x86_64` lo
-//! dice en el fichero del usuario.
+//! ninguna. Otra arquitectura tendra su propio `inti` en SU repositorio (desde
+//! el 2026-09-18 este es SOLO x86-64), y el nombre del directorio dira cual es
+//! cual -- igual que `usa x86_64` lo dice en el fichero del usuario.
 //!
 //! ## ** Y lo que NO hace, que es la pregunta de Eddi (21-08)
 //!

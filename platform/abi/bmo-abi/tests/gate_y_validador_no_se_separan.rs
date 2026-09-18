@@ -184,3 +184,27 @@ fn el_menor_es_aditivo_de_verdad_y_no_solo_por_casualidad() {
     assert!(admite(1, 0), "el heredado sigue entrando");
     assert!(!admite(1, 1), "pero solo hasta su propio menor");
 }
+
+/// **La arquitectura: los dos jueces dicen que NO a lo que no es x86-64.**
+///
+/// ** Hasta el 2026-09-18 no coincidian: la puerta rechazaba un `.bex` de ARM,
+/// de RISC-V o sin arquitectura, y el validador lo daba por VALIDO con un
+/// aviso. Ese dia el repositorio paso a ser SOLO x86-64 (`toolchain/tools/isa`)
+/// y el validador dice lo mismo que la puerta. Esto impide que vuelvan a
+/// separarse.
+#[test]
+fn los_dos_rechazan_lo_que_no_es_x86_64() {
+    let mut b = bmo_abi::bef::BefBuilder::new();
+    b.add_section(bmo_abi::bef::BefSection::code(vec![0xC3; 16]));
+    let buena = b.build().unwrap();
+    for arch in [0x00u8, 0x01, 0x02, 0x03, 0x7F] {
+        let mut img = buena.clone();
+        img[12] = arch;
+        let val = bmo_abi::bef::validate(&img).is_valid;
+        let gate = bmo_bex_gate::revisar(&img, img.len())
+            .err()
+            .map_or(true, |f| f != bmo_bex_gate::Falta::OtraArquitectura);
+        assert_eq!(val, arch == bmo_bex_gate::ARCH_X86_64, "validador, arch {arch:#04x}");
+        assert_eq!(gate, val, "la puerta y el validador discrepan en arch {arch:#04x}");
+    }
+}

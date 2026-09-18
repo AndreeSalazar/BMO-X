@@ -8,8 +8,9 @@
 #   faggin/         2-stage consolidated pre-kernel chain (Faggin-style)
 #   Ultra_userspace/  Ring 3 side (sibling workspace at the top of FastOS)
 #
-# For other CPU architectures (AArch64, RISC-V) the entire tree is
-# duplicated as Ultra_kernel_<arch>/, since the faggin stages, linker
+# For other CPU architectures (AArch64, RISC-V) the entire REPOSITORY is
+# copied as another BMO-X (2026-09-18: this one is x86-64 ONLY, see
+# toolchain/tools/isa), since the faggin stages, linker
 # scripts, and bare-metal asm are CPU-specific. The shared contracts
 # (BootContext layout, bmo-abi, bmo-hal) live in platform/
 # and are CPU-agnostic.

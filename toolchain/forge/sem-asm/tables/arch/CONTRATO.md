@@ -16,6 +16,18 @@ No es un plan de portar a RISC-V. Es **la forma del hueco**: cuando llegue un
 chip --RISC-V, uno soberano, uno hecho a medida-- la pregunta *"que tengo que
 escribir?"* debe tener una lista, no una arqueologia del emisor de x86.
 
+### [!] 2026-09-18: el hueco sigue abierto, pero ya NO esta en este repositorio
+
+Eddi decidio: **una arquitectura, un repositorio**. Este es BMO-X para x86-64,
+y el chip nuevo NO llega como `arch/<isa>/` al lado de `arch/x86_64/`: llega
+como OTRO repositorio que empieza copiando este. El motivo, en sus palabras:
+mezclar arquitecturas en un arbol trae choques, y BMO-X no es Linux.
+
+Lo que la orden del 24-08 pedia --que la pregunta *"que tengo que escribir?"*
+tenga una lista-- **sigue valiendo entero**: esta es la lista que sigue quien
+haga esa copia. Lo que cambia es DONDE se escribe la respuesta. Y el guardian
+`toolchain/tools/isa` para el build si alguien la escribe aqui.
+
 ### [!] Y la razon de fondo, que es de arquitectura y no de comodidad
 
 BMO-X tiene **2 syscalls congelados**. Eso hace que la superficie que un chip

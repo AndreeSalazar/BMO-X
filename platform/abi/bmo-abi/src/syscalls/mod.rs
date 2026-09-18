@@ -35,8 +35,8 @@ pub use generated::*;
 pub mod surface;
 
 // ===========================================================================
-//  Syscall wrappers (x86_64). Arquitectura-especificos.
-//  Cuando se anada ARM: arch/aarch64.rs, arch/riscv64.rs, etc.
+//  Syscall wrappers (x86_64). Este repositorio es SOLO x86-64 (2026-09-18,
+//  `toolchain/tools/isa`): otra CPU es otro repositorio, no un `arch/` aqui.
 // ===========================================================================
 
 /// Resultado de un syscall: (code, value) = (RAX, RDX).

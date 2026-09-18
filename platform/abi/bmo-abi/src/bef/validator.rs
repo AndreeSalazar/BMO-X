@@ -362,12 +362,17 @@ fn validate_header(header: &BefHeader, bytes: &[u8], r: &mut ValidationResult) {
             crate::BMO_ABI_VERSION.1,
         ));
     }
+    // ** Hasta el 2026-09-18 esto solo AVISABA, y la puerta del kernel
+    // (`bmo-bex-gate`, `Falta::OtraArquitectura`) ya lo RECHAZABA: el toolchain
+    // daba por buena una imagen que la maquina iba a negar. Este repositorio es
+    // SOLO x86-64 (`toolchain/tools/isa`), y el juez de aqui dice lo mismo.
+    // Las dos respuestas las ata `tests/gate_y_validador_no_se_separan.rs`.
     match header.arch {
         0x01 => {}
-        0x00 => r.warn("arch is Reserved (0x00) -- assuming x86-64"),
-        0x02 => r.warn("AArch64 BEF -- not supported on this host"),
-        0x03 => r.warn("RISC-V BEF -- not supported on this host"),
-        _ => r.warn(format!("unknown arch: {:#04x}", header.arch)),
+        0x00 => r.error("arch is Reserved (0x00) -- this BMO-X is x86-64 only"),
+        0x02 => r.error("AArch64 BEF -- this BMO-X is x86-64 only"),
+        0x03 => r.error("RISC-V BEF -- this BMO-X is x86-64 only"),
+        _ => r.error(format!("unknown arch: {:#04x} -- this BMO-X is x86-64 only", header.arch)),
     }
     if header.section_count == 0 {
         r.error("no sections declared");

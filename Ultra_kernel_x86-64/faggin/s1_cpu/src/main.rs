@@ -4,7 +4,8 @@
 //! CPU-specific lives here, not in the kernel, because:
 //!   - It's a one-time setup (boot time only)
 //!   - It's CPU-specific (not portable -- each CPU has its quirks)
-//!   - The kernel should be generic (portable to AArch64/RISC-V later)
+//!   - The kernel keeps the CPU setup in one place (an AArch64/RISC-V BMO-X
+//!     would be another repository, 2026-09-18 -- toolchain/tools/isa)
 //!   - CPU optimizations like Zen 3 mitigations need to be applied early
 //!
 //! Zen 3 (Ryzen 5 5600X) specific features enabled here:

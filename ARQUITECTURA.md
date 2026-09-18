@@ -38,9 +38,32 @@ project loses track of itself -- and how it starts lying to its own author.
 
 ---
 
-## Layout -- multi-arch from day one
+## Layout -- ONE architecture per repository
 
-BMO splits into a **CPU-agnostic core** and a **per-CPU kernel tree**.
+**This repository is BMO-X for x86-64, and only x86-64** -- kernel, desktop,
+compilers and everything they emit (decided 2026-09-18). An ARM64 or RISC-V
+BMO-X is **another repository** that starts as a copy of this one; the two
+never share a tree.
+
+Why: mixing architectures in one tree is where the collisions come from, and
+BMO-X is not Linux. A tree full of `#[cfg(target_arch)]` carries paths that no
+machine the owner has ever runs, and a path nothing runs compiles and lies.
+This tree had two of them the day the rule was written: the BEF validator only
+*warned* about an ARM image (the kernel refused it anyway), and
+`CallingConvention::NATIVE` changed with the CPU of whoever *compiled*.
+
+Hardware **profiles** are cheap and many fit here (LEY 24: several x86-64
+boards, one tree). **Architectures** are not.
+
+The scope is what BMO-X **executes**. The compilers run on a host -- today a
+Windows x86-64 -- and where they run is not this rule's business; what they
+emit is.
+
+The guardian `toolchain/tools/isa` stops the build if any build target is not
+`x86_64-*`, if Rust source opens a `target_arch` path for another CPU, or if a
+folder or file is named after another ISA (`arch/aarch64/`, `emisor-riscv64/`,
+`Ultra_kernel_arm64/`). Comments and docs may *name* other architectures; code
+may not exist for them.
 
 ```
 BMO/
@@ -59,17 +82,22 @@ BMO/
 |   +-- lang/                 C, C++, COBOL, Ada -> BEF
 |   +-- forge/                shared pipeline: bmo-lower, sem-asm, bmo-verify
 |   +-- tools/                build-time generators, estratos-fmt
-+-- Ultra_kernel_aarch64/     (planned) same structure, ARM chain
 ```
 
-`platform/` is the part of BMO that is **genuinely CPU-agnostic** -- the BEF
-format, the syscall surface, the lock-free channel, version control and the
-language frontends work identically on any CPU.
+`platform/` is the part written **without assuming a CPU** -- the BEF format,
+the syscall surface, the lock-free channel, version control and the language
+frontends. That is what makes a copy cheap; it does not make it shared. And it
+is not free of x86-64 either: the `syscall` instruction lives in `bmo-abi`,
+`RDRAND` in `bmo-cripto`, the PS/2 ports in `bmo-input`. In a single-ISA tree
+that is correct, not debt.
 
-To port to another architecture: duplicate `Ultra_kernel_x86-64/` as
-`Ultra_kernel_<arch>/` and rewrite the **two stages** (`faggin/s1_cpu`,
-`faggin/s2_mem` -- the only CPU-specific code) plus the inline assembly in the
-kernel's `_start`.
+To build BMO-X for another architecture: copy the **whole repository**, and
+in the copy rewrite the two stages (`faggin/s1_cpu`, `faggin/s2_mem`), the
+kernel's inline assembly, the `asm!` in `platform/`, and the emitters
+(`bmo-lower`, `sem-asm/tables/arch/x86_64`, `inti/emisor-x86_64`). The list of
+what a chip has to declare is `toolchain/forge/sem-asm/tables/arch/CONTRATO.md`.
+The only thing the two repositories share is the architecture byte of the BEF
+header, so each machine recognises the other's `.bex` and refuses it by name.
 
 ---
 

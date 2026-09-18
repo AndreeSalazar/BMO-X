@@ -2,7 +2,8 @@
 resolver = "2"
 members = [
     # -- ULTRA KERNEL x86-64 (Ring 0 base + 12-stage faggin chain) ---
-    # CPU-specific kernel. For ARM/RISC-V ports see Ultra_kernel_<arch>/.
+    # CPU-specific kernel. This repository is x86-64 ONLY (2026-09-18,
+    # toolchain/tools/isa): an ARM or RISC-V BMO-X is another repository.
     "Ultra_kernel_x86-64/boot_context",
     "Ultra_kernel_x86-64/kernel",
 

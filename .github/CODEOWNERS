@@ -91,6 +91,7 @@
 /toolchain/tools/planes/                     @AndreeSalazar
 /toolchain/tools/privacidad/                 @AndreeSalazar
 /toolchain/tools/codeowners/                 @AndreeSalazar
+/toolchain/tools/isa/                        @AndreeSalazar
 /toolchain/tools/relevo/                     @AndreeSalazar
 /toolchain/tools/tamano/                     @AndreeSalazar
 

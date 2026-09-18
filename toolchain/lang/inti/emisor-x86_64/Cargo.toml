@@ -13,8 +13,9 @@ description = "INTI para x86-64: de la IR a bytes. El unico sitio que puede nomb
 # de vigilar a la semana.
 #
 # Asi la frontera no es una convencion: **es el arbol de directorios**. El dia
-# de otra arquitectura sera `emisor-aarch64/` al lado, con el mismo frontend
-# encima y sin tocarlo.
+# de otra arquitectura, el frontend se COPIA sin tocarlo a otro repositorio y
+# alli nace su emisor -- no al lado de este (2026-09-18: este repositorio es
+# SOLO x86-64, `toolchain/tools/isa`).
 #
 # El nombre del directorio dice la maquina, igual que `usa x86_64` la dice en el
 # fichero del usuario.
