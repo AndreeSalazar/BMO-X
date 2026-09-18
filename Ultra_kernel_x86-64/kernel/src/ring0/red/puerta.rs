@@ -2,6 +2,7 @@
 //! y la revocacion en caliente.
 //!
 //! [carril]  ROJO      mapea memoria en un proceso y se la quita sin pedirle permiso
+//! [prueba]  bmo-net   -- de quien es la culpa de cada no (`NoSale::culpa`)
 //! [consumo] LATE      un hilo cada 4 ms MIENTRAS hay un pase; sin pase no existe
 //!
 //! # E3 de `docs/plan/PLAN_RED_TX.md` (2026-09-13)

@@ -263,6 +263,18 @@ def autoprueba():
     # No declararlo NO es un fallo: la mayoria de Ring 0 no tiene juez que sacar.
     exige("R8(sin declarar juez)",
           r8_el_juez_nombrado_existe({"core/gato/neon.rs": "//! un gato"}), False)
+    # ** Redefinida el 17-09. Un juez de platform/drivers EXISTE: `bmo-net` vive
+    # en `drivers/net` y antes esta regla no lo encontraba.
+    exige("R8(juez en platform/drivers)",
+          r8_el_juez_nombrado_existe(
+              {"red/mod.rs": "//! [prueba]  bmo-net" + chr(10)}), False)
+    # *** Y la que su texto prometia y no cumplia: un juez SIN FILAS no juzga.
+    # `bmo-ahci` es el driver del disco y hoy no tiene ni una. El dia que la
+    # tenga, este caso se cambia a otro crate sin banco -- y ese dia es buena
+    # noticia.
+    exige("R8(juez sin una fila)",
+          r8_el_juez_nombrado_existe(
+              {"dev/disk/mod.rs": "//! [prueba]  bmo-ahci" + chr(10)}))
 
     # -- R9: los carriles POR MODULO ---------------------------------------
     #

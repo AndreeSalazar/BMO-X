@@ -30,6 +30,7 @@
 //! ```
 //!
 //! [carril]  AMARILLO  la tarjeta de red: EN OBRAS, y por eso amarilla
+//! [prueba]  bmo-net   -- que se hace con cada trama (`recibir`); lo demas es la mano
 //! [consumo] NADA      lee la tarjeta cuando alguien pregunta; sigue encendida
 //!                     como la dejo el firmware
 //!
@@ -559,7 +560,12 @@ fn rx_poll_con(entregar: &mut dyn FnMut(&[u8])) -> u32 {
         None => return 0,
     };
     unsafe {
-        let cuenta = &mut *core::ptr::addr_of_mut!(CONTADORES);
+        // [!] Los contadores se tocan con accesos CORTOS, uno por uso, y no
+        // con un `&mut` que viva todo el bucle: `report.rs`, `shell/hardware.rs`
+        // y la syscall de `red rx` los LEEN sin tomar el cerrojo de `puerta`. Un
+        // `&mut` largo prometeria una exclusividad que no existe. Es el mismo
+        // patron que tenian los cinco `static mut` de antes, y no se da ni un
+        // paso mas alla (17-09).
         // Bounded by the ring length: one turn never walks more than once around,
         // so a card that returns everything at once cannot keep this loop.
         for _ in 0..bmo_net::RX_RING_LEN {
@@ -581,12 +587,12 @@ fn rx_poll_con(entregar: &mut dyn FnMut(&[u8])) -> u32 {
             if !v.devuelve() {
                 break;
             }
-            cuenta.apuntar(&v);
+            (*core::ptr::addr_of_mut!(CONTADORES)).apuntar(&v);
 
             match v {
                 bmo_net::recibir::Veredicto::Parar => {}
                 bmo_net::recibir::Veredicto::Mala(que) => {
-                    if cuenta.malas <= 4 {
+                    if (*core::ptr::addr_of!(CONTADORES)).malas <= 4 {
                         crate::ring0::cabina::count("red", "trama MALA devuelta a la tarjeta (2=error 3=partida 4=enana)", que.codigo() as u64);
                     }
                 }
@@ -604,7 +610,7 @@ fn rx_poll_con(entregar: &mut dyn FnMut(&[u8])) -> u32 {
                     // ** LAS CUATRO LINEAS, SOLO PARA LAS 16 PRIMERAS. Con el
                     // latido sondeando cada 4 ms, una red con trafico llenaria
                     // CABINA en un segundo y taparia lo que de verdad importa.
-                    if cuenta.tramas <= 16 {
+                    if (*core::ptr::addr_of!(CONTADORES)).tramas <= 16 {
                         // *** LA FOTO DEL PASO 1, y son CUATRO lineas y no dos:
                         // sin el DESTINO, esta foto no distingue "el filtro de
                         // recepcion funciona" de "el filtro esta abierto de par

@@ -2,6 +2,7 @@
 //! vuelos y el grifo de `bmo_net::tx`.
 //!
 //! [carril]  ROJO      enciende `CR.TE` y le dice a la tarjeta de donde leer
+//! [prueba]  bmo-net   -- el grifo, los vuelos y el corral de salida (`tx`)
 //! [consumo] APARATO   el transmisor queda encendido desde el primer pase; la
 //!                     tarjeta solo lee cuando se toca la campana
 //!

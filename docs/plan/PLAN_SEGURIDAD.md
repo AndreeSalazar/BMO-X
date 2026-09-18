@@ -715,10 +715,15 @@ inventen despues de escribir esto.
     Mutado, caen las tres: reintroducir el atasco tumba una fila, suplantar sin
     culpa tumba dos, leer antes de mirar si cabe tumba una. Y de paso, cinco
     `static mut` de contadores pasan a ser uno.
-    [!] Lo que NO se pudo: `[prueba]` solo admite crates de `platform/shared/`,
-    y `bmo-net` vive en `platform/drivers/` con dos `unsafe` (lee registros).
-    Asi que el juez existe y tiene banco, pero el guardian de L6g no lo ve
-    nombrado. Se dice aqui en vez de mover el juez a un sitio peor.
+    ** Y al hacerlo salio que la REGLA no cumplia su texto: `[prueba]` (R8,
+    L6g) solo buscaba jueces en `platform/shared/` y **solo comprobaba que la
+    carpeta existiera**. Era ciega a ONCE crates de `platform/drivers/` con 315
+    filas de banco, y habria dado por bueno un `[prueba] bmo-ahci` --el disco,
+    CERO filas--, que es lo que su propio texto llama *una garantia que se ve y
+    no esta*. Redefinida el mismo dia con el principio del dueno (*"si no
+    cumple es mejor abolir"*): busca por NOMBRE DE CRATE en los dos sitios y
+    EXIGE al menos una fila. Autoprueba 113 -> 115 casos. Y los tres ficheros
+    de `ring0/red` nombran ya a `bmo-net`.
   - [ ] **`placa.rs`**: sigue igual.
 - ★ **El limite que C6 ya tenia escrito sigue en pie, y se cumplio**: *"la sonda
   la escribio el mismo lado que escribio las defensas (...) la primera prueba que

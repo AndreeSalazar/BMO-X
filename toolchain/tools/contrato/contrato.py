@@ -304,19 +304,82 @@ def r8_el_juez_nombrado_existe(ficheros):
     no tiene juez que sacar --pintar una fuente no se prueba con un crate-- y
     exigirlo a los 162 seria pedir un banco de pruebas por cortesia. Lo que no se
     tolera es prometerlo y que no este.
+
+    *** REDEFINIDA EL 2026-09-17, con el principio del dueno: *"si no cumple es
+    mejor abolir"*. No se abolio, porque su proposito vale; se la hizo cumplir
+    su PROPIO texto, que decia dos cosas y comprobaba una:
+
+    1. **"ese crate existe"** -- y solo lo buscaba en `platform/shared/`. Los
+       jueces de Ring 0 que viven en `platform/drivers/` --bmo-net, bmo-uhid,
+       bmo-fat32, bmo-estratos...-- eran ONCE crates con 315 filas de banco, y
+       para esta regla no existian. Ahora se buscan por su NOMBRE DE CRATE en
+       los dos sitios, porque el nombre del crate y el de la carpeta no
+       coinciden (`bmo-net` vive en `drivers/net`).
+    2. **"que SI corre bajo `cargo test`"** -- y NO lo comprobaba: le bastaba
+       que la carpeta existiera. Un `[prueba] bmo-ahci` --el driver del disco,
+       CERO filas-- habria pasado. Es exactamente lo que el parrafo de arriba
+       llama *una garantia que se ve y no esta*. Ahora el juez tiene que tener
+       al menos una fila.
+
+    El "sin `unsafe`" del parrafo de arriba NO se comprueba y se dice: un juez
+    que lee un registro (`bmo-net::identificar`) sigue corriendo bajo `cargo
+    test` en todo lo demas, y lo que esta regla promete es eso.
     """
+    crates = _crates_de_platform()
     quejas = []
     for ruta in sorted(ficheros):
         m = RE_PRUEBA.search(ficheros[ruta])
         if not m:
             continue
         nombre = m.group(1).strip()
-        if not os.path.isdir(os.path.join(raiz(), "platform", "shared", nombre)):
+        carpeta = crates.get(nombre)
+        if carpeta is None:
             quejas.append(
-                "%s declara [prueba] %s y ese crate no existe en "
-                "platform/shared/ (L6g)" % (ruta, nombre)
+                "%s declara [prueba] %s y ese crate no existe ni en "
+                "platform/shared/ ni en platform/drivers/ (L6g)" % (ruta, nombre)
+            )
+        elif _filas_de_banco(carpeta) == 0:
+            quejas.append(
+                "%s declara [prueba] %s y ese crate no tiene NI UNA fila de "
+                "banco: nombrar un juez que no juzga nada es una garantia que "
+                "se ve y no esta (L6g)" % (ruta, nombre)
             )
     return quejas
+
+
+RE_NOMBRE_CRATE = re.compile(r'^\s*name\s*=\s*"([^"]+)"', re.M)
+RE_FILA = re.compile(r"#\[test\]")
+
+
+def _crates_de_platform():
+    """`{nombre_de_crate: carpeta}` de todo `platform/shared` y `platform/drivers`.
+
+    Por el `name` de su `Cargo.toml` y no por la carpeta: `bmo-net` vive en
+    `drivers/net`, y buscar por carpeta es el fallo que dejaba ciega a R8.
+    """
+    hallados = {}
+    for base in ("shared", "drivers"):
+        raiz_base = os.path.join(raiz(), "platform", base)
+        for dirpath, dirnames, filenames in os.walk(raiz_base):
+            dirnames[:] = [d for d in dirnames if d not in ("target", "src")]
+            if "Cargo.toml" not in filenames:
+                continue
+            with open(os.path.join(dirpath, "Cargo.toml"), encoding="utf-8") as f:
+                m = RE_NOMBRE_CRATE.search(f.read())
+            if m:
+                hallados[m.group(1)] = dirpath
+    return hallados
+
+
+def _filas_de_banco(carpeta):
+    """Cuantos `#[test]` hay en el `src/` de un crate."""
+    n = 0
+    for dirpath, _dirs, filenames in os.walk(os.path.join(carpeta, "src")):
+        for f in filenames:
+            if f.endswith(".rs"):
+                with open(os.path.join(dirpath, f), encoding="utf-8") as h:
+                    n += len(RE_FILA.findall(h.read()))
+    return n
 
 
 def r7_el_riesgo_declarado(declarantes, minimo):
