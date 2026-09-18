@@ -80,7 +80,9 @@ pub(crate) fn report_usb(s: &mut Output) {
     // `fichas 10` con la tabla VACIA por cortar en la primera.
     for i in 0..escritas.min(FICHAS) {
         let papeles = bmo::info(bmo::INFO_USB_FICHA | (i << 8));
-        let veredicto = bmo::info(bmo::INFO_USB_FICHA_VEREDICTO | (i << 8));
+        let empaquetado = bmo::info(bmo::INFO_USB_FICHA_VEREDICTO | (i << 8));
+        let veredicto = empaquetado & 0xFF;
+        let detalle = (empaquetado >> 8) & 0xFF;
         s.text(b"      ");
         s.dec_right(((papeles >> 24) & 0xFF) + 1, 4);
         s.text(b"    ");
@@ -97,6 +99,14 @@ pub(crate) fn report_usb(s: &mut Output) {
         s.with_ink(if veredicto == 1 || veredicto == 2 || veredicto == 11 { INK_GOOD } else { INK_ECHO });
         let n = bmo::info_texto(bmo::INFO_TXT_USB_MOTIVO | (i << 8), &mut txt);
         s.text(&txt[..n]);
+        if veredicto == 7 {
+            // "No se pudo preparar" con el numero que lo explica: el cc del
+            // xHC (8 = no cabe en la agenda, 17 = un campo no vale, 254 = no
+            // contesto). Ver `portero.rs`.
+            s.text(b" (cc=");
+            s.dec(detalle);
+            s.byte(b')');
+        }
         s.with_ink(INK_PLAIN);
         s.byte(b'\n');
     }

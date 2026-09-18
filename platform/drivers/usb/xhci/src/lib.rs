@@ -222,7 +222,11 @@ impl TransferRing {
     pub fn phys_with_dcs(&self) -> u64 { self.dma_phys | if self.pcs { 1 } else { 0 } }
 
     /// Write a TRB at the current enqueue position, advance.
-    pub fn enqueue(&mut self, trb: &Trb) {
+    ///
+    /// Devuelve la direccion FISICA donde quedo el TRB: es lo que el xHC pone
+    /// en la complecion de un comando (Command TRB Pointer), y con ello quien
+    /// espera sabe si la complecion que llego es la SUYA. Ver [`Espera`].
+    pub fn enqueue(&mut self, trb: &Trb) -> u64 {
         let idx = self.enqueue;
         let b = idx * 4;
         unsafe {
@@ -233,6 +237,7 @@ impl TransferRing {
             self.dma_virt.add(b + 3).write_volatile(trb.dw3 | cycle);
         }
         self.advance();
+        self.dma_phys + (idx as u64) * (TRB_SIZE as u64)
     }
 
     /// Advance enqueue, wrapping at Link TRB.
@@ -304,9 +309,18 @@ fn ctx_sz(c: &XhciController) -> usize { if c.ctx_size != 0 { 64 } else { 32 } }
 /// tiene que decir QUE espera: coger el primero que pase es coger el de otro.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Espera {
-    /// Una complecion de comando. El anillo de comandos se usa de uno en uno,
-    /// asi que no hace falta distinguir cual.
-    Comando,
+    /// La complecion del comando cuyo TRB quedo en `trb` (direccion fisica).
+    ///
+    /// ** Aqui decia "el anillo de comandos se usa de uno en uno, asi que no
+    /// hace falta distinguir cual" (hasta el 2026-09-18). Es verdad mientras
+    /// TODOS los comandos contesten a tiempo. Uno que se agote el plazo --un
+    /// Address Device a un aparato que no responde-- deja su complecion en el
+    /// anillo, y el SIGUIENTE comando la tomaba por suya: leia el `cc` de
+    /// otro, y la suya se quedaba para el de despues. A partir del primer
+    /// plazo agotado, cada comando leia la respuesta del anterior. El xHC
+    /// pone en cada complecion el puntero del TRB que la causo (xHCI 6.4.2.2)
+    /// precisamente para esto.
+    Comando { trb: u64 },
     /// Un Transfer Event de un endpoint CONCRETO.
     Transferencia { slot: u8, ep: u8 },
 }
@@ -314,7 +328,9 @@ enum Espera {
 fn cuadra(ev: &(u32, u32, u32, u32), esp: Espera) -> bool {
     let typ = (ev.3 >> 10) & 0x3F;
     match esp {
-        Espera::Comando => typ == TRB_COMPLETION,
+        Espera::Comando { trb } => {
+            typ == TRB_COMPLETION && (ev.0 as u64 | ((ev.1 as u64) << 32)) & !0xF == trb & !0xF
+        }
         Espera::Transferencia { slot, ep } => {
             typ == TRB_TRANSFER
                 && ((ev.3 >> 24) & 0xFF) as u8 == slot
@@ -355,6 +371,17 @@ static mut APARCADOS_PERDIDOS: u32 = 0;
 /// `(aparcados en total, dropped por lleno, aparcados ahora mismo)`.
 pub fn evt_park_stats() -> (u32, u32, u32) {
     unsafe { (APARCADOS_TOTAL, APARCADOS_PERDIDOS, APARCADOS_N as u32) }
+}
+
+/// Compleciones de comando que llegaron cuando ya nadie las esperaba: la
+/// respuesta de un comando que agoto su plazo. Se TIRAN, no se aparcan --un
+/// comando tiene un unico consumidor y ya se fue--, y se cuentan porque cada
+/// una es un comando que se dio por fallido y el controlador si contesto,
+/// solo que tarde. Si esto sube, el plazo de `evt_poll_block` es corto.
+static mut COMANDOS_TARDIOS: u32 = 0;
+
+pub fn comandos_tardios() -> u32 {
+    unsafe { COMANDOS_TARDIOS }
 }
 
 unsafe fn aparcar(ev: (u32, u32, u32, u32)) {
@@ -450,6 +477,17 @@ unsafe fn evt_poll_block(
                 if cuadra(&ev, esp) {
                     return Some(ev);
                 }
+                // Una complecion de comando que no es la que se espera es la
+                // de un comando que ya se dio por perdido: nadie va a venir a
+                // por ella. Aparcarla seria peor que tirarla -- el anillo de
+                // comandos da la vuelta y su puntero volveria a coincidir con
+                // un comando futuro. Ver `Espera::Comando`.
+                if (ev.3 >> 10) & 0x3F == TRB_COMPLETION {
+                    COMANDOS_TARDIOS = COMANDOS_TARDIOS.wrapping_add(1);
+                    hal().log_u64("[xhci] complecion TARDIA de un comando que ya no esperaba nadie, cc=", ((ev.2 >> 24) & 0xFF) as u64);
+                    hal().log("\n");
+                    continue;
+                }
                 aparcar(ev);
             }
             None => core::hint::spin_loop(),
@@ -497,12 +535,12 @@ unsafe fn dcbaa_get(slot: u8) -> Option<u64> {
 
 unsafe fn send_cmd(trb: Trb) -> Option<(u32, u32, u32, u32)> {
     let ctrl = match CTRL.as_mut() { Some(c) => c, None => return None };
-    ctrl.cmd_ring.enqueue(&trb);
+    let mio = ctrl.cmd_ring.enqueue(&trb);
     ring_doorbell(0, 0);
     // El bucle que habia aqui descartaba en silencio todo lo que no fuera una
     // complecion. Ahora la seleccion la hace `evt_poll_block`, que ademas lo
     // aparca en vez de tirarlo.
-    let ev = evt_poll_block(ctrl, Espera::Comando)?;
+    let ev = evt_poll_block(ctrl, Espera::Comando { trb: mio })?;
     let cc = (ev.2 >> 24) & 0xFF;
     if cc == CC_SUCCESS || cc == CC_SHORT { return Some(ev); }
     None
@@ -732,3 +770,36 @@ pub unsafe fn init(mmio: u64) -> bool {
     true
 }
 
+
+#[cfg(test)]
+mod pruebas_espera {
+    use super::*;
+
+    fn complecion(trb: u64, slot: u8) -> (u32, u32, u32, u32) {
+        (trb as u32, (trb >> 32) as u32, CC_SUCCESS << 24, ((slot as u32) << 24) | (TRB_COMPLETION << 10))
+    }
+
+    /// *** LA COMPLECION TARDIA: la del comando anterior NO es la mia.
+    ///
+    /// Hasta el 2026-09-18 cualquier complecion cuadraba con cualquier
+    /// comando, y a partir del primer plazo agotado cada comando leia la
+    /// respuesta del anterior.
+    #[test]
+    fn una_complecion_solo_cuadra_con_el_comando_cuyo_trb_la_causo() {
+        let mio = 0x1_0000_1230u64;
+        let del_anterior = 0x1_0000_1220u64;
+        assert!(cuadra(&complecion(mio, 3), Espera::Comando { trb: mio }));
+        assert!(!cuadra(&complecion(del_anterior, 3), Espera::Comando { trb: mio }));
+        // Los 4 bits bajos del puntero no cuentan (el TRB esta alineado a 16).
+        assert!(cuadra(&complecion(mio | 0x3, 3), Espera::Comando { trb: mio }));
+    }
+
+    #[test]
+    fn un_transfer_event_no_cuadra_con_un_comando_ni_al_reves() {
+        let trb = 0x2000u64;
+        let transfer = (0, 0, CC_SUCCESS << 24, (3u32 << 24) | (2u32 << 16) | (TRB_TRANSFER << 10));
+        assert!(!cuadra(&transfer, Espera::Comando { trb }));
+        assert!(cuadra(&transfer, Espera::Transferencia { slot: 3, ep: 2 }));
+        assert!(!cuadra(&complecion(trb, 3), Espera::Transferencia { slot: 3, ep: 2 }));
+    }
+}

@@ -191,7 +191,16 @@ impl XhciHal for KernelXhciHal {
         proto: u8,
         veredicto: u8,
     ) {
-        portero::apunta(vid, pid, puerto, iface, clase, subclase, proto, veredicto);
+        // El detalle de "no se pudo preparar" es el cc del ultimo Configure
+        // Endpoint, que el driver del controlador ya guardaba y nadie leia.
+        // Se pregunta AQUI, en el instante del veredicto, que es cuando es
+        // el de este aparato y no el del siguiente.
+        let detalle = if veredicto == bmo_uhid::VEREDICTO_SIN_PREPARAR {
+            bmo_xhci::last_cfg_ep_cc()
+        } else {
+            0
+        };
+        portero::apunta(vid, pid, puerto, iface, clase, subclase, proto, veredicto, detalle);
     }
 }
 
@@ -469,8 +478,14 @@ fn bombear_interno() {
         return;
     }
 
-    atender_avisos();
-    barrer_si_toca();
+    // ** ENUMERAR ES DEL HILO DEL BUS (2026-09-18): un aviso de enchufe o un
+    // barrido acaban en un reset de puerto con sus esperas, y eso desde un
+    // syscall es el escritorio parado en su propia puerta. El hilo late cada
+    // 4 ms; desde aqui solo se vacia lo que ya llego. Ver `barrer_si_toca`.
+    if !bus::hay_hilo() || bus::soy_el_hilo_del_bus() {
+        atender_avisos();
+        barrer_si_toca();
+    }
 
     let mut evs = [InputEvent::empty(); 16];
     let (n, reinicio) = unsafe {

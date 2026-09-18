@@ -379,7 +379,7 @@ impl UsbHidHal {
     /// Toca MMIO del xHC: hay que llamarlo con el CR3 del kernel puesto.
     unsafe fn cosechar_puerto(&mut self, port: u8) -> Cosecha {
         let h = bmo_xhci::hal();
-        let mut cosecha = Cosecha { teclado: false, raton: false, contesto: false };
+        let mut cosecha = Cosecha { teclado: false, raton: false, contesto: false, controlador_fallo: false };
 
         // ** UN PUERTO VACIO NO SE COSECHA (2026-09-17). El arranque llamaba
         // a esto para TODOS los puertos y cada vacio acababa en el libro del
@@ -488,6 +488,14 @@ impl UsbHidHal {
                 match enumera::preparar_endpoint(slot, dci, mps, interval, *iface, cfg_val) {
                     Some(b) => b,
                     None => {
+                        // ** ERA MIO Y EL CONTROLADOR NO LO PREPARO (2026-09-18):
+                        // esto NO es "no es mio". El raton del dueno contesto,
+                        // valia, y el Configure Endpoint fallo -- y como
+                        // `contesto` era verdad, el puerto se APARCABA: en paz
+                        // hasta desenchufar. Un raton muerto hasta el reinicio
+                        // por un comando que fallo una vez. Se marca para que
+                        // el barrido lo reintente (con su corte de corriente).
+                        cosecha.controlador_fallo = true;
                         h.papeles(vid, pid, port, *iface, *clase, *subclase, *proto, VEREDICTO_SIN_PREPARAR);
                         continue;
                     }
@@ -571,7 +579,10 @@ impl UsbHidHal {
                 // lado del cable, que es lo que Android necesita para ofrecer
                 // sus modos, y el controlador recupera la ranura. Solo si
                 // tiene una configuracion que mandar y algo dentro.
-                if cfg_val != 0 && n_ifs > 0 {
+                // Y no si era mio y fallo el controlador: `preparar_endpoint`
+                // ya le mando su SET_CONFIGURATION, y una ficha de "sin
+                // driver" para el raton seria mentira.
+                if cfg_val != 0 && n_ifs > 0 && !cosecha.controlador_fallo {
                     h.log_u64("[uhid] sin driver: lo CONFIGURO para que sepa que hay anfitrion, cfg=", cfg_val as u64);
                     bmo_xhci::control_transfer(slot, 0x00, 0x09, cfg_val as u16, 0, &mut [], false);
                     let (i0, c0, s0, p0) = ifaces[0];
@@ -647,6 +658,13 @@ impl UsbHidHal {
         if cosecha.teclado || cosecha.raton {
             self.arrancar_bombas();
             return Adopcion::Instalado;
+        }
+        if cosecha.controlador_fallo {
+            // Contesto, ERA MIO, y el controlador no preparo su endpoint. Se
+            // trata como si no hubiera contestado: el barrido lo reintenta,
+            // enfriando, y del segundo intento en adelante con corte de
+            // corriente. Aparcarlo era dejar el raton muerto hasta el reinicio.
+            return Adopcion::Fallo;
         }
         if cosecha.contesto {
             // Contesto y no era mio: se le leyeron los papeles (estan en el
@@ -758,6 +776,10 @@ pub enum Adopcion {
     Aparcado,
     /// No contesto (sin direccion o sin descriptores): se reintenta, enfriando.
     NoContesto,
+    /// Contesto, era mio, y el CONTROLADOR no preparo su endpoint (2026-09-18):
+    /// se reintenta igual que si no hubiera contestado. Era `Aparcado`, y
+    /// aparcado es "en paz hasta desenchufar": un raton muerto por un comando.
+    Fallo,
     /// Ni se intento: puerto tomado, aparcado, o descansando.
     Cerrado,
 }
@@ -768,6 +790,9 @@ struct Cosecha {
     /// El aparato CONTESTO: se direcciono y dio sus descriptores. Distingue
     /// "no es mio" (se aparca) de "no contesta" (se reintenta, enfriando).
     contesto: bool,
+    /// Contesto y era mio, pero el controlador no preparo su endpoint. Manda
+    /// sobre `contesto`: se reintenta, no se aparca.
+    controlador_fallo: bool,
 }
 
 impl InputHal for UsbHidHal {

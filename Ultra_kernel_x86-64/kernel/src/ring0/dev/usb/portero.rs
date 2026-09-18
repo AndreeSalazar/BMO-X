@@ -88,10 +88,17 @@ struct Ficha {
     subclase: u8,
     proto: u8,
     veredicto: u8,
+    /// El DETALLE del veredicto, cuando lo hay (2026-09-18). Hoy solo uno:
+    /// con `VEREDICTO_SIN_PREPARAR`, el `cc` con que el xHC nego el
+    /// Configure Endpoint (`bmo_xhci::last_cfg_ep_cc`): 8 = no cabe en la
+    /// agenda periodica, 17 = un campo del contexto no vale, 0xFE = no
+    /// contesto. Sin esto, "no se pudo preparar" era todo lo que se sabia
+    /// del raton que no entro.
+    detalle: u8,
 }
 
 const VACIA: Ficha =
-    Ficha { vid: 0, pid: 0, puerto: 0, iface: 0, clase: 0, subclase: 0, proto: 0, veredicto: 0 };
+    Ficha { vid: 0, pid: 0, puerto: 0, iface: 0, clase: 0, subclase: 0, proto: 0, veredicto: 0, detalle: 0 };
 
 static mut LIBRO: [Ficha; FICHAS] = [VACIA; FICHAS];
 /// Cuantas fichas hay escritas. Se detiene en `FICHAS`: ver [`apunta`].
@@ -130,9 +137,10 @@ pub fn papeles_de(i: usize) -> u64 {
     }
 }
 
-/// El veredicto de la ficha `i`, o 0 si no hay tal ficha.
+/// El veredicto de la ficha `i` en los 8 bits bajos y su detalle en los 8
+/// siguientes (`veredicto | detalle << 8`), o 0 si no hay tal ficha.
 pub fn veredicto_de(i: usize) -> u64 {
-    ficha(i).map_or(0, |f| f.veredicto as u64)
+    ficha(i).map_or(0, |f| f.veredicto as u64 | ((f.detalle as u64) << 8))
 }
 
 /// QUE ES lo de la ficha `i`, en corto (`bmo_usbred`), o vacio.
@@ -175,8 +183,9 @@ pub(super) fn apunta(
     subclase: u8,
     proto: u8,
     veredicto: u8,
+    detalle: u8,
 ) {
-    let f = Ficha { vid, pid, puerto, iface, clase, subclase, proto, veredicto };
+    let f = Ficha { vid, pid, puerto, iface, clase, subclase, proto, veredicto, detalle };
     unsafe {
         let libro = &mut *core::ptr::addr_of_mut!(LIBRO);
         // Ya lo dijimos? Entonces callar. Ver la cabecera.
@@ -224,6 +233,11 @@ pub(super) fn apunta(
         crate::ring0::cabina::info("portero", motivo(veredicto), papeles);
     } else {
         crate::ring0::cabina::warn("portero", motivo_con_nombre(veredicto, clase, subclase, proto), papeles);
+    }
+    if veredicto == uhid::VEREDICTO_SIN_PREPARAR {
+        // El numero que explica el renglon de arriba, en su propio renglon:
+        // el codigo con que el controlador dijo que no.
+        crate::ring0::cabina::warn("portero", "  ...el xHC nego el Configure Endpoint con cc", detalle as u64);
     }
 }
 

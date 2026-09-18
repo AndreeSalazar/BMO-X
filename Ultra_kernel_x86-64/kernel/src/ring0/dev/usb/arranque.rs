@@ -63,6 +63,29 @@ pub(crate) fn delay_ms(ms: u64) {
     }
     let por_ms = (f / 1000).max(1);
     let end = crate::ring0::task::scheduler::rdtsc() + ms * por_ms;
+    // ** EN EL HILO DEL BUS SE DUERME, NO SE GIRA (2026-09-18).
+    //
+    // El hilo del bus tiene prioridad 2 y el escritorio 0, y el planificador
+    // es de prioridad estricta: mientras este hilo gira, el escritorio no
+    // corre. Cada intento de enumerar el puerto mudo --debounce, reset,
+    // corte de corriente-- eran 250 ms en los que el escritorio no pintaba
+    // ni un fotograma. El dueno lo vio como *"tirones de FPS que baja a 0"*,
+    // y no era el raton: era el compositor sin turno.
+    //
+    // `park_until` bloquea este hilo hasta la hora y el reloj lo despierta;
+    // entre medias corre quien este listo. El bus late tarde esa vuelta (lo
+    // cuenta `LATIDOS_TARDE`, como antes), pero la pantalla sigue viva.
+    // Fuera del hilo --arranque, o un bombeo desde un syscall-- se gira como
+    // siempre: ahi no hay a quien cederle el turno sin romper algo.
+    if super::bus::soy_el_hilo_del_bus() {
+        loop {
+            let ahora = crate::ring0::task::scheduler::rdtsc();
+            if ahora >= end {
+                return;
+            }
+            crate::ring0::task::scheduler::park_until(end);
+        }
+    }
     loop {
         let ahora = crate::ring0::task::scheduler::rdtsc();
         if ahora >= end {

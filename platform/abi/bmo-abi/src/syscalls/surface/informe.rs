@@ -378,7 +378,9 @@ pub const INFO_USB_FICHAS: u64 = 0x6F;
 /// `vid<<48 | pid<<32 | puerto<<24 | clase<<16 | subclase<<8 | proto`, los
 /// mismos `papeles` que CABINA. Cero si no hay tal ficha.
 pub const INFO_USB_FICHA: u64 = 0x70;
-/// El veredicto de la ficha `n >> 8` (`bmo_uhid::VEREDICTO_*`), o 0.
+/// El veredicto de la ficha `n >> 8` (`bmo_uhid::VEREDICTO_*`) en `[0..8)`, y
+/// en `[8..16)` su DETALLE: con "no se pudo preparar" (7), el `cc` con que el
+/// xHC nego el Configure Endpoint. Cero si no hay tal ficha.
 pub const INFO_USB_FICHA_VEREDICTO: u64 = 0x71;
 /// Los prestamos: `[0..8)` ofertas vivas, `[8..16)` tomadas, `[16..24)`
 /// huerfanas, `[32..64)` negadas desde el arranque.

@@ -174,6 +174,10 @@ fn atender_enchufe(puerto: u8) {
     if adopcion == bmo_uhid::Adopcion::NoContesto {
         crate::ring0::cabina::info("usb", "puerto: ENCHUFADO y NO contesto: se reintenta", puerto as u64);
         crate::ring0::cabina::id("usb", "  ...intentos gastados en el", intentos as u64);
+    } else if adopcion == bmo_uhid::Adopcion::Fallo {
+        // Era mio y el controlador no lo preparo (2026-09-18): el cc esta en
+        // la ficha del portero. Se reintenta como si no hubiera contestado.
+        crate::ring0::cabina::warn("usb", "puerto: ENCHUFADO, era MIO y el controlador no preparo su endpoint: se reintenta", puerto as u64);
     } else if cerrado && abandonado {
         crate::ring0::cabina::info("usb", "puerto: aviso en un puerto ABANDONADO (mudo): se ignora hasta desenchufar", puerto as u64);
     } else if cerrado && descansando {
@@ -258,6 +262,18 @@ pub fn barrido_stats() -> (u64, u64) {
 /// escribiendo, y eso no se puede dejar a que salga bien en el metal.
 pub(crate) fn barrer_si_toca() {
     use crate::ring0::task::scheduler;
+    // ** EL BARRIDO ES DEL HILO DEL BUS (2026-09-18). `pump_bus` tambien se
+    // llama desde un syscall --el escritorio pidiendo teclas--, y por ese
+    // camino un barrido que enumera un puerto se hacia DENTRO del syscall
+    // del escritorio: un cuarto de segundo de reset y esperas con el
+    // compositor parado en su propia puerta. El hilo late cada 4 ms, asi que
+    // no se pierde nada; y si no hay hilo, se barre desde donde se pueda,
+    // como antes.
+    if super::bus::hay_hilo() && !super::bus::soy_el_hilo_del_bus() {
+        // (Ya lo filtra `bombear_interno`; aqui se repite para que este
+        // fichero no dependa de que el llamante se acuerde.)
+        return;
+    }
     let hz = scheduler::tsc_freq();
     if hz == 0 {
         // Sin TSC medido no hay forma de saber cuanto ha pasado. Barrer en cada

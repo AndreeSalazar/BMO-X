@@ -746,8 +746,64 @@ que los puertos se asienten.
 
 **Lo que NO es como Linux, dicho de frente**: aqui la enumeracion corre en
 el MISMO hilo que bombea el teclado, asi que cada intento sobre un puerto
-ajeno para el teclado ~medio segundo. La escalera hace que sean pocos y se
-acaben; la reforma de verdad es enumerar aparte, y esta anotada.
+ajeno para el teclado ~un cuarto de segundo. La escalera hace que sean pocos
+y se acaben; la reforma de verdad es enumerar aparte, y esta anotada.
 
 **El numero**: `reinicios` de aparato (`UsbHidHal::reinicios`), y CABINA lo
 dice con el puerto cuando pasa.
+
+## 10. E10 -- QUE ENUMERAR NO PARE LA PANTALLA, Y QUE UN NO DEL CONTROLADOR NO SEA PARA SIEMPRE (2026-09-18)
+
+La foto del Ryzen de esa noche, con el ratón de verdad (`4E53:5406`, puerto
+3) muerto y el dueño viendo *"tirones de FPS que baja a 0"*:
+
+```text
+   3    4E53:5406  HID   su endpoint NO se pudo preparar en el controlador
+   3    4E53:5406  HID   llego y VALIA, pero su puesto ya estaba ocupado
+   3    4E53:5406  HID   sin driver, pero CONFIGURADO: ya sabe que hay anfitrion
+```
+
+Tres cosas distintas, y las tres estaban en el código, no en el ratón:
+
+**a) El hilo del bus GIRABA, y el escritorio no tiene turno mientras gira.**
+El hilo del bus tiene prioridad 2, el escritorio 0, y `choose_next` es
+prioridad estricta (ver `EL FANTASMA`, `scheduler/verde.rs`). Cada espera de
+la enumeración --el debounce de 100 ms, el reset, los 200 ms del corte de
+corriente-- era un `rdtsc` en bucle: el hilo seguía LISTO, así que el
+compositor no pintaba ni un fotograma hasta que el intento acababa. Los
+"tirones" no eran el ratón llegando tarde: era la pantalla sin CPU.
+
+*Exige*: en el hilo del bus, esperar es DORMIR (`park_until`), y el reloj lo
+despierta a la hora. Y enumerar --avisos de enchufe y barrido-- es SOLO del
+hilo: `pump_bus` también corre dentro de un syscall del escritorio, y por
+ahí un barrido reseteaba un puerto dentro de la puerta del compositor. Hecho
+en `arranque.rs::delay_ms` y `enchufe.rs::barrer_si_toca`. En el arranque
+(sin hilo) se sigue girando y pintando la intro, como antes.
+
+**b) Una complecion de comando cuadraba con CUALQUIER comando.** El anillo
+de comandos se usa de uno en uno, y con eso bastaba... mientras todos
+contestaran a tiempo. Un Address Device a un aparato mudo que agota su plazo
+deja su complecion en el anillo, y el siguiente comando --el Configure
+Endpoint del ratón-- la tomaba por suya: leía el `cc` de otro, y su propia
+respuesta quedaba para el de después. A partir del primer plazo agotado,
+cada comando leía la respuesta del anterior.
+
+*Exige*: el xHC pone en cada complecion el puntero del TRB que la causó
+(xHCI 6.4.2.2), y quien espera compara con el suyo (`Espera::Comando { trb }`).
+Una complecion que no es de nadie se TIRA y se cuenta (`comandos_tardios`):
+aparcarla sería peor, porque el anillo da la vuelta y su puntero volvería a
+coincidir con un comando futuro. `bmo-xhci` lo prueba sin controlador.
+
+**c) "No se pudo preparar" APARCABA el puerto.** `contesto` era verdad
+--el ratón dio sus descriptores--, así que el veredicto era "no es mío: en
+paz hasta desenchufar". Un ratón muerto hasta el reinicio por un comando que
+falló una vez. *Exige*: `Adopcion::Fallo`, que se reintenta como si no
+hubiera contestado (enfriando, y con corte de corriente del segundo intento
+en adelante). Y la ficha lleva ahora el `cc` con que el controlador dijo que
+no (`save` lo enseña como `(cc=N)`; 8 = no cabe en la agenda periódica, 17 =
+un campo del contexto no vale, 254 = no contestó), que es lo que faltaba para
+saber POR QUÉ.
+
+**Lo que sigue sin ser como Linux**: el hilo sigue siendo uno. Dormir en
+vez de girar salva la pantalla, no al teclado: mientras el hilo duerme en un
+debounce, tampoco bombea. La reforma sigue siendo enumerar aparte.

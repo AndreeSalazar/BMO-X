@@ -296,13 +296,14 @@ unsafe fn direccionar_en_slot(port: u8, speed: u8, slot: u8) -> Option<u8> {
         dw2: 0,
         dw3: ((slot as u32) << 24) | (TRB_ADDRESS_DEV << 10),
     };
-    ctrl.cmd_ring.enqueue(&trb);
+    let mio = ctrl.cmd_ring.enqueue(&trb);
     ring_doorbell(0, 0);
     // * Esto tomaba el primer evento SIN MIRAR EL TIPO y le leia el `cc`. Un
     // Transfer Event correcto tambien trae `cc=1`, asi que un informe del
     // raton se leia como "el Address Device salio bien" -- y de paso ese
-    // informe desaparecia.
-    let ev = evt_poll_block(ctrl, Espera::Comando)?;
+    // informe desaparecia. Y despues tomaba CUALQUIER complecion: la de este
+    // comando, o la tardia del anterior. Ver `Espera::Comando`.
+    let ev = evt_poll_block(ctrl, Espera::Comando { trb: mio })?;
     let cc = (ev.2 >> 24) & 0xFF;
     h.log_u64(" addr_dev cc=", cc as u64);
     if cc != CC_SUCCESS { return None; }

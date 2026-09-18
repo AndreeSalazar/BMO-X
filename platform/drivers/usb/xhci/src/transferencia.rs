@@ -432,12 +432,12 @@ pub unsafe fn configure_endpoint(slot: u8, dci: u8, ep_type: u8, max_pkt: u16, i
         dw2: 0,
         dw3: ((slot as u32) << 24) | (TRB_CONFIGURE << 10),
     };
-    ctrl.cmd_ring.enqueue(&trb);
+    let mio = ctrl.cmd_ring.enqueue(&trb);
     ring_doorbell(0, 0);
     // Igual que en `address_device`: esto tomaba el primer evento sin mirar el
     // tipo, asi que podia dar por configurado un endpoint leyendo el `cc` del
     // informe de otro aparato.
-    let ev = evt_poll_block(ctrl, Espera::Comando);
+    let ev = evt_poll_block(ctrl, Espera::Comando { trb: mio });
     match ev {
         Some((_, _, dw2, _)) => {
             let cc = (dw2 >> 24) & 0xFF;
@@ -512,9 +512,9 @@ pub fn recuperaciones() -> (u32, u32) {
 /// "el controlador no contesto".
 unsafe fn cmd_cc(trb: Trb) -> Option<u32> {
     let ctrl = CTRL.as_mut()?;
-    ctrl.cmd_ring.enqueue(&trb);
+    let mio = ctrl.cmd_ring.enqueue(&trb);
     ring_doorbell(0, 0);
-    let ev = evt_poll_block(ctrl, Espera::Comando)?;
+    let ev = evt_poll_block(ctrl, Espera::Comando { trb: mio })?;
     Some((ev.2 >> 24) & 0xFF)
 }
 

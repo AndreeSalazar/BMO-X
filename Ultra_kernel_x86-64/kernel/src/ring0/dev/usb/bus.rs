@@ -60,6 +60,32 @@ use super::{bombear_interno, PRESENT};
 // purpose instead of pretending otherwise.
 static mut PUMPING: bool = false;
 
+/// El tid del hilo del bus, y `None` mientras no exista (en el arranque, o si
+/// no hubo ranura). Lo preguntan [`soy_el_hilo_del_bus`] y [`hay_hilo`].
+static mut BUS_TID: Option<u32> = None;
+
+/// **Estoy corriendo EN el hilo del bus?** (2026-09-18)
+///
+/// Es la pregunta que decide si una espera puede DORMIR. El hilo tiene
+/// prioridad 2 y el escritorio 0, y `choose_next` es prioridad estricta: un
+/// hilo del bus que gira 100 ms en un debounce es un escritorio que no
+/// recibe ni un turno en 100 ms. En el hilo se puede parar (`park_until`);
+/// desde un syscall o desde el arranque, no.
+///
+/// Mientras no hay hilo no se toca el planificador: `current_tid` toma su
+/// cerrojo y en el arranque puede no haber nada que preguntar.
+pub(super) fn soy_el_hilo_del_bus() -> bool {
+    match unsafe { BUS_TID } {
+        Some(tid) => crate::ring0::task::scheduler::current_tid() == tid,
+        None => false,
+    }
+}
+
+/// Hay hilo del bus?
+pub(super) fn hay_hilo() -> bool {
+    unsafe { BUS_TID.is_some() }
+}
+
 /// How many turns the bus thread has taken. If this stops rising the thread died
 /// or never started -- and the keyboard depends on somebody asking again.
 static mut BUS_TURNS: u64 = 0;
@@ -531,6 +557,7 @@ pub fn start_bus_thread() -> Option<u32> {
     );
     match tid {
         Some(t) => {
+            unsafe { BUS_TID = Some(t) };
             crate::ring0::cabina::id("usb", "el bus tiene hilo propio, tid", t as u64);
             Some(t)
         }
