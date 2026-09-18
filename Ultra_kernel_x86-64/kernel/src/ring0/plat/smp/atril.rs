@@ -380,6 +380,15 @@ pub fn tocar(pid: u32, parte_num: u64, pedidos: u64) -> u64 {
     // `repartir` cuenta al BSP como una parte, asi que los obreros son uno menos.
     let ok = super::crew::repartir(faena, (atriles - 1) as u32);
     vaciar();
+    // ** LA SONDA SALE BIEN CUANDO EL DATO NO VALE (2026-09-18, el Ryzen lo
+    // enseno): el atril 1 tropieza DENTRO de la faena, asi que su parte no
+    // la hace nadie y `repartir` dice que no -- que es exactamente lo que se
+    // queria ver. Devolver NO_HAY_ORQUESTA hacia que el escritorio dijera
+    // "la puerta dijo que NO" mientras CABINA decia "un OBRERO tomo una
+    // excepcion y la maquina sigue": dos frases ciertas que juntas mentian.
+    if parte == Parte::Tropezar {
+        return atriles;
+    }
     if !ok {
         // ** Una barrera que no se cierra deja el DATO A MEDIAS, no lento. Falta
         // el trozo de alguien, y devolverlo como si nada seria entregar un

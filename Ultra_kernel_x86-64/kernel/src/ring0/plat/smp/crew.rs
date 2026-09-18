@@ -190,14 +190,25 @@ pub fn repartir(faena: Faena, obreros: u32) -> bool {
     let hz = crate::ring0::task::scheduler::tsc_freq();
     let limite = if hz > 0 { hz * 2 } else { u64::MAX };
     let t0 = crate::ring0::task::scheduler::rdtsc();
-    let esperados = obreros - fallados;
+    let mut esperados = obreros - fallados;
     while HECHOS.load(Ordering::SeqCst) < esperados {
         if crate::ring0::task::scheduler::rdtsc().wrapping_sub(t0) > limite {
             break;
         }
+        // ** UNO QUE CAE DENTRO DE ESTA FAENA SUELTA LA BARRERA (2026-09-18).
+        // El Ryzen lo enseno con `smp tropezar`: el obrero 1 se paro solo y
+        // la barrera espero su TOPE entero -- dos segundos con el BSP girando
+        // dentro de un syscall, y el bus USB dos segundos sin latir (`save`:
+        // "el latido llego TARDE 1996 ms"). Su ficha ya dice FALLADO en el
+        // instante en que cae: se mira cada vuelta y se deja de esperarle.
+        // Su parte sigue sin hacerse, asi que `ok` sera falso igual.
+        let caidos = (0..obreros).filter(|&i| super::ficha::fallado(i)).count() as u32;
+        if caidos > fallados {
+            esperados = obreros - caidos;
+        }
         core::hint::spin_loop();
     }
-    let ok = HECHOS.load(Ordering::SeqCst) >= esperados;
+    let ok = HECHOS.load(Ordering::SeqCst) >= esperados && esperados == obreros - fallados;
     // Los que cayeron DENTRO de esta faena, dichos ahora y no en el siguiente
     // censo: es la unica forma de que "no llego a tiempo" traiga su porque.
     super::ficha::reportar_fallos();

@@ -131,11 +131,17 @@ porque hay un nucleo, y el dia que haya dos no habra que buscarlas.
       siguiente reparto o censo (`ficha::reportar_fallos`), y `crew::repartir`
       hace las partes de los fallados y no les espera.
       Sin GS por-CPU ni `rsp0` a proposito: un obrero no corre Ring 3.
-- [~] A1.2 -- la prueba ESCRITA, sin correr en el Ryzen: `Parte::Tropezar`
-      (`bmo-orquesta`, 5 partes) hace `ud2` en el atril 1; `smp tropezar` en
-      el escritorio la toca. Lo que tiene que pasar: "SIGUES AQUI", CABINA
-      con "un OBRERO tomo una excepcion", F11 con ese obrero en FALLO. Lo que
-      pasaba: reinicio. Hasta que Eddi la corra, A2 no empieza.
+- [x] 18-09 -- A1.2: **CORRIDA EN EL RYZEN, y la maquina siguio.**
+      `Parte::Tropezar` (`bmo-orquesta`, 5 partes) hizo `ud2` en el atril 1
+      y `save` dijo: `un OBRERO tomo una excepcion y se paro SOLO; la maquina
+      sigue. vector =6` (#UD), `obreros que tomaron una excepcion y estan
+      parados =1`, y el dueno siguio tecleando `smp` y `save` despues. Antes
+      de `tss.rs` eso era el PC reiniciando. Dos cosas que ensenaron la foto
+      y se arreglaron en el acto: el escritorio decia "la puerta dijo que NO"
+      (la sonda devuelve `atriles` aunque el dato no valga: `atril.rs`), y la
+      barrera espero su tope entero --`el latido del bus llego TARDE 1996 ms`--
+      porque el caido cayo DENTRO de la faena: ahora `crew::repartir` mira
+      las fichas cada vuelta y suelta la barrera en cuanto uno cae.
 - [ ] A1.3 -- el AP con reloj: un LAPIC timer propio, o el MWAITX con plazo
       que ya usa `obrero.rs` (27 ms) bajado a 4 ms para el residente.
 

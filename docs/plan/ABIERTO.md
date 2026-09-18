@@ -8,7 +8,7 @@
 
 ```text
    300 casillas ABIERTAS en 35 planes
-   205 hechas
+   206 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -152,7 +152,7 @@
 - [ ] 4 ada como lib no_std toolchain/lang/ada/src/lib.rs con
 - ... y 4 mas
 
-## [`PLAN_EL_BUS_APARTE.md`](PLAN_EL_BUS_APARTE.md) -- 7 abiertas, 11 hechas
+## [`PLAN_EL_BUS_APARTE.md`](PLAN_EL_BUS_APARTE.md) -- 7 abiertas, 12 hechas
 
 *PLAN EL BUS APARTE -- el USB en su propio nucleo, y lo que hay que pagar antes*
 
