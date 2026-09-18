@@ -92,11 +92,16 @@ pub enum Parte {
     /// de ~83 ms a 98-152 ms por fotograma, y la diferencia es ESCALAR. Ver
     /// [`Escala`].
     Escalar = 3,
+    /// **La SONDA del fallo** (2026-09-18, A1.2 de PLAN_EL_BUS_APARTE): el
+    /// atril 1 ejecuta `ud2` a proposito y los demas no hacen nada. Existe
+    /// para probar en el metal que un obrero puede tomar una excepcion sin
+    /// reiniciar la maquina. No es para apps: no esta en `<bmo/orquesta.h>`.
+    Tropezar = 4,
 }
 
 /// Cuantas partes hay escritas, contando `Nada`. El guardian del kernel compara
 /// contra esto.
-pub const PARTES_ESCRITAS: u32 = 4;
+pub const PARTES_ESCRITAS: u32 = 5;
 
 impl Parte {
     /// **El numero que llego por la puerta, si es una parte de verdad.**
@@ -113,6 +118,7 @@ impl Parte {
             1 => Some(Parte::Llenar),
             2 => Some(Parte::Expandir),
             3 => Some(Parte::Escalar),
+            4 => Some(Parte::Tropezar),
             _ => None,
         }
     }
@@ -125,6 +131,7 @@ impl Parte {
             Parte::Llenar => "llenar",
             Parte::Expandir => "expandir",
             Parte::Escalar => "escalar",
+            Parte::Tropezar => "tropezar (sonda)",
         }
     }
 }
@@ -252,7 +259,7 @@ pub fn se_puede_tocar(parte: Parte, e: &Encargo) -> Result<(), Rechazo> {
     }
     match parte {
         Parte::Nada => unreachable!(),
-        Parte::Llenar => Ok(()),
+        Parte::Llenar | Parte::Tropezar => Ok(()),
         Parte::Expandir => {
             if e.origen == 0 {
                 return Err(Rechazo::FaltaElOrigen);
@@ -381,7 +388,9 @@ impl Escala {
 pub fn bytes_de(parte: Parte, e: &Encargo) -> Option<(u64, u64)> {
     match parte {
         Parte::Nada => None,
-        Parte::Llenar => Some((e.total.checked_mul(4)?, 0)),
+        // La sonda no escribe, pero pide un destino como `Llenar` para pasar
+        // por la misma puerta que una parte de verdad.
+        Parte::Llenar | Parte::Tropezar => Some((e.total.checked_mul(4)?, 0)),
         Parte::Expandir => Some((
             e.total.checked_mul(e.dato)?.checked_mul(4)?,
             e.total.checked_mul(4)?,
@@ -463,7 +472,7 @@ pub fn conviene_despertar(total: u64, vivos: u64, pedidos: u64, ya_se_intento: b
 /// alguien anade una parte y no sube el numero, el kernel --que compara contra
 /// el-- creeria que la ultima no existe. Aqui rompe el build.
 const _: () = {
-    assert!(PARTES_ESCRITAS == 4);
+    assert!(PARTES_ESCRITAS == 5);
 };
 
 #[cfg(test)]
@@ -539,7 +548,8 @@ mod pruebas {
     fn una_parte_que_no_existe_se_rechaza() {
         assert_eq!(Parte::de_numero(2), Some(Parte::Expandir));
         assert_eq!(Parte::de_numero(3), Some(Parte::Escalar));
-        assert_eq!(Parte::de_numero(4), None);
+        assert_eq!(Parte::de_numero(4), Some(Parte::Tropezar));
+        assert_eq!(Parte::de_numero(5), None);
         assert_eq!(Parte::de_numero(99), None);
         assert_eq!(Parte::de_numero(u64::MAX), None);
     }

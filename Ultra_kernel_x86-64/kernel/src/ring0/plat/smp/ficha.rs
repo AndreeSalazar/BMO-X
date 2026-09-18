@@ -68,11 +68,21 @@ pub const ESPERANDO: u32 = 1;
 pub const TRABAJANDO: u32 = 2;
 /// Se le mando parar: `cli; hlt` y de ahi no vuelve sin INIT+SIPI.
 pub const PARADO: u32 = 3;
+/// **Tomo una excepcion y se paro solo** (2026-09-18, A1 de
+/// PLAN_EL_BUS_APARTE). Antes de ese dia esto no existia porque un AP que
+/// fallaba reiniciaba el PC. El vector y el `rip` quedan en su ficha; lo
+/// cuenta el BSP en CABINA (`reportar_fallos`), nunca el propio obrero.
+pub const FALLADO: u32 = 4;
 
 static APIC: [AtomicU32; MAX_OBREROS] = [const { AtomicU32::new(u32::MAX) }; MAX_OBREROS];
 static ESTADO: [AtomicU32; MAX_OBREROS] = [const { AtomicU32::new(DORMIDO) }; MAX_OBREROS];
 static ENCARGOS: [AtomicU32; MAX_OBREROS] = [const { AtomicU32::new(0) }; MAX_OBREROS];
 static CICLOS: [AtomicU64; MAX_OBREROS] = [const { AtomicU64::new(0) }; MAX_OBREROS];
+/// El vector del fallo (`u32::MAX` = no fallo) y donde estaba.
+static FALLO_VEC: [AtomicU32; MAX_OBREROS] = [const { AtomicU32::new(u32::MAX) }; MAX_OBREROS];
+static FALLO_RIP: [AtomicU64; MAX_OBREROS] = [const { AtomicU64::new(0) }; MAX_OBREROS];
+/// Ya lo dijo el BSP en CABINA? Se dice UNA vez.
+static FALLO_DICHO: [AtomicU32; MAX_OBREROS] = [const { AtomicU32::new(0) }; MAX_OBREROS];
 
 /// Lo que se puede contar de un obrero sin pararlo.
 #[derive(Clone, Copy)]
@@ -101,6 +111,49 @@ pub fn marcar(indice: u32, estado: u32) {
     if let Some(r) = ESTADO.get(indice as usize) {
         r.store(estado, Ordering::SeqCst);
     }
+}
+
+/// **Un obrero fallo.** Lo escribe EL OBRERO desde `fault_dispatch`, en su
+/// ranura y con atomicas: es lo unico que toca antes de pararse. Ni CABINA,
+/// ni la pantalla, ni el log -- eso lo hace el BSP con `reportar_fallos`.
+pub fn fallo(indice: u32, vector: u32, rip: u64) {
+    let i = indice as usize;
+    if i >= MAX_OBREROS {
+        return;
+    }
+    FALLO_VEC[i].store(vector, Ordering::SeqCst);
+    FALLO_RIP[i].store(rip, Ordering::SeqCst);
+    ESTADO[i].store(FALLADO, Ordering::SeqCst);
+}
+
+/// El indice del obrero con este APIC, si se presento.
+pub fn indice_de(apic: u32) -> Option<u32> {
+    (0..MAX_OBREROS).find(|&i| APIC[i].load(Ordering::SeqCst) == apic).map(|i| i as u32)
+}
+
+/// Esta fallado? Para que el reparto no le espere.
+pub fn fallado(indice: u32) -> bool {
+    ESTADO.get(indice as usize).is_some_and(|e| e.load(Ordering::SeqCst) == FALLADO)
+}
+
+/// **El BSP dice en CABINA los fallos que aun no dijo**, y devuelve cuantos
+/// hay en total. Se llama desde el reparto y desde el censo: un obrero que
+/// falla fuera de una faena se cuenta la proxima vez que alguien mira.
+pub fn reportar_fallos() -> u32 {
+    let mut n = 0;
+    for i in 0..MAX_OBREROS {
+        if ESTADO[i].load(Ordering::SeqCst) != FALLADO {
+            continue;
+        }
+        n += 1;
+        if FALLO_DICHO[i].swap(1, Ordering::SeqCst) == 0 {
+            let v = FALLO_VEC[i].load(Ordering::SeqCst);
+            crate::ring0::cabina::fault("smp", "un OBRERO tomo una excepcion y se paro SOLO; la maquina sigue. vector", v as u64);
+            crate::ring0::cabina::id("smp", "  ...era el obrero (indice)", i as u64);
+            crate::ring0::cabina::id("smp", "  ...en el rip", FALLO_RIP[i].load(Ordering::SeqCst));
+        }
+    }
+    n
 }
 
 /// **Un encargo terminado**, con lo que costo.
@@ -170,6 +223,7 @@ pub fn nombre_estado(e: u32) -> &'static str {
         ESPERANDO => "esperando",
         TRABAJANDO => "TRABAJANDO",
         PARADO => "parado",
+        FALLADO => "FALLO: se paro solo",
         _ => "dormido",
     }
 }

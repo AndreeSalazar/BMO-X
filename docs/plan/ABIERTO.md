@@ -7,8 +7,8 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   298 casillas ABIERTAS en 35 planes
-   204 hechas
+   296 casillas ABIERTAS en 35 planes
+   205 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -107,15 +107,6 @@
 - [ ] DOOM elige escala con el hueco, como ya hace al tomar la pantalla
 - ... y 6 mas
 
-## [`PLAN_EL_BUS_APARTE.md`](PLAN_EL_BUS_APARTE.md) -- 9 abiertas, 10 hechas
-
-*PLAN EL BUS APARTE -- el USB en su propio nucleo, y lo que hay que pagar antes*
-
-- [ ] pendiente [~] a medias, y se dice cuanto [x] hecho, con fecha
-- [ ] A1.1 -- PER_CPUS[i] para un AP: GS con su ficha, TSS con pila de
-- [ ] A1.2 -- la prueba: una parte del catalogo que hace ud2 a proposito en
-- ... y 6 mas
-
 ## [`PLAN_EL_CODEGEN.md`](PLAN_EL_CODEGEN.md) -- 9 abiertas, 0 hechas
 
 *PLAN EL CODEGEN -- 35 instrucciones para escribir 8 bytes*
@@ -159,6 +150,15 @@
 - [ ] 1 la sonda del hueco quitar std de toolchain/lang/ada y CONTAR
 - [ ] 2 BTreeMap en Ada los 7 HashMap de toolchain/lang/ada/src.
 - [ ] 4 ada como lib no_std toolchain/lang/ada/src/lib.rs con
+- ... y 4 mas
+
+## [`PLAN_EL_BUS_APARTE.md`](PLAN_EL_BUS_APARTE.md) -- 7 abiertas, 11 hechas
+
+*PLAN EL BUS APARTE -- el USB en su propio nucleo, y lo que hay que pagar antes*
+
+- [ ] pendiente [~] a medias, y se dice cuanto [x] hecho, con fecha
+- [ ] A1.3 -- el AP con reloj: un LAPIC timer propio, o el MWAITX con plazo
+- [ ] A2.1 -- bmo-orquesta: una clase de parte nueva, RESIDENTE, que no
 - ... y 4 mas
 
 ## [`PLAN_ESTRUCTURA.md`](PLAN_ESTRUCTURA.md) -- 7 abiertas, 1 hechas

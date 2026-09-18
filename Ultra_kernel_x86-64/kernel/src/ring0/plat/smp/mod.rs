@@ -62,6 +62,9 @@ pub mod dormir;
 /// los numeros**. Ver la cabecera del modulo.
 pub mod atril;
 pub mod tramp;
+/// La GDT y el TSS de cada obrero: lo que le falta a un AP para poder tomar
+/// una excepcion sin reiniciar la maquina (A1 de PLAN_EL_BUS_APARTE).
+pub mod tss;
 
 use core::sync::atomic::Ordering;
 use map::*;
@@ -151,6 +154,11 @@ pub fn despertar(cuantos: u32, aviso: impl Fn(u32)) -> (u32, u32) {
     // camino lo dice sin volver a despertarlos.
     if cuantos == 0 {
         crate::ring0::core::dashboard::dashboard_log("[smp] censo pedido, no se desperto a nadie");
+        // Y los que fallaron desde la ultima vez que alguien miro, dichos.
+        let fallados = ficha::reportar_fallos();
+        if fallados != 0 {
+            crate::ring0::cabina::warn("smp", "obreros que tomaron una excepcion y estan parados", fallados as u64);
+        }
         // ** AND THE CENSUS SAYS IF THEY ARE PARKED, because the count alone
         // was telling a true fact that answers a different question.
         //
@@ -191,6 +199,8 @@ pub fn despertar(cuantos: u32, aviso: impl Fn(u32)) -> (u32, u32) {
     tramp::VIVOS.store(0, Ordering::SeqCst);
     tramp::MASCARA.store(0, Ordering::SeqCst);
     let yo = tramp::apic_id();
+    // Quien es el BSP, para que un fallo sepa de que lado cayo.
+    tramp::BSP_APIC.store(yo, Ordering::SeqCst);
 
     unsafe {
         // 1. El trampolin, a su pagina.

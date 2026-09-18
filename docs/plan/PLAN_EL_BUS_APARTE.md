@@ -120,11 +120,22 @@ porque hay un nucleo, y el dia que haya dos no habra que buscarlas.
 
 ## A1 -- un nucleo que puede FALLAR sin apagar la maquina (el sub-director)
 
-- [ ] A1.1 -- `PER_CPUS[i]` para un AP: GS con su ficha, TSS con pila de
-      excepcion propia, IDT cargada (`task/percpu.rs`, `plat/smp/tramp.rs`).
-- [ ] A1.2 -- la prueba: una parte del catalogo que hace `ud2` a proposito en
-      un AP, y la maquina NO se reinicia: CABINA dice "el obrero N fallo con
-      #UD en tal sitio" y el BSP sigue. Sin esto, A2 no empieza.
+- [x] 18-09 -- A1.1: `plat/smp/tss.rs` -- cada obrero carga al aterrizar una
+      GDT con la forma del BSP (0x08 = codigo de 64 bits) y un TSS con IST1
+      propio (4 KiB), y enciende OSXSAVE con el XCR0 medido. Salieron TRES
+      motivos del triple fallo y el peor no estaba escrito: la IDT manda los
+      fallos a 0x08, que en la GDT del trampolin era CODIGO DE 16 BITS. Y
+      `fault_dispatch` (`faults/roja.rs`) tiene rama de obrero: apunta
+      vector+rip en su ficha (`ficha::fallo`, estado FALLADO) y devuelve 0
+      = `cli; hlt` de ese nucleo solo. El BSP lo dice en CABINA en el
+      siguiente reparto o censo (`ficha::reportar_fallos`), y `crew::repartir`
+      hace las partes de los fallados y no les espera.
+      Sin GS por-CPU ni `rsp0` a proposito: un obrero no corre Ring 3.
+- [~] A1.2 -- la prueba ESCRITA, sin correr en el Ryzen: `Parte::Tropezar`
+      (`bmo-orquesta`, 5 partes) hace `ud2` en el atril 1; `smp tropezar` en
+      el escritorio la toca. Lo que tiene que pasar: "SIGUES AQUI", CABINA
+      con "un OBRERO tomo una excepcion", F11 con ese obrero en FALLO. Lo que
+      pasaba: reinicio. Hasta que Eddi la corra, A2 no empieza.
 - [ ] A1.3 -- el AP con reloj: un LAPIC timer propio, o el MWAITX con plazo
       que ya usa `obrero.rs` (27 ms) bajado a 4 ms para el residente.
 

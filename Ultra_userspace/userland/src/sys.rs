@@ -587,6 +587,8 @@ pub const ATRIL_DATO: u64 = 3;
 /// `bmo-orquesta` y no se renumera nunca.
 pub const PARTE_LLENAR: u64 = 1;
 pub const PARTE_EXPANDIR: u64 = 2;
+/// La sonda: el atril 1 hace `ud2` a proposito. Solo para `smp tropezar`.
+pub const PARTE_TROPEZAR: u64 = 4;
 
 /// **Poner un numero en el atril**, antes de decir *tocad*.
 ///

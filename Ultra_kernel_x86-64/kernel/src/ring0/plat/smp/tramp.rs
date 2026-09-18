@@ -31,13 +31,15 @@
 //!    instruccion tras activar paginacion -- y sin nadie que lo cuente, porque el
 //!    AP todavia no ha llegado a ningun sitio.
 //!
-//! 2. **Un AP que toma una excepcion esta muerto de una forma fea.** Carga la
-//!    IDT del kernel, pero **no tiene GS por-CPU** y **no tiene `CR4.OSXSAVE`**;
-//!    los stubs de trampa hacen `swapgs` y `xsave64`. O sea: cualquier excepcion
-//!    aqui es `#UD` dentro del manejador -> doble fallo -> triple fallo. Es
-//!    aceptable *solo* porque este AP no hace nada que pueda fallar --dos
-//!    atomicas y `hlt`--, y **deja de serlo el dia que se le de trabajo de
-//!    verdad**. Entonces hace falta GS por-CPU antes de soltarlo.
+//! 2. ~~**Un AP que toma una excepcion esta muerto de una forma fea.**~~
+//!    **CERRADO el 2026-09-18** (`tss.rs`, A1 de PLAN_EL_BUS_APARTE). Los
+//!    motivos eran tres y el peor no estaba aqui escrito: la IDT manda los
+//!    fallos al selector 0x08, que en la GDT de ESTE trampolin es codigo de
+//!    16 bits. Ahora `smp_ap_entrada` carga una GDT con la forma del BSP, un
+//!    TSS con IST1 propio y enciende OSXSAVE antes de tocar nada; y
+//!    `fault_dispatch` tiene una rama para un AP: apunta en su ficha y se
+//!    para SOLO. Lo que sigue sin tener es GS por-CPU y `rsp0`: un obrero no
+//!    entra por SYSCALL ni corre Ring 3 -- ese es el sub-director entero.
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
@@ -164,6 +166,19 @@ pub static VIVOS: AtomicU32 = AtomicU32::new(0);
 /// en un panel de una linea, y ese problema todavia no existe.
 pub static MASCARA: AtomicU32 = AtomicU32::new(0);
 
+/// El APIC ID del BSP, apuntado por `despertar` antes del primer SIPI.
+/// `u32::MAX` mientras no se haya despertado a nadie: entonces no hay APs y
+/// `soy_ap` contesta que no sin preguntarle nada al CPU.
+pub static BSP_APIC: AtomicU32 = AtomicU32::new(u32::MAX);
+
+/// **Estoy en un nucleo que NO es el BSP?** Lo pregunta `fault_dispatch`
+/// para saber si el fallo es de un obrero (se para solo) o del kernel (la
+/// pantalla azul). Un `cpuid`, sin memoria.
+pub fn soy_ap() -> bool {
+    let bsp = BSP_APIC.load(Ordering::Relaxed);
+    bsp != u32::MAX && apic_id() != bsp
+}
+
 /// El APIC ID **por CPUID**, no por LAPIC.
 ///
 /// A proposito: la MMIO del LAPIC vive en `0xFEE0_0000` y el kernel solo la
@@ -201,6 +216,20 @@ pub extern "C" fn smp_ap_entrada() -> ! {
     // 0..n-1 sin repartirlo desde fuera ni pasarlo por la pagina compartida.
     // El contador y el reparto de indices salen de la misma operacion atomica.
     let indice = VIVOS.fetch_add(1, Ordering::SeqCst);
+    // ** LO PRIMERO, ANTES DE PODER FALLAR: su GDT y su TSS (`tss.rs`), y
+    // OSXSAVE con el XCR0 que el BSP ya midio. Hasta aqui una excepcion era
+    // el PC reiniciando; desde aqui es una ficha que dice FALLO.
+    unsafe {
+        super::tss::cargar(indice);
+        let inf = crate::ring0::cpu_vendor::xsave::informe();
+        if inf.osxsave && inf.xcr0 != 0 {
+            let cr4: u64;
+            core::arch::asm!("mov {}, cr4", out(reg) cr4, options(nomem, nostack));
+            core::arch::asm!("mov cr4, {}", in(reg) cr4 | (1 << 18), options(nomem, nostack));
+            core::arch::asm!("xsetbv", in("ecx") 0u32, in("eax") inf.xcr0 as u32,
+                             in("edx") (inf.xcr0 >> 32) as u32, options(nomem, nostack));
+        }
+    }
     // Y de aqui al bucle de trabajo. Antes esto era `cli; hlt` para siempre: un
     // nucleo despierto al que no se le puede dar una tarea sirve exactamente lo
     // mismo que uno dormido.

@@ -241,6 +241,21 @@ fn escalar(mia: u32, partes: u32) {
     }
 }
 
+/// **TROPEZAR**: el atril 1 hace `ud2` a proposito; los demas, nada.
+///
+/// La sonda de A1.2 (`smp tropezar`): si el obrero 1 tiene su TSS y su GDT
+/// (`tss.rs`), llega a `fault_dispatch`, apunta FALLO en su ficha y se para
+/// SOLO; el BSP hace su parte, no le espera, y lo dice en CABINA. Si no los
+/// tiene, el PC se reinicia -- que es exactamente lo que se quiere saber.
+///
+/// [!] El atril 0 es el BSP y NUNCA tropieza: un `ud2` en el BSP es la
+/// pantalla azul de verdad.
+fn tropezar(mia: u32, _partes: u32) {
+    if mia == 1 {
+        unsafe { core::arch::asm!("ud2", options(nomem, nostack)) };
+    }
+}
+
 /// Por que no se pudo tocar. Sale por la puerta como un numero.
 pub const NO_HAY_ORQUESTA: u64 = u64::MAX;
 
@@ -359,6 +374,7 @@ pub fn tocar(pid: u32, parte_num: u64, pedidos: u64) -> u64 {
         Parte::Llenar => llenar,
         Parte::Expandir => expandir,
         Parte::Escalar => escalar,
+        Parte::Tropezar => tropezar,
         Parte::Nada => unreachable!("el juez ya lo rechazo"),
     };
     // `repartir` cuenta al BSP como una parte, asi que los obreros son uno menos.
@@ -381,6 +397,6 @@ pub fn tocar(pid: u32, parte_num: u64, pedidos: u64) -> u64 {
 /// aqui, el `match` de `tocar` no compila --Rust obliga-- pero al reves si
 /// colaria. Esto lo cierra: el numero de partes escritas es contrato.
 const _: () = {
-    assert!(bmo_orquesta::PARTES_ESCRITAS == 4, "el catalogo crecio y el despacho no");
+    assert!(bmo_orquesta::PARTES_ESCRITAS == 5, "el catalogo crecio y el despacho no");
     assert!(CAMPOS == 4, "un campo mas en el encargo es un campo mas en `poner`");
 };

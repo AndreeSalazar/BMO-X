@@ -40,5 +40,5 @@ inti/cpu.ibx 11304
 inti/musica.ibx 20880
 inti/pulso.ibx 6056
 inti/ventana.ibx 18520
-sys/d.bex 863544
+sys/d.bex 867128
 sys/precio.bex 30080

@@ -160,6 +160,21 @@ pub fn repartir(faena: Faena, obreros: u32) -> bool {
 
     // El BSP hace la suya mientras los demas hacen las suyas.
     faena(0, partes);
+    // ** Y LAS DE LOS QUE FALLARON (2026-09-18, A1). Un obrero que tomo una
+    // excepcion esta parado para siempre: ni vera esta ronda ni sumara a
+    // `HECHOS`. Sin esto, su parte quedaria sin hacer --un HUECO-- y la
+    // barrera esperaria su tope entero en cada reparto. El BSP hace esas
+    // partes y no les espera. Se cuentan primero, por si alguno falla
+    // durante ESTA faena: ese si dejara la barrera esperar al tope, y `ok`
+    // sera falso, que es lo correcto -- su parte no la hizo nadie.
+    let mut fallados = 0u32;
+    for i in 0..obreros {
+        if super::ficha::fallado(i) {
+            fallados += 1;
+            faena(i + 1, partes);
+        }
+    }
+    super::ficha::reportar_fallos();
 
     // Y espera, con tope. Un obrero que no contesta no puede colgar la maquina.
     //
@@ -175,13 +190,17 @@ pub fn repartir(faena: Faena, obreros: u32) -> bool {
     let hz = crate::ring0::task::scheduler::tsc_freq();
     let limite = if hz > 0 { hz * 2 } else { u64::MAX };
     let t0 = crate::ring0::task::scheduler::rdtsc();
-    while HECHOS.load(Ordering::SeqCst) < obreros {
+    let esperados = obreros - fallados;
+    while HECHOS.load(Ordering::SeqCst) < esperados {
         if crate::ring0::task::scheduler::rdtsc().wrapping_sub(t0) > limite {
             break;
         }
         core::hint::spin_loop();
     }
-    let ok = HECHOS.load(Ordering::SeqCst) >= obreros;
+    let ok = HECHOS.load(Ordering::SeqCst) >= esperados;
+    // Los que cayeron DENTRO de esta faena, dichos ahora y no en el siguiente
+    // censo: es la unica forma de que "no llego a tiempo" traiga su porque.
+    super::ficha::reportar_fallos();
     TAREA.store(0, Ordering::SeqCst);
     ok
 }

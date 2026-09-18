@@ -428,6 +428,21 @@ extern "C" fn fault_dispatch(
         // schedule() below loads the NEXT task's CR3 itself.
         return crate::ring0::task::scheduler::kill_current_and_pick();
     }
+    // ** UN OBRERO QUE FALLA SE PARA SOLO (2026-09-18, A1 de
+    // PLAN_EL_BUS_APARTE). Hasta hoy no llegaba aqui: reiniciaba el PC
+    // (ver `smp/tss.rs`). Ahora llega, y lo que hace es lo MINIMO: apunta en
+    // su ficha --vector y rip, atomicas, su ranura-- y devuelve 0, que el
+    // stub convierte en `cli; hlt`. Ni pantalla azul, ni CABINA, ni el log:
+    // todo eso es del BSP, que lo dice en el siguiente reparto o censo. Un
+    // obrero muerto no toca el estado del kernel ni para despedirse.
+    if crate::ring0::plat::smp::tramp::soy_ap() {
+        let apic = crate::ring0::plat::smp::tramp::apic_id();
+        if let Some(i) = crate::ring0::plat::smp::ficha::indice_de(apic) {
+            crate::ring0::plat::smp::ficha::fallo(i, vector as u32, rip);
+        }
+        let _ = (error, cr2, fault_rsp);
+        return 0;
+    }
     fault_report(vector, error, rip, cr2, fault_rsp)
 }
 

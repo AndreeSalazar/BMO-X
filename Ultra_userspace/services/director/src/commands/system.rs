@@ -743,6 +743,48 @@ pub(crate) fn smp(dsk: &mut Desktop, p: &bmo::Pantalla, arg: &[u8]) -> After {
         dsk.field.cur = 0;
         return After::NextKey;
     }
+    // == `smp tropezar`: LA SONDA DEL FALLO (2026-09-18, A1.2) ============
+    //
+    // Manda al obrero 1 un `ud2` a proposito. Lo que tiene que pasar: el
+    // obrero se para SOLO, el BSP hace su parte, CABINA dice "un OBRERO tomo
+    // una excepcion", y esta ventana sigue aqui. Lo que pasaba antes: el PC
+    // se reiniciaba. Es la prueba de que un nucleo puede fallar sin apagar la
+    // maquina -- el suelo del sub-director y del bus en su propio nucleo.
+    if arg == b"tropezar" || arg == b"fallo" {
+        match ensayo() {
+            None => {
+                dsk.out.grid.text(b"  tropezar: sin memoria para el ensayo\n");
+            }
+            Some(m) => {
+                dsk.out.grid.text(b"  el obrero 1 va a hacer ud2 a proposito...\n");
+                paint_output(&p, &dsk.run_box, &dsk.out.grid);
+                p.volcar();
+                bmo::atril(bmo::ATRIL_DESTINO, m.base() as u64);
+                bmo::atril(bmo::ATRIL_TOTAL, 16);
+                bmo::atril(bmo::ATRIL_DATO, 0);
+                let atriles = bmo::tocar(bmo::PARTE_TROPEZAR, 0);
+                if atriles == 0 {
+                    dsk.out.grid.with_ink(INK_ERR);
+                    dsk.out.grid.text(b"  la puerta dijo que NO (el motivo, en CABINA)\n");
+                } else if atriles == 1 {
+                    dsk.out.grid.with_ink(INK_ERR);
+                    dsk.out.grid.text(b"  solo toco el BSP: no hay obreros en pie (smp all primero)\n");
+                } else {
+                    dsk.out.grid.with_ink(INK_GOOD);
+                    dsk.out.grid.text(b"  SIGUES AQUI: el obrero fallo y la maquina no se reinicio\n");
+                    dsk.out.grid.with_ink(INK_PLAIN);
+                    dsk.out.grid.text(b"  lo que dijo: `cabina` (un OBRERO tomo una excepcion)\n");
+                    dsk.out.grid.text(b"  F11: ese obrero sale como FALLO; los demas siguen\n");
+                }
+                dsk.out.grid.with_ink(INK_PLAIN);
+            }
+        }
+        paint_output(&p, &dsk.run_box, &dsk.out.grid);
+        paint_status(&p, &dsk.run_box, "tropezar", INK_DIM);
+        dsk.field.n = 0;
+        dsk.field.cur = 0;
+        return After::NextKey;
+    }
     if arg == b"parar" || arg == b"para" || arg == b"stop" {
         bmo::smp_parar();
         dsk.out.grid.text(b"  obreros parados (vuelven a hlt)\n");
@@ -877,6 +919,7 @@ pub(crate) fn smp(dsk: &mut Desktop, p: &bmo::Pantalla, arg: &[u8]) -> After {
         dsk.out.grid.text(b"  smp all      despierta todos    smp 3   solo tres\n");
         dsk.out.grid.text(b"  smp test     reparte una cuenta y mide la aceleracion\n");
         dsk.out.grid.text(b"  smp stop     los duerme. [!] sin IPI NO vuelven\n");
+        dsk.out.grid.text(b"  smp tropezar el obrero 1 falla a proposito: la maquina tiene que seguir\n");
         dsk.out.grid.text(b"  F11 dice en que esta cada nucleo y cual gira en vacio\n");
     }
     paint_status(&p, &dsk.run_box, "smp", INK_DIM);
