@@ -124,3 +124,18 @@ SI ESTE PERFIL ESTA MAL, ASI SE NOTA
   el fichero de un rodeo se renombra
       el perfil apunta a un sitio que no existe. Lo caza el guardian, y es la
       unica de las cuatro que se caza sin arrancar
+
+LO QUE FALTA MEDIR EN ESTA PLACA (2026-09-17)
+---------------------------------------------
+
+  [ ] el LARGO de la tabla mas grande que ofrece el firmware
+
+      `bmo_firmware::xsdt::MAX_TABLA` es 1 MiB y es una SUPOSICION, no un
+      numero de esta placa: por encima de el, una tabla no se lee para
+      sumarla y sale en el censo como NO CREIBLE. Las que BMO-X usa (MCFG,
+      IVRS, MADT) miden bytes; las grandes son DSDT y SSDT, que son AML y
+      aqui no se ejecutan.
+
+      Como se mide: `confesar` ya imprime el largo de cada tabla en CABINA
+      al arrancar. El mayor va aqui, y el tope se compara con el. Si alguna
+      pasara de 1 MiB, se ve en el censo como no creible -- no se cuelga.

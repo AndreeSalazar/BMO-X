@@ -1,6 +1,7 @@
 //! **EL CENSO DE LA PLACA: que tablas ofrece el firmware, y cual se cree.**
 //!
 //! [carril]  AMARILLO  que tablas ofrece el firmware y cual se cree
+//! [prueba]  bmo-firmware   -- el recorrido del XSDT (`xsdt`), el tope y la suma
 //! [consumo] NADA      lee las tablas del firmware en el arranque
 //!
 //! ## Por que esto existe, y por que es LEER y nada mas
@@ -47,48 +48,32 @@
 //! pruebas. Es el mismo reparto que `bmo-net`, y por el mismo motivo: la parte
 //! que se equivoca en silencio es la de interpretar.
 
-use bmo_firmware::{recortar, Cabecera, CABECERA_LEN};
+use bmo_firmware::recortar;
 
 // ** Se REEXPORTAN en vez de obligar a quien llame a enlazar `bmo_firmware`
 // tambien. El shell pide el censo a este modulo; que ademas tuviera que saber
 // de que crate salen los tipos seria contarle una costura que no le importa.
 pub use bmo_firmware::{Ivhd, RangoEcam};
 
-/// Cuantas tablas se censan como mucho.
-///
-/// ** Un tope y no un `Vec`: esto corre en el arranque, sin monton. Y un XSDT
-/// con mas de 64 tablas no es una placa generosa, es un puntero que apunta a
-/// basura -- que es exactamente lo que la suma de comprobacion existe para
-/// cazar, pero el bucle tiene que terminar igual.
-const MAX_TABLAS: usize = 64;
+/// Cuantas tablas se censan como mucho. El numero es del recorrido, que tiene
+/// banco: un array de aqui y un tope de alli no pueden decir cosas distintas.
+const MAX_TABLAS: usize = bmo_firmware::xsdt::MAX_ENTRADAS;
 
-/// Lee un tipo de una direccion fisica ya mapeada en el rango de identidad.
+/// **Memoria fisica, leida.** Es lo UNICO que este fichero hace que el crate no
+/// puede: la direccion ya esta mapeada en el rango de identidad.
 ///
-/// [!] `read_unaligned` siempre: las entries del XSDT son de 8 bytes y empiezan
-/// en el offset 36, que no esta alineado a 8.
-unsafe fn fis<T: Copy>(addr: u64) -> T {
-    unsafe { core::ptr::read_unaligned(addr as *const T) }
+/// *** Lo que se hace con esos bytes --que tabla es, cuantos se leen, si se
+/// cree-- lo decide `bmo_firmware::xsdt`, con banco. Hasta el 2026-09-17 ese
+/// recorrido estaba escrito aqui DOS veces (`censar` y `tabla_de`), sin tope
+/// para el largo de cada tabla, y las dos copias no hacian lo mismo con una
+/// entrada ilegible. Ver la cabecera de ese modulo.
+unsafe fn leer(fisica: u64, n: usize) -> &'static [u8] {
+    unsafe { core::slice::from_raw_parts(fisica as *const u8, n) }
 }
 
-/// El XSDT a partir del RSDP.
-///
-/// ** Se exige revision >= 2 por lo mismo que en `madt`: el RSDT de 32 bits es
-/// de ACPI 1.0, y esta maquina arranca por UEFI, que obliga a XSDT.
+/// El XSDT a partir del RSDP. La regla (firma, ACPI 2.0+, puntero) es del crate.
 unsafe fn xsdt(rsdp: u64) -> Option<u64> {
-    unsafe {
-        if fis::<[u8; 8]>(rsdp) != *b"RSD PTR " {
-            return None;
-        }
-        if fis::<u8>(rsdp + 15) < 2 {
-            return None;
-        }
-        let x: u64 = fis(rsdp + 24);
-        if x == 0 {
-            None
-        } else {
-            Some(x)
-        }
-    }
+    unsafe { bmo_firmware::xsdt::xsdt_del_rsdp(leer(rsdp, bmo_firmware::xsdt::RSDP_LEN)) }
 }
 
 /// Lo que se supo de una tabla.
@@ -178,51 +163,30 @@ pub fn censar(rsdp: u64) -> Result<Censo, u32> {
     }
     unsafe {
         let x = xsdt(rsdp).ok_or(SIN_XSDT)?;
-
-        // La cabecera del propio XSDT: de ahi salen el OEM y el largo que dice
-        // cuantas entries trae.
-        let cab_bytes = core::slice::from_raw_parts(x as *const u8, CABECERA_LEN);
-        let cab = Cabecera::leer(cab_bytes).ok_or(CABECERA_MALA)?;
-        if (cab.largo as usize) < CABECERA_LEN {
-            return Err(LARGO_IMPOSIBLE);
-        }
-
-        let mut censo = Censo {
-            filas: [None; MAX_TABLAS],
-            cuantas: 0,
-            oem: cab.oem,
-            oem_tabla: cab.oem_tabla,
-        };
-
-        let n = (((cab.largo as usize) - CABECERA_LEN) / 8).min(MAX_TABLAS);
-        for i in 0..n {
-            let t: u64 = fis(x + CABECERA_LEN as u64 + (i * 8) as u64);
-            if t == 0 {
-                continue;
+        let mut filas = [None; MAX_TABLAS];
+        let mut cuantas = 0;
+        let cab = bmo_firmware::xsdt::recorrer(x, |f, n| leer(f, n), |t| {
+            // El recorrido nunca da mas de `MAX_ENTRADAS`, que es este tope:
+            // el `if` es un cinturon, no una rama que se espere.
+            if cuantas < MAX_TABLAS {
+                filas[cuantas] = Some(Fila {
+                    firma: t.cabecera.firma,
+                    largo: t.cabecera.largo,
+                    // ** Creible = largo posible Y suma que cuadra sobre la
+                    // tabla ENTERA. Lo decide el recorrido, con su tope.
+                    creible: t.bytes.is_some(),
+                    programa: t.cabecera.es_un_programa(),
+                    que_es: t.cabecera.que_es(),
+                });
+                cuantas += 1;
             }
-            let bytes = core::slice::from_raw_parts(t as *const u8, CABECERA_LEN);
-            let Some(c) = Cabecera::leer(bytes) else {
-                continue;
-            };
-            // ** La suma se hace sobre la tabla ENTERA, no sobre su cabecera. Es
-            // la unica comprobacion que ACPI trae, y es lo que separa "aqui hay
-            // una tabla" de "aqui hay memoria que se lee".
-            let creible = if (c.largo as usize) >= CABECERA_LEN {
-                let todo = core::slice::from_raw_parts(t as *const u8, c.largo as usize);
-                bmo_firmware::revisar(todo).is_ok()
-            } else {
-                false
-            };
-            censo.filas[censo.cuantas] = Some(Fila {
-                firma: c.firma,
-                largo: c.largo,
-                creible,
-                programa: c.es_un_programa(),
-                que_es: c.que_es(),
-            });
-            censo.cuantas += 1;
-        }
-        Ok(censo)
+            true
+        })
+        .map_err(|e| match e {
+            bmo_firmware::xsdt::NoXsdt::CabeceraMala => CABECERA_MALA,
+            bmo_firmware::xsdt::NoXsdt::LargoImposible => LARGO_IMPOSIBLE,
+        })?;
+        Ok(Censo { filas, cuantas, oem: cab.oem, oem_tabla: cab.oem_tabla })
     }
 }
 
@@ -245,27 +209,20 @@ pub const MAX_IOMMU: usize = 4;
 unsafe fn tabla_de(rsdp: u64, sig: &[u8; 4]) -> Option<&'static [u8]> {
     unsafe {
         let x = xsdt(rsdp)?;
-        let cab = Cabecera::leer(core::slice::from_raw_parts(x as *const u8, CABECERA_LEN))?;
-        if (cab.largo as usize) < CABECERA_LEN {
-            return None;
-        }
-        let n = ((cab.largo as usize) - CABECERA_LEN) / 8;
-        for i in 0..n.min(MAX_TABLAS) {
-            let t: u64 = fis(x + CABECERA_LEN as u64 + (i * 8) as u64);
-            if t == 0 {
-                continue;
+        let mut hallada = None;
+        // ** Se para en la PRIMERA tabla con esa firma, crea o no: si el MCFG
+        // no pasa su suma, no se busca "otro MCFG" -- no existe tal cosa. Y una
+        // entrada ilegible ANTES ya no corta la busqueda: eso era la diferencia
+        // entre las dos copias viejas, con fila en `bmo_firmware::xsdt`.
+        bmo_firmware::xsdt::recorrer(x, |f, n| leer(f, n), |t| {
+            if &t.cabecera.firma == sig {
+                hallada = t.bytes;
+                return false;
             }
-            let c = Cabecera::leer(core::slice::from_raw_parts(t as *const u8, CABECERA_LEN))?;
-            if &c.firma != sig {
-                continue;
-            }
-            if (c.largo as usize) < CABECERA_LEN {
-                return None;
-            }
-            let todo = core::slice::from_raw_parts(t as *const u8, c.largo as usize);
-            return bmo_firmware::revisar(todo).ok().map(|_| todo);
-        }
-        None
+            true
+        })
+        .ok()?;
+        hallada
     }
 }
 

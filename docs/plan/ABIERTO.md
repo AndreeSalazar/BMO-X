@@ -7,8 +7,8 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   290 casillas ABIERTAS en 34 planes
-   193 hechas
+   289 casillas ABIERTAS en 34 planes
+   194 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -188,15 +188,6 @@
 - [ ] E6 -- firmas: cifrado autenticado sobre UDP. ChaCha20-Poly1305 y
 - ... y 4 mas
 
-## [`PLAN_SEGURIDAD.md`](PLAN_SEGURIDAD.md) -- 7 abiertas, 25 hechas
-
-*PLAN SEGURIDAD -- las casillas que faltan, medidas contra el codigo*
-
-- [ ] S-FIRMA-4 -- EL METAL. Un .bex firmado que arranque en el Ryzen y
-- [ ] S-FIRMA-5 -- exige_firma() = true. Lo ultimo, y **no antes de que
-- [ ] placa.rs: sigue igual.
-- ... y 4 mas
-
 ## [`PLAN_DOOM.md`](PLAN_DOOM.md) -- 6 abiertas, 3 hechas
 
 *El plan largo: de "BMO C compila 69 de 81" a "DOOM se juega en el Ryzen"*
@@ -231,6 +222,15 @@
 - [ ] N1 -- Navegar v1: la ventana con el mensaje, en el METAL. El
 - [ ] N2 -- Navegar pinta una lamina DE FICHERO. ejemplo.lamina como
 - [ ] N3 -- el ANTENISTA. Ultra_userspace/services/antenista: Rust, Ring
+- ... y 3 mas
+
+## [`PLAN_SEGURIDAD.md`](PLAN_SEGURIDAD.md) -- 6 abiertas, 26 hechas
+
+*PLAN SEGURIDAD -- las casillas que faltan, medidas contra el codigo*
+
+- [ ] S-FIRMA-4 -- EL METAL. Un .bex firmado que arranque en el Ryzen y
+- [ ] S-FIRMA-5 -- exige_firma() = true. Lo ultimo, y **no antes de que
+- [ ] C8e -- EL METAL. Los hallazgos 1, 2, 4, 5 y 6 tocan codigo que corre en
 - ... y 3 mas
 
 ## [`PLAN_CODEGEN.md`](PLAN_CODEGEN.md) -- 5 abiertas, 4 hechas

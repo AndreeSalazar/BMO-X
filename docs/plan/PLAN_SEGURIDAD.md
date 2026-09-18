@@ -724,7 +724,35 @@ inventen despues de escribir esto.
     cumple es mejor abolir"*): busca por NOMBRE DE CRATE en los dos sitios y
     EXIGE al menos una fila. Autoprueba 113 -> 115 casos. Y los tres ficheros
     de `ring0/red` nombran ya a `bmo-net`.
-  - [ ] **`placa.rs`**: sigue igual.
+  - [x] **`placa.rs`: HECHO el 2026-09-17**, y lo que salio no era "le faltan
+    pruebas": el recorrido del XSDT estaba escrito DOS VECES dentro del kernel
+    (`censar` y `tabla_de`), con el mismo hueco en las dos y una diferencia
+    entre ellas.
+    - **El hueco**: el largo de cada tabla lo escribe el firmware --o la
+      basura, en el caso que el propio fichero dice anticipar: *"un puntero del
+      XSDT que apunte a memoria que no es una tabla produce una cabecera con
+      campos plausibles"*-- y se leian ESOS bytes, sin tope, para sumarlos. Un
+      largo de `0xFFFF_FFFF` pedia 4 GiB de memoria fisica en el arranque.
+    - **La diferencia**: ante una entrada ilegible, `censar` seguia y
+      `tabla_de` ABANDONABA la busqueda, asi que una entrada mala antes del
+      MCFG o del IVRS habria hecho decir a `ecam()`/`iommu()` CERO, presentado
+      como un hecho. Hoy no se alcanza --`Cabecera::leer` solo falla con menos
+      de 36 bytes-- pero era una trampa armada para el dia que `leer`
+      comprobara algo.
+
+    Ahora hay UN recorrido, en `bmo_firmware::xsdt`, con tope por tabla
+    (`MAX_TABLA`, 1 MiB, declarado como SUPOSICION y con su forma de medirlo en
+    `PERFIL/PLACA`) y que ante una entrada ilegible SIGUE. `placa.rs` se queda
+    con lo unico que el crate no puede hacer: leer memoria fisica. Banco
+    `bmo-firmware` 23 -> 33 filas.
+
+    Mutado, caen las cuatro: sin tope de largo, ilegible que corta, sin tope de
+    entradas, y el tope exclusivo en vez de inclusivo. ** Y la tercera NO cayo
+    a la primera: la fila declaraba un XSDT enorme con todas sus entradas a
+    cero, asi que media algo que no ocurria. Se rehizo con cien tablas vivas
+    detras del largo mentiroso, y ahora cae.
+    [!] Lo que esto NO arregla, dicho en la cabecera del modulo: el tope acota
+    el LARGO; que la DIRECCION este mapeada es del mapa de memoria del kernel.
 - ★ **El limite que C6 ya tenia escrito sigue en pie, y se cumplio**: *"la sonda
   la escribio el mismo lado que escribio las defensas (...) la primera prueba que
   no se escribe uno mismo llega con la RED."* **Llego el 25-08**: 16 tramas que

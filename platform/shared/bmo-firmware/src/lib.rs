@@ -56,6 +56,10 @@
 
 #![cfg_attr(not(test), no_std)]
 
+/// **El recorrido del XSDT**: que tablas hay y cuantos bytes de cada una se
+/// pueden leer. Estaba escrito DOS veces dentro del kernel -- ver su cabecera.
+pub mod xsdt;
+
 /// Bytes de la cabecera que llevan **todas** las tablas ACPI, sin excepcion.
 ///
 /// Es lo que hace posible censar el XSDT sin saber que tablas hay: se lee la
