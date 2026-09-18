@@ -70,6 +70,10 @@ pub mod anillo;
 /// antes de que el kernel encienda `CR.TE`.
 pub mod tx;
 
+/// **RECIBIR**: que se hace con cada trama que llega. Era politica escrita
+/// dentro del kernel, sin banco -- ver la cabecera del modulo.
+pub mod recibir;
+
 /// Seis bytes. El nombre existe para que una firma no diga `[u8; 6]` y deje al
 /// que lee adivinando si son bytes de MAC o de otra cosa.
 pub type Mac = [u8; 6];

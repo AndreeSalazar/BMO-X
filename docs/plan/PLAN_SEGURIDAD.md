@@ -694,6 +694,32 @@ inventen despues de escribir esto.
 - **`placa.rs` (350 lineas) y `red/mod.rs` (637)** siguen dentro del kernel
   con cero pruebas. El mismo reparto vale para los dos, y el segundo es el que
   ahora recibe bytes de un tercero **de verdad**.
+  - [x] **`red/`: HECHO el 2026-09-17**, con el reparto de la MADT. Lo que
+    DECIDIA dentro del kernel sin una fila eran dos cosas, y las dos salieron a
+    `bmo-net`, donde ya vivian sus hermanas con banco (44 -> 55 filas):
+    - **que se hace con cada trama que llega** (`bmo_net::recibir`): parar,
+      contar y devolver, no leer, entregar. Ahi vivio el ATASCO del 13-09 --una
+      trama mala paraba el anillo para siempre-- y ese fallo estaba arreglado
+      pero **no tenia fila**: reintroducir el `break` compilaba y pasaba el
+      banco entero. Ahora pone roja `una_trama_mala_no_para_el_anillo`.
+      ** Y "no se lee ni un byte de una trama que no cabe" deja de ser un
+      comentario: los bytes se piden con una `FnOnce` que solo se llama si el
+      largo cabe en SU bufer, y una fila CUENTA las llamadas.
+    - **de quien es la culpa de cada trama rechazada** (`NoSale::culpa`), que
+      es lo que el radar cuenta para revocar el pase de red. Era una tabla de
+      SEGURIDAD escrita en el kernel: si la suplantacion cayera en "no es del
+      proceso", un programa podria falsificar su MAC sin que se le quitara la
+      red nunca. El `match` va sin `_`, asi que un no nuevo NO COMPILA hasta que
+      alguien decida de quien es.
+
+    Mutado, caen las tres: reintroducir el atasco tumba una fila, suplantar sin
+    culpa tumba dos, leer antes de mirar si cabe tumba una. Y de paso, cinco
+    `static mut` de contadores pasan a ser uno.
+    [!] Lo que NO se pudo: `[prueba]` solo admite crates de `platform/shared/`,
+    y `bmo-net` vive en `platform/drivers/` con dos `unsafe` (lee registros).
+    Asi que el juez existe y tiene banco, pero el guardian de L6g no lo ve
+    nombrado. Se dice aqui en vez de mover el juez a un sitio peor.
+  - [ ] **`placa.rs`**: sigue igual.
 - ★ **El limite que C6 ya tenia escrito sigue en pie, y se cumplio**: *"la sonda
   la escribio el mismo lado que escribio las defensas (...) la primera prueba que
   no se escribe uno mismo llega con la RED."* **Llego el 25-08**: 16 tramas que

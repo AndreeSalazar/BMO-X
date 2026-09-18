@@ -384,6 +384,45 @@ impl NoSale {
             NoSale::SinSitio => "no cabe en el bufer de salida",
         }
     }
+
+    /// **De quien es la culpa de este no.** Es lo que el radar del GATE RED
+    /// cuenta para decidir si le quita el pase de red a un proceso.
+    ///
+    /// *** Hasta el 2026-09-17 esta tabla vivia escrita en el kernel
+    /// (`ring0/red/puerta.rs`, `clasificar`), que no se puede probar. Y es una
+    /// decision de SEGURIDAD: si `OrigenAjeno` cayera en `NoEsDelProceso`, un
+    /// programa podria suplantar la MAC de otro todo lo que quisiera y el radar
+    /// no lo contaria nunca -- sin fallar, sin avisar. Aqui tiene fila.
+    ///
+    /// ** El `match` es exhaustivo a proposito, sin `_`: el dia que alguien
+    /// anada un no nuevo, esto NO COMPILA hasta que decida de quien es.
+    pub const fn culpa(self) -> Culpa {
+        match self {
+            NoSale::OrigenAjeno => Culpa::OrigenAjeno,
+            NoSale::Ritmo => Culpa::Ritmo,
+            NoSale::Corta | NoSale::Larga | NoSale::DestinoImposible | NoSale::Tipo => {
+                Culpa::Malformada
+            }
+            // El plazo y el cupo los mira el radar por su cuenta, y "sin sitio"
+            // es del anillo: ninguno de los cuatro lo provoco el proceso.
+            NoSale::Cerrado | NoSale::Caducado | NoSale::SinCupo | NoSale::SinSitio => {
+                Culpa::NoEsDelProceso
+            }
+        }
+    }
+}
+
+/// **De quien es un no del grifo**, en las casillas que cuenta el radar.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Culpa {
+    /// La trama decia venir de otra MAC: suplantacion.
+    OrigenAjeno,
+    /// Mas tramas por segundo de las concedidas.
+    Ritmo,
+    /// La trama estaba mal hecha.
+    Malformada,
+    /// El no es del grifo o del anillo, no del proceso.
+    NoEsDelProceso,
 }
 
 /// **El grifo.** Cerrado al nacer; se abre a mano, caduca solo.
@@ -717,5 +756,60 @@ mod pruebas {
             let _ = g.juzgar(&m, YO, k, &mut s);
         }
         assert_eq!(g.salieron + g.negadas, 20_000);
+    }
+
+    const TODOS_LOS_NO: [NoSale; 10] = [
+        NoSale::Cerrado,
+        NoSale::Caducado,
+        NoSale::SinCupo,
+        NoSale::Ritmo,
+        NoSale::Corta,
+        NoSale::Larga,
+        NoSale::OrigenAjeno,
+        NoSale::DestinoImposible,
+        NoSale::Tipo,
+        NoSale::SinSitio,
+    ];
+
+    /// *** LA FILA DE SEGURIDAD. Suplantar una MAC es el unico no que dice que
+    /// el proceso MIENTE sobre quien es, y el radar tiene que contarlo como
+    /// suyo. Si esto cayera en `NoEsDelProceso`, el pase de red no se revocaria
+    /// nunca por suplantar -- en silencio.
+    #[test]
+    fn suplantar_una_mac_es_culpa_del_proceso() {
+        assert_eq!(NoSale::OrigenAjeno.culpa(), Culpa::OrigenAjeno);
+        assert_ne!(NoSale::OrigenAjeno.culpa(), Culpa::NoEsDelProceso);
+    }
+
+    /// Y lo contrario: lo que NO provoco el proceso no puede costarle el pase.
+    /// Un grifo caducado o un anillo lleno le quitarian la red a un programa
+    /// que no hizo nada.
+    #[test]
+    fn lo_que_no_hizo_el_proceso_no_le_cuesta_el_pase() {
+        for no in [NoSale::Cerrado, NoSale::Caducado, NoSale::SinCupo, NoSale::SinSitio] {
+            assert_eq!(no.culpa(), Culpa::NoEsDelProceso, "{no:?}");
+        }
+    }
+
+    /// La tabla entera, fila por fila, como la tenia el kernel. Cambiar una
+    /// casilla sin cambiar esta fila no se puede.
+    #[test]
+    fn cada_no_tiene_su_culpa() {
+        let tabla: Vec<(NoSale, Culpa)> = TODOS_LOS_NO.iter().map(|n| (*n, n.culpa())).collect();
+        assert_eq!(
+            tabla,
+            vec![
+                (NoSale::Cerrado, Culpa::NoEsDelProceso),
+                (NoSale::Caducado, Culpa::NoEsDelProceso),
+                (NoSale::SinCupo, Culpa::NoEsDelProceso),
+                (NoSale::Ritmo, Culpa::Ritmo),
+                (NoSale::Corta, Culpa::Malformada),
+                (NoSale::Larga, Culpa::Malformada),
+                (NoSale::OrigenAjeno, Culpa::OrigenAjeno),
+                (NoSale::DestinoImposible, Culpa::Malformada),
+                (NoSale::Tipo, Culpa::Malformada),
+                (NoSale::SinSitio, Culpa::NoEsDelProceso),
+            ]
+        );
     }
 }

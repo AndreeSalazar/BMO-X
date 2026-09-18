@@ -473,14 +473,18 @@ fn latido() -> (bool, bool) {
 }
 
 /// Cada no del grifo, a su casilla del radar.
+///
+/// *** DE QUIEN ES LA CULPA ya no se decide aqui: lo dice `NoSale::culpa`, en
+/// `bmo-net`, con banco. Era una tabla de SEGURIDAD escrita en el kernel --si
+/// la suplantacion cayera en "no es del proceso", el radar no revocaria nunca
+/// el pase por suplantar-- y el kernel no se puede probar. Aqui solo queda
+/// poner cada culpa en su casilla, uno a uno.
 fn clasificar(v: &mut radar::Vuelta, no: bmo_net::tx::NoSale) {
-    use bmo_net::tx::NoSale;
-    match no {
-        NoSale::OrigenAjeno => v.origen_ajeno += 1,
-        NoSale::Ritmo => v.ritmo += 1,
-        NoSale::Corta | NoSale::Larga | NoSale::DestinoImposible | NoSale::Tipo => v.malformadas += 1,
-        // Plazo y cupo los mira el radar por su cuenta; sin sitio no es culpa
-        // del proceso.
-        NoSale::Cerrado | NoSale::Caducado | NoSale::SinCupo | NoSale::SinSitio => {}
+    use bmo_net::tx::Culpa;
+    match no.culpa() {
+        Culpa::OrigenAjeno => v.origen_ajeno += 1,
+        Culpa::Ritmo => v.ritmo += 1,
+        Culpa::Malformada => v.malformadas += 1,
+        Culpa::NoEsDelProceso => {}
     }
 }

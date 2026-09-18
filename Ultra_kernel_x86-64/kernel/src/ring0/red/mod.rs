@@ -13,6 +13,11 @@
 //! ```text
 //!    platform/drivers/net        bmo-net: registros, corral RX/TX, que llego y
 //!                                el grifo. Probado en el anfitrion
+//!    bmo_net::recibir            ** QUE SE HACE CON CADA TRAMA: parar, contar,
+//!                                no leer, entregar. Estaba escrito en el bucle
+//!                                de este fichero sin una fila (17-09)
+//!    bmo_net::tx::NoSale::culpa  ** de quien es cada no del grifo: lo que el
+//!                                radar cuenta para revocar el pase
 //!    ring0/red                   ESTA familia: arma, sondea y presta el corral
 //!    ring0/red/salida.rs         el transmisor: CR.TE, el corral de salida y la campana
 //!    ring0/red/puerta.rs         el GATE RED: el pase, el buzon, el latido de 4 ms
@@ -259,29 +264,24 @@ static mut PLANO: Option<bmo_net::anillo::Plan> = None;
 /// Which descriptor is next to be looked at. The card walks the ring in order and
 /// so do we.
 static mut RX_NEXT: usize = 0;
-/// Frames seen since the ring started. The number that answers the question.
-static mut RX_FRAMES: u64 = 0;
-/// Bytes de trama recibidos, **sin contar el FCS**: lo que se leyo de verdad.
-static mut RX_BYTES: u64 = 0;
-/// El reparto por protocolo: `[ARP, IPv4, IPv6, otros]`.
+/// **Lo que ha pasado por el anillo**, contado por veredicto. Ver
+/// `bmo_net::recibir::Contadores`.
 ///
-/// *** CUATRO CASILLAS Y NO UNA, y es lo que convierte "hay trafico" en una
-/// lectura. En una red domestica en reposo lo que llega es **ARP y broadcast**;
-/// si sale IPv4 sin que nadie haya pedido nada, hay alguien hablando. Un solo
-/// contador de tramas no distingue las dos cosas, y son la diferencia entre
-/// "el cable esta vivo" y "esta red tiene vecinos".
-static mut RX_TIPOS: [u64; 4] = [0; 4];
-/// Tramas mas cortas que una cabecera. Aparte: es cable o filtro, no trafico.
-static mut RX_CORTAS: u64 = 0;
-/// Descriptores que la tarjeta devolvio con algo que NO era una trama limpia
-/// (error, partida, enana, o que no cabia). Se cuentan y se DEVUELVEN: ver
-/// `bmo_net::Llegada`. Si sube y `RX_FRAMES` no, el cable o el puerto mandan
-/// basura -- con el enlace a 10 Mbit, el primer sospechoso.
-static mut RX_MALAS: u64 = 0;
+/// ** Eran CINCO `static mut` --tramas, bytes, tipos, cortas, malas-- sumados a
+/// mano en cinco sitios del bucle de abajo. Ahora es uno, y se suma en UN solo
+/// sitio que tiene banco en el anfitrion.
+///
+/// *** CUATRO CASILLAS DE TIPO Y NO UNA, y es lo que convierte "hay trafico" en
+/// una lectura. En una red domestica en reposo lo que llega es **ARP y
+/// broadcast**; si sale IPv4 sin que nadie haya pedido nada, hay alguien
+/// hablando. Y si `malas` sube y `tramas` no, el cable o el puerto mandan basura
+/// -- con el enlace a 10 Mbit, el primer sospechoso.
+static mut CONTADORES: bmo_net::recibir::Contadores = bmo_net::recibir::Contadores::nuevo();
 
 /// **El consumo del receptor.** `(tramas, bytes, [arp, ipv4, ipv6, otros], cortas)`.
 pub fn rx_consumo() -> (u64, u64, [u64; 4], u64) {
-    unsafe { (RX_FRAMES, RX_BYTES, RX_TIPOS, RX_CORTAS) }
+    let c = unsafe { *core::ptr::addr_of!(CONTADORES) };
+    (c.tramas, c.bytes, c.tipos, c.cortas)
 }
 
 /// **Lo que la TARJETA dice que perdio.** `None` si no hay NIC legible.
@@ -307,12 +307,12 @@ pub fn rx_activo() -> bool {
 
 /// Frames received since [`rx_start`].
 pub fn rx_tramas() -> u64 {
-    unsafe { RX_FRAMES }
+    unsafe { (*core::ptr::addr_of!(CONTADORES)).tramas }
 }
 
-/// Tramas MALAS devueltas a la tarjeta desde que se armo. Ver `RX_MALAS`.
+/// Tramas MALAS devueltas a la tarjeta desde que se armo. Ver `CONTADORES`.
 pub fn rx_malas() -> u64 {
-    unsafe { RX_MALAS }
+    unsafe { (*core::ptr::addr_of!(CONTADORES)).malas }
 }
 
 unsafe fn w8(mmio: *mut u8, off: usize, v: u8) {
@@ -428,11 +428,7 @@ pub fn rx_start() -> bool {
     unsafe {
         PLANO = Some(plan);
         RX_NEXT = 0;
-        RX_FRAMES = 0;
-        RX_BYTES = 0;
-        RX_TIPOS = [0; 4];
-        RX_CORTAS = 0;
-        RX_MALAS = 0;
+        *core::ptr::addr_of_mut!(CONTADORES) = bmo_net::recibir::Contadores::nuevo();
 
         // Los descriptores salen del plano ENTEROS, `EOR` incluido. El kernel no
         // arma ninguno: copia lo que el modulo probado le da.
@@ -563,131 +559,83 @@ fn rx_poll_con(entregar: &mut dyn FnMut(&[u8])) -> u32 {
         None => return 0,
     };
     unsafe {
+        let cuenta = &mut *core::ptr::addr_of_mut!(CONTADORES);
         // Bounded by the ring length: one turn never walks more than once around,
         // so a card that returns everything at once cannot keep this loop.
         for _ in 0..bmo_net::RX_RING_LEN {
             let d = core::ptr::read_volatile(desc(&plan, RX_NEXT));
-            // *** EL ATASCO DEL 13-09. Aqui habia `None => break` para CUALQUIER
-            // cosa que no fuera una trama limpia, y una sola con error dejaba el
-            // anillo parado para siempre: el descriptor era nuestro, nadie lo
-            // devolvia y la tarjeta se quedaba esperandolo. Ahora solo para
-            // `DeLaTarjeta`; lo demas se CUENTA, se devuelve y se sigue.
-            let llegada = d.llegada();
-            if llegada.para_el_sondeo() {
+
+            // *** QUE SE HACE CON ESTA TRAMA lo decide `bmo_net::recibir`, que
+            // tiene banco. Hasta el 2026-09-17 esa politica estaba escrita AQUI,
+            // en el unico sitio del kernel que lee bytes de un desconocido, y el
+            // kernel no se puede probar: el atasco del 13-09 --un `break` con una
+            // trama mala, y el anillo callado para siempre-- estaba arreglado y
+            // no tenia una sola fila. Ahora la tiene.
+            //
+            // ** Los bytes se piden con esta funcion, y el juez solo la llama si
+            // el largo que escribio la TARJETA cabe en SU bufer: para una trama
+            // que no cabe no se toca ni un byte de memoria.
+            let v = bmo_net::recibir::juzgar(&plan, RX_NEXT, d, |fisica, largo| {
+                core::slice::from_raw_parts(mm::phys_to_virt(fisica) as *const u8, largo as usize)
+            });
+            if !v.devuelve() {
                 break;
             }
-            let largo = match llegada {
-                bmo_net::Llegada::Trama(l) => Some(l),
-                mala => {
-                    RX_MALAS = RX_MALAS.wrapping_add(1);
-                    if RX_MALAS <= 4 {
-                        crate::ring0::cabina::count("red", "trama MALA devuelta a la tarjeta (2=error 3=partida 4=enana)", mala.codigo() as u64);
+            cuenta.apuntar(&v);
+
+            match v {
+                bmo_net::recibir::Veredicto::Parar => {}
+                bmo_net::recibir::Veredicto::Mala(que) => {
+                    if cuenta.malas <= 4 {
+                        crate::ring0::cabina::count("red", "trama MALA devuelta a la tarjeta (2=error 3=partida 4=enana)", que.codigo() as u64);
                     }
-                    None
                 }
-            };
-            if let Some(largo) = largo {
-            // *** Y AQUI SE PREGUNTA OTRA VEZ, aunque el plano ya lo hubiera
-            // garantizado al armar el anillo.
-            //
-            // ** No es paranoia repetida: `largo` **lo escribio la tarjeta**, y
-            // este es el unico sitio de todo el driver donde un numero venido de
-            // fuera decide cuanta memoria se lee. Una trama de 2049 bytes en un
-            // bufer de 2048 sale del corral por un byte, y ese byte se lo cree
-            // el parser de Ethernet como si fuera suyo.
-            //
-            // *** And until 2026-09-17 this compared against the CORRAL, not the
-            // buffer: `contiene` let a 3.000-byte length in buffer 0 read the
-            // tail of buffer 1 -- another frame. `recibida` compares against the
-            // frame's own buffer, and is tested in `bmo-net`.
-            let Some(buf_fis) = plan.bufer(RX_NEXT) else { break };
-            if plan.recibida(RX_NEXT, largo).is_none() {
-                // Tambien se devuelve: parar aqui era el mismo atasco por otra
-                // puerta. No se lee ni un byte de ella.
-                crate::ring0::cabina::fault("red", "la tarjeta declara una trama que NO CABE en su bufer", largo as u64);
-                RX_MALAS = RX_MALAS.wrapping_add(1);
-            } else {
-            let buf = mm::phys_to_virt(buf_fis) as *const u8;
-            let trama = core::slice::from_raw_parts(buf, largo as usize);
-            match bmo_net::EthHeader::parse(trama) {
-                Some(h) => {
-                    RX_FRAMES = RX_FRAMES.wrapping_add(1);
-                    RX_BYTES = RX_BYTES.wrapping_add(largo as u64);
-                    let casilla = match h.ethertype {
-                        0x0806 => 0,
-                        0x0800 => 1,
-                        0x86DD => 2,
-                        _ => 3,
-                    };
-                    RX_TIPOS[casilla] = RX_TIPOS[casilla].wrapping_add(1);
+                bmo_net::recibir::Veredicto::NoCabe(largo) => {
+                    crate::ring0::cabina::fault("red", "la tarjeta declara una trama que NO CABE en su bufer", largo as u64);
+                }
+                // Under fourteen bytes there is no header. Counted separately: a
+                // runt is a cable or a filter problem, not a missing frame.
+                bmo_net::recibir::Veredicto::Corta(largo) => {
+                    crate::ring0::cabina::count("red", "trama demasiado corta para tener cabecera", largo as u64);
+                }
+                bmo_net::recibir::Veredicto::Entregar { cabecera: h, trama } => {
                     entregar(trama);
 
                     // ** LAS CUATRO LINEAS, SOLO PARA LAS 16 PRIMERAS. Con el
                     // latido sondeando cada 4 ms, una red con trafico llenaria
                     // CABINA en un segundo y taparia lo que de verdad importa.
-                    if RX_FRAMES <= 16 {
+                    if cuenta.tramas <= 16 {
+                        // *** LA FOTO DEL PASO 1, y son CUATRO lineas y no dos:
+                        // sin el DESTINO, esta foto no distingue "el filtro de
+                        // recepcion funciona" de "el filtro esta abierto de par
+                        // en par". Fabricante y nada mas: las MAC de los vecinos
+                        // no son de este repositorio ni de una foto.
+                        crate::ring0::cabina::id("red", "trama DE (fabricante)", h.src_u64() >> 24);
+                        crate::ring0::cabina::id("red", "     PARA (fabricante)", h.dst_u64() >> 24);
+                        // ** EL TIPO CON SU NOMBRE EN EL MENSAJE: `0x0806` es
+                        // ARP para quien tenga la tabla memorizada y no es nada
+                        // para todos los demas.
+                        crate::ring0::cabina::id("red", h.nombre_del_tipo(), h.ethertype as u64);
+                        crate::ring0::cabina::bytes("red", "     largo", trama.len() as u64);
 
-                    // *** LA FOTO DEL PASO 1, y son CUATRO lineas y no dos.
-                    //
-                    // ** Antes se imprimian el origen y un numero con el tipo y
-                    // el largo EMPAQUETADOS en un solo `u64`. Las dos cosas
-                    // estaban mal por el mismo motivo:
-                    //
-                    //   1. `((tipo << 16) | largo)` obliga a quien mira la
-                    //      pantalla a deshacer un desplazamiento con la cabeza.
-                    //      Un numero que hay que decodificar no es una lectura.
-                    //   2. Sin el DESTINO, esta foto no distingue "el filtro de
-                    //      recepcion funciona" de "el filtro esta abierto de
-                    //      par en par" -- las dos dan los mismos origenes. El
-                    //      paso 1 tiene tres preguntas que contestar y asi solo
-                    //      contestaba dos.
-                    // Fabricante y nada mas: las MAC de los vecinos tampoco son
-                    // de este repositorio ni de una foto.
-                    crate::ring0::cabina::id("red", "trama DE (fabricante)", h.src_u64() >> 24);
-                    crate::ring0::cabina::id("red", "     PARA (fabricante)", h.dst_u64() >> 24);
-                    // ** EL TIPO CON SU NOMBRE EN EL MENSAJE. `0x0806` es ARP
-                    // para quien tenga la tabla memorizada y no es nada para
-                    // todos los demas -- y esta linea la lee una persona una
-                    // vez, decidiendo si el driver sirve.
-                    crate::ring0::cabina::id("red", h.nombre_del_tipo(), h.ethertype as u64);
-                    crate::ring0::cabina::bytes("red", "     largo", largo as u64);
-
-                    // *** LA TRAMPA QUE HAY QUE CAZAR AQUI Y NO TRES ARRANQUES
-                    // DESPUES: que el origen sea NUESTRA PROPIA MAC.
-                    //
-                    // ** El paso 1 NO TRANSMITE -- `CR.TE` se queda apagado a
-                    // proposito-- asi que una trama que diga venir de nosotros
-                    // no puede ser nuestra. Significa una de dos, y las dos son
-                    // hallazgos: la tarjeta esta en loopback interno, o el
-                    // anillo esta leyendo memoria que no es la suya.
-                    //
-                    // Sin este aviso, eso se veria como "la red RECIBE" y la
-                    // casilla se pondria verde por el motivo equivocado.
-                    // ** Desde E3 SI se transmite, y entonces esto deja de
-                    // significar lo mismo: solo se dice con el transmisor apagado.
-                    if let Some(yo) = ID {
-                        if h.src_u64() == yo.mac_u64() && !salida::armada() {
-                            crate::ring0::cabina::warn(
-                                "red",
-                                "[!] dice venir de NOSOTROS y aqui no se transmite",
-                                h.src_u64() >> 24,
-                            );
+                        // *** LA TRAMPA QUE HAY QUE CAZAR AQUI Y NO TRES
+                        // ARRANQUES DESPUES: que el origen sea NUESTRA PROPIA
+                        // MAC con el transmisor apagado. Significa loopback
+                        // interno o un anillo leyendo memoria que no es suya, y
+                        // sin este aviso se veria como "la red RECIBE".
+                        if let Some(yo) = ID {
+                            if h.src_u64() == yo.mac_u64() && !salida::armada() {
+                                crate::ring0::cabina::warn(
+                                    "red",
+                                    "[!] dice venir de NOSOTROS y aqui no se transmite",
+                                    h.src_u64() >> 24,
+                                );
+                            }
                         }
                     }
-                    } // las 16 primeras
-                }
-                // Under fourteen bytes there is no header. Counted separately: a
-                // runt is a cable or a filter problem, not a missing frame.
-                None => {
-                    RX_CORTAS = RX_CORTAS.wrapping_add(1);
-                    crate::ring0::cabina::count("red", "trama demasiado corta para tener cabecera", largo as u64);
                 }
             }
-            } // cabe en el corral
-            } // era una trama
-            // Give the descriptor back to the card, with EOR preserved on the
-            // last one -- rebuilding it from scratch is what keeps that bit from
-            // being lost on the first wrap.
+
             // Devuelto al plano, `EOR` incluido: reconstruirlo desde el plano
             // --y no a mano-- es lo que impide perder ese bit en la primera
             // vuelta del anillo, que es el unico fallo de aqui que se sale del
