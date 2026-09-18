@@ -21,7 +21,7 @@
       * leer entero.
       *
       * Compilar:
-      *   cargo run -p bmo-cobol-front -- \
+      *   cargo run -p bmo-cobol-x86-64 -- \
       *     toolchain/lang/cobol/examples/extracto.cob \
       *     -o toolchain/lang/cobol/examples/extracto.bex
        IDENTIFICATION DIVISION.

@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use crate::ast::{
     DisplayArg,
     CobolCondition, CobolError, CobolProgram, CobolStatement, Condicion, DataItem, Redondeo,
-    SyscallDef,
     SyscallMap,
 };
 
@@ -23,11 +22,18 @@ pub struct Parser {
 }
 
 impl Parser {
+    /// Un parser SIN catalogo de syscalls: un `SYSCALL` contesta "unknown".
+    ///
+    /// ** El catalogo es de la MAQUINA (los numeros de la puerta de BMO-X), y
+    /// desde el 2026-09-18 el frontend no nombra ninguna: se lo pasa quien
+    /// emite, con [`Parser::con_syscalls`]. Antes lo leia de `bmo-abi` aqui
+    /// mismo, y eso ataba el arbol de COBOL al ABI de x86-64.
     pub fn new(source: &str) -> Self {
-        let mut syscalls = HashMap::new();
-        for d in bmo_abi::asm::defs::syscalls() {
-            syscalls.insert(d.name.clone(), SyscallDef { name: d.name, nr: d.nr, arg_count: d.arg_count });
-        }
+        Self::con_syscalls(source, HashMap::new())
+    }
+
+    /// Un parser que resuelve `SYSCALL <nombre>` contra `syscalls`.
+    pub fn con_syscalls(source: &str, syscalls: SyscallMap) -> Self {
         let lines: Vec<_> = source.lines()
             .enumerate()
             .map(|(i, l)| (i + 1, l.to_string()))

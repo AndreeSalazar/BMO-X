@@ -301,7 +301,7 @@ impl Disposicion {
     /// Y hay una cosa que este visor si puede prometer y una herramienta de
     /// fuera no: **lee con la misma regla que escribio el programa**. Los
     /// decodificadores son `packed::desempaquetar_en_rust` y
-    /// `zoned::leer_en_rust`, y hay tests que los comparan contra los EMITIDOS
+    /// `zoned::leer_en_rust` de `bmo-lower`, y hay tests que los comparan contra los EMITIDOS
     /// sobre todos los patrones de dos bytes. Si divergieran, el visor
     /// ensenaria un importe y el programa leeria otro -- que es peor que no
     /// tener visor.
@@ -311,7 +311,17 @@ impl Disposicion {
     /// Si el fichero no es multiplo del registro, se dice y se ensena lo que
     /// sobra. Ese es **el sintoma clasico de un copybook equivocado**, y callarlo
     /// dejaria al que mira creyendo que el ultimo registro es raro.
-    pub fn ver(&self, raiz: &str, datos: &[u8], max: usize) -> String {
+    ///
+    /// ** `decodificar` los PONE quien llama (2026-09-18): viven en `bmo-lower`,
+    /// al lado de sus gemelos emitidos, y el frontend no depende de un emisor.
+    /// Devuelve `None` para lo que no sabe leer, y eso se ensena en crudo.
+    pub fn ver(
+        &self,
+        raiz: &str,
+        datos: &[u8],
+        max: usize,
+        decodificar: &dyn Fn(Codificacion, &[u8]) -> Option<i64>,
+    ) -> String {
         let raiz = raiz.to_ascii_uppercase();
         let Some(cab) = self.campos.get(&raiz) else {
             return format!("no hay ningun registro llamado {raiz}\n");
@@ -343,17 +353,12 @@ impl Disposicion {
             s.push_str(&format!("\n#{:<4} byte {}\n", i + 1, i * n));
             for (name, c) in &hojas {
                 let trozo = &reg[c.offset as usize..(c.offset + c.bytes) as usize];
-                let valor = match c.codificacion {
-                    Codificacion::Empaquetado => {
-                        con_coma(bmo_lower::packed::desempaquetar_en_rust(trozo), c.escala)
-                    }
-                    Codificacion::Zonado => {
-                        con_coma(bmo_lower::zoned::leer_en_rust(trozo), c.escala)
-                    }
+                let valor = match decodificar(c.codificacion, trozo) {
+                    Some(v) => con_coma(v, c.escala),
                     // Lo que no se sabe decodificar se ensena TAL CUAL en vez de
                     // inventarle un numero. Un visor que adivina es peor que uno
                     // que dice "no se".
-                    _ => trozo.iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" "),
+                    None => trozo.iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" "),
                 };
                 let crudo: String =
                     trozo.iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" ");

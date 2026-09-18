@@ -146,7 +146,7 @@ fn el_registro_de_un_fichero_puede_ser_comp3() {
 #[test]
 fn el_ejemplo_de_empaquetado_hace_lo_que_dice() {
     let (salida, _) = run_cobol_con_disco(
-        include_str!("../../examples/7-empaquetado/cuentas.cob"),
+        include_str!("../../../examples/7-empaquetado/cuentas.cob"),
         &[("datos/movim.txt", "1000.00\n234.56\n0.44\n-100.00\n")],
     );
     let esperado = [

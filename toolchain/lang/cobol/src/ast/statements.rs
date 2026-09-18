@@ -12,7 +12,27 @@ use crate::ast::{SyscallDef, Valor88};
 /// `bmo_lower::redondeo::Modo` en el codegen. Los dos existen a proposito: uno
 /// es la palabra del lenguaje y el otro la aritmetica compartida, y el dia que
 /// Ada pida sus modos del Annex F no tendra que hablar de COBOL.
-pub type Redondeo = bmo_lower::redondeo::Modo;
+///
+/// ** Hasta el 2026-09-18 esto lo DECIA pero no lo era: `Redondeo` era un alias
+/// de `bmo_lower::redondeo::Modo`, y el arbol de COBOL dependia del emisor de
+/// x86-64. Ahora son dos tipos, y la traduccion vive en
+/// `emisor-x86_64/src/codegen.rs` (`modo`). Las variantes son las mismas y en
+/// el mismo orden: el estandar no cambia por partir un crate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Redondeo {
+    /// Sin `ROUNDED`: tira los decimales sobrantes.
+    Truncar,
+    /// `NEAREST-AWAY-FROM-ZERO` -- el `ROUNDED` clasico.
+    MasCercanoLejosDeCero,
+    /// `NEAREST-EVEN` -- el redondeo del banquero.
+    MasCercanoPar,
+    /// `NEAREST-TOWARD-ZERO`.
+    MasCercanoHaciaCero,
+    /// `TOWARD-GREATER` -- techo.
+    HaciaArriba,
+    /// `TOWARD-LESSER` -- suelo.
+    HaciaAbajo,
+}
 
 /// Un control de `PERFORM VARYING`: la variable, por donde empieza, cuanto
 /// suma y cuando para.

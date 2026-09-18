@@ -205,7 +205,7 @@ donde no esta.
 Para compilar uno suelto a mano:
 
 ```bash
-cargo run -p bmo-cobol-front -- toolchain/lang/cobol/examples/<nivel>/<x>.cob -o <destino>.bex
+cargo run -p bmo-cobol-x86-64 -- toolchain/lang/cobol/examples/<nivel>/<x>.cob -o <destino>.bex
 ```
 
 Ojo con el nombre de salida: el volumen es FAT32 y el kernel **rechaza** un

@@ -13,7 +13,7 @@
       * esta en BMO.
       *
       * Compilar:
-      *   cargo run -p bmo-cobol-front -- \
+      *   cargo run -p bmo-cobol-x86-64 -- \
       *     toolchain/lang/cobol/examples/hola_COBOL.cob \
       *     -o Ultra_kernel_x86-64/kernel/src/ring0/hola_COBOL.bex
        IDENTIFICATION DIVISION.

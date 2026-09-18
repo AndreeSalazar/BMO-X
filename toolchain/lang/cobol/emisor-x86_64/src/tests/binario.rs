@@ -172,7 +172,7 @@ fn el_visor_avisa_cuando_el_fichero_no_cuadra() {
 #[test]
 fn el_ejemplo_binario_escribe_el_maestro_y_lo_relee() {
     let (salida, m) = run_cobol_con_disco(
-        include_str!("../../examples/10-binario/maestro.cob"),
+        include_str!("../../../examples/10-binario/maestro.cob"),
         &[],
     );
     let bytes = m.archivo("datos/ctas.bin").expect("tiene que haber maestro");

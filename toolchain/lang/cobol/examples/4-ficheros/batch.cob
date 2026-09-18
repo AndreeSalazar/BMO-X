@@ -23,7 +23,7 @@
       * lo exige.
       *
       * Compilar:
-      *   cargo run -p bmo-cobol-front -- \
+      *   cargo run -p bmo-cobol-x86-64 -- \
       *     toolchain/lang/cobol/examples/batch.cob -o apps/batch.bex
        IDENTIFICATION DIVISION.
        PROGRAM-ID. BATCH.

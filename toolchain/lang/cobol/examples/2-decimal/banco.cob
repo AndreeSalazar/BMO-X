@@ -10,7 +10,7 @@
       * flotante: 3 cuotas de 19.99 dan 59.97 EXACTO.
       *
       * Compilar:
-      *     cargo run -p bmo-cobol-front -- toolchain/lang/cobol/examples/banco.cob
+      *     cargo run -p bmo-cobol-x86-64 -- toolchain/lang/cobol/examples/banco.cob
        IDENTIFICATION DIVISION.
        PROGRAM-ID. BANCO.
        DATA DIVISION.

@@ -607,7 +607,7 @@ function Nuevo-Bico {
 $repo = Split-Path -Parent $root
 Push-Location $repo
 try {
-    Compilar-Ejemplos $cobolEjemplos 'bmo-cobol-front' 'cobol' 'ok:|error' $dataBase $repo
+    Compilar-Ejemplos $cobolEjemplos 'bmo-cobol-x86-64' 'cobol' 'ok:|error' $dataBase $repo
 
 
     Step 'Building ADA example programs...'

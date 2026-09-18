@@ -94,7 +94,7 @@ fn main() {
                 process::exit(1);
             }
         };
-        match bmo_cobol_front::ver_registros(&source, &datos, ver_registro.as_deref(), 50) {
+        match bmo_cobol_x86_64::ver_registros(&source, &datos, ver_registro.as_deref(), 50) {
             Ok(texto) => {
                 println!("* {}", datos_path.display());
                 print!("{texto}");
@@ -108,7 +108,7 @@ fn main() {
     }
 
     if solo_copybook {
-        match bmo_cobol_front::copybook_de(&source) {
+        match bmo_cobol_x86_64::copybook_de(&source) {
             Ok(texto) => {
                 print!("{texto}");
                 return;
@@ -125,9 +125,9 @@ fn main() {
     }
 
     let result = if asm_paths.is_empty() {
-        bmo_cobol_front::compile_source_to_bex(&source)
+        bmo_cobol_x86_64::compile_source_to_bex(&source)
     } else {
-        bmo_cobol_front::compile_source_to_bex_with_asm(&source, asm_paths)
+        bmo_cobol_x86_64::compile_source_to_bex_with_asm(&source, asm_paths)
     };
 
     match result {

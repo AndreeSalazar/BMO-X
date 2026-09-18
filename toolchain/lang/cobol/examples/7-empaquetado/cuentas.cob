@@ -40,7 +40,7 @@
       * registro con varios campos. Ver BANCA_REAL.md.
       *
       * Compilar:
-      *   cargo run -p bmo-cobol-front -- \
+      *   cargo run -p bmo-cobol-x86-64 -- \
       *     toolchain/lang/cobol/examples/7-empaquetado/cuentas.cob \
       *     -o apps/cuentas.bex
        IDENTIFICATION DIVISION.

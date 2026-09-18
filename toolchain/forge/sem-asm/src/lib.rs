@@ -2,7 +2,7 @@
 //!
 //! Lee las tablas TOML de `tables/` y encodea mnemonicos -> bytes. Reemplaza
 //! el hardcodeo de bytes DUPLICADO en `lang/c/src/codegen.rs` y
-//! `lang/cobol/src/codegen.rs` (ambos escriben 0x48/0xB8... a mano).
+//! `lang/cobol/emisor-x86_64/src/codegen.rs` (ambos escriben 0x48/0xB8... a mano).
 //!
 //! Libreria que el frontend ELIGE enlazar, no un embudo.
 

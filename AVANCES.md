@@ -1455,7 +1455,7 @@ py toolchain/tools/cobol-gen/generate.py
 **Tests:**
 ```bash
 cargo test -p bmo-c-front       # 223 verdes: EJECUTAN el programa, no lo miran
-cargo test -p bmo-cobol-front   # COBOL, con el banco de matriz
+cargo test -p bmo-cobol-front -p bmo-cobol-x86-64   # COBOL: frontend + emisor (el banco de matriz vive en el emisor)
 cargo test -p bmo-input         # 17 del FOCO (Alt+Tab, modos, Z-order)
 cargo test -p bmo-uhid          # 21: el Report Descriptor y el descifrado del raton
 cargo test --workspace --exclude bmo-kernel --exclude boot-context --exclude bmo-rt

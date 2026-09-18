@@ -50,7 +50,7 @@
       *      significaba caerse dentro del primero y ejecutarlo otra vez.
       *
       * Compilar:
-      *   cargo run -p bmo-cobol-front -- \
+      *   cargo run -p bmo-cobol-x86-64 -- \
       *     toolchain/lang/cobol/examples/8-parrafos/cierre.cob -o apps/cierre.bex
        IDENTIFICATION DIVISION.
        PROGRAM-ID. CIERRE.

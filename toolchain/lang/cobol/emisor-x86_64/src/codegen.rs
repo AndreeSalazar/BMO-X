@@ -6,7 +6,7 @@ use bmo_sem_asm::x86_64::{Asm, Reg};
 use bmo_lower::x86;
 use crate::ast::{CobolProgram, CobolStatement, CobolCondition, Condicion, DisplayArg, Redondeo};
 use crate::ast::error::CobolError;
-use crate::edicion::Plantilla;
+use crate::{edicion::Plantilla, edicion_x86::EmitirPlantilla};
 
 type Result<T> = core::result::Result<T, CobolError>;
 
@@ -254,7 +254,7 @@ impl Codegen {
             // habia que subir: con la escala justa, el digito que lo decide ya
             // se tiro.
             let con_uno_mas = Self::scaled_imm(lit, scale + 1) as i64;
-            bmo_lower::redondeo::dividir_en_rust(con_uno_mas, 10, redondeo) as u64
+            bmo_lower::redondeo::dividir_en_rust(con_uno_mas, 10, crate::redondeo::modo(redondeo)) as u64
         };
         self.emit_asm(|a| { a.mov_imm64(Reg::Rax, v).unwrap(); });
     }
@@ -518,7 +518,7 @@ impl Codegen {
         } else {
             let factor = 10u64.pow(from - to);
             self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, factor).unwrap(); });
-            bmo_lower::redondeo::dividir(&mut self.code, redondeo);
+            bmo_lower::redondeo::dividir(&mut self.code, crate::redondeo::modo(redondeo));
         }
     }
 
@@ -2100,7 +2100,7 @@ impl Codegen {
                 if so > 0 {
                     let p = 10u64.pow(so);
                     self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, p).unwrap(); });
-                    bmo_lower::redondeo::dividir(&mut self.code, arit.redondeo);
+                    bmo_lower::redondeo::dividir(&mut self.code, crate::redondeo::modo(arit.redondeo));
                 }
                 self.emit_guardar_con_desborde(dst, &arit, etq);
             }
@@ -2130,7 +2130,7 @@ impl Codegen {
                 }
                 // Una division casi nunca es exacta, asi que este es el sitio
                 // donde ROUNDED cambia el numero mas a menudo: `100.00 / 3`.
-                bmo_lower::redondeo::dividir(&mut self.code, arit.redondeo);
+                bmo_lower::redondeo::dividir(&mut self.code, crate::redondeo::modo(arit.redondeo));
                 self.emit_guardar_con_desborde(dst, &arit, etq);
             }
             CobolStatement::Compute(dst, expr, arit) => {
@@ -2577,7 +2577,7 @@ impl Codegen {
                 if scale > 0 {
                     let p = 10u64.pow(scale);
                     self.emit_asm(|a| { a.mov_imm64(Reg::Rcx, p).unwrap(); });
-                    bmo_lower::redondeo::dividir(&mut self.code, redondeo);
+                    bmo_lower::redondeo::dividir(&mut self.code, crate::redondeo::modo(redondeo));
                 }
             } else {
                 // rax = divisor, rdx = dividendo. Preescalar el dividendo
@@ -2592,7 +2592,7 @@ impl Codegen {
                     self.code.push(0x58); // pop rax
                     self.code.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC2]); // imul rax, rdx
                 }
-                bmo_lower::redondeo::dividir(&mut self.code, redondeo);
+                bmo_lower::redondeo::dividir(&mut self.code, crate::redondeo::modo(redondeo));
             }
         }
     }
@@ -2902,6 +2902,7 @@ impl Codegen {
         b.build().unwrap_or_default()
     }
 }
+
 
 #[cfg(test)]
 mod tests {

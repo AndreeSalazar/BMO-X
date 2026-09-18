@@ -78,6 +78,7 @@ OTRAS = ("aarch64", "arm64", "arm", "armv7", "armv8", "thumbv7", "thumbv8",
 FRONTENDS = {
     "toolchain/lang/inti": "bmo-inti-front",
     "toolchain/lang/ada": "bmo-ada-front",
+    "toolchain/lang/cobol": "bmo-cobol-front",
 }
 # Lo unico de lo que un frontend puede depender: nada que emita ni que sea la Base.
 # Cada uno con su motivo; y el guardian exige que ELLOS tampoco lleven `asm!` ni
@@ -92,7 +93,6 @@ DEPS_DE_FRONTEND = {
 DEPS_DE_FRONTEND.update({c: "otro frontend" for c in FRONTENDS.values()})
 # Lenguajes cuyo frontend y emisor de x86-64 comparten crate todavia, con por que.
 POR_PARTIR = {
-    "bmo-cobol-front": "codegen.rs y edicion.rs emiten x86-64 dentro del crate",
     "bmo-c-front": "codegen/ (unas 7.700 lineas) emite x86-64 dentro del crate",
     "bmo-cpp-front": "desciende al arbol de C y emite con el codegen de C: se parte con C",
 }

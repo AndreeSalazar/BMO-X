@@ -10,7 +10,7 @@ use super::comun::*;
 /// * EL NIVEL 9, ejecutado: la tabla de decision y el redondeo legal.
 #[test]
 fn el_ejemplo_de_decision_calcula_las_comisiones() {
-    let salida = run_cobol(include_str!("../../examples/9-decision/comision.cob"));
+    let salida = run_cobol(include_str!("../../../examples/9-decision/comision.cob"));
     // Tres clientes, tres tramos. 1500 x 0,25 % = 3,75 exacto.
     assert!(salida.contains(" $1,500.00"), "{salida}");
     assert!(salida.contains("     $3.75"), "el tramo preferente:\n{salida}");
@@ -26,10 +26,10 @@ fn el_ejemplo_de_decision_calcula_las_comisiones() {
 /// El payload `hola_COBOL.bex` que el kernel EMBEBE, ejecutado.
 ///
 /// Regenerar tras tocar el codegen:
-///   cargo run -p bmo-cobol-front --     ///     toolchain/lang/cobol/examples/2-decimal/hola_COBOL.cob     ///     -o Ultra_kernel_x86-64/kernel/src/ring0/hola_COBOL.bex
+///   cargo run -p bmo-cobol-x86-64 --     ///     toolchain/lang/cobol/examples/2-decimal/hola_COBOL.cob     ///     -o Ultra_kernel_x86-64/kernel/src/ring0/hola_COBOL.bex
 #[test]
 fn hola_cobol_payload_output_is_what_the_kernel_will_show() {
-    let out = run_cobol(include_str!("../../examples/2-decimal/hola_COBOL.cob"));
+    let out = run_cobol(include_str!("../../../examples/2-decimal/hola_COBOL.cob"));
     let esperado = [
         "hola desde COBOL en el Ryzen",
         "3 x 19.99 = 59.97 exacto",
@@ -53,7 +53,7 @@ fn hola_cobol_payload_output_is_what_the_kernel_will_show() {
 /// informe salga descuadrado.
 #[test]
 fn el_extracto_imprime_las_lineas_de_un_banco() {
-    let out = run_cobol(include_str!("../../examples/3-presentacion/extracto.cob"));
+    let out = run_cobol(include_str!("../../../examples/3-presentacion/extracto.cob"));
     let esperado = [
         "BANCO BMO - EXTRACTO DE CUENTA",
         "-----------------------------",
@@ -75,7 +75,7 @@ fn el_extracto_imprime_las_lineas_de_un_banco() {
 #[test]
 fn el_batch_aguanta_los_finales_de_windows() {
     let (salida, _) = run_cobol_con_disco(
-        include_str!("../../examples/4-ficheros/batch.cob"),
+        include_str!("../../../examples/4-ficheros/batch.cob"),
         &[("datos/movim.txt", "1000.00\r\n234.56\r\n")],
     );
     assert!(salida.contains(" $1,234.56"), "{salida}");
@@ -92,7 +92,7 @@ fn el_batch_aguanta_los_finales_de_windows() {
 #[test]
 fn el_cierre_por_concepto_totaliza_en_su_casilla() {
     let (salida, _) = run_cobol_con_disco(
-        include_str!("../../examples/5-tablas/conceptos.cob"),
+        include_str!("../../../examples/5-tablas/conceptos.cob"),
         &[
             ("datos/concs.txt", "1\n3\n2\n3\n1\n"),
             ("datos/imps.txt", "100.00\n50.00\n25.50\n10.00\n5.00\n"),
@@ -117,7 +117,7 @@ fn el_cierre_por_concepto_totaliza_en_su_casilla() {
 #[test]
 fn un_concepto_fuera_de_la_tabla_para_el_cierre() {
     let (salida, _) = run_cobol_con_disco(
-        include_str!("../../examples/5-tablas/conceptos.cob"),
+        include_str!("../../../examples/5-tablas/conceptos.cob"),
         &[("datos/concs.txt", "1\n7\n"), ("datos/imps.txt", "100.00\n50.00\n")],
     );
     assert!(
@@ -136,7 +136,7 @@ fn un_concepto_fuera_de_la_tabla_para_el_cierre() {
 #[test]
 fn la_cartera_reparte_cobros_y_devoluciones() {
     let (salida, _) = run_cobol_con_disco(
-        include_str!("../../examples/6-condiciones/cartera.cob"),
+        include_str!("../../../examples/6-condiciones/cartera.cob"),
         &[("datos/movim.txt", "1000.00\n234.56\n-100.00\n0.44\n-50.00\n")],
     );
     let esperado = [
@@ -160,7 +160,7 @@ fn la_cartera_reparte_cobros_y_devoluciones() {
 #[test]
 fn la_cartera_sin_movimientos_lo_dice_con_su_nombre() {
     let (salida, _) =
-        run_cobol_con_disco(include_str!("../../examples/6-condiciones/cartera.cob"), &[]);
+        run_cobol_con_disco(include_str!("../../../examples/6-condiciones/cartera.cob"), &[]);
     assert!(salida.contains("sin movimientos hoy"), "{salida}");
     assert!(!salida.contains("cobros:"), "no debe imprimir el informe: {salida}");
 }
@@ -170,7 +170,7 @@ fn la_cartera_sin_movimientos_lo_dice_con_su_nombre() {
 /// nada.
 #[test]
 fn banco_example_produces_its_documented_output() {
-    let out = run_cobol(include_str!("../../examples/2-decimal/banco.cob"));
+    let out = run_cobol(include_str!("../../../examples/2-decimal/banco.cob"));
     assert_eq!(
         out,
         // * `59.97` y `19.99` NO son literales del programa: son el
@@ -193,7 +193,7 @@ fn banco_example_produces_its_documented_output() {
 #[test]
 fn el_ultimo_registro_cuenta_sin_salto_final() {
     let (salida, _) = run_cobol_con_disco(
-        include_str!("../../examples/4-ficheros/batch.cob"),
+        include_str!("../../../examples/4-ficheros/batch.cob"),
         &[("datos/movim.txt", "10.00\n5.50")],
     );
     assert!(salida.contains("    $15.50"), "{salida}");

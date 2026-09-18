@@ -34,7 +34,7 @@
       * significa el numero, no cual es.
       *
       * Compilar:
-      *   cargo run -p bmo-cobol-front -- \
+      *   cargo run -p bmo-cobol-x86-64 -- \
       *     toolchain/lang/cobol/examples/9-decision/comision.cob -o apps/comisio.bex
        IDENTIFICATION DIVISION.
        PROGRAM-ID. COMISION.

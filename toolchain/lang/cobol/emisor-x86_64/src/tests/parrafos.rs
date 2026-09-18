@@ -192,7 +192,7 @@ fn el_batch_con_parrafos_es_legible_y_cuadra() {
 #[test]
 fn el_ejemplo_de_parrafos_cierra_el_dia() {
     let (salida, _) = run_cobol_con_disco(
-        include_str!("../../examples/8-parrafos/cierre.cob"),
+        include_str!("../../../examples/8-parrafos/cierre.cob"),
         // El 0.00 de en medio es el que ejercita el descarte.
         &[("datos/movim.txt", "1000.00\n234.56\n0.00\n0.44\n-100.00\n")],
     );

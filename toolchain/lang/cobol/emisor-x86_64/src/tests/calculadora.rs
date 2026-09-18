@@ -22,7 +22,7 @@ use crate::tests::comun::run_cobol_con_entrada;
 
 /// La FUENTE, no una copia. Si alguien edita el `.cob`, estas pruebas hablan de
 /// lo que edito.
-const MOTOR: &str = include_str!("../../examples/2-decimal/calcgui.cob");
+const MOTOR: &str = include_str!("../../../examples/2-decimal/calcgui.cob");
 
 /// Las tres lineas que el compositor escribe en la consola del hijo.
 /// Ver `desktop/calc.rs`, funcion `lanzar`.

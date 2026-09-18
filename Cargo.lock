@@ -104,8 +104,13 @@ dependencies = [
 [[package]]
 name = "bmo-cobol-front"
 version = "0.1.0"
+
+[[package]]
+name = "bmo-cobol-x86-64"
+version = "0.1.0"
 dependencies = [
  "bmo-abi",
+ "bmo-cobol-front",
  "bmo-lower",
  "bmo-sem-asm",
  "bmo-verify",

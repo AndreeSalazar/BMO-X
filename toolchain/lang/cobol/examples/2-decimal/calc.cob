@@ -21,7 +21,7 @@
       * que Grace Hopper puso en COBOL y por lo que los bancos siguen usandolo.
       *
       * Compilar:
-      *     cargo run -p bmo-cobol-front -- toolchain/lang/cobol/examples/calc.cob
+      *     cargo run -p bmo-cobol-x86-64 -- toolchain/lang/cobol/examples/calc.cob
        IDENTIFICATION DIVISION.
        PROGRAM-ID. CALC.
        DATA DIVISION.

@@ -1,8 +1,14 @@
-﻿pub mod ast;
-pub mod codegen;
+//! **BMO COBOL -- el FRONTEND**: lexer, parser, arbol, `PICTURE`, la
+//! disposicion de los registros y la edicion calculada.
+//!
+//! [isa] NINGUNA. No nombra una maquina y no depende de nada: lo que emite
+//! x86-64 vive en `emisor-x86_64/` (crate `bmo-cobol-x86-64`), igual que INTI y
+//! Ada. Partido el 2026-09-18 -- en BMO-X todo es x86-64 MENOS los frontends,
+//! que son lo unico agnostico. Ver `toolchain/tools/isa`.
+
+pub mod ast;
 pub mod dialect;
 pub mod edicion;
-pub mod ir_emit;
 pub mod lexer;
 pub mod parser;
 pub mod pic;
@@ -83,18 +89,13 @@ mod generated_tests {
     }
 }
 
-use std::path::PathBuf;
-use bmo_abi::profile::BmoLanguageProfile;
-
-pub use ast::{CobolCondition, CobolProgram, CobolStatement, DataItem};
+pub use ast::{CobolCondition, CobolProgram, CobolStatement, DataItem, SyscallMap};
 pub use ast::error::CobolError;
-
-pub fn profile() -> BmoLanguageProfile {
-    BmoLanguageProfile::COBOL
-}
 
 pub use dialect::{Dialect, DialectConfig, SourceFormat};
 
+/// Analiza SIN catalogo de syscalls: un `SYSCALL` contesta "unknown". Quien
+/// emite para una maquina usa [`parse_con_syscalls`] con los de esa maquina.
 pub fn parse(source: &str) -> Result<CobolProgram, CobolError> {
     parse_with_dialect(source, DialectConfig::default())
 }
@@ -111,103 +112,7 @@ pub fn parse_with_dialect(
     p.parse_program()
 }
 
-pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CobolError> {
-    compile_source_to_bex(source)
+/// Analiza resolviendo `SYSCALL <nombre>` contra el catalogo de la maquina.
+pub fn parse_con_syscalls(source: &str, syscalls: SyscallMap) -> Result<CobolProgram, CobolError> {
+    parser::Parser::con_syscalls(source, syscalls).parse_program()
 }
-
-/// * EL VISOR: un fichero de registros binarios, decodificado con el copybook
-/// del programa que lo escribio.
-///
-/// `registro` elige cual de los `01` se usa; si es `None`, se coge el primero
-/// que cuelgue de un `FD` -- que es el que de verdad cruza al disco.
-///
-/// Lee con **la misma regla** que escribio el programa: los decodificadores son
-/// los de `bmo-lower`, y hay tests que los comparan contra los EMITIDOS sobre
-/// todos los patrones de dos bytes.
-pub fn ver_registros(
-    source: &str,
-    datos: &[u8],
-    registro: Option<&str>,
-    max: usize,
-) -> Result<String, CobolError> {
-    let program = parser::Parser::new(source).parse_program()?;
-    let d = registro::calcular(&program.data_items)?;
-    let elegido = match registro {
-        Some(r) => r.to_string(),
-        None => program
-            .files
-            .iter()
-            .map(|f| f.record.clone())
-            .find(|r| !r.is_empty())
-            .ok_or_else(|| {
-                CobolError::new(
-                    0,
-                    "este programa no tiene ningun FD con registro: di cual mirar con \
-                     `--registro <nombre>`",
-                )
-            })?,
-    };
-    Ok(d.ver(&elegido, datos, max))
-}
-
-/// * El COPYBOOK de un programa: el byte exacto de cada campo de cada registro.
-///
-/// Sale del PARSER y no del binario a proposito: quien tiene que acordar el
-/// formato de un fichero con otro equipo no puede esperar a que el batch este
-/// terminado. Y sale de **la misma tabla que usa el codegen** para emitir el
-/// `READ` y el `WRITE`, asi que no hay dos sitios donde pueda divergir.
-pub fn copybook_de(source: &str) -> Result<String, CobolError> {
-    let program = parser::Parser::new(source).parse_program()?;
-    let d = registro::calcular(&program.data_items)?;
-    let registros: Vec<String> = program.files.iter().map(|f| f.record.clone()).collect();
-    Ok(d.copybook(&program.program_id, &registros))
-}
-
-/// Compile COBOL source into a native BMO executable image.
-///
-/// BEX v1 uses the validated BEF1 wire format defined by `bmo-abi`.
-pub fn compile_source_to_bex(source: &str) -> Result<Vec<u8>, CobolError> {
-    let program = parse(source)?;
-    let bytes = codegen::compile_to_bef_bytes(&program)?;
-    validate_generated_bex(bytes)
-}
-
-pub fn compile_to_ir(source: &str) -> Result<bmo_abi::ir::IrModule, CobolError> {
-    let program = parse(source)?;
-    Ok(ir_emit::compile_to_ir(&program))
-}
-
-pub fn compile_source_to_bef_with_asm(
-    source: &str,
-    asm_paths: Vec<PathBuf>,
-) -> Result<Vec<u8>, CobolError> {
-    compile_source_to_bex_with_asm(source, asm_paths)
-}
-
-/// Compile COBOL source into BEX while using extra semantic-assembly paths.
-pub fn compile_source_to_bex_with_asm(
-    source: &str,
-    asm_paths: Vec<PathBuf>,
-) -> Result<Vec<u8>, CobolError> {
-    let mut p = parser::Parser::new(source);
-    let program = p.parse_program_with_asm(asm_paths)?;
-    let bytes = codegen::compile_to_bef_bytes(&program)?;
-    validate_generated_bex(bytes)
-}
-
-fn validate_generated_bex(bytes: Vec<u8>) -> Result<Vec<u8>, CobolError> {
-    let validation = bmo_abi::bex::validate(&bytes);
-    if validation.is_valid {
-        return Ok(bytes);
-    }
-
-    let details = validation.issues.iter()
-        .filter(|issue| matches!(issue.severity, bmo_abi::bef::validator::IssueSeverity::Error))
-        .map(|issue| issue.message.as_str())
-        .collect::<Vec<_>>()
-        .join("; ");
-    Err(CobolError::new(0, format!("generated invalid BEF: {details}")))
-}
-
-#[cfg(test)]
-mod tests;

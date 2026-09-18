@@ -15,7 +15,7 @@ use super::comun::*;
 #[test]
 fn el_batch_totaliza_un_fichero_y_escribe_el_cierre() {
     let (salida, m) = run_cobol_con_disco(
-        include_str!("../../examples/4-ficheros/batch.cob"),
+        include_str!("../../../examples/4-ficheros/batch.cob"),
         // Cuatro movimientos. 1000.00 + 234.56 + 0.44 + (-100.00).
         &[("datos/movim.txt", "1000.00\n234.56\n0.44\n-100.00\n")],
     );
@@ -37,7 +37,7 @@ fn el_batch_totaliza_un_fichero_y_escribe_el_cierre() {
 /// la diferencia entre "hoy no hubo movimientos" y una caida.
 #[test]
 fn un_fichero_que_falta_da_cero_y_no_revienta() {
-    let (salida, m) = run_cobol_con_disco(include_str!("../../examples/4-ficheros/batch.cob"), &[]);
+    let (salida, m) = run_cobol_con_disco(include_str!("../../../examples/4-ficheros/batch.cob"), &[]);
     assert!(salida.contains("total del dia:"), "{salida}");
     assert!(salida.contains("     $0.00"), "{salida}");
     assert_eq!(m.archivo_texto("datos/cierre.txt").as_deref(), Some("0.00\n"));

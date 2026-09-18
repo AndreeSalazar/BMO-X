@@ -6,7 +6,7 @@
       * linea, asi que ocupa su propia fila en el log del kernel.
       *
       * Compilar:
-      *     cargo run -p bmo-cobol-front -- toolchain/lang/cobol/examples/hola.cob
+      *     cargo run -p bmo-cobol-x86-64 -- toolchain/lang/cobol/examples/hola.cob
        IDENTIFICATION DIVISION.
        PROGRAM-ID. HOLA.
        PROCEDURE DIVISION.

@@ -347,32 +347,4 @@ mod tests {
         assert_eq!(items[2].scale(), 2);   // dinero con signo
         assert!(items[2].pic_field.as_ref().unwrap().signed);
     }
-
-    #[test]
-    fn parses_whole_program_end_to_end() {
-        let src = "\
-IDENTIFICATION DIVISION.
-PROGRAM-ID. BANCO.
-DATA DIVISION.
-WORKING-STORAGE SECTION.
-01 SALDO PIC 9(5)V99 VALUE 0.
-PROCEDURE DIVISION.
-MOVE 10.05 TO SALDO.
-ADD 3.20 TO SALDO.
-DISPLAY \"listo\".
-STOP RUN.
-";
-        let prog = parse_program(src).unwrap();
-        assert_eq!(prog.program_id, "BANCO");
-        assert_eq!(prog.data_items.len(), 1);
-        assert_eq!(prog.data_items[0].name, "SALDO");
-        assert_eq!(prog.data_items[0].scale(), 2); // centavos
-        assert_eq!(prog.statements.len(), 4);
-        assert_eq!(prog.statements[0], CobolStatement::Move("10.05".into(), "SALDO".into()));
-
-        // Pipeline NUEVO completo: tokens -> AST -> BEF (ejecutable real).
-        let bef = crate::codegen::compile_to_bef_bytes(&prog).unwrap();
-        assert!(bef.len() > 48, "el BEF debe tener cabecera + codigo");
-        assert_eq!(&bef[..4], b"BEF1"); // magic del contenedor
-    }
 }

@@ -204,6 +204,7 @@ members = [
     # Su emisor, partido igual que el de INTI (2026-09-18).
     "toolchain/lang/ada/emisor-x86_64",
     "toolchain/lang/cobol",
+    "toolchain/lang/cobol/emisor-x86_64",
     "toolchain/lang/cpp",
     "toolchain/lang/c",
     # -- LA LIBC, junto a los lenguajes que la consumen --------------

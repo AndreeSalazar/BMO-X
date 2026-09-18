@@ -3,18 +3,12 @@ name = "bmo-cobol-front"
 version = "0.1.0"
 edition = "2021"
 authors = ["BMO Project"]
-description = "BMO COBOL frontend — parses COBOL and compiles native BEX executables"
+description = "BMO COBOL: el FRONTEND (lexer, parser, arbol, PICTURE, registros). No nombra una maquina."
 
+# ** SIN dependencias (2026-09-18). El frontend no sabe de CPU, ni de BEF, ni
+# del gate, ni de los numeros de la puerta: todo eso es de quien EMITE, en
+# `emisor-x86_64/`. El guardian `isa` lo vigila.
 [dependencies]
-# forge: EL GATE. Ningun .bex se escribe sin pasar por aqui -- es el
-# "unico checkpoint comun" de la filosofia.
-bmo-verify = { path = "../../forge/bmo-verify" }
-bmo-abi = { path = "../../../platform/abi/bmo-abi" }
-# forge: encoder compartido (elegido, no embudo) -- sustituye el hardcodeo
-# de bytes (mov imm64/reg, syscall) por la tabla TOML.
-bmo-sem-asm = { path = "../../forge/sem-asm" }
-# forge: L1, la puerta al ABI (INVOKE/subsyscalls). Elegida, no embudo.
-bmo-lower = { path = "../../forge/bmo-lower" }
 
 # NOTA: gnucobol-rs (GPL) ELIMINADO -- la PIC ahora la parsea nuestro propio
 # src/pic.rs. El submodulo extern/gnucobol-rs queda solo como oraculo de
@@ -23,13 +17,3 @@ bmo-lower = { path = "../../forge/bmo-lower" }
 [lib]
 name = "bmo_cobol_front"
 path = "src/lib.rs"
-
-[[bin]]
-name = "bmo-cobol-front"
-path = "src/main.rs"
-
-[dev-dependencies]
-# El banco de pruebas: ejecuta el codigo emitido en vez de mirarlo.
-# Un IF que no bifurca se ve igual que uno que si en un volcado de
-# bytes; solo se distinguen corriendolos.
-bmo-lower = { path = "../../forge/bmo-lower", features = ["emulator"] }

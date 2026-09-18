@@ -1,0 +1,29 @@
+[package]
+name = "bmo-cobol-x86-64"
+version = "0.1.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "BMO COBOL para x86-64: del arbol a bytes. El unico sitio de COBOL que nombra una maquina."
+
+# El frontend de arriba analiza; esto EMITE (2026-09-18, igual que INTI y Ada).
+[dependencies]
+bmo-cobol-front = { path = ".." }
+# forge: EL GATE. Ningun .bex se escribe sin pasar por aqui.
+bmo-verify = { path = "../../../forge/bmo-verify" }
+bmo-abi = { path = "../../../../platform/abi/bmo-abi" }
+# forge: encoder compartido (elegido, no embudo).
+bmo-sem-asm = { path = "../../../forge/sem-asm" }
+# forge: L1, la puerta al ABI. Elegida, no embudo.
+bmo-lower = { path = "../../../forge/bmo-lower" }
+
+[lib]
+name = "bmo_cobol_x86_64"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cobol"
+path = "src/main.rs"
+
+[dev-dependencies]
+# El banco de pruebas: ejecuta el codigo emitido en vez de mirarlo.
+bmo-lower = { path = "../../../forge/bmo-lower", features = ["emulator"] }

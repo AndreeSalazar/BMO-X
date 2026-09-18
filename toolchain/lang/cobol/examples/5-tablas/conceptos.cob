@@ -22,7 +22,7 @@
       *
       * Compilar (el nombre de salida cabe en 8.3 a proposito: el volumen es
       * FAT32 y `apps/conceptos.bex` --nueve letras-- NO se puede cargar):
-      *   cargo run -p bmo-cobol-front -- \
+      *   cargo run -p bmo-cobol-x86-64 -- \
       *     toolchain/lang/cobol/examples/conceptos.cob -o apps/concep.bex
        IDENTIFICATION DIVISION.
        PROGRAM-ID. CONCEPTOS.

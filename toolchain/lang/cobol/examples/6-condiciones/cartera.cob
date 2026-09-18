@@ -17,7 +17,7 @@
       * El fichero trae un importe por linea. Negativo = devolucion.
       *
       * Compilar:
-      *   cargo run -p bmo-cobol-front -- \
+      *   cargo run -p bmo-cobol-x86-64 -- \
       *     toolchain/lang/cobol/examples/6-condiciones/cartera.cob -o apps/carter.bex
        IDENTIFICATION DIVISION.
        PROGRAM-ID. CARTERA.

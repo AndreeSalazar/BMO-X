@@ -32,7 +32,7 @@
       * cambiar la una sin tocar la otra.
       *
       * Compilar:
-      *     cargo run -p bmo-cobol-front -- toolchain/lang/cobol/examples/2-decimal/calcgui.cob
+      *     cargo run -p bmo-cobol-x86-64 -- toolchain/lang/cobol/examples/2-decimal/calcgui.cob
        IDENTIFICATION DIVISION.
        PROGRAM-ID. CALCGUI.
        DATA DIVISION.

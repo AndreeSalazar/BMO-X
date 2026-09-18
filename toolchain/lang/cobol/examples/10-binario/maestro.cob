@@ -38,7 +38,7 @@
       *       Y lee con la misma regla con la que este programa escribio.
       *
       * Compilar:
-      *   cargo run -p bmo-cobol-front -- \
+      *   cargo run -p bmo-cobol-x86-64 -- \
       *     toolchain/lang/cobol/examples/10-binario/maestro.cob -o apps/maestro.bex
        IDENTIFICATION DIVISION.
        PROGRAM-ID. MAESTRO.
