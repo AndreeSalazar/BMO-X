@@ -69,6 +69,18 @@ pub(crate) fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) 
     for i in 0..f.parametros.min(6) as usize {
         mov_a_marco(out, marco.local(Local(i as u32)), ARGUMENTOS[i]);
     }
+    // ** DEL SEPTIMO EN ADELANTE LLEGAN POR LA PILA (2026-09-18). Hasta hoy
+    // el `.min(6)` de arriba y el `.take(6)` de la llamada se callaban el
+    // resto: una funcion de siete parametros compilaba, corria, y el septimo
+    // era lo que hubiera en su hueco del marco. Lo destapo `lamina.inti`: una
+    // caja que "no se pintaba" porque su septimo argumento --pintar o solo
+    // juzgar-- nunca llego. La convencion de esta maquina los deja encima de
+    // la direccion de vuelta: `[rbp+16]` el septimo, `[rbp+24]` el octavo...
+    // Se bajan al marco por `rax`, que a la entrada no lleva nada.
+    for i in 6..f.parametros as usize {
+        mov_de_marco(out, 0, 16 + ((i - 6) as i32) * 8);
+        mov_a_marco(out, marco.local(Local(i as u32)), 0);
+    }
 
     // Los saltos se rellenan al final, cuando se sabe donde cayo cada etiqueta.
     let mut sitios_de_etiqueta: Vec<(u32, usize)> = Vec::new();
@@ -389,6 +401,18 @@ pub(crate) fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) 
                 // argumento puede estar viviendo en `rdi` cuando toca cargar el
                 // siguiente. Cargarlos en orden es seguro **porque el reparto
                 // se apago**, no por suerte.
+                // ** Y del septimo en adelante, a la pila, del ultimo al
+                // septimo (el septimo queda mas cerca de `rsp`): es lo que
+                // el prologo del que recibe lee en `[rbp+16]`, `[rbp+24]`...
+                // Cargar por `rax` es seguro por lo mismo de arriba: con el
+                // reparto apagado, nada vive en `rax` entre dos argumentos.
+                // Y leer del marco tras un `push` sigue siendo correcto: el
+                // marco cuelga de `rbp`, no de `rsp`.
+                let en_pila = argumentos.len().saturating_sub(6);
+                for a in argumentos.iter().skip(6).rev() {
+                    carga(out, 0, a, &marco);
+                    x86::push_r64(out, 0);
+                }
                 for (i, a) in argumentos.iter().enumerate().take(6) {
                     carga(out, ARGUMENTOS[i], a, &marco);
                 }
@@ -405,6 +429,11 @@ pub(crate) fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) 
                         // de emitir algo que salta a donde no debe.
                         let _ = otro;
                     }
+                }
+
+                // Lo que se empujo se retira: la pila vuelve a donde estaba.
+                if en_pila > 0 {
+                    x86::add_r64_imm8(out, 4, (en_pila * 8) as i8);
                 }
 
                 // Lo que devuelve viene en el registro de retorno.

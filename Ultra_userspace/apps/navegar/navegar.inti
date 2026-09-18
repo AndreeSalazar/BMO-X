@@ -1,4 +1,4 @@
-# navegar.inti -- NAVEGAR: la cara de la LAMINA en BMO-X. Version 1.
+# navegar.inti -- NAVEGAR: la cara de la LAMINA en BMO-X. Version 2.
 #
 # ===================================================================
 #  Que es, en una frase
@@ -14,22 +14,29 @@
 # ANTENA (da igual cual) pero ANTENA SIEMPRE"*.
 #
 # ===================================================================
-#  ** LA VERSION 1: UNA VENTANA, y el mensaje dentro (2026-09-16)
+#  ** LA VERSION 2: UNA LAMINA DE FICHERO (2026-09-18, N2)
 # ===================================================================
 #
-# La version 0 escribia por consola porque INTI no abria una ventana: `usa
-# superficie` era un nombre sin cuerpo (E0075). N0 del plan le dio cuerpo
-# --`tables/lang/inti/runtime/superficie/`, el port de `roja.h` y
-# `amarilla.h` con C de ORACULO-- y esta es la primera app que lo usa.
+# La version 1 (N1, vista en el Ryzen el 18-09) abria la ventana con el
+# mensaje. Esta ademas PINTA UNA LAMINA: si en el disco hay
+# `datos/ejemplo.lamina` (la de example.com, la misma que la antena manda),
+# la recorre con `usa lamina` --las reglas de `lamina.rs`, en INTI-- y la
+# ensena en una ventana de 640x400 con desplazamiento (flechas, AvPag/RePag).
 #
-#     con quien componga (el escritorio)   una ventana de 480x112 con el
-#                                          mensaje, en la fuente de BMO-X;
-#                                          Esc o `q` la cierran
-#     sin nadie (el shell de Ring 0)       el mismo mensaje por consola, y
-#                                          se va con codigo 1. No se tapa
+#     hay lamina en el disco     se pinta; una lamina MAL HECHA se niega con
+#                                su nombre y su linea, encima, en naranja
+#     no la hay                  el mensaje de la version 1: hace falta una
+#                                ANTENA, y no se finge
+#     nadie compone              el mensaje por consola, y codigo 1
 #
-# ** Lo que sigue sin haber: una antena. "Ninguna conectada" es hoy una verdad
-# sin comprobar porque el ANTENISTA (N3) no existe, y por eso se dice tal cual.
+# ** Lo que sigue sin haber: una antena de verdad. La lamina del disco es
+# una PRUEBA de que BMO-X sabe pintar lo que la antena manda, no una pagina
+# navegada. Lo dice el titulo de la ventana... cuando el DIRECTOR lo pinte;
+# hoy lo dice esta cabecera. El ANTENISTA (N3) es quien traera laminas vivas.
+#
+# [!] Del `.ibx` NO se lee todavia: `paquete.recurso` no tiene cuerpo en INTI
+# (E0075). Por eso la lamina viene de DATOS, como la foto de `bico.ibx`. El
+# dia que `paquete` tenga cuerpo, se cambia `lee_lamina` y nada mas.
 #
 # ===================================================================
 #  La regla que no cambia con las versiones
@@ -40,15 +47,18 @@
 #     Dice que falta la antena, con ese nombre, y espera.
 #
 # ** R-APP8: lo que no se ve, no se pinta. La ventana se pinta UNA vez y se
-# repinta solo cuando vuelve a verse; entre vuelta y vuelta duerme 16 ms
-# (`espera_a`), asi que en reposo no gasta (R21/L6h).
+# repinta al desplazar y cuando vuelve a verse; entre vuelta y vuelta duerme
+# 16 ms (`espera_a`), asi que en reposo no gasta (R21/L6h).
 
 perfil llano
 usa bmo
 usa superficie
+usa lamina
 
-ANCHO = 480
-ALTO = 112
+ANCHO = 640
+ALTO = 400
+ANCHO_MENSAJE = 480
+ALTO_MENSAJE = 112
 RANURAS = 64
 FONDO = 1315860
 TITULO = 16777215
@@ -56,7 +66,14 @@ TEXTO = 13421772
 AVISO = 16755200
 ESC = 27
 LETRA_Q = 113
+SC_ARRIBA = 72
+SC_ABAJO = 80
+SC_REPAG = 73
+SC_AVPAG = 81
+PASO = 32
 UN_FOTOGRAMA_NS = 16000000
+BLOQUE_BYTES = 262144
+SIN_LAMINA = 18446744073709551615
 
 # ===================================================================
 #  1. El mensaje, de ocho en ocho (es lo que `llano` tiene: palabras)
@@ -131,11 +148,25 @@ funcion fin_de_linea(s es natural64)
     si s = 0
         invoca(mi_tarea, op_consola_escribir, 10, 0, 0)
 
+# Un numero en decimal, cifra a cifra (hasta 65535). Devuelve la x siguiente.
+funcion pon_numero(s es natural64, x es natural64, fy es natural64, n es natural64, color es natural64) devuelve natural64
+    cambiante px es natural64 = x
+    cambiante potencia es natural64 = 10000
+    cambiante empezo es natural64 = 0
+    repite mientras potencia >= 1
+        cifra es natural64 = (n entre potencia) resto 10
+        si cifra no es 0 o empezo = 1 o potencia = 1
+            px = texto_en(s, px, fy, 48 + cifra, color)
+            empezo = 1
+        potencia = potencia entre 10
+    devuelve px
+
 # ===================================================================
-#  2. El dibujo entero
+#  2. Los dibujos
 # ===================================================================
 
-funcion dibuja(s es natural64)
+# El mensaje de la version 1: no hay lamina, hace falta la antena.
+funcion dibuja_mensaje(s es natural64)
     limpia(s, FONDO)
     linea_1(s, 8, TITULO)
     linea_2(s, 32, AVISO)
@@ -144,12 +175,110 @@ funcion dibuja(s es natural64)
     linea_5(s, 88, TEXTO)
     pinta(s)
 
+# Una lamina que se NIEGA: su nombre y su linea, en naranja, encima de lo
+# que llego a pintarse. `rechazo` es `codigo * 65536 + linea`.
+funcion dibuja_rechazo(s es natural64, rechazo es natural64)
+    rectangulo(s, 0, 0, ANCHO, 40, FONDO)
+    cambiante x es natural64 = 8
+    x = pon(s, x, 8, ocho_bytes("LAMINA r"), AVISO)
+    x = pon(s, x, 8, ocho_bytes("echazada"), AVISO)
+    x = pon(s, x, 8, ocho_bytes(": "), AVISO)
+    x = pon(s, x, 8, lamina_nombre(rechazo desplaza derecha 16), AVISO)
+    x = pon(s, x, 8, ocho_bytes(", linea "), AVISO)
+    x = pon_numero(s, x, 8, rechazo bits_y 65535, AVISO)
+    x = 8
+    x = pon(s, x, 24, ocho_bytes("no se fi"), TEXTO)
+    x = pon(s, x, 24, ocho_bytes("nge una "), TEXTO)
+    x = pon(s, x, 24, ocho_bytes("pagina. "), TEXTO)
+    x = pon(s, x, 24, ocho_bytes("Esc cier"), TEXTO)
+    x = pon(s, x, 24, ocho_bytes("ra.     "), TEXTO)
+
+# La lamina, desplazada. Devuelve el rechazo (0 = pinto entera).
+funcion dibuja_lamina(s es natural64, base es natural64, largo es natural64, desliz es natural64) devuelve natural64
+    limpia(s, FONDO)
+    rechazo es natural64 = lamina_pinta(s, base, largo, desliz)
+    si rechazo no es 0
+        dibuja_rechazo(s, rechazo)
+    pinta(s)
+    devuelve rechazo
+
 # ===================================================================
-#  3. El programa
+#  3. El fichero
 # ===================================================================
 
+# `datos/ejemplo.lamina` entero al bloque. Devuelve cuantos bytes, o
+# SIN_LAMINA si no esta o no cabe.
+funcion lee_lamina(bloque es natural64) devuelve natural64
+    invoca(mi_tarea, op_ruta, ocho_bytes("datos/ej"), 0, 0)
+    invoca(mi_tarea, op_ruta, ocho_bytes("emplo.la"), 0, 0)
+    invoca(mi_tarea, op_ruta, ocho_bytes("mina"), 0, 0)
+    f es natural64 = invoca_valor(mi_tarea, op_archivo_abrir, 0, 0, 0)
+    si f = 0
+        devuelve SIN_LAMINA
+    medida es natural64 = invoca_valor(f, op_arch_tamano, 0, 0, 0)
+    si medida = 0 o medida > BLOQUE_BYTES
+        invoca(f, op_arch_cerrar, 0, 0, 0)
+        devuelve SIN_LAMINA
+    cambiante hechos es natural64 = 0
+    cambiante sigue es natural64 = 1
+    repite mientras sigue = 1 y hechos < medida
+        cambiante leidos es natural64 = invoca_valor(f, op_arch_leer_en, bloque, hechos, medida - hechos)
+        si leidos = 0
+            sigue = 0
+        hechos = hechos + leidos
+    invoca(f, op_arch_cerrar, 0, 0, 0)
+    si hechos no es medida
+        devuelve SIN_LAMINA
+    devuelve hechos
+
+# ===================================================================
+#  4. El programa
+# ===================================================================
+
+# Hasta donde se puede desplazar: el alto de la lamina menos la ventana.
+funcion tope_de(base es natural64, largo es natural64) devuelve natural64
+    cab es natural64 = lamina_cabecera(base, largo)
+    si cab = SIN_LAMINA
+        devuelve 0
+    alto es natural64 = lamina_alto(cab)
+    si alto <= ALTO
+        devuelve 0
+    devuelve alto - ALTO
+
+# El desplazamiento nuevo para una tecla cruda (scancode Set 1), o el mismo.
+funcion desliza(desliz es natural64, tecla es natural64, tope es natural64) devuelve natural64
+    si tecla = SC_ABAJO
+        si desliz + PASO > tope
+            devuelve tope
+        devuelve desliz + PASO
+    si tecla = SC_AVPAG
+        si desliz + ALTO > tope
+            devuelve tope
+        devuelve desliz + ALTO
+    si tecla = SC_ARRIBA
+        si desliz < PASO
+            devuelve 0
+        devuelve desliz - PASO
+    si tecla = SC_REPAG
+        si desliz < ALTO
+            devuelve 0
+        devuelve desliz - ALTO
+    devuelve desliz
+
 funcion principal devuelve entero32
-    cambiante s es natural64 = superficie_crear_con_buzon(ANCHO, ALTO, RANURAS)
+    # Primero la lamina, si la hay: decide el tamano de la ventana.
+    bloque es natural64 = invoca_valor(mi_tarea, op_pedir_memoria, BLOQUE_BYTES, 0, 0)
+    cambiante base es natural64 = 0
+    cambiante largo es natural64 = SIN_LAMINA
+    si bloque no es 0
+        base = invoca_valor(bloque, op_base_del_bloque, 0, 0, 0)
+        largo = lee_lamina(bloque)
+    cambiante ancho_v es natural64 = ANCHO_MENSAJE
+    cambiante alto_v es natural64 = ALTO_MENSAJE
+    si largo no es SIN_LAMINA
+        ancho_v = ANCHO
+        alto_v = ALTO
+    cambiante s es natural64 = superficie_crear_con_buzon(ancho_v, alto_v, RANURAS)
     si s = 0
         # Nadie compone: el mensaje por consola, y se dice con el codigo.
         linea_1(0, 0, 0)
@@ -157,9 +286,16 @@ funcion principal devuelve entero32
         linea_3(0, 0, 0)
         linea_4(0, 0, 0)
         devuelve 1
-    dibuja(s)
+    cambiante desliz es natural64 = 0
+    cambiante tope es natural64 = 0
+    si largo = SIN_LAMINA
+        dibuja_mensaje(s)
+    si largo no es SIN_LAMINA
+        tope = tope_de(base, largo)
+        dibuja_lamina(s, base, largo, desliz)
     cambiante antes es natural64 = 1
     repite mientras 1 = 1
+        cambiante repintar es natural64 = 0
         # Hasta 64 eventos por vuelta; lo que no se lea espera a la siguiente.
         cambiante i es natural64 = 0
         repite mientras i < 64
@@ -173,10 +309,22 @@ funcion principal devuelve entero32
                 si evento_es_letra(e) = 1
                     si evento_letra_de(e) = ESC o evento_letra_de(e) = LETRA_Q
                         devuelve 0
+                si evento_es_letra(e) = 0 y evento_es_raton(e) = 0 y evento_es_configurar(e) = 0
+                    # Una tecla cruda, pulsada: las flechas desplazan.
+                    si evento_pulsada(e) = 1 y largo no es SIN_LAMINA
+                        cambiante nuevo es natural64 = desliza(desliz, e bits_y 255, tope)
+                        si nuevo no es desliz
+                            desliz = nuevo
+                            repintar = 1
         # R-APP8: al volver a verse se repinta; mientras no se ve, nada.
         cambiante se_ve es natural64 = superficie_se_ve(s)
         si se_ve = 1 y antes = 0
-            dibuja(s)
+            repintar = 1
         antes = se_ve
+        si repintar = 1 y se_ve = 1
+            si largo = SIN_LAMINA
+                dibuja_mensaje(s)
+            si largo no es SIN_LAMINA
+                dibuja_lamina(s, base, largo, desliz)
         espera_a(0, 0, UN_FOTOGRAMA_NS)
     devuelve 0

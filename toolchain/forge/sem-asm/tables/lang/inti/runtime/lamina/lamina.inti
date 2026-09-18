@@ -1,0 +1,358 @@
+# lamina.inti -- LA LAMINA, leida y pintada desde INTI.
+#
+# ===================================================================
+#  Que es
+# ===================================================================
+#
+# La LAMINA es la pagina YA MAQUETADA que manda la antena
+# (`platform/shared/bmo-antena/src/lamina.rs` la define y la JUZGA en Rust).
+# Esto es el mismo recorrido, en INTI, para que NAVEGAR la pinte en su
+# ventana. Las reglas son las de `lamina.rs` y no otras: una linea por
+# elemento, numeros en ASCII, colores de seis cifras hexadecimales, y nada
+# fuera de la lamina.
+#
+#     LAMINA <ancho> <alto> <elementos>
+#     CAJA   <x> <y> <ancho> <alto> <rrggbb>
+#     TEXTO  <x> <y> <escala> <rrggbb> <bytes hasta el fin de linea>
+#     ENLACE <x> <y> <ancho> <alto> <id>
+#
+# ** Lo que se NIEGA se niega CON NOMBRE: `lamina_pinta` devuelve 0 si pinto
+# entera, y si no, `codigo * 65536 + linea`. Los codigos son palabras:
+#
+#     1  cabecera   la primera linea no es `LAMINA w h n`
+#     2  numero     donde iba un numero no hay cifras (o pasa de 65535)
+#     3  palabra    una linea que no empieza por CAJA/TEXTO/ENLACE
+#     4  fuera      una caja o un texto se sale de la lamina
+#     5  color      un color que no son seis cifras hexadecimales
+#     6  escala     una escala que no es 1..4
+#
+# En `llano` una funcion devuelve UN numero, y por eso casi todo aqui devuelve
+# dos cosas EMPAQUETADAS: el cuanto en los 32 bits altos y el indice siguiente
+# en los 32 bajos (`lamina_valor` / `lamina_indice` los separan). NADA_MAS es
+# "no se pudo", y ningun cuanto legitimo lo alcanza: los numeros topan en 65535.
+#
+# [!] `y` es un operador en INTI: las coordenadas se llaman `px`/`py`.
+
+perfil llano
+usa bmo
+usa memoria
+usa superficie
+
+LAM_NADA_MAS = 18446744073709551615
+LAM_MAXIMO = 65535
+LAM_CABECERA = 1
+LAM_NUMERO = 2
+LAM_PALABRA = 3
+LAM_FUERA = 4
+LAM_COLOR = 5
+LAM_ESCALA = 6
+LAM_ESCALA_MAX = 4
+
+# ===================================================================
+#  1. Bytes y empaquetado
+# ===================================================================
+
+funcion lamina_byte(base es natural64, i es natural64) devuelve natural64
+    crudo
+        devuelve lee_natural8(base + i)
+
+funcion lamina_valor(par es natural64) devuelve natural64
+    devuelve par desplaza derecha 32
+
+funcion lamina_indice(par es natural64) devuelve natural64
+    devuelve par bits_y 4294967295
+
+funcion lamina_par(cuanto es natural64, i es natural64) devuelve natural64
+    devuelve (cuanto desplaza izquierda 32) bits_o (i bits_y 4294967295)
+
+# El indice del final de esta linea: el salto de linea, o `fin`.
+funcion lamina_fin_linea(base es natural64, i es natural64, fin es natural64) devuelve natural64
+    cambiante k es natural64 = i
+    repite mientras k < fin
+        si lamina_byte(base, k) = 10
+            devuelve k
+        k = k + 1
+    devuelve fin
+
+# Salta espacios (y un retorno de carro, por si la lamina viene de Windows).
+funcion lamina_salta(base es natural64, i es natural64, fin es natural64) devuelve natural64
+    cambiante k es natural64 = i
+    repite mientras k < fin
+        cambiante c es natural64 = lamina_byte(base, k)
+        si c no es 32 y c no es 13
+            devuelve k
+        k = k + 1
+    devuelve k
+
+# ===================================================================
+#  2. Numeros, colores y palabras
+# ===================================================================
+
+# Un numero decimal: `par(cuanto, siguiente)`, o NADA_MAS si no hay cifras o
+# pasa del maximo (una coordenada de 70.000 no es una coordenada).
+funcion lamina_numero(base es natural64, i es natural64, fin es natural64) devuelve natural64
+    cambiante k es natural64 = lamina_salta(base, i, fin)
+    cambiante v es natural64 = 0
+    cambiante cifras es natural64 = 0
+    repite mientras k < fin
+        cambiante c es natural64 = lamina_byte(base, k)
+        si c < 48 o c > 57
+            si cifras = 0
+                devuelve LAM_NADA_MAS
+            si v > LAM_MAXIMO
+                devuelve LAM_NADA_MAS
+            devuelve lamina_par(v, k)
+        v = v * 10 + (c - 48)
+        si v > LAM_MAXIMO
+            devuelve LAM_NADA_MAS
+        cifras = cifras + 1
+        k = k + 1
+    si cifras = 0
+        devuelve LAM_NADA_MAS
+    devuelve lamina_par(v, k)
+
+# El cuanto de una cifra hexadecimal, o 16 si no lo es.
+funcion lamina_hex(c es natural64) devuelve natural64
+    si c >= 48 y c <= 57
+        devuelve c - 48
+    si c >= 97 y c <= 102
+        devuelve c - 87
+    si c >= 65 y c <= 70
+        devuelve c - 55
+    devuelve 16
+
+# Un color `rrggbb`: exactamente seis cifras hexadecimales y despues un
+# separador. `par(color, siguiente)` o NADA_MAS.
+funcion lamina_color(base es natural64, i es natural64, fin es natural64) devuelve natural64
+    cambiante k es natural64 = lamina_salta(base, i, fin)
+    cambiante v es natural64 = 0
+    cambiante n es natural64 = 0
+    repite mientras n < 6
+        si k >= fin
+            devuelve LAM_NADA_MAS
+        cambiante h es natural64 = lamina_hex(lamina_byte(base, k))
+        si h = 16
+            devuelve LAM_NADA_MAS
+        v = v * 16 + h
+        k = k + 1
+        n = n + 1
+    si k < fin
+        cambiante c es natural64 = lamina_byte(base, k)
+        si c no es 32 y c no es 10 y c no es 13
+            devuelve LAM_NADA_MAS
+    devuelve lamina_par(v, k)
+
+# La palabra al principio de la linea es `w` (ocho bytes, cero al final)?
+# Devuelve el indice tras la palabra, o NADA_MAS.
+funcion lamina_es_palabra(base es natural64, i es natural64, fin es natural64, w es natural64) devuelve natural64
+    cambiante k es natural64 = i
+    cambiante n es natural64 = 0
+    repite mientras n < 8
+        cambiante esperado es natural64 = (w desplaza derecha (n * 8)) bits_y 255
+        si esperado = 0
+            # Se acabo la palabra: lo siguiente tiene que ser un separador.
+            si k < fin
+                cambiante c es natural64 = lamina_byte(base, k)
+                si c no es 32 y c no es 10 y c no es 13
+                    devuelve LAM_NADA_MAS
+            devuelve k
+        si k >= fin
+            devuelve LAM_NADA_MAS
+        si lamina_byte(base, k) no es esperado
+            devuelve LAM_NADA_MAS
+        k = k + 1
+        n = n + 1
+    devuelve k
+
+# ===================================================================
+#  3. La cabecera
+# ===================================================================
+
+# `LAMINA <ancho> <alto> <n>`. Devuelve `ancho * 2^48 + alto * 2^32 + indice de
+# la linea siguiente`, o NADA_MAS. El numero de elementos se lee y no se usa:
+# se pinta lo que hay, y una lamina que dice 7 y trae 6 no miente en nada que
+# cambie un pixel.
+funcion lamina_cabecera(base es natural64, largo es natural64) devuelve natural64
+    fin es natural64 = lamina_fin_linea(base, 0, largo)
+    k es natural64 = lamina_es_palabra(base, 0, fin, ocho_bytes("LAMINA"))
+    si k = LAM_NADA_MAS
+        devuelve LAM_NADA_MAS
+    a es natural64 = lamina_numero(base, k, fin)
+    si a = LAM_NADA_MAS
+        devuelve LAM_NADA_MAS
+    b es natural64 = lamina_numero(base, lamina_indice(a), fin)
+    si b = LAM_NADA_MAS
+        devuelve LAM_NADA_MAS
+    n es natural64 = lamina_numero(base, lamina_indice(b), fin)
+    si n = LAM_NADA_MAS
+        devuelve LAM_NADA_MAS
+    si lamina_valor(a) = 0 o lamina_valor(b) = 0
+        devuelve LAM_NADA_MAS
+    siguiente es natural64 = fin + 1
+    devuelve (lamina_valor(a) desplaza izquierda 48) bits_o (lamina_valor(b) desplaza izquierda 32) bits_o siguiente
+
+funcion lamina_ancho(cab es natural64) devuelve natural64
+    devuelve (cab desplaza derecha 48) bits_y 65535
+
+funcion lamina_alto(cab es natural64) devuelve natural64
+    devuelve (cab desplaza derecha 32) bits_y 65535
+
+# ===================================================================
+#  4. Pintar: una caja, un texto
+# ===================================================================
+
+# Un glifo a escala: cada bit, un cuadrado de `escala` de lado.
+funcion lamina_glifo(s es natural64, px es natural64, py es natural64, g es natural64, escala es natural64, color es natural64)
+    si escala = 1
+        glifo_en(s, px, py, g, color)
+        devuelve
+    cambiante fila es natural64 = 0
+    repite mientras fila < 16
+        cambiante bits es natural64 = glifo_fila(g, fila)
+        cambiante col es natural64 = 0
+        repite mientras col < 8
+            si (bits bits_y (128 desplaza derecha col)) no es 0
+                rectangulo(s, px + col * escala, py + fila * escala, escala, escala, color)
+            col = col + 1
+        fila = fila + 1
+
+# Una caja de la lamina, desplazada `desliz` hacia arriba y recortada por
+# arriba (por los lados ya recorta `rectangulo`).
+funcion lamina_caja(s es natural64, px es natural64, py es natural64, ancho es natural64, alto es natural64, color es natural64, desliz es natural64)
+    si py + alto <= desliz
+        devuelve
+    si py >= desliz
+        rectangulo(s, px, py - desliz, ancho, alto, color)
+        devuelve
+    rectangulo(s, px, 0, ancho, py + alto - desliz, color)
+
+# Los bytes de `i` a `fin`, en la fuente de BMO-X, a escala. Un texto que
+# queda por encima de la ventana no se pinta: son 16 pixeles, no vale partirlo.
+funcion lamina_texto(s es natural64, base es natural64, i es natural64, fin es natural64, px es natural64, py es natural64, escala es natural64, color es natural64, desliz es natural64)
+    si py < desliz
+        devuelve
+    si py - desliz >= superficie_alto(s)
+        devuelve
+    cambiante k es natural64 = i
+    cambiante x es natural64 = px
+    repite mientras k < fin
+        cambiante c es natural64 = lamina_byte(base, k)
+        si c no es 13
+            lamina_glifo(s, x, py - desliz, glifo_de(c), escala, color)
+            x = x + 8 * escala
+        k = k + 1
+
+# ===================================================================
+#  5. El recorrido entero
+# ===================================================================
+
+# Una linea `CAJA ...` o `ENLACE ...` (misma forma: x y ancho alto y un
+# ultimo campo). `se_pinta` = 1 pinta la caja; = 0 solo la juzga (ENLACE).
+# Devuelve 0 si bien, o el codigo del rechazo.
+funcion lamina_linea_caja(s es natural64, base es natural64, i es natural64, fin es natural64, cab es natural64, desliz es natural64, se_pinta es natural64) devuelve natural64
+    a es natural64 = lamina_numero(base, i, fin)
+    si a = LAM_NADA_MAS
+        devuelve LAM_NUMERO
+    b es natural64 = lamina_numero(base, lamina_indice(a), fin)
+    si b = LAM_NADA_MAS
+        devuelve LAM_NUMERO
+    c es natural64 = lamina_numero(base, lamina_indice(b), fin)
+    si c = LAM_NADA_MAS
+        devuelve LAM_NUMERO
+    d es natural64 = lamina_numero(base, lamina_indice(c), fin)
+    si d = LAM_NADA_MAS
+        devuelve LAM_NUMERO
+    px es natural64 = lamina_valor(a)
+    py es natural64 = lamina_valor(b)
+    ancho es natural64 = lamina_valor(c)
+    alto es natural64 = lamina_valor(d)
+    si px + ancho > lamina_ancho(cab) o py + alto > lamina_alto(cab)
+        devuelve LAM_FUERA
+    si se_pinta = 1
+        col es natural64 = lamina_color(base, lamina_indice(d), fin)
+        si col = LAM_NADA_MAS
+            devuelve LAM_COLOR
+        lamina_caja(s, px, py, ancho, alto, lamina_valor(col), desliz)
+    devuelve 0
+
+# Una linea `TEXTO x y escala rrggbb bytes...`.
+funcion lamina_linea_texto(s es natural64, base es natural64, i es natural64, fin es natural64, cab es natural64, desliz es natural64) devuelve natural64
+    a es natural64 = lamina_numero(base, i, fin)
+    si a = LAM_NADA_MAS
+        devuelve LAM_NUMERO
+    b es natural64 = lamina_numero(base, lamina_indice(a), fin)
+    si b = LAM_NADA_MAS
+        devuelve LAM_NUMERO
+    e es natural64 = lamina_numero(base, lamina_indice(b), fin)
+    si e = LAM_NADA_MAS
+        devuelve LAM_NUMERO
+    escala es natural64 = lamina_valor(e)
+    si escala = 0 o escala > LAM_ESCALA_MAX
+        devuelve LAM_ESCALA
+    col es natural64 = lamina_color(base, lamina_indice(e), fin)
+    si col = LAM_NADA_MAS
+        devuelve LAM_COLOR
+    # El texto: un espacio y hasta el fin de linea.
+    desde es natural64 = lamina_indice(col) + 1
+    cambiante largo es natural64 = 0
+    si fin > desde
+        largo = fin - desde
+    px es natural64 = lamina_valor(a)
+    py es natural64 = lamina_valor(b)
+    si px + largo * 8 * escala > lamina_ancho(cab) o py + 16 * escala > lamina_alto(cab)
+        devuelve LAM_FUERA
+    si largo > 0
+        lamina_texto(s, base, desde, fin, px, py, escala, lamina_valor(col), desliz)
+    devuelve 0
+
+# **Pinta la lamina entera** en `s`, desplazada `desliz` pixeles hacia arriba.
+# Devuelve 0, o `codigo * 65536 + linea` (la linea empieza en 1).
+#
+# [!] Pinta MIENTRAS juzga: una lamina que se niega en la linea 5 deja las
+# cuatro primeras puestas. Quien llama la rechaza entera pintando su aviso
+# encima, que es lo que hace NAVEGAR -- y asi el juicio no cuesta dos vueltas.
+funcion lamina_pinta(s es natural64, base es natural64, largo es natural64, desliz es natural64) devuelve natural64
+    cab es natural64 = lamina_cabecera(base, largo)
+    si cab = LAM_NADA_MAS
+        devuelve LAM_CABECERA * 65536 + 1
+    cambiante i es natural64 = lamina_indice(cab)
+    cambiante linea es natural64 = 2
+    repite mientras i < largo
+        fin es natural64 = lamina_fin_linea(base, i, largo)
+        ini es natural64 = lamina_salta(base, i, fin)
+        cambiante codigo es natural64 = 0
+        si ini < fin
+            cambiante k es natural64 = lamina_es_palabra(base, ini, fin, ocho_bytes("CAJA"))
+            si k no es LAM_NADA_MAS
+                codigo = lamina_linea_caja(s, base, k, fin, cab, desliz, 1)
+            si k = LAM_NADA_MAS
+                k = lamina_es_palabra(base, ini, fin, ocho_bytes("TEXTO"))
+                si k no es LAM_NADA_MAS
+                    codigo = lamina_linea_texto(s, base, k, fin, cab, desliz)
+                si k = LAM_NADA_MAS
+                    k = lamina_es_palabra(base, ini, fin, ocho_bytes("ENLACE"))
+                    si k no es LAM_NADA_MAS
+                        codigo = lamina_linea_caja(s, base, k, fin, cab, desliz, 0)
+                    si k = LAM_NADA_MAS
+                        codigo = LAM_PALABRA
+        si codigo no es 0
+            devuelve codigo * 65536 + linea
+        i = fin + 1
+        linea = linea + 1
+    devuelve 0
+
+# El nombre del codigo de un rechazo, en ocho bytes, para pintarlo.
+funcion lamina_nombre(codigo es natural64) devuelve natural64
+    si codigo = LAM_CABECERA
+        devuelve ocho_bytes("cabecera")
+    si codigo = LAM_NUMERO
+        devuelve ocho_bytes("numero")
+    si codigo = LAM_PALABRA
+        devuelve ocho_bytes("palabra")
+    si codigo = LAM_FUERA
+        devuelve ocho_bytes("fuera")
+    si codigo = LAM_COLOR
+        devuelve ocho_bytes("color")
+    si codigo = LAM_ESCALA
+        devuelve ocho_bytes("escala")
+    devuelve ocho_bytes("?")

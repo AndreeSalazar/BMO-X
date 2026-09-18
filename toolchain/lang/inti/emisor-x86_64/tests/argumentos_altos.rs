@@ -79,3 +79,38 @@ fn leer_un_fichero_al_bloque_con_variables() {
     assert!(m.exited);
     assert_eq!(m.syscalls.last().unwrap().arg0, 12, "los doce bytes del fichero");
 }
+
+/// *** DEL SEPTIMO ARGUMENTO EN ADELANTE, POR LA PILA (2026-09-18).
+///
+/// Hasta hoy el emisor cargaba seis registros y **se callaba el resto**: una
+/// funcion de siete parametros compilaba, corria, y el septimo era lo que
+/// hubiera en su hueco del marco. Lo destapo `lamina.inti`: una caja que no
+/// se pintaba porque su septimo argumento --pintar, o solo juzgar-- nunca
+/// llego. Aqui se pasan nueve, se suman con pesos distintos, y el resultado
+/// solo cuadra si los NUEVE llegaron en su sitio.
+#[test]
+fn nueve_argumentos_llegan_todos_y_en_orden() {
+    let f = r#"
+perfil llano
+usa bmo
+
+funcion suma9(a es natural64, b es natural64, c es natural64, d es natural64, e es natural64, f es natural64, g es natural64, h es natural64, i es natural64) devuelve natural64
+    devuelve a + b * 10 + c * 100 + d * 1000 + e * 10000 + f * 100000 + g * 1000000 + h * 10000000 + i * 100000000
+
+funcion principal devuelve entero32
+    cambiante uno es natural64 = 1
+    cambiante siete es natural64 = 7
+    # Constantes y variables mezcladas: los dos caminos de `carga`.
+    r es natural64 = suma9(uno, 2, 3, 4, 5, 6, siete, 8, 9)
+    invoca(mi_tarea, op_consola_escribir, r, 0, 0)
+    devuelve 0
+"#;
+    let m = corre(f, None);
+    let r = m
+        .syscalls
+        .iter()
+        .find(|c| c.operation == 0x06 && c.capability == 0xFFFF_FFFF_FFFF_FFFE)
+        .map(|c| c.arg0)
+        .expect("escribio el resultado");
+    assert_eq!(r, 987654321, "los nueve, cada uno en su peso");
+}

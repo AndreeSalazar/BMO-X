@@ -501,6 +501,16 @@ superficie_vista           = "la VISTA: se ve, minimizada, fuera, prestada, tapa
 superficie_se_ve           = "R-APP8: si es 0, no pintes"
 superficie_tomada          = "el DIRECTOR ya la tomo (bit 24)"
 
+#  LA LAMINA: la pagina ya maquetada que manda la antena, leida y pintada
+#  desde INTI (2026-09-18, N2 de PLAN_NAVEGAR). Las reglas son las de
+#  `platform/shared/bmo-antena/src/lamina.rs`; aqui solo se recorren.
+[lamina]
+lamina_pinta    = "pinta la lamina que hay en un bloque, desplazada; 0 o codigo * 65536 + linea"
+lamina_cabecera = "LAMINA ancho alto n: ancho y alto empaquetados, o NADA_MAS"
+lamina_ancho    = "el ancho de una cabecera empaquetada"
+lamina_alto     = "el alto de una cabecera empaquetada"
+lamina_nombre   = "el nombre de un codigo de rechazo, en ocho bytes"
+
 [archivo]
 abre_para_leer    = "abre un fichero y devuelve por donde va"
 abre_para_escribir = "lo mismo, para escribir"

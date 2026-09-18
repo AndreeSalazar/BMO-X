@@ -139,3 +139,127 @@ fn con_escritorio_abre_una_ventana_con_el_mensaje_y_esc_la_cierra() {
     assert_eq!(dice(&m), "", "con ventana no escribe por consola");
     assert_eq!(salida(&m), Some(0), "se cerro limpia");
 }
+
+// ===================================================================
+//  N2: la lamina DE FICHERO (2026-09-18)
+// ===================================================================
+
+/// La lamina de example.com, tal cual la sirve la antena.
+fn lamina_ejemplo() -> Vec<u8> {
+    std::fs::read(PathBuf::from("../../../../toolchain/tools/antena/ejemplo.lamina"))
+        .expect("no encuentro `toolchain/tools/antena/ejemplo.lamina`")
+}
+
+/// Corre NAVEGAR con un DIRECTOR de mentira, la lamina dada en
+/// `datos/ejemplo.lamina`, y los eventos que se le entreguen antes de la `q`.
+fn con_lamina(lamina: &[u8], eventos: &[u64]) -> Machine {
+    use bmo_abi::syscalls::surface::SUP_EV_CARACTER;
+    let e = emitido(&fuente());
+    let mut m = maquina(&e);
+    m.padre = 7;
+    m.poner_archivo("datos/ejemplo.lamina", lamina);
+    for &ev in eventos {
+        m.buzon_pendiente.push_back(ev);
+    }
+    m.buzon_pendiente.push_back(SUP_EV_CARACTER | 0x100 | b'q' as u64);
+    run(m, 400_000_000)
+}
+
+/// Los pixeles de la primera superficie ofrecida: `(ancho, alto, pixel(x, y))`.
+fn pantalla(m: &Machine) -> (u64, u64, impl Fn(u64, u64) -> u32 + '_) {
+    use bmo_abi::syscalls::surface::SUP_CABECERA;
+    let (base, desde, _, _) = m.ofertas[0];
+    let s = base + desde;
+    let campo = |i: u64| -> u32 {
+        (0..4).fold(0u32, |v, k| v | (m.read_u8_pub(s + i * 4 + k) as u32) << (k * 8))
+    };
+    let (w, h) = (campo(1) as u64, campo(2) as u64);
+    let pixel = move |x: u64, y: u64| -> u32 {
+        let i = s + SUP_CABECERA + (y * w + x) * 4;
+        (0..4).fold(0u32, |v, k| v | (m.read_u8_pub(i + k) as u32) << (k * 8))
+    };
+    (w, h, pixel)
+}
+
+fn cuenta(pixel: &dyn Fn(u64, u64) -> u32, w: u64, y0: u64, y1: u64, color: u32) -> usize {
+    let mut n = 0;
+    for y in y0..y1 {
+        for x in 0..w {
+            if pixel(x, y) & 0x00FF_FFFF == color {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
+#[test]
+fn con_la_lamina_de_ejemplo_pinta_la_pagina_en_640x400() {
+    let m = con_lamina(&lamina_ejemplo(), &[]);
+    assert_eq!(m.ofertas.len(), 1, "ofrecio UNA superficie");
+    let (w, h, pixel) = pantalla(&m);
+    assert_eq!((w, h), (640, 400), "la ventana de la lamina, no la del mensaje");
+    // La CAJA de fondo de example.com, y no el fondo oscuro del mensaje.
+    assert_eq!(pixel(0, 0) & 0x00FF_FFFF, 0x00EE_EEEE, "el fondo de la lamina");
+    assert_eq!(pixel(639, 399) & 0x00FF_FFFF, 0x00EE_EEEE, "hasta la ultima esquina");
+    // El titulo "Example Domain" a escala 2 empieza en (128, 121): 16 filas
+    // de glifo x 2 = 32 filas con tinta negra.
+    let titulo = cuenta(&pixel, w, 121, 153, 0x0000_0000);
+    assert!(titulo > 300, "el titulo a escala 2 tiene tinta: {} pixeles", titulo);
+    // El parrafo a escala 1 en 169..217.
+    let parrafo = cuenta(&pixel, w, 169, 217, 0x0000_0000);
+    assert!(parrafo > 300, "el parrafo tiene tinta: {} pixeles", parrafo);
+    // "Learn more" en azul (334488) en la fila 231.
+    let enlace = cuenta(&pixel, w, 231, 247, 0x0033_4488);
+    assert!(enlace > 50, "el enlace, en su color: {} pixeles", enlace);
+    // Y por encima del titulo no hay tinta: la lamina no se desplazo sola.
+    assert_eq!(cuenta(&pixel, w, 0, 121, 0x0000_0000), 0, "nada negro antes del titulo");
+    assert_eq!(dice(&m), "", "con ventana no escribe por consola");
+    assert_eq!(salida(&m), Some(0), "se cerro limpia con la q");
+}
+
+#[test]
+fn la_flecha_abajo_desplaza_la_lamina_32_pixeles() {
+    // Una tecla cruda pulsada: sin bit alto, bit 8 (hay), bit 9 (pulsada),
+    // scancode Set 1 de la flecha abajo en el byte bajo.
+    let abajo = 0x100 | 0x200 | 0x50;
+    let m = con_lamina(&lamina_ejemplo(), &[abajo]);
+    let (w, _, pixel) = pantalla(&m);
+    // El titulo estaba en 121..153; ahora en 89..121, y en 121..153 queda
+    // solo lo que baja detras (el hueco entre titulo y parrafo, sin tinta
+    // hasta 169-32 = 137).
+    assert!(cuenta(&pixel, w, 89, 121, 0x0000_0000) > 300, "el titulo subio 32 pixeles");
+    assert_eq!(cuenta(&pixel, w, 121, 137, 0x0000_0000), 0, "y debajo del titulo ya no hay titulo");
+    assert_eq!(salida(&m), Some(0));
+}
+
+#[test]
+fn una_lamina_con_una_caja_fuera_se_niega_con_su_nombre() {
+    // La caja de la linea 3 se sale por la derecha: 600 + 100 > 640.
+    let mala = b"LAMINA 640 800 2\nCAJA 0 0 640 800 eeeeee\nCAJA 600 0 100 10 ff0000\n";
+    let m = con_lamina(mala, &[]);
+    let (w, h, pixel) = pantalla(&m);
+    assert_eq!((w, h), (640, 400));
+    // El aviso va ENCIMA: las 40 primeras filas son el fondo oscuro con el
+    // texto en naranja (AVISO) y gris (TEXTO); debajo queda lo que llego a
+    // pintarse (la caja de fondo).
+    assert_eq!(pixel(0, 0) & 0x00FF_FFFF, 0x0014_1414, "el fondo del aviso");
+    let naranja = cuenta(&pixel, w, 8, 24, 0x00FF_AA00);
+    assert!(naranja > 100, "el aviso en naranja: {} pixeles", naranja);
+    assert_eq!(pixel(0, 60) & 0x00FF_FFFF, 0x00EE_EEEE, "debajo, lo que se pinto antes del rechazo");
+    // Y nada rojo: la caja que se salia no se pinto.
+    assert_eq!(cuenta(&pixel, w, 0, 400, 0x00FF_0000), 0, "la caja de fuera no se pinta");
+    assert_eq!(salida(&m), Some(0));
+}
+
+#[test]
+fn una_lamina_con_un_color_malo_se_niega_en_su_linea() {
+    let mala = b"LAMINA 640 800 2\nCAJA 0 0 640 800 eeeeee\nTEXTO 10 10 1 zz0000 hola\n";
+    let m = con_lamina(mala, &[]);
+    let (w, _, pixel) = pantalla(&m);
+    let naranja = cuenta(&pixel, w, 8, 24, 0x00FF_AA00);
+    assert!(naranja > 100, "el aviso en naranja: {} pixeles", naranja);
+    // "hola" no se pinto: nada negro en su fila.
+    assert_eq!(cuenta(&pixel, w, 40, 60, 0x0000_0000), 0);
+}
+

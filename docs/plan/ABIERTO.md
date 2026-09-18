@@ -7,8 +7,8 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   300 casillas ABIERTAS en 35 planes
-   206 hechas
+   298 casillas ABIERTAS en 35 planes
+   208 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -224,15 +224,6 @@
 - [ ] no promete 0 ms, y llamarlo asi seria vender humo: un pixel viaja por
 - ... y 3 mas
 
-## [`PLAN_NAVEGAR.md`](PLAN_NAVEGAR.md) -- 6 abiertas, 5 hechas
-
-*PLAN NAVEGAR -- la propuesta maestra de la app que navega sin ser navegador*
-
-- [ ] N1 -- Navegar v1: la ventana con el mensaje, en el METAL. El
-- [ ] N2 -- Navegar pinta una lamina DE FICHERO. ejemplo.lamina como
-- [ ] N3 -- el ANTENISTA. Ultra_userspace/services/antenista: Rust, Ring
-- ... y 3 mas
-
 ## [`PLAN_SEGURIDAD.md`](PLAN_SEGURIDAD.md) -- 6 abiertas, 26 hechas
 
 *PLAN SEGURIDAD -- las casillas que faltan, medidas contra el codigo*
@@ -294,6 +285,15 @@
 - [ ] un arranque verde con lo que ya hay (vuelo, mudo, ajenos, centinela)
 - [ ] sacar titular/ a platform/shared/bmo-marcos, con la tabla como
 - [ ] sus filas de banco -- las ocho reglas del DMA, en el anfitrion
+- ... y 1 mas
+
+## [`PLAN_NAVEGAR.md`](PLAN_NAVEGAR.md) -- 4 abiertas, 7 hechas
+
+*PLAN NAVEGAR -- la propuesta maestra de la app que navega sin ser navegador*
+
+- [ ] N3 -- el ANTENISTA. Ultra_userspace/services/antenista: Rust, Ring
+- [ ] N4 -- la lamina VIVA. La antena reemite al cambiar el DOM (suelo 250
+- [ ] N5 -- el HISTORIAL. Cada lamina que entra se guarda en ESTRATOS con
 - ... y 1 mas
 
 ## [`PLAN_EL_SILICIO.md`](PLAN_EL_SILICIO.md) -- 3 abiertas, 5 hechas

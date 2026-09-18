@@ -204,7 +204,16 @@ de esta casa; prometer 60 fps por ESPEJO es S6 y cuesta lo que dice la seccion
       en C y en INTI y exige el mismo bloque byte a byte. Lo que queda para
       el Ryzen es N1.
 
-- [ ] **N1 -- Navegar v1: la ventana con el mensaje, en el METAL.** El
+- [x] **N1 -- Navegar v1: la ventana con el mensaje, en el METAL.** HECHO el
+      2026-09-18: la foto del Ryzen ensena la ventana `tid 5 482x141` con el
+      fondo oscuro, el titulo en blanco y el aviso de la ANTENA en naranja,
+      y `save` no acusa ninguna oferta negada. La "ventana blanca" del 17-09
+      no volvio tras los arreglos del USB de esa noche (el escritorio sin
+      turno); no se aislo la causa exacta, y se dice. Lo que la foto tambien
+      ensena: el texto se corta por la derecha (482 px para 8 palabras de 8
+      letras) y el titulo dice `tid 5`, no NAVEGAR -- dos cosas del DIRECTOR,
+      no de la app. El original:
+      El
       `navegar.inti` v1 ya esta escrito (`usa superficie`: 480x112, 64
       ranuras, el mensaje en la fuente de BMO-X, Esc o `q` cierran, R-APP8)
       y probado en el emulador por los dos caminos
@@ -212,13 +221,23 @@ de esta casa; prometer 60 fps por ESPEJO es S6 y cuesta lo que dice la seccion
       del escritorio del Ryzen, sale la ventana con el mensaje, `q` la
       cierra, y el DIRECTOR no acusa nada en `cabina fallos`.
 
-- [ ] **N2 -- Navegar pinta una lamina DE FICHERO.** `ejemplo.lamina` como
-      recurso del `.ibx` (`paquete.recurso`), el recorrido de la lamina en INTI
-      (`Ultra_userspace/apps/navegar/lamina.inti`: las mismas reglas que
-      `lamina.rs`, con la aritmetica atrapada), scroll con rueda y flechas en
-      local. **Como se sabe:** la lamina de example.com se ve en el Ryzen igual
-      que en el navegador (el parrafo de tres lineas a 16 px), y una lamina con
-      una caja fuera se niega con su nombre en la ventana.
+- [x] **N2 -- Navegar pinta una lamina DE FICHERO.** HECHO el 2026-09-18
+      en el emulador, esperando el Ryzen. Dos cambios sobre lo escrito, dichos:
+      la lamina viene de DATOS (`datos/ejemplo.lamina`, la copia el build)
+      y no del `.ibx`, porque `paquete.recurso` no tiene cuerpo en INTI; y el
+      recorrido vive en `tables/lang/inti/runtime/lamina/lamina.inti` (`usa
+      lamina`) y no en la carpeta de la app, porque `usa` solo trae piezas
+      del runtime -- y es un FORMATO, que es lo que el runtime guarda. Scroll
+      con flechas y AvPag/RePag (la rueda no viaja por el buzon todavia).
+      ** Y destapo un fallo del emisor de INTI: del septimo argumento en
+      adelante se PERDIAN en silencio (`take(6)`); ahora van por la pila
+      (`emisor-x86_64/src/funcion.rs`, prueba `argumentos_altos.rs`).
+      **Como se sabe:** `cargo test -p bmo-inti-x86-64 --test navegar`: la
+      lamina de example.com en 640x400 con el fondo `eeeeee`, el titulo a
+      escala 2 en 121..153, el enlace en su azul; la flecha abajo la sube 32
+      px; una caja fuera y un color malo se niegan con su nombre y su linea
+      en naranja, y lo de fuera no se pinta. En el Ryzen: `run
+      apps/navegar.ibx` con `datos/ejemplo.lamina` en el disco.
 
 - [ ] **N3 -- el ANTENISTA.** `Ultra_userspace/services/antenista`: Rust, Ring
       3, habla ANTENA/1 por `bmo-pila` (G5), aplica `cuarentena.rs`, pide

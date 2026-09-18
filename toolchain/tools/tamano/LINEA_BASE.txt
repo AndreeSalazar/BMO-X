@@ -3,7 +3,7 @@
 # Se regenera con:  py toolchain/tools/tamano/tamano.py --fijar
 ada/cierre.bex 2352
 apps/doom.bex 876312
-apps/navegar.ibx 21672
+apps/navegar.ibx 39456
 c/blit.bex 5872
 c/caja.bex 10476
 c/ciclos.bex 11729
