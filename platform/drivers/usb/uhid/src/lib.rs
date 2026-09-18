@@ -919,15 +919,20 @@ impl InputHal for UsbHidHal {
         self.vuelta = self.vuelta.wrapping_add(1);
         if self.vuelta % 25 == 0 {
             unsafe {
+                // Solo Halted (2) y Error (4) son averias. Stopped (3) es el
+                // estado NORMAL un instante despues de resucitar un endpoint
+                // (Reset Endpoint lo deja Stopped hasta el timbre), y tratarlo
+                // como averia habria resucitado en bucle lo que acababa de
+                // resucitar.
                 if let Some(k) = self.teclado.as_ref() {
-                    if k.bombeando() && bmo_xhci::ep_state(k.slot(), k.dci()) != 1 {
+                    if k.bombeando() && matches!(bmo_xhci::ep_state(k.slot(), k.dci()), 2 | 4) {
                         bmo_xhci::recuperar_endpoint(k.slot(), k.dci());
                         self.teclado.as_mut().map(|k| k.parar());
                         self.anotar_error(true);
                     }
                 }
                 if let Some(m) = self.raton.as_ref() {
-                    if m.bombeando() && bmo_xhci::ep_state(m.slot(), m.dci()) != 1 {
+                    if m.bombeando() && matches!(bmo_xhci::ep_state(m.slot(), m.dci()), 2 | 4) {
                         bmo_xhci::recuperar_endpoint(m.slot(), m.dci());
                         self.raton.as_mut().map(|m| m.parar());
                         self.anotar_error(false);

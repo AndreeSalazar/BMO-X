@@ -317,10 +317,14 @@ pub unsafe fn leer_descriptores(
 
     let mut dev_desc = [0u8; 18];
     let mut n = 0usize;
+    // Tres lecturas con 10 ms entre ellas (eran 50): un aparato sano contesta
+    // en menos de un milisegundo, y un mudo se llevaba 150 ms del raton en
+    // cada intento. Lo que tarda de verdad en estar listo ya lo cubre el
+    // debounce y la espera entre intentos, no esto.
     for _ in 0..3 {
         n = bmo_xhci::get_device_descriptor(slot, &mut dev_desc);
         if n >= 8 { break; }
-        h.delay_ms(50);
+        h.delay_ms(10);
     }
     if n < 8 {
         h.log("[uhid] no dev desc\n");
@@ -354,7 +358,7 @@ pub unsafe fn leer_descriptores(
     for _ in 0..3 {
         n2 = bmo_xhci::get_config_descriptor(slot, 0, &mut cfg_hdr);
         if n2 >= 9 { break; }
-        h.delay_ms(50);
+        h.delay_ms(10);
     }
     if n2 < 9 {
         h.log("[uhid] no cfg hdr\n");
@@ -408,9 +412,17 @@ pub unsafe fn direccionar_puerto(port: u8, reintento: bool) -> Option<u8> {
     // ** 100 ms de DEBOUNCE antes del reset (USB 2.0, 7.1.7.3), 2026-09-17.
     // Aqui habia un spin de 50.000 vueltas: microsegundos. Un raton con
     // firmware RGB o un movil que aun arranca fallaba el reset o no daba sus
-    // descriptores, y cada fallo gastaba uno de los tres intentos. Se paga
-    // solo al enchufar y al arrancar, nunca en el camino del teclado.
-    h.delay_ms(100);
+    // descriptores, y cada fallo gastaba uno de los tres intentos.
+    //
+    // Solo la PRIMERA vez: en un reintento el aparato lleva segundos
+    // enchufado (o acaba de recibir su corte de corriente, que ya es su
+    // propia espera). El hilo del bus enumera Y bombea el raton, y cada
+    // milisegundo de aqui es un milisegundo sin leer el raton: el Ryzen
+    // enseno `el latido del bus llego TARDE 646 ms` y el dueno lo vio como
+    // tirones en la pantalla (2026-09-17, noche).
+    if !reintento {
+        h.delay_ms(100);
+    }
     // Margen tras encender (chipset AMD).
     for _ in 0..50000 {
         core::hint::spin_loop();
