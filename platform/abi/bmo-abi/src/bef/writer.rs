@@ -854,7 +854,7 @@ mod tests {
     fn estampar_la_firma_no_toca_ningun_hash() {
         let mut b = BefBuilder::new();
         b.add_section(BefSection::code(vec![0xC3; 512]));
-        b.add_section(BefSection::rodata(b"hola ".to_vec()));
+        b.add_section(BefSection::rodata(b"hola\0".to_vec()));
         let mut bytes = b.build().unwrap();
 
         let count = u32::from_le_bytes(bytes[40..44].try_into().unwrap()) as usize;

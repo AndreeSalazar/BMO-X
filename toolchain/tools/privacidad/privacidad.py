@@ -51,8 +51,15 @@ RE_MAC = re.compile(r"(?<![0-9A-Fa-f:-])((?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}
 
 # Los binarios no se miran: un .bex o una imagen trae secuencias que parecen
 # numeros y no lo son.
-BINARIOS = (".bex", ".ibx", ".bo", ".bin", ".png", ".jpg", ".qoi", ".bmp",
-            ".wad", ".efi", ".ico", ".mus", ".pdf", ".zip", ".mp4", ".mpg")
+#
+# ** SOLO por extension (2026-09-18). La primera version saltaba ademas todo
+# fichero con un byte cero en sus primeros 8 KB, "porque sera binario" -- y
+# `inti/src/cabina/mod.rs` tenia un `'\0'` escrito como un cero CRUDO en el byte
+# 7.889: el guardian no miro ese fichero de codigo ni una vez, y no lo decia.
+# Un juez que decide por su cuenta que algo no le toca es un juez ciego.
+BINARIOS = (".bex", ".ibx", ".bo", ".bin", ".bef", ".png", ".jpg", ".gif", ".qoi",
+            ".bmp", ".wad", ".efi", ".ico", ".mus", ".wav", ".pdf", ".zip", ".mp4",
+            ".mpg")
 
 
 def raiz():
@@ -119,18 +126,17 @@ def comprobar():
     if fallos:
         print("guardian MUERTO: su propia expresion falla en %s" % ", ".join(fallos))
         return 1
-    mirados = 0
+    mirados = saltados = 0
     quejas = []
     for rel in ficheros_publicados():
         if rel.lower().endswith(BINARIOS) or rel.endswith("Cargo.lock"):
+            saltados += 1
             continue
         ruta = os.path.join(raiz(), rel)
         try:
             with open(ruta, "rb") as f:
                 crudo = f.read()
         except OSError:
-            continue
-        if b"\0" in crudo[:8192]:
             continue
         mirados += 1
         for n, linea in enumerate(crudo.decode("utf-8", "replace").splitlines(), 1):
@@ -147,8 +153,8 @@ def comprobar():
         print("privacidad: %d dato(s) de la red de casa en el repo. Se escriben con un hueco "
               "(<ip-de-la-antena>) o con 192.0.2.x (RFC 5737)" % len(quejas))
         return 1
-    print("clean: %d fichero(s) publicados, ni una IP de red privada ni una MAC de fabricante"
-          % mirados)
+    print("clean: %d fichero(s) publicados mirados (%d binarios saltados por su extension), "
+          "ni una IP de red privada ni una MAC de fabricante" % (mirados, saltados))
     return 0
 
 
