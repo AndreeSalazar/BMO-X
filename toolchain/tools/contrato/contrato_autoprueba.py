@@ -331,6 +331,10 @@ def autoprueba():
     # Y el caso bueno: nadie se copia nada. Sin esta casilla, una regla que
     # se quejara SIEMPRE tambien pasaria por guardian.
     exige("R19(ninguna copia)", r19_nadie_se_copia_una_operacion([]), False)
+    # *** Y la ceguera: cero copias porque no se miro NADA no es un exito. Es la
+    # casilla que separa "ninguna app se copia" de "no hay apps que mirar".
+    exige("R19(no recorrio ni un fichero)", r19_nadie_se_copia_una_operacion([], 0))
+    exige("R19(recorrio y no hay copias)", r19_nadie_se_copia_una_operacion([], 90), False)
 
     # ** Y LA EXPRESION, que es donde estuvo el fallo de la primera version:
     # `\w*OP_\w+` casaba `BG_TOP_FONDO` --un color-- porque el prefijo era

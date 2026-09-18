@@ -573,7 +573,7 @@ def r9_los_carriles_del_modulo(carpetas):
     return quejas
 
 
-def r19_nadie_se_copia_una_operacion(copias):
+def r19_nadie_se_copia_una_operacion(copias, vistos=None):
     """R19 -- **una app de Ring 3 no declara su propia copia de una operacion.**
 
     == De donde sale, y con fecha ==
@@ -620,6 +620,12 @@ def r19_nadie_se_copia_una_operacion(copias):
     exactamente lo que R14 ya prohibe en C. Esto es R14 para Rust.
     """
     quejas = []
+    # *** El exito de esta regla es "encontre CERO", asi que es la mas expuesta
+    # a quedarse ciega sin que se note: un arbol vacio tambien da cero. Una
+    # regla que no mira nada no cumple nada (el dueno, 17-09: "si no hay nada
+    # que cumplen, abolir"), y aqui se dice en vez de pasar en silencio.
+    if vistos == 0:
+        quejas.append("no recorrio NI UN fichero de app: una regla ciega no juzga (R19)")
     for fichero, nombre, valor in copias:
         quejas.append(
             "%s declara `%s = 0x%X` en vez de usar el de `bmo_userland` (R19)"
@@ -816,6 +822,9 @@ def copias_de_operacion():
     siguiente, y ese dia el guardian dice COMPLETE sin mirar.
     """
     fuera = []
+    # ** Se cuenta lo que se RECORRE, no solo lo que se encuentra: un cero de
+    # esta regla tiene que poder distinguirse de un cero por no mirar (17-09).
+    vistos = cruzan = 0
     for arbol in RING3_APPS:
         d = os.path.join(raiz(), arbol.replace("/", os.sep))
         if not os.path.isdir(d):
@@ -850,8 +859,10 @@ def copias_de_operacion():
                 # dato, y esto es un `grep`. Lo que se gana --cazar la copia en
                 # el fichero que la usa-- vale mas que la exactitud que falta,
                 # porque asi es como aparecio la de `coste`.
+                vistos += 1
                 if "invoke" not in txt and "syscall" not in txt:
                     continue
+                cruzan += 1
                 for nombre, valor in RE_OPS_USER.findall(txt):
                     fuera.append((rel, nombre, como_numero(valor)))
                 # ** Y la forma SIN `pub`, que es la que tenia `coste`: una
@@ -859,7 +870,7 @@ def copias_de_operacion():
                 # la publica al menos se ve desde fuera.
                 for nombre, valor in RE_OPS_PRIV.findall(txt):
                     fuera.append((rel, nombre, como_numero(valor)))
-    return fuera
+    return fuera, vistos, cruzan
 
 
 def comprobar():
@@ -894,9 +905,9 @@ def comprobar():
         vias_fuera.update(carpetas_de_carriles(arbol))
     # ** R19: NADIE SE COPIA UNA OPERACION. R4 pregunta si el numero publicado
     # es correcto; esta pregunta si alguien esta usando OTRO. Ver la regla.
-    copias = copias_de_operacion()
+    copias, r19_vistos, r19_cruzan = copias_de_operacion()
     quejas += [("R19 una app se copia una operacion", q)
-               for q in r19_nadie_se_copia_una_operacion(copias)]
+               for q in r19_nadie_se_copia_una_operacion(copias, r19_vistos)]
     # ** R20: LOS DRIVERS. Son Ring 0 aunque no vivan en su carpeta -- el
     # kernel los enlaza-- y ahi dentro esta todo el DMA. Con trinquete porque
     # se empieza en 12 de 51 y no en 51 de 51.
@@ -999,6 +1010,14 @@ def comprobar():
     if par:
         print("clean: %d constante(s) escritas en REX y en el ABI dicen el mismo numero"
               % len(par))
+    # *** R15 y R19 miraban cosas reales y NO LO DECIAN, asi que su "limpio" no
+    # se distinguia de "no mire nada" -- que es como murio una vez el guardian
+    # de ambitos sin que el build dejara de decir COMPLETE. Auditadas las 23
+    # reglas el 2026-09-17: ninguna estaba muerta, y estas dos eran las unicas
+    # mudas. Ahora cada regla dice su numero, y un creador lo puede comprobar.
+    print("clean: %d constante(s) del ABI, ninguna con el numero de otra (R15)" % len(abi_c))
+    print("clean: %d fichero(s) de app, %d cruzan la puerta, y ninguno se copia "
+          "una operacion (R19)" % (r19_vistos, r19_cruzan))
     if sup:
         print("clean: REX cubre %d de las %d constantes del ABI que son DE APP "
               "(%d%%); la frontera deja fuera %d"
