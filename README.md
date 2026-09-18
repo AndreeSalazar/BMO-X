@@ -779,7 +779,9 @@ were seen on the real machine and the things marked 🟡 say so.
   census that hides its red rows is worth nothing.
 
 **[CONTRIBUTING.md](CONTRIBUTING.md)** explains the bar for a change, and it is
-mostly one rule: nothing that compiles and does not do what it says.
+two rules: nothing that compiles and does not do what it says -- and **Ring 0 is
+closed to external contributions** (2026-09-17). Drivers and integrations go in
+Ring 3 or on the Antena; the exact list is [`.github/CODEOWNERS`](.github/CODEOWNERS).
 
 ---
 
@@ -797,7 +799,7 @@ because the reason a decision was made is worth more than the decision.
 | **[ARQUITECTURA.md](ARQUITECTURA.md)** | The full technical picture: layout, boot path, the operation table, the allocator, the complete status list |
 | **[BITACORA.md](BITACORA.md)** | The build log, episode by episode. **Every bug that cost a day is written down with its root cause** |
 | **[AVANCES.md](AVANCES.md)** | What is done, what is waiting for a boot, and the photographs |
-| **[CONTRIBUTING.md](CONTRIBUTING.md)** | The bar, and what is frozen |
+| **[CONTRIBUTING.md](CONTRIBUTING.md)** | The bar, and why Ring 0 is closed |
 | [Ultra_kernel_x86-64](Ultra_kernel_x86-64/README.md) | Ring 0: boot chain, drivers, filesystems |
 | [Ultra_userspace](Ultra_userspace/README.md) | Ring 3: the runtime and the compositor |
 | [toolchain](toolchain/README.md) | The four native compilers (C, COBOL, Ada, INTI) and the shared backend |

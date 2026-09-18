@@ -28,8 +28,10 @@ to me than a pull request.
 [!] **You need Windows to build it today.** `build.ps1` is PowerShell and hunts
 for `llvm-objcopy.exe` under `%USERPROFILE%\.rustup`, so there is currently no
 way to produce a bootable image on Linux or macOS. A prebuilt archive on the
-Releases page fixes that for people who only want to *run* it -- and making the
-build itself portable is a genuinely useful contribution that needs no hardware.
+Releases page fixes that for people who only want to *run* it. Making the build
+portable is on me, not open to patches: the build is what manufactures Ring 0
+(see below). Telling me exactly where it breaks on your system IS useful -- as
+an issue.
 
 [!] **Check Secure Boot before you report it.** `BOOTX64.EFI` is self-signed, so
 a machine with Secure Boot on refuses to load it and the firmware never runs a
@@ -41,45 +43,77 @@ you can tell how far you got.
 
 ---
 
-## What is open, and what is frozen
+## What is open, and what is closed
 
 This project has a floor and a building. They have different rules.
 
-### 🔒 The Base does not move
+### 🔒 Ring 0 is closed to external contributions -- entirely
 
-- the two syscalls -- `INVOKE` and `WAIT`. (Number `1` is a reserved
-  tombstone: `CHANNEL_KICK` was withdrawn on 2026-08-10 and the number is
-  not recycled, so an old binary that calls it fails saying so.)
-- the BEF/BEX container format
-- the capability model itself
+In the owner's words, 2026-09-17:
 
-These are frozen **on purpose**. A system aiming at critical sectors is only
-auditable if the thing being audited stops changing -- the point is that **one
-audit serves everyone**. A pull request that adds a **third** syscall, or a field
-to BEF, will be declined no matter how good it is. That is not a judgement of
-the code.
+> *Ring 0 es totalmente inmutable y cerrado a contribuciones externas.
+> Cualquier integracion, driver o logica de cliente debe residir en Ring 3 o en
+> el nodo Antena.*
 
-<!-- Decia "a fourth syscall" y son DOS. El mismo fallo estaba en la licencia
-     vieja, que decia "tres syscalls" en cuatro sitios dentro del articulo que
-     declaraba inmutable la Base. Corregido el 2026-09-05 en los dos, y la
-     licencia se sustituyo entera por Apache-2.0 el 2026-09-06. -->
+**Ring 0 is closed to external contributions, entirely.** Any integration,
+driver or client logic belongs in **Ring 3** or on the **Antena** node.
 
-If you think the Base is genuinely wrong, open an issue and argue it. That
-conversation is welcome. A patch is not the way to have it.
+"Ring 0" here is not a feeling, it is a list, and the authoritative copy is
+[`.github/CODEOWNERS`](.github/CODEOWNERS):
 
-### 🟢 Everything above it is open ground
+- **everything `bmo-kernel` links.** Today that is 37 crates -- the kernel, the
+  drivers, the storage and USB stacks, the judges in `platform/shared/` it
+  depends on -- and `cargo tree` says **zero of them are third-party**. This
+  rule is what keeps that number at zero;
+- **the boot chain** (`Ultra_kernel_x86-64/`: the UEFI stages and the loader);
+- **the Base** -- the two syscalls `INVOKE` and `WAIT` (number `1` is a
+  reserved tombstone: `CHANNEL_KICK` was withdrawn on 2026-08-10 and is not
+  recycled), the BEF/BEX container, and the capability model;
+- **everything that BUILDS, JUDGES, SIGNS or LOADS the above**: `build.ps1`,
+  `bmo.ps1`, the guardians under `toolchain/tools/` that the build runs, the
+  `bmo-verify` gate, the linkers, the signer, and the hardware profiles in
+  `PERFIL/`, which are data that Ring 0 obeys.
 
-- **Ports to other CPUs and firmware** -- this is the reason the project is
-  opening up at all
-- **Drivers** -- network, storage, anything the hardware in front of you has and
-  mine does not
-- **Applications** -- anything that compiles to a `.bex`
-- **Table-driven mods** -- see the mods contract; tables, not plugins
-- **New instructions** in the semantic layer -- it is a TOML table, not a code
-  generator
-- **New language frontends** on top of the existing toolchain
+**Why, and why it includes the build.** The model is the xz backdoor of 2024
+(CVE-2024-3094). It was not written into the code everyone reviewed. It came from
+a contributor who spent two years earning maintainer trust, and it lived in
+**build scripts and test files** -- and one of its steps disabled a security
+check with a **single character**. The equivalent here is not only the kernel:
+it is the script that builds it and the guardians that judge it. A guardian
+that is quietly weakened says `COMPLETE` exactly like a guardian that works.
+
+**What this is not.** It is not a judgement of your code, and it is not the
+project closing: BMO-X is Apache 2.0, and you may fork Ring 0 and change
+anything in your fork (see *Licensing* below). This is a decision about what is
+merged into *this* repository.
+
+If you think Ring 0 is wrong somewhere, **open an issue and argue it**. That
+conversation is welcome, and a well-argued issue is how things in Ring 0 get
+changed -- by the owner. A patch is not the way to have it, and a pull request
+that touches Ring 0 will be closed pointing here, whatever its quality.
+
+### 🟢 Where contributions go
+
+- **Your hardware, booted and reported.** Still the most valuable thing anyone
+  can give -- see the top of this file. A panic photo from a machine I do not
+  have is a contribution; a patch to make it boot is not accepted, the report
+  is what lets me fix it.
+- **Drivers -- in Ring 3, or on the Antena.** A driver in Ring 0 is exactly what
+  this rule closes. If your device needs one, it goes in Ring 3 over the frozen
+  syscalls, or on the Antena: **the Antena runs Linux**, so a device BMO-X does
+  not speak can be driven there and reach BMO-X through the protocol. If you
+  want to contribute kernel code, Linux is the kernel for that.
+- **The Antena node** -- `toolchain/tools/antena/` and `platform/shared/bmo-antena`.
+  It sits in front of BMO-X and never commands it.
+- **Applications** -- anything in `Ultra_userspace/` or that compiles to a
+  `.bex`. Ring 3, behind the capability model.
+- **New language frontends** on top of the existing toolchain. What they emit
+  still passes the `bmo-verify` gate, and the gate is closed.
+- **New instructions** in the semantic layer -- a TOML table, not a code
+  generator.
+- **Table-driven mods** -- tables, not plugins.
 - **Documentation, and corrections to it** -- including telling me that a 🟢 in
-  the README is not actually green
+  the README is not actually green.
 
 ---
 
@@ -187,15 +221,17 @@ The reason not to has not changed and now has to stand on its own:
 > With the Base fixed, **one audit is worth something to everyone**. Forked,
 > every audit is worth something to one person.
 
-So a pull request that adds a third syscall or a field to BEF will still be
-declined here -- that is a decision about *this* repository, which is a thing a
-maintainer gets to make. It is no longer a decision about yours.
+So a pull request that touches Ring 0 -- a third syscall, a field in BEF, a
+driver in the kernel, a line in the build -- will be declined here. That is a
+decision about *this* repository, which is a thing a maintainer gets to make.
+It is not a decision about yours.
 
 ---
 
 ## Contact
 
 Issues and pull requests are the preferred channel -- they leave a public record,
-which is the whole spirit of this repository.
+which is the whole spirit of this repository. Pull requests for what is open;
+issues for everything, Ring 0 included.
 
 Built from scratch in Lima, Peru, by **Eddi Salazar**.

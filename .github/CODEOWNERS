@@ -1,0 +1,107 @@
+# CODEOWNERS -- la lista que CONTRIBUTING.md llama "Ring 0".
+#
+# Decision del dueno, 2026-09-17, PARA SIEMPRE:
+#
+#   "Ring 0 es totalmente inmutable y cerrado a contribuciones externas.
+#    Cualquier integracion, driver o logica de cliente debe residir en Ring 3
+#    o en el nodo Antena."
+#
+# Motivo: xz (CVE-2024-3094). No entro por el codigo que se revisaba: entro por
+# un contribuidor que se gano la confianza en dos anios, y vivia en los SCRIPTS
+# DE BUILD y en ficheros de PRUEBA -- y uno de sus pasos apago una comprobacion
+# de seguridad con UN caracter. Por eso aqui no esta solo el kernel: esta lo que
+# lo FABRICA, lo que lo JUZGA, lo que lo FIRMA y lo que lo CARGA.
+#
+# ** Lo que NO esta en esta lista es terreno abierto: Ring 3 (Ultra_userspace),
+# la Antena, los frontends de lenguaje, las tablas, los mods y la documentacion.
+#
+# [!] ESTE FICHERO SOLO OBLIGA SI GITHUB LO HACE CUMPLIR. Hace falta, en
+# Settings -> Branches -> main: "Require a pull request before merging" +
+# "Require review from Code Owners". Con un solo mantenedor el cerrojo es el
+# dueno; esto existe para el dia que haya un SEGUNDO, que es exactamente cuando
+# paso lo de xz.
+
+# == 1. Lo que el kernel ENLAZA ===============================================
+#
+# Sale de `cargo tree` sobre bmo-kernel, no de memoria: 37 crates el 17-09, y
+# CERO de terceros. Si el kernel empieza a enlazar un crate nuevo, TIENE que
+# entrar aqui el mismo dia.
+
+/Ultra_kernel_x86-64/                        @AndreeSalazar
+/platform/drivers/                           @AndreeSalazar
+/platform/abi/                               @AndreeSalazar
+/platform/services/cabina-core/              @AndreeSalazar
+/platform/shared/bmo-carga-juicio/           @AndreeSalazar
+/platform/shared/bmo-channel/                @AndreeSalazar
+/platform/shared/bmo-ciudad/                 @AndreeSalazar
+/platform/shared/bmo-cripto/                 @AndreeSalazar
+/platform/shared/bmo-dibujo/                 @AndreeSalazar
+/platform/shared/bmo-disco-juicio/           @AndreeSalazar
+/platform/shared/bmo-dma-forma/              @AndreeSalazar
+/platform/shared/bmo-dma-juicio/             @AndreeSalazar
+/platform/shared/bmo-firmware/               @AndreeSalazar
+/platform/shared/bmo-fisica-juicio/          @AndreeSalazar
+/platform/shared/bmo-foco/                   @AndreeSalazar
+/platform/shared/bmo-hash/                   @AndreeSalazar
+/platform/shared/bmo-mmio-juicio/            @AndreeSalazar
+/platform/shared/bmo-orquesta/               @AndreeSalazar
+/platform/shared/bmo-prestamo-juicio/        @AndreeSalazar
+/platform/shared/bmo-puerta-red/             @AndreeSalazar
+/platform/shared/bmo-usbred/                 @AndreeSalazar
+
+# == 2. Lo que lo FABRICA =====================================================
+
+/bmo.ps1                                     @AndreeSalazar
+/desplegar.ps1                               @AndreeSalazar
+/limpiar.ps1                                 @AndreeSalazar
+/rust-toolchain.toml                         @AndreeSalazar
+/Cargo.toml                                  @AndreeSalazar
+/Cargo.lock                                  @AndreeSalazar
+/toolchain/tools/bmo-enlazar/                @AndreeSalazar
+/toolchain/tools/bex-link/                   @AndreeSalazar
+/toolchain/tools/bmo-pack/                   @AndreeSalazar
+/toolchain/tools/bef-bootstrap/              @AndreeSalazar
+
+# == 3. Lo que lo JUZGA =======================================================
+#
+# ** Los guardianes que corre el build, y el ataque hostil. Un guardian
+# debilitado en silencio dice COMPLETE igual que uno que funciona.
+
+/toolchain/forge/bmo-verify/                 @AndreeSalazar
+/platform/shared/bmo-hostile/                @AndreeSalazar
+/toolchain/tools/ambitos/                    @AndreeSalazar
+/toolchain/tools/ascii-sweep/                @AndreeSalazar
+/toolchain/tools/avisos/                     @AndreeSalazar
+/toolchain/tools/capas/                      @AndreeSalazar
+/toolchain/tools/casillas/                   @AndreeSalazar
+/toolchain/tools/censo-modular/              @AndreeSalazar
+/toolchain/tools/censo-neutro/               @AndreeSalazar
+/toolchain/tools/contrato/                   @AndreeSalazar
+/toolchain/tools/enlaces/                    @AndreeSalazar
+/toolchain/tools/fases/                      @AndreeSalazar
+/toolchain/tools/maqueta/                    @AndreeSalazar
+/toolchain/tools/perfil/                     @AndreeSalazar
+/toolchain/tools/perfil-campos/              @AndreeSalazar
+/toolchain/tools/perfil-placa/               @AndreeSalazar
+/toolchain/tools/planes/                     @AndreeSalazar
+/toolchain/tools/relevo/                     @AndreeSalazar
+/toolchain/tools/tamano/                     @AndreeSalazar
+
+# == 4. Lo que lo FIRMA y lo que Ring 0 OBEDECE ===============================
+#
+# Los perfiles son DATOS que el kernel cree: un `pci_devices` falso hace que un
+# driver le hable a una tarjeta que no es la suya.
+
+/toolchain/tools/bmo-firmar/                 @AndreeSalazar
+/PERFIL/                                     @AndreeSalazar
+/NEUTRO/                                     @AndreeSalazar
+/VALKYRIE-ABI/                               @AndreeSalazar
+
+# == 5. Las reglas, y este mismo fichero ======================================
+#
+# Si esto no estuviera aqui, un PR podria borrar su propio cerrojo.
+
+/.github/                                    @AndreeSalazar
+/CONTRIBUTING.md                             @AndreeSalazar
+/LICENSE                                     @AndreeSalazar
+/NOTICE                                      @AndreeSalazar
