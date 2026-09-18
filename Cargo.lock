@@ -22,8 +22,13 @@ dependencies = [
 [[package]]
 name = "bmo-ada-front"
 version = "0.1.0"
+
+[[package]]
+name = "bmo-ada-x86-64"
+version = "0.1.0"
 dependencies = [
  "bmo-abi",
+ "bmo-ada-front",
  "bmo-lower",
  "bmo-verify",
 ]

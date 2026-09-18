@@ -44,6 +44,20 @@
 //! ```
 //!
 //! Ver `SPEC.md` para la especificacion completa.
+//!
+//! # [isa] x86-64 -- entero, y a proposito (2026-09-18)
+//!
+//! Este es **el ABI de BMO-X para x86-64**, no un ABI "portable" con un x86
+//! dentro. La puerta es la instruccion `syscall`, sus argumentos van en
+//! `rdi, rsi, rdx, r10, r8, r9` (una llamada normal usa siete, con `rcx`: ver
+//! `types::convention`), el resultado vuelve en `rax:rdx`, el puntero
+//! del hilo es `FS_BASE`, y el formato BEF solo admite imagenes de arquitectura
+//! `0x01`. Nada de eso se abstrae: una capa que "podria ser otra CPU" es un
+//! camino que ninguna maquina de este repositorio ejecuta.
+//!
+//! En BMO-X todo es x86-64 MENOS los frontends de los compiladores
+//! (`toolchain/tools/isa`). Un BMO-X de otra CPU es otro repositorio con su
+//! propio ABI; lo unico que comparten es el byte de arquitectura del BEF.
 #![no_std]
 #![allow(dead_code)]
 extern crate alloc;

@@ -37,6 +37,21 @@ y EMITEN x86-64. Donde corran no es asunto de esta regla; lo que emiten, si.
 Los comentarios y la documentacion pueden NOMBRAR otras arquitecturas; lo que
 no pueden es tener codigo para ellas.
 
+== Y lo UNICO agnostico: los FRONTENDS de los compiladores ==
+
+Tambien del 2026-09-18, y tambien de Eddi: en BMO-X TODO es x86-64 -- el
+kernel, la Base, `bmo-abi`, el escritorio -- MENOS los frontends de los
+compiladores. Cada lenguaje se parte en dos: el frontend (lexer, analisis,
+arbol) que no sabe de CPU, y su `emisor-x86_64/` que es el elemento aislado.
+Asi la copia a otra arquitectura se lleva los frontends TAL CUAL y solo
+reescribe los emisores.
+
+  4. Un frontend declarado en `FRONTENDS` no nombra una maquina en su codigo
+     (registros, `asm!`, `core::arch`, x86/amd64...) y no depende de nada que
+     emita: solo de lo que esta en `DEPS_DE_FRONTEND`.
+  5. Los que aun NO estan partidos van en `POR_PARTIR`, a la vista y contados
+     en cada build. Cuando uno se parte, sale de ahi y entra en `FRONTENDS`.
+
 == Antes de juzgar, demuestra que ve ==
 
 Si no encuentra ni un `target` x86-64 en el repo, no ha mirado nada: MUERTO,
@@ -58,6 +73,38 @@ OTRAS = ("aarch64", "arm64", "arm", "armv7", "armv8", "thumbv7", "thumbv8",
          "riscv", "riscv32", "riscv64", "risc-v", "i386", "i586", "i686",
          "wasm32", "wasm64", "mips", "mips64", "powerpc", "powerpc64",
          "ppc64", "loongarch64", "s390x", "sparc64")
+
+# Los frontends ya partidos: carpeta -> nombre del crate. Ver la cabecera, punto 4.
+FRONTENDS = {
+    "toolchain/lang/inti": "bmo-inti-front",
+    "toolchain/lang/ada": "bmo-ada-front",
+}
+# Lo unico de lo que un frontend puede depender: nada que emita ni que sea la Base.
+# Cada uno con su motivo; y el guardian exige que ELLOS tampoco lleven `asm!` ni
+# `core::arch` (una dependencia limpia de un frontend sucio no lo limpia).
+DEPS_DE_FRONTEND = {
+    "bmo-mods": "cargar tablas de mods: texto y rutas, ninguna maquina",
+    # 2026-09-18: INTI cuenta lo que compila por la capa `Lang` de CABINA. Es el
+    # FORMATO de los eventos, no el servicio. Si cabina-core se muda a la Base
+    # (pendiente desde el 17-09), este permiso se revisa: la Base es x86-64.
+    "cabina-core": "el formato de los eventos de CABINA (capa Lang)",
+}
+DEPS_DE_FRONTEND.update({c: "otro frontend" for c in FRONTENDS.values()})
+# Lenguajes cuyo frontend y emisor de x86-64 comparten crate todavia, con por que.
+POR_PARTIR = {
+    "bmo-cobol-front": "codegen.rs y edicion.rs emiten x86-64 dentro del crate",
+    "bmo-c-front": "codegen/ (unas 7.700 lineas) emite x86-64 dentro del crate",
+    "bmo-cpp-front": "desciende al arbol de C y emite con el codegen de C: se parte con C",
+}
+# Palabras que solo significan algo dentro de una maquina (la misma lista que
+# `inti/tests/agnostico.rs`), como palabra ENTERA: `conversion` no nombra `rsi`.
+RE_MAQUINA = re.compile(
+    r"(?<![A-Za-z0-9_])(x86|x86_64|amd64|i386|aarch64|riscv|rax|rbx|rcx|rdx|rsi|rdi|rsp|rbp|"
+    r"xmm[0-9]*|sysv|modrm|sse2|avx)(?![A-Za-z0-9_])|asm!|core::arch")
+# Una cadena de Rust: su CONTENIDO es dato del usuario, no codigo. INTI tiene que
+# poder leer `usa x86_64` en un programa, y eso no le ata a ninguna maquina.
+RE_CADENA = re.compile(r'"(?:[^"\\]|\\.)*"')
+RE_DEP = re.compile(r'^\s*([A-Za-z0-9_-]+)\s*=\s*\{[^}]*path\s*=')
 
 RE_TRIPLE = re.compile(r"\b([a-z0-9_]+)-(unknown|pc|apple|linux|none)-[a-z0-9_]+\b")
 RE_TARGET_ARCH = re.compile(r'target_arch\s*=\s*"([^"]+)"')
@@ -117,6 +164,29 @@ def juzgar_fichero(rel, texto):
     return quejas, vistos
 
 
+def juzgar_frontend(carpeta, cargo_toml, fuentes):
+    """Quejas de UN frontend: `fuentes` es [(rel, texto)] de su `src/`."""
+    quejas = []
+    en_deps = False
+    for linea in cargo_toml.splitlines():
+        t = linea.strip()
+        if t.startswith("["):
+            en_deps = t == "[dependencies]"
+            continue
+        m = RE_DEP.match(linea) if en_deps else None
+        if m and m.group(1) not in DEPS_DE_FRONTEND:
+            quejas.append("%s: el frontend depende de `%s`, y un frontend no depende de nada "
+                          "que emita" % (carpeta, m.group(1)))
+    for rel, texto in fuentes:
+        for n, linea in enumerate(texto.splitlines(), 1):
+            if linea.strip().startswith("//"):
+                continue
+            m = RE_MAQUINA.search(RE_CADENA.sub('""', linea).split("//")[0])
+            if m:
+                quejas.append("%s:%d: el frontend nombra una maquina (`%s`)" % (rel, n, m.group(0)))
+    return quejas
+
+
 def autoprueba():
     """El juicio, sobre casos que se sabe como acaban. Si falla, no se juzga."""
     fallos = []
@@ -145,6 +215,19 @@ def autoprueba():
     caso("arch/x86_64 es limpio", nombre_ajeno("toolchain/forge/sem-asm/tables/arch/x86_64/abi.toml") is None)
     caso("`armonia.rs` no es ARM", nombre_ajeno("src/armonia.rs") is None)
     caso("i686 se caza", nombre_ajeno("lang/c/emisor-i686/x.rs") == "emisor-i686")
+    ct = '[package]\nname = "f"\n[dependencies]\nbmo-mods = { path = "../m" }\n'
+    caso("un frontend limpio es limpio (el comentario no cuenta)",
+         juzgar_frontend("f", ct, [("f/src/a.rs", "fn f() {}\n// habla de rax\n")]) == [])
+    caso("un frontend que depende de un emisor se caza",
+         len(juzgar_frontend("f", ct.replace("bmo-mods", "bmo-lower"), [])) == 1)
+    caso("un frontend que nombra rax se caza",
+         len(juzgar_frontend("f", ct, [("f/src/a.rs", "let r = rax;\n")])) == 1)
+    caso("`conversion` no nombra `rsi`",
+         juzgar_frontend("f", ct, [("f/src/a.rs", "let conversion = rsi_no;\n")]) == [])
+    caso("`usa x86_64` DENTRO de una cadena es dato, no codigo",
+         juzgar_frontend("f", ct, [("f/src/a.rs", 'compila("usa x86_64\\nfin");\n')]) == [])
+    caso("un asm! en un frontend se caza",
+         len(juzgar_frontend("f", ct, [("f/src/a.rs", 'unsafe { core::arch::asm!("nop") }\n')])) == 1)
     caso("`Ultra_kernel_x86-64` no es x86 de 32 bits", nombre_ajeno("Ultra_kernel_x86-64/build.ps1") is None)
     return fallos
 
@@ -173,6 +256,36 @@ def comprobar():
         q, v = juzgar_fichero(rel, texto)
         quejas += q
         vistos += v
+    frentes = 0
+    for carpeta in sorted(FRONTENDS):
+        try:
+            ct = open(os.path.join(raiz(), carpeta, "Cargo.toml"), encoding="utf-8").read()
+        except OSError:
+            quejas.append("%s: el frontend declarado no existe" % carpeta)
+            continue
+        fuentes = [(rel, open(os.path.join(raiz(), rel), encoding="utf-8", errors="replace").read())
+                   for rel in lista if rel.startswith(carpeta + "/src/") and rel.endswith(".rs")]
+        if not fuentes:
+            quejas.append("%s: el frontend declarado no tiene ni un fuente en src/" % carpeta)
+        quejas += juzgar_frontend(carpeta, ct, fuentes)
+        frentes += 1
+    # Y lo que un frontend enlaza tampoco puede llevar la maquina dentro.
+    for dep in sorted(DEPS_DE_FRONTEND):
+        if dep in FRONTENDS.values():
+            continue
+        carpetas = [rel.rsplit("/", 1)[0] for rel in lista if rel.endswith("/Cargo.toml")
+                    and re.search(r'^name\s*=\s*"%s"' % re.escape(dep),
+                                  open(os.path.join(raiz(), rel), encoding="utf-8",
+                                       errors="replace").read(), re.M)]
+        if not carpetas:
+            quejas.append("`%s` esta permitido a los frontends y no existe" % dep)
+        for c in carpetas:
+            for rel in lista:
+                if rel.startswith(c + "/src/") and rel.endswith(".rs"):
+                    t = open(os.path.join(raiz(), rel), encoding="utf-8", errors="replace").read()
+                    if re.search(r"asm!|core::arch", RE_CADENA.sub('""', t)):
+                        quejas.append("%s: `%s` lo enlaza un frontend y lleva codigo de maquina"
+                                      % (rel, dep))
     if vistos == 0:
         print("guardian MUERTO: %d fichero(s) mirados y ni un target x86-64 -- no ve la configuracion"
               % mirados)
@@ -184,7 +297,9 @@ def comprobar():
               % len(quejas))
         return 1
     print("clean: %d ruta(s) y %d fichero(s) de codigo y configuracion mirados; %d target(s), "
-          "todos x86-64; ni un camino ni una carpeta para otra CPU" % (len(lista), mirados, vistos))
+          "todos x86-64; ni un camino ni una carpeta para otra CPU; %d frontend(s) agnosticos "
+          "y %d por partir (%s)" % (len(lista), mirados, vistos, frentes, len(POR_PARTIR),
+                                    ", ".join(sorted(POR_PARTIR))))
     return 0
 
 

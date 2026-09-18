@@ -1,0 +1,27 @@
+[package]
+name = "bmo-ada-x86-64"
+version = "0.1.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "BMO Ada para x86-64: del arbol a bytes. El unico sitio de Ada que nombra una maquina."
+
+# El frontend de arriba analiza; esto EMITE. La frontera no es una convencion:
+# es el arbol de directorios, igual que `inti/emisor-x86_64` (2026-09-18).
+[dependencies]
+bmo-ada-front = { path = ".." }
+# forge: EL GATE. Ningun .bex se escribe sin pasar por aqui.
+bmo-verify = { path = "../../../forge/bmo-verify" }
+bmo-abi = { path = "../../../../platform/abi/bmo-abi" }
+bmo-lower = { path = "../../../forge/bmo-lower" }
+
+[lib]
+name = "bmo_ada_x86_64"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ada"
+path = "src/main.rs"
+
+[dev-dependencies]
+# El banco de pruebas EJECUTA los bytes emitidos.
+bmo-lower = { path = "../../../forge/bmo-lower", features = ["emulator"] }

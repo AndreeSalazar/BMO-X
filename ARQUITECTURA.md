@@ -73,7 +73,7 @@ BMO/
 |   +-- boot_context/         handoff contract shim->s1->s2->kernel (magic + version)
 |   +-- kernel/               Ring 0: Capability Engine, scheduler, mm, syscall, UI
 +-- Ultra_userspace/          Ring 3 side, also x86-64 (sibling workspace)
-+-- platform/                 CPU-AGNOSTIC CORE: bmo-abi, bmo-rt, drivers, services
++-- platform/                 the x86-64 BASE: bmo-abi, bmo-rt, drivers, services
 |   +-- abi/                  bmo-abi (surface, capability, handle, BEF/BEX), bmo-rt
 |   +-- shared/               bmo-hal, bmo-channel, bmo-hash, hw-profile
 |   +-- drivers/              xhci, ahci, nvme, fat32, estratos, input, uhid, gpu
@@ -84,17 +84,23 @@ BMO/
 |   +-- tools/                build-time generators, estratos-fmt
 ```
 
-`platform/` is the part written **without assuming a CPU** -- the BEF format,
-the syscall surface, the lock-free channel, version control and the language
-frontends. That is what makes a copy cheap; it does not make it shared. And it
-is not free of x86-64 either: the `syscall` instruction lives in `bmo-abi`,
-`RDRAND` in `bmo-cripto`, the PS/2 ports in `bmo-input`. In a single-ISA tree
-that is correct, not debt.
+**Everything in this repository is x86-64 -- except the compiler frontends.**
+`platform/` is the x86-64 base, not a "CPU-agnostic core": `bmo-abi` *is* the
+x86-64 ABI (the `syscall` instruction, the register convention, `FS_BASE`),
+`RDRAND` lives in `bmo-cripto`, the PS/2 ports in `bmo-input`. That is correct
+here, not debt.
+
+The one agnostic layer is the **frontends**: each language is split into a
+frontend (lexer, analysis, tree) that names no machine and depends on nothing
+that emits, and its `emisor-x86_64/` -- the isolated element. INTI and Ada are
+split; COBOL, C and C++ still share a crate and are listed as pending by the
+guardian in every build. A copy to another CPU carries the frontends
+unchanged and rewrites only the emitters.
 
 To build BMO-X for another architecture: copy the **whole repository**, and
 in the copy rewrite the two stages (`faggin/s1_cpu`, `faggin/s2_mem`), the
 kernel's inline assembly, the `asm!` in `platform/`, and the emitters
-(`bmo-lower`, `sem-asm/tables/arch/x86_64`, `inti/emisor-x86_64`). The list of
+(`bmo-lower`, `sem-asm/tables/arch/x86_64`, every `<lang>/emisor-x86_64`). The list of
 what a chip has to declare is `toolchain/forge/sem-asm/tables/arch/CONTRATO.md`.
 The only thing the two repositories share is the architecture byte of the BEF
 header, so each machine recognises the other's `.bex` and refuses it by name.

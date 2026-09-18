@@ -11,7 +11,7 @@
 //!  | BmoLanguageProfile                                          |
 //!  |   name:        &'static str                                 |
 //!  |   frontend:    FrontendKind (C | COBOL | BMO | JavaBMO)     |
-//!  |   backend:     BackendKind  (AotX86_64 | PortableIR)        |
+//!  |   backend:     BackendKind  (AotX86_64 | AotRdna4)          |
 //!  |   runtime:     RuntimeKind  (None | CMin | JavaCore | ...)  |
 //!  |   output:      BEF                                          |
 //!  +-------------------------------------------------------------+
@@ -75,8 +75,10 @@ impl FrontendKind {
 pub enum BackendKind {
     /// AOT puro x86-64 (default).
     AotX86_64 = 0,
-    /// IR portable (cualquier CPU).
-    PortableIR = 1,
+    // ** 1 era `PortableIR` ("IR portable, cualquier CPU"). Nadie la usaba, y
+    // contradecia dos decisiones: la del 2026-08-09 (no hay formato intermedio
+    // portable, ver `bef/header.rs`) y la del 2026-09-18 (este repositorio es
+    // SOLO x86-64). Fuera; el numero no se reutiliza.
     /// AOT RDNA4 (GPU shaders, no implementado todavia).
     AotRdna4 = 2,
 }
@@ -85,7 +87,6 @@ impl BackendKind {
     pub fn name(self) -> &'static str {
         match self {
             Self::AotX86_64 => "aot-x86_64",
-            Self::PortableIR => "portable-ir",
             Self::AotRdna4 => "aot-rdna4",
         }
     }

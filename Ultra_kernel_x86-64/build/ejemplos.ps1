@@ -139,7 +139,8 @@ $cobolEjemplos = @(
 )
 # -- Programas ADA de ejemplo -------------------------------------
 #
-# Crate PROPIO (`bmo-ada-front`), sin dependencia de los otros frontends. El
+# Crates PROPIOS, sin dependencia de los otros frontends: `bmo-ada-front` analiza
+# y `bmo-ada-x86-64` (su `emisor-x86_64/`, partido el 2026-09-18) emite. El
 # decimal exacto es el mismo que el de COBOL y no por copia: el Annex F de Ada
 # copio las reglas de COBOL, asi que dos lenguajes que dicen lo mismo acaban en
 # la misma aritmetica de enteros escalados.
@@ -610,7 +611,7 @@ try {
 
 
     Step 'Building ADA example programs...'
-    Compilar-Ejemplos $adaEjemplos 'bmo-ada-front' 'ada' 'ok:|error|linea' $dataBase $repo
+    Compilar-Ejemplos $adaEjemplos 'bmo-ada-x86-64' 'ada' 'ok:|error|linea' $dataBase $repo
 
     Step 'Building C++ example programs...'
     Compilar-Ejemplos $cppEjemplos 'bmo-cpp-front' 'cpp' 'ok:|error|linea' $dataBase $repo -PorObjeto

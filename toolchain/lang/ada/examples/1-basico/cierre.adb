@@ -13,7 +13,7 @@
 --  al unico syscall que existe. Un .bex de Ada no enlaza nada.
 --
 --  Compilar:
---    cargo run -p bmo-ada-front -- \
+--    cargo run -p bmo-ada-x86-64 -- \
 --      toolchain/lang/ada/examples/1-basico/cierre.adb -o apps/cierre.bex
 
 with Ada.Text_IO; use Ada.Text_IO;

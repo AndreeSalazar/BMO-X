@@ -41,7 +41,7 @@ esencia que falta.
       `docs/evidencia/09-ada-cierre-decimal-exacto.jpg`.
 
 - [x] **A1 -- LAS COMPROBACIONES DE RANGO. HECHO el 2026-09-17** en
-      `toolchain/lang/ada/src/codegen.rs` (`comprobar_rango`, `si_desborda`, y la
+      `toolchain/lang/ada/emisor-x86_64/src/codegen.rs` (`comprobar_rango`, `si_desborda`, y la
       division por cero y `i64::MIN / -1` antes de `idiv`). La matriz va en 38 de
       38 con seis filas nuevas que EJECUTAN el fallo, y una prueba de que lo que
       se sabe al compilar NO compila. **Mutado a no-operacion caen 4 filas**, y

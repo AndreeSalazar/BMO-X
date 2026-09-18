@@ -201,6 +201,8 @@ members = [
     # La frontera del agnosticismo no es una convencion, es el arbol.
     "toolchain/lang/inti/emisor-x86_64",
     "toolchain/lang/ada",
+    # Su emisor, partido igual que el de INTI (2026-09-18).
+    "toolchain/lang/ada/emisor-x86_64",
     "toolchain/lang/cobol",
     "toolchain/lang/cpp",
     "toolchain/lang/c",

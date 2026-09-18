@@ -1,4 +1,4 @@
-//! `bmo-ada-front` -- el compilador de Ada, por la linea de ordenes.
+//! `ada` -- el compilador de Ada para x86-64, por la linea de ordenes.
 
 use std::path::PathBuf;
 use std::process;
@@ -27,7 +27,7 @@ fn main() {
     }
 
     let Some(ruta) = fuente else {
-        eprintln!("uso: bmo-ada-front <fichero.adb> [-o salida.bex]");
+        eprintln!("uso: ada <fichero.adb> [-o salida.bex]");
         process::exit(2);
     };
 
@@ -39,7 +39,7 @@ fn main() {
         }
     };
 
-    let bytes = match bmo_ada_front::compilar(&texto) {
+    let bytes = match bmo_ada_x86_64::compilar(&texto) {
         Ok(b) => b,
         Err(e) => {
             // El error lleva su linea y su motivo. Un compilador que dice "no

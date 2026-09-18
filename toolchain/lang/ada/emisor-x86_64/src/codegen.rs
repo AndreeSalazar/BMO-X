@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use bmo_abi::bef::{BefBuilder, BefSection};
 use bmo_lower::x86;
 
-use crate::ast::*;
+use bmo_ada_front::ast::*;
 
 /// Registros que usa este emisor. `rax` es el acumulador, `rdx` el segundo
 /// operando y `rcx` el factor de escala.

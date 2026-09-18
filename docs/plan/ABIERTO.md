@@ -148,7 +148,7 @@
 *PLAN DEL AUTOHOSPEDAJE -- que BMO-X compile SOBRE SI MISMO*
 
 - [ ] 1 la sonda del hueco quitar std de toolchain/lang/ada y CONTAR
-- [ ] 2 BTreeMap en Ada los 7 HashMap de toolchain/lang/ada/src.
+- [ ] 2 BTreeMap en Ada los 7 HashMap de toolchain/lang/ada
 - [ ] 4 ada como lib no_std toolchain/lang/ada/src/lib.rs con
 - ... y 4 mas
 

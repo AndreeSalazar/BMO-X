@@ -172,9 +172,11 @@ si algo se rompe ahi, se rompio en el sitio barato.
                                  nada: produce el numero con el que se juzga
                                  todo lo demas
 
-   [ ] 2  BTreeMap en Ada        los 7 `HashMap` de `toolchain/lang/ada/src`.
-                                 Mecanico, y el banco de `bmo-ada-front`
-                                 (20 filas) tiene que seguir en verde
+   [ ] 2  BTreeMap en Ada        los 7 `HashMap` de `toolchain/lang/ada`
+                                 (desde el 18-09 en `emisor-x86_64/src`).
+                                 Mecanico, y el banco de Ada --21 filas,
+                                 repartidas entre `bmo-ada-front` y
+                                 `bmo-ada-x86-64`-- tiene que seguir en verde
 
    [x] 3  PAQUETE en Rust        HECHO 06-09 --
                                  `Ultra_userspace/userland/src/paquete.rs` y
@@ -208,7 +210,7 @@ si algo se rompe ahi, se rompio en el sitio barato.
 | escalon | si esta bien | si falla |
 |---|---|---|
 | 1 | un numero de errores, y una lista de los sitios | -- |
-| 2 | `cargo test -p bmo-ada-front` sigue en 20 filas | una fila roja: el orden de iteracion importaba |
+| 2 | `cargo test -p bmo-ada-front -p bmo-ada-x86-64` sigue en 21 filas | una fila roja: el orden de iteracion importaba |
 | 3 | el `cierre.bex` de hoy sale byte a byte igual, y `ada.bex` lee un recurso de su propia seccion `0x0B` | sale distinto: la capa cambio algo |
 | 4 | compila para `x86_64-unknown-none` | falta un `alloc::` que era `std::` |
 | 5 | `ada` en el escritorio imprime su version | no arranca: monton, pila o reloc |
