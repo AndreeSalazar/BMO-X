@@ -649,7 +649,11 @@ fn lend_screen(
     // proceso que no lanzaste. Cerrar una app no es una autoridad del DIRECTOR,
     // es una consecuencia de haberla lanzado.
     let hijo = match bmo::ejecutar_en(target, consola) {
-        Ok(tid) => bmo::Hijo::por_tid(tid as u32),
+        Ok(tid) => {
+            // N3: si es NAVEGAR y hay lamina de la antena, se le ofrece.
+            commands::antenista::tras_lanzar(target, tid as u32);
+            bmo::Hijo::por_tid(tid as u32)
+        }
         Err(_) => {
             // El programa no arranco, asi que nadie va a tomar la pantalla: se
             // recupera YA en vez de esperar los 500 ms de la fase 1.
@@ -1062,7 +1066,14 @@ pub extern "C" fn _start() -> ! {
                 } else {
                 match bmo::ejecutar_en(target, cap) {
                     Ok(tid_hijo) => {
-                        paint_status(&p, &dsk.run_box, "lanzado", INK_OK);
+                        // N3: si es NAVEGAR y hay lamina de la
+                        // antena, se le ofrece; el estado lo dice.
+                        let estado = match commands::antenista::tras_lanzar(target, tid_hijo as u32) {
+                            Some(m) if m == bmo::OFRECIDO => "lanzado, lamina ofrecida",
+                            Some(_) => "lanzado, lamina NEGADA (red pase)",
+                            None => "lanzado",
+                        };
+                        paint_status(&p, &dsk.run_box, estado, INK_OK);
                         // * Se apunta DONDE empieza esta
                         // corrida. El volcado no puede hacerse
                         // aqui: `ejecutar_en` vuelve en cuanto

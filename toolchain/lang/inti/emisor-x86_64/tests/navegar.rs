@@ -219,6 +219,57 @@ fn con_la_lamina_de_ejemplo_pinta_la_pagina_en_640x400() {
     assert_eq!(salida(&m), Some(0), "se cerro limpia con la q");
 }
 
+/// N3: la lamina llega PRESTADA por el ANTENISTA (`op_tomar`), no del disco.
+/// En el disco se deja otra distinta para saber cual pinto.
+fn con_prestamo(prestada: &[u8], disco: &[u8]) -> Machine {
+    use bmo_abi::syscalls::surface::SUP_EV_CARACTER;
+    let e = emitido(&fuente());
+    let mut m = maquina(&e);
+    m.padre = 7;
+    m.prestamo_pendiente = Some(prestada.to_vec());
+    m.poner_archivo("datos/ejemplo.lam", disco);
+    m.buzon_pendiente.push_back(SUP_EV_CARACTER | 0x100 | b'q' as u64);
+    run(m, 400_000_000)
+}
+
+#[test]
+fn la_lamina_ofrecida_por_el_antenista_se_pinta_sin_tocar_el_disco() {
+    // En el disco, una lamina ROJA; prestada, la de example.com.
+    let roja = b"LAMINA 640 400 1\nCAJA 0 0 640 400 ff0000\n";
+    let m = con_prestamo(&lamina_ejemplo(), roja);
+    assert_eq!(m.ofertas.len(), 1, "ofrecio UNA superficie");
+    let (w, h, pixel) = pantalla(&m);
+    assert_eq!((w, h), (640, 400));
+    assert_eq!(pixel(0, 0) & 0x00FF_FFFF, 0x00EE_EEEE, "el fondo de la PRESTADA, no la roja del disco");
+    let titulo = cuenta(&pixel, w, 121, 153, 0x0000_0000);
+    assert!(titulo > 300, "el titulo de example.com, desde la memoria prestada: {}", titulo);
+    assert_eq!(cuenta(&pixel, w, 0, 400, 0x00FF_0000), 0, "ni un pixel rojo: el disco no se leyo");
+    assert_eq!(salida(&m), Some(0));
+}
+
+#[test]
+fn sin_oferta_va_al_disco_como_la_version_2() {
+    // Sin prestamo pendiente: `op_tomar` contesta 0 ocho veces y se lee el disco.
+    let roja = b"LAMINA 640 400 1\nCAJA 0 0 640 400 ff0000\n";
+    let m = con_lamina(roja, &[]);
+    let (w, _, pixel) = pantalla(&m);
+    assert_eq!(pixel(0, 0) & 0x00FF_FFFF, 0x00FF_0000, "la del disco");
+    assert_eq!(cuenta(&pixel, w, 0, 400, 0x00FF_0000), 640 * 400, "entera");
+    assert_eq!(salida(&m), Some(0));
+}
+
+#[test]
+fn una_lamina_prestada_y_mal_hecha_se_niega_igual() {
+    let mala = b"LAMINA 640 800 2\nCAJA 0 0 640 800 eeeeee\nCAJA 600 0 100 10 ff0000\n";
+    let m = con_prestamo(mala, &lamina_ejemplo());
+    let (w, _, pixel) = pantalla(&m);
+    // El rechazo va encima, en naranja (AVISO), como con la del disco.
+    let naranja = cuenta(&pixel, w, 8, 24, 0x00FF_AA00);
+    assert!(naranja > 100, "el aviso en naranja: {} pixeles", naranja);
+    assert_eq!(cuenta(&pixel, w, 0, 400, 0x00FF_0000), 0, "la caja de fuera no se pinta");
+    assert_eq!(salida(&m), Some(0));
+}
+
 #[test]
 fn la_flecha_abajo_desplaza_la_lamina_32_pixeles() {
     // Una tecla cruda pulsada: sin bit alto, bit 8 (hay), bit 9 (pulsada),

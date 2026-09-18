@@ -25,12 +25,11 @@
 //! ** Y `red pagina <ip> <url>` es el ANTENISTA DE BOLSILLO (N3a): la misma
 //! conexion, y despues del saludo pide `PAGINA <url>`; la respuesta pasa por
 //! `bmo_antena::Conversacion` (el protocolo) y por su `lamina::Lector` (el
-//! juez), linea a linea, y si la lamina es entera y valida se guarda en
-//! `datos/pagina.lam` -- que es de donde NAVEGAR la pinta. El disco hace de
-//! buzon entre los dos: no es el ANTENISTA del plan (un servicio que OFRECE
-//! la lamina en un bloque), pero cierra la cadena entera antena -> TCP ->
-//! juez -> NAVEGAR con lo que hay, y lo que el servicio hara es esto mismo
-//! sin el disco en medio.
+//! juez), linea a linea, y si la lamina es entera y valida va al bloque del
+//! ANTENISTA (`antenista.rs`, N3: se OFRECE a NAVEGAR al lanzarla, sin el
+//! disco en medio) y ademas a `datos/pagina.lam`, que es lo que NAVEGAR
+//! pinta si arranca sin oferta. La cadena entera es antena -> TCP -> juez ->
+//! bloque -> prestamo -> NAVEGAR, y el disco es el camino de reserva.
 
 use core::ptr::addr_of_mut;
 
@@ -588,9 +587,20 @@ fn contar_lo_que_paso(s: &mut Output, t: &Saludo) {
         s.text(b" elementos, ");
         s.dec(t.lam_largo as u64);
         s.text(b" bytes, juzgada entera\n");
+        // ** N3: primero al bloque del ANTENISTA (se ofrece a NAVEGAR al
+        // lanzarla, sin disco), y despues al disco, que es lo que queda para
+        // una NAVEGAR lanzada sin oferta.
+        let lam = unsafe { &*core::ptr::addr_of!(LAMINA) };
+        if crate::commands::antenista::guardar(&lam[..t.lam_largo]) {
+            s.text(b"  [antena] en el bloque del ANTENISTA: `run apps/navegar.ibx` la recibe OFRECIDA\n");
+        } else {
+            s.with_ink(INK_ERR);
+            s.text(b"  [antena] sin bloque para el ANTENISTA (tope de peticiones?): queda el disco\n");
+            s.with_ink(INK_PLAIN);
+        }
         let n = guardar_lamina(t);
         if n == t.lam_largo {
-            s.text(b"  [antena] guardada en datos/pagina.lam -- `run apps/navegar.ibx` la pinta\n");
+            s.text(b"  [antena] y guardada en datos/pagina.lam\n");
         } else {
             s.with_ink(INK_ERR);
             s.text(b"  [antena] NO se pudo guardar en datos/pagina.lam (escritos ");

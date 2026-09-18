@@ -1,4 +1,4 @@
-# navegar.inti -- NAVEGAR: la cara de la LAMINA en BMO-X. Version 2.
+# navegar.inti -- NAVEGAR: la cara de la LAMINA en BMO-X. Version 3.
 #
 # ===================================================================
 #  Que es, en una frase
@@ -12,6 +12,24 @@
 #
 # Eddi: *"una app simple pero que tenga mensaje que se necesita conectar con
 # ANTENA (da igual cual) pero ANTENA SIEMPRE"*.
+#
+# ===================================================================
+#  ** LA VERSION 3: LA LAMINA OFRECIDA (2026-09-18, N3)
+# ===================================================================
+#
+# La version 2 leia la lamina del disco. Esta la recibe PRESTADA: el
+# ANTENISTA (dentro del DIRECTOR, `commands/antenista.rs`) guarda la lamina
+# que trajo `red pagina` en un bloque suyo y, al lanzarnos, nos la OFRECE
+# (`MEM_OP_OFRECER`). Aqui se TOMA (`op_tomar`) en los primeros fotogramas y
+# se pinta desde la memoria del DIRECTOR, mapeada en la nuestra: ni copia,
+# ni fichero, ni un syscall por byte. Es el mismo prestamo con el que una app
+# entrega su superficie al DIRECTOR, al reves.
+#
+#     hay oferta (INTENTOS_TOMAR fotogramas)   se pinta lo prestado
+#     no la hay                                 el disco, como la version 2
+#
+# Cuando el DIRECTOR pinte titulos, el titulo dira de donde salio la lamina.
+# Hoy lo dice el estado de la caja de `run`: "lanzado, lamina ofrecida".
 #
 # ===================================================================
 #  ** LA VERSION 2: UNA LAMINA DE FICHERO (2026-09-18, N2)
@@ -74,6 +92,11 @@ PASO = 32
 UN_FOTOGRAMA_NS = 16000000
 BLOQUE_BYTES = 262144
 SIN_LAMINA = 18446744073709551615
+# Fotogramas que se espera la oferta del ANTENISTA antes de ir al disco. La
+# oferta sale en la misma vuelta del escritorio que nos lanza, asi que uno
+# suele bastar; ocho (128 ms) es por si el DIRECTOR va tarde. Sin antenista,
+# ese es el precio de arrancar: 128 ms una vez.
+INTENTOS_TOMAR = 8
 
 # ===================================================================
 #  1. El mensaje, de ocho en ocho (es lo que `llano` tiene: palabras)
@@ -240,6 +263,23 @@ funcion lee_lamina(bloque es natural64) devuelve natural64
     devuelve hechos
 
 # ===================================================================
+#  3b. El prestamo (N3)
+# ===================================================================
+
+# El handle de lo que el ANTENISTA nos ofrecio, o 0 si en INTENTOS_TOMAR
+# fotogramas no llego nada. `prestado_base`/`prestado_bytes` sobre el handle
+# dicen donde y cuanto.
+funcion toma_prestamo() devuelve natural64
+    cambiante i es natural64 = 0
+    repite mientras i < INTENTOS_TOMAR
+        cambiante h es natural64 = invoca_valor(mi_tarea, op_tomar, 0, 0, 0)
+        si h no es 0
+            devuelve h
+        i = i + 1
+        espera_a(0, 0, UN_FOTOGRAMA_NS)
+    devuelve 0
+
+# ===================================================================
 #  4. El programa
 # ===================================================================
 
@@ -275,12 +315,20 @@ funcion desliza(desliz es natural64, tecla es natural64, tope es natural64) devu
 
 funcion principal devuelve entero32
     # Primero la lamina, si la hay: decide el tamano de la ventana.
-    bloque es natural64 = invoca_valor(mi_tarea, op_pedir_memoria, BLOQUE_BYTES, 0, 0)
+    # N3: lo que el ANTENISTA ofrecio va delante; el disco es lo que queda.
     cambiante base es natural64 = 0
     cambiante largo es natural64 = SIN_LAMINA
-    si bloque no es 0
-        base = invoca_valor(bloque, op_base_del_bloque, 0, 0, 0)
-        largo = lee_lamina(bloque)
+    prestamo es natural64 = toma_prestamo()
+    si prestamo no es 0
+        base = invoca_valor(prestamo, prestado_base, 0, 0, 0)
+        largo = invoca_valor(prestamo, prestado_bytes, 0, 0, 0)
+        si base = 0 o largo = 0 o largo > BLOQUE_BYTES
+            largo = SIN_LAMINA
+    si largo = SIN_LAMINA
+        bloque es natural64 = invoca_valor(mi_tarea, op_pedir_memoria, BLOQUE_BYTES, 0, 0)
+        si bloque no es 0
+            base = invoca_valor(bloque, op_base_del_bloque, 0, 0, 0)
+            largo = lee_lamina(bloque)
     cambiante ancho_v es natural64 = ANCHO_MENSAJE
     cambiante alto_v es natural64 = ALTO_MENSAJE
     si largo no es SIN_LAMINA

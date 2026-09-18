@@ -382,7 +382,7 @@ pub(crate) fn opciones(s: &mut Output) {
         (b"red ping <ip>", b"cuatro ecos con la pila propia, con su tiempo (pide `red ip`)"),
         (b"red dns <nombre>", b"pregunta la IPv4 de un nombre al DNS del router (pide `red ip`)"),
         (b"red hola <ip>", b"TCP de verdad: HOLA ANTENA/1 a la antena en 7117, y cierre limpio (pide `red ip`)"),
-        (b"red pagina <ip> <url>", b"la antena NAVEGA la url y la lamina juzgada queda en datos/pagina.lam para NAVEGAR"),
+        (b"red pagina <ip> <url>", b"la antena NAVEGA la url; la lamina juzgada se OFRECE a NAVEGAR al lanzarla (y va a datos/pagina.lam)"),
         (b"red", b"el informe: tarjeta, enlace, receptor y lo que llega"),
         (b"red perfil", b"lo que la maquina sabe de su red, recortado"),
         (b"red rx", b"arma el receptor y cuenta lo nuevo"),
@@ -550,6 +550,7 @@ fn pase(s: &mut Output) {
     if FASE.load(Ordering::Relaxed) != QUIETA {
         s.text(b"    (hay una `red prueba` en marcha)\n");
     }
+    crate::commands::antenista::informar(s);
 }
 
 // ===================================================================

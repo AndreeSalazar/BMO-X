@@ -563,8 +563,9 @@ impl Machine {
             CURRENT_TASK, NR_INVOKE, TASK_OP_ARCHIVO_ABRIR, TASK_OP_ARCHIVO_CREAR,
             TASK_OP_ARGUMENTOS, TASK_OP_AUDIO_CLAIM, TASK_OP_AUDIO_RELEASE, TASK_OP_CONSOLE_READ,
             TASK_OP_CONSOLE_WRITE, TASK_OP_EXIT, TASK_OP_INPUT_CLAIM, TASK_OP_MEMORIA_PEDIR,
-            TASK_OP_MI_PADRE, TASK_OP_RUTA, TASK_OP_YIELD,
+            TASK_OP_MI_PADRE, TASK_OP_RUTA, TASK_OP_TOMAR, TASK_OP_YIELD,
         };
+        use bmo_abi::syscalls::surface::{PRESTADO_OP_BASE, PRESTADO_OP_BYTES, PRESTADO_OP_DUENO, PRESTADO_OP_SOLTAR};
 
         let call = ObservedSyscall {
             nr: self.regs[RAX],
@@ -613,6 +614,21 @@ impl Machine {
                 op if op == TASK_OP_MI_PADRE => {
                     let p = self.padre;
                     self.finalizar_syscall(p);
+                    return;
+                }
+                // Lo que alguien nos ofrecio: el banco lo deja en
+                // `prestamo_pendiente`, y se toma UNA vez. El kernel mapea
+                // paginas en nuestro espacio; aqui basta cargar los bytes.
+                op if op == TASK_OP_TOMAR => {
+                    let v = match self.prestamo_pendiente.take() {
+                        Some(bytes) if self.prestado.is_none() => {
+                            let base = self.load_data(&bytes);
+                            self.prestado = Some((base, bytes.len() as u64));
+                            CAP_PRESTADO
+                        }
+                        _ => 0,
+                    };
+                    self.finalizar_syscall(v);
                     return;
                 }
                 // La ruta se acumula de 8 en 8 y se corta en el primer cero,
@@ -754,6 +770,17 @@ impl Machine {
             return;
         } else if call.capability == CAP_ENTRADA {
             let v = self.entrada_op(call.operation);
+            self.finalizar_syscall(v);
+            return;
+        } else if call.capability == CAP_PRESTADO {
+            let (base, bytes) = self.prestado.unwrap_or((0, 0));
+            let v = match call.operation {
+                op if op == PRESTADO_OP_BASE => base,
+                op if op == PRESTADO_OP_BYTES => bytes,
+                op if op == PRESTADO_OP_DUENO => self.padre,
+                op if op == PRESTADO_OP_SOLTAR => 1,
+                _ => 0,
+            };
             self.finalizar_syscall(v);
             return;
         } else if call.capability >= CAP_MEMORIA {

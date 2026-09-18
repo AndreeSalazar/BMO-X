@@ -253,14 +253,31 @@ de esta casa; prometer 60 fps por ESPEJO es S6 y cuesta lo que dice la seccion
       guarda nada. **Como se sabe:** `red pagina 192.168.0.103
       https://example.com` dice `LAMINA 640x800, 7 elementos, guardada`, y
       `run apps/navegar.ibx` pinta example.com traido por el HONOR.
-- [ ] **N3 -- el ANTENISTA.** `Ultra_userspace/services/antenista`: Rust, Ring
-      3, habla ANTENA/1 por `bmo-pila` (G5), aplica `cuarentena.rs`, pide
-      `PAGINA <url>`, valida la lamina con `lamina.rs` y la OFRECE a Navegar en
-      un bloque (sin el disco de N3a en medio); recoge `CLIC`/`TECLA` del
-      buzon de Navegar. **Como se sabe:**
-      una pagina real de la antena del movil se pinta en Navegar, y una antena
-      que manda una linea basura aparece en CABINA con su falta y Navegar
-      ensena "antena en cuarentena, N s".
+- [~] **N3 -- el ANTENISTA: la lamina OFRECIDA, sin el disco** (2026-09-18,
+      en codigo, esperando el Ryzen). Vive DENTRO del DIRECTOR
+      (`commands/antenista.rs`), no como servicio aparte: la red vive ahi y
+      un servicio mas seria otro pase de red. `red pagina` deja la lamina
+      juzgada en un bloque del DIRECTOR (`Memoria::request`, 256 KB), y al
+      lanzar `apps/navegar.ibx` --caja de `run` o icono-- se le OFRECE por
+      `MEM_OP_OFRECER`; NAVEGAR v3 la TOMA (`op_tomar`, hasta 8 fotogramas)
+      y pinta desde `prestado_base`/`prestado_bytes`: la memoria del DIRECTOR
+      mapeada en la suya, ni copia ni fichero. Sin oferta va al disco como
+      la v2 (y `red pagina` sigue escribiendo `datos/pagina.lam` por eso). El
+      emulador modela `TASK_OP_TOMAR` y `PRESTADO_OP_*` (`prestamo_pendiente`)
+      y el banco de NAVEGAR tiene 3 filas mas (prestada se pinta y el disco
+      no se toca; sin oferta, el disco; prestada y mal hecha se niega igual).
+      `red pase` dice cuantas veces se ofrecio y cuantas se nego.
+      ** Lo que NO es todavia: `cuarentena.rs` no se aplica (una antena que
+      se sale del protocolo se dice y se corta, pero no se la pone en
+      cuarentena N s), y los `CLIC`/`TECLA` de NAVEGAR no vuelven a la antena
+      (eso es N4, la lamina viva). ** Y un tope que no es de aqui: el bloque
+      es UNA de las CUATRO peticiones de memoria por proceso
+      (`obj/memory.rs`), y el DIRECTOR ya gasta en consola, visor y fondo
+      (el fondo, DOS por imagen): si no queda, se dice y queda el disco.
+      **Como se sabe:** `red pagina <ip> https://example.com` dice `en el
+      bloque del ANTENISTA`, `run apps/navegar.ibx` deja `lanzado, lamina
+      ofrecida` en la caja y NAVEGAR pinta example.com; con `datos/pagina.lam`
+      borrado, sigue pintandola (no la saco del disco).
 
 - [ ] **N4 -- la lamina VIVA.** La antena reemite al cambiar el DOM (suelo 250
       ms) y Navegar repinta; un rectangulo de video se pide por S4 y se pinta

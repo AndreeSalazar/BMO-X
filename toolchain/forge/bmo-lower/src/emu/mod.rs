@@ -167,6 +167,10 @@ const CAP_MEMORIA: u64 = 0x0002_0001;
 /// dos de arriba: confundir handles tiene que fallar, no acertar de rebote.
 const CAP_AUDIO: u64 = 0x0003_0001;
 
+/// El handle de `KIND_PRESTADO`: lo que devuelve `TASK_OP_TOMAR` cuando el
+/// banco dejo un prestamo pendiente. Rango propio, como los tres de arriba.
+const CAP_PRESTADO: u64 = 0x0004_0001;
+
 /// Tope de un pitido, en ms. Espejo de `ring0::obj::audio::MAX_MS`.
 ///
 /// Se modela porque **es lo que obliga a la libreria a trocear**: una blanca a
@@ -358,6 +362,14 @@ pub struct Machine {
     /// rechaza las demas -- el kernel tiene cinco motivos para decir que no,
     /// aqui basta uno para que el camino del 0 tenga con que probarse.
     pub ofertas: Vec<(u64, u64, u64, u64)>,
+    /// ** Y LO QUE EL DIRECTOR DE MENTIRA NOS OFRECIO A NOSOTROS (N3,
+    /// 2026-09-18). El banco deja aqui los bytes; el primer `TASK_OP_TOMAR`
+    /// los carga en memoria y devuelve un handle `KIND_PRESTADO` cuyo
+    /// `PRESTADO_OP_BASE`/`BYTES` los senalan. Sin nada pendiente, `TOMAR`
+    /// contesta 0, que es lo que una app tiene que ver para irse al disco.
+    pub prestamo_pendiente: Option<Vec<u8>>,
+    /// El prestamo ya tomado: `(base, bytes)`.
+    prestado: Option<(u64, u64)>,
     /// ** Y LO QUE EL DIRECTOR DE MENTIRA DEJA EN EL BUZON. Eventos crudos
     /// (el mismo `u64` de una ranura: bit 63 raton, bit 62 letra, bit 8 hay)
     /// que el banco quiere que la app reciba. Se entregan de uno en uno cada
@@ -450,6 +462,8 @@ impl Machine {
             mem_bloques: Vec::new(),
             padre: 0,
             ofertas: Vec::new(),
+            prestamo_pendiente: None,
+            prestado: None,
             buzon_pendiente: std::collections::VecDeque::new(),
             mi_paquete: None,
             mem: HashMap::new(),
