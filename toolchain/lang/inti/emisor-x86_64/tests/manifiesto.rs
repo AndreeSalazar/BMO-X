@@ -262,7 +262,22 @@ fn la_sonda_del_ryzen_emite_los_mismos_bytes_que_antes_de_p1() {
     // [!] Y aqui SI cambia la seccion `Code`: `cpu.ibx` deja de ser el fichero
     // que corrio en el Ryzen el 22-08. Las medidas de aquel dia siguen siendo
     // verdad de aquel fichero; la proxima se compara contra ESTE.
-    assert_eq!(sin.len(), 10536, "la emision de la sonda cambio de tamano");
+    //
+    //     12.144  con los PRESERVADOS repartidos (2026-09-18)
+    //
+    // ** ESTOS +1.608 SON CODIGO, y son el precio de dejar de vivir en la
+    // pila: hasta hoy una funcion con una llamada no repartia NINGUN registro
+    // (el 90 % de los temporales de `navegar.inti` estaba en el marco). Ahora
+    // reparte `rbx`/`r12`..`r15`, y cada funcion que los toma los GUARDA en
+    // el prologo y los DEVUELVE en cada salida --el `devuelve` y cada katana--.
+    // `cpu.inti` pasa de 22 temporales en registro a 108. Los bytes de mas
+    // son esos guardar/devolver (7 bytes cada uno) y el prefijo REX de los
+    // registros altos; lo que se ahorra son lecturas y escrituras del marco
+    // en cada uso de cada temporal, que aqui no se cuentan y en el Ryzen si.
+    //
+    // [!] Y `cpu.ibx` vuelve a no ser el fichero que corrio el 22-08 ni el
+    // 17-09. La medida del reloj que salga de ESTE es la que compara.
+    assert_eq!(sin.len(), 12144, "la emision de la sonda cambio de tamano");
 }
 
 /// **EL CODIGO NO CAMBIA POR LLEVAR MANIFIESTO.**

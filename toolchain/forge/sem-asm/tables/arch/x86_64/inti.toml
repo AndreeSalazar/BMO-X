@@ -202,13 +202,22 @@ trabajo = ["rax", "rcx"]
 #       nada mas**.
 temporales = ["rdx", "rsi", "rdi"]
 
-#  OJO: Y por que NO se usan los preservados, que serian ocho mas:
+#  ** LOS PRESERVADOS, EN USO desde el 2026-09-18 -- "el dia que las emita,
+#  esta lista es la que cambia", y el dia llego con un numero delante:
 #
-#  Porque sobrevivir a una llamada solo importa si hay llamadas, y guardarlos
-#  cuesta dos instrucciones por funcion **aunque no se use ninguna**. Mientras
-#  el emisor no emita llamadas, pagar eso seria pagar por un problema que no se
-#  tiene. El dia que las emita, esta lista es la que cambia.
-preservados_en_uso = []
+#     navegar.inti   55 temporales en registro, 602 en pila
+#     bico.inti       4 en registro, 320 en pila
+#
+#  Es decir, el 90 % de los temporales vivia en el marco --en la cache L1, no
+#  en un registro-- porque **cualquier funcion con una llamada apagaba el
+#  reparto entero**: los tres de arriba son de los que una llamada pisa. Estos
+#  cinco sobreviven a una llamada por contrato de la maquina, asi que en una
+#  funcion con llamadas son los UNICOS que se pueden repartir. Se guardan en
+#  el prologo y se devuelven en el epilogo, **solo los que se usen**: una
+#  funcion que no reparte ninguno no paga ni una instruccion.
+#
+#  `rbp` no esta porque es el marco; `rsp`, porque es la pila.
+preservados_en_uso = ["rbx", "r12", "r13", "r14", "r15"]
 
 # ===================================================================
 #  Los nombres: como se llama en INTI cada instruccion

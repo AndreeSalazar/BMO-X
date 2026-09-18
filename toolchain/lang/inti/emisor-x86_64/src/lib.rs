@@ -194,6 +194,9 @@ pub struct Taller {
     pub recoge: bmo_inti_front::tablas::Modulos,
     /// Los registros que el asignador puede repartir, leidos de `[reparto]`.
     pub temporales: Vec<u8>,
+    /// Los que sobreviven a una llamada (`preservados_en_uso`): el reparto de
+    /// una funcion que LLAMA solo puede usar estos.
+    pub preservados: Vec<u8>,
     /// La tabla de ESTA maquina: como se llama en INTI cada instruccion.
     pub maquina: Option<bmo_inti_front::arquitectura::Maquina>,
     /// Y los bytes que hay detras de cada nombre de instruccion.
@@ -214,11 +217,13 @@ impl Taller {
             .map(|m| m.temporales())
             .filter(|v| !v.is_empty())
             .unwrap_or_else(|| marco::RESPALDO.to_vec());
+        let preservados = maquina.as_ref().map(|m| m.preservados()).unwrap_or_default();
         Self {
             puerta: Puerta::de(maquina.as_ref()),
             nombres_de_puerta: modulos.trae("bmo").to_vec(),
             recoge: modulos,
             temporales,
+            preservados,
             maquina,
             intrinsecos: bmo_sem_asm::Intrinsics::load_x86_64().ok(),
         }
@@ -569,7 +574,13 @@ fn nombres_sueltos(f: &FuncionIr) -> Vec<String> {
     sueltos
 }
 
-fn epilogo(out: &mut Vec<u8>) {
+/// El epilogo: **devuelve los preservados que esta funcion tomo** y vuelve.
+/// Se emite en cada salida --el `devuelve`, el final, y cada katana--, porque
+/// quien llamo sigue corriendo con lo que tuviera en `rbx`/`r12`..`r15`.
+fn epilogo(out: &mut Vec<u8>, marco: &Marco) {
+    for (k, reg) in marco.guardados().iter().enumerate() {
+        mov_de_marco(out, *reg, marco.sitio_guardado(k));
+    }
     x86::mov_r64_r64(out, 4, 5); // mov rsp, rbp
     out.push(0x5D); // pop rbp
     out.push(0xC3); // ret

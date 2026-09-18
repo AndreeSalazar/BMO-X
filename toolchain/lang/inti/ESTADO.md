@@ -127,11 +127,23 @@ atacar.
   marco y la convencion de llamada no cambian ni una linea. **No es la version
   rapida y no pretende serlo**: es la que se puede escribir entera hoy y medir
   manana.
-- **Los registros preservados no se reparten.** Guardarlos cuesta dos
-  instrucciones por funcion aunque no se use ninguna, y mientras haya llamadas
-  el asignador se frena entero.
+- ~~**Los registros preservados no se reparten.**~~ **CERRADO el 2026-09-18**,
+  y con el numero que lo decidio: el dueno pidio verificar que INTI fuera
+  *"enfoque de REGISTRO"*, y la cuenta del emisor dijo que no --`navegar.inti`
+  55 temporales en registro y 602 en pila; `bico.inti` 4 y 320--. El 90 %
+  vivia en el marco (en la cache L1, no en un registro) porque **cualquier
+  funcion con una llamada apagaba el reparto entero**: los tres registros de
+  temporales son de los que una llamada pisa. Ahora `[reparto]
+  preservados_en_uso` trae `rbx`, `r12`..`r15`: una funcion que llama reparte
+  esos --la llamada los devuelve por contrato--, los guarda en el prologo y
+  los devuelve en cada salida, **solo los que use**. Despues: `navegar` 326 en
+  registro / 331 en pila, `bico` 95 / 229, `cpu` 108 / 115. Lo que sigue en
+  el marco: las LOCALES (`cambiante`), siempre, y lo que no cabe en cinco.
+  Precio: `cpu.ibx` engorda 1.608 bytes de guardar/devolver.
 
-Las tres son decisiones, no deudas. Lo que seria deuda es no escribirlas.
+Las dos primeras son decisiones, no deudas. Lo que seria deuda es no
+escribirlas. Y lo que queda de la tercera --las locales en el marco-- es la
+siguiente, y ya tiene numero delante.
 
 ---
 

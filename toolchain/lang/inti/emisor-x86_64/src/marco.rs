@@ -88,12 +88,15 @@ pub struct Marco {
     temporales: u32,
     /// Donde vive cada temporal, por indice.
     sitios: Vec<Sitio>,
+    /// **Los preservados que esta funcion reparte**, y por tanto guarda en el
+    /// prologo y devuelve en el epilogo. Vacio en una funcion sin llamadas.
+    guardados: Vec<u8>,
 }
 
 impl Marco {
     /// El reparto con los registros de respaldo.
     pub fn de(f: &FuncionIr) -> Self {
-        Self::con_registros(f, &RESPALDO)
+        Self::con_registros(f, &RESPALDO, &[])
     }
 
     /// ** El reparto con los registros que diga la maquina.
@@ -101,7 +104,10 @@ impl Marco {
     /// Es la forma buena: el emisor no decide cuales son, los recibe de
     /// `arch/<maquina>/inti.toml`. El dia que la tabla anada `r10` y `r11`,
     /// este fichero no cambia.
-    pub fn con_registros(f: &FuncionIr, disponibles: &[u8]) -> Self {
+    ///
+    /// `preservados` son los que sobreviven a una llamada: en una funcion que
+    /// llama son los UNICOS que se reparten, y los que se repartan se guardan.
+    pub fn con_registros(f: &FuncionIr, disponibles: &[u8], preservados: &[u8]) -> Self {
         // *** EL REPARTO DE LAS LOCALES, por MEDIDA y no por cuenta.
         //
         // Cada una se alinea a lo que pide --una palabra si no dice otra cosa--
@@ -137,9 +143,30 @@ impl Marco {
             bytes_locales,
             temporales: f.temporales,
             sitios: Vec::new(),
+            guardados: Vec::new(),
         };
-        m.sitios = m.reparte(f, disponibles);
+        m.sitios = m.reparte(f, disponibles, preservados);
+        // Lo que se repartio de los preservados, en orden, es lo que se guarda.
+        let mut usados: Vec<u8> = Vec::new();
+        for s in &m.sitios {
+            if let Sitio::Registro(r) = s {
+                if preservados.contains(r) && !usados.contains(r) {
+                    usados.push(*r);
+                }
+            }
+        }
+        m.guardados = usados;
         m
+    }
+
+    /// Los preservados que esta funcion guarda y devuelve.
+    pub fn guardados(&self) -> &[u8] {
+        &self.guardados
+    }
+
+    /// Donde se guarda el preservado numero `k`: detras de los temporales.
+    pub fn sitio_guardado(&self, k: usize) -> i32 {
+        -(self.bytes_locales + (self.temporales as i32 + k as i32 + 1) * PALABRA)
     }
 
     /// Cuantos bytes hay que reservar, redondeado a 16.
@@ -154,7 +181,9 @@ impl Marco {
     /// que es la clase de dependencia que convierte un fallo del asignador en
     /// un fallo del marco.
     pub fn size(&self) -> i32 {
-        let bruto = self.bytes_locales + self.temporales as i32 * PALABRA;
+        let bruto = self.bytes_locales
+            + self.temporales as i32 * PALABRA
+            + self.guardados.len() as i32 * PALABRA;
         (bruto + 15) & !15
     }
 
@@ -204,7 +233,7 @@ impl Marco {
     //  El reparto
     // -----------------------------------------------------------------
 
-    fn reparte(&self, f: &FuncionIr, disponibles: &[u8]) -> Vec<Sitio> {
+    fn reparte(&self, f: &FuncionIr, disponibles: &[u8], preservados: &[u8]) -> Vec<Sitio> {
         let mut sitios: Vec<Sitio> = (0..f.temporales)
             .map(|i| Sitio::Pila(self.en_pila(Temporal(i))))
             .collect();
@@ -212,22 +241,28 @@ impl Marco {
         // ** EL FRENO, y solo para lo que de verdad no se puede acotar.
         //
         // Una LLAMADA puede pisar cualquier cosa: al otro lado hay codigo que
-        // este fichero no ha visto. Ahi no queda mas que apagar el reparto.
+        // este fichero no ha visto. Hasta el 2026-09-18 ahi se apagaba el
+        // reparto ENTERO, y el numero lo dijo: el 90 % de los temporales de
+        // `navegar.inti` vivia en el marco. Lo que una llamada NO puede pisar
+        // son los PRESERVADOS --el que los pisa los devuelve, por contrato--,
+        // asi que en una funcion que llama se reparten esos, y solo esos.
         //
         // ** Una instruccion de maquina NO. Pisa exactamente lo que dice su fila
         // de `intrinsics.toml`, y quien la emite ya lee esa fila. Hasta el 22-08
         // las dos frenaban igual --y por eso el bucle de la sonda del Ryzen
         // costo ~47 ticks por vuelta con el contador viviendo en la pila--.
         //
-        // Ahora lo que pisan se resta de `disponibles` antes de llegar aqui, que
-        // es donde la tabla puede hablar. Este fichero solo ve la lista.
-        if f.instrucciones
-            .iter()
-            .any(|i| matches!(i, Instr::Llama { .. }))
-        {
-            return sitios;
-        }
-        if disponibles.is_empty() {
+        // Ahora lo que pisan se resta de las dos listas antes de llegar aqui,
+        // que es donde la tabla puede hablar. Este fichero solo ve las listas.
+        let llama = f.instrucciones.iter().any(|i| matches!(i, Instr::Llama { .. }));
+        // Sin llamadas: primero los baratos (no hay que guardarlos), y los
+        // preservados de remanente. Con llamadas: solo los preservados.
+        let pool: Vec<u8> = if llama {
+            preservados.to_vec()
+        } else {
+            disponibles.iter().chain(preservados.iter()).copied().collect()
+        };
+        if pool.is_empty() {
             return sitios;
         }
 
@@ -235,7 +270,8 @@ impl Marco {
 
         // Recorrido lineal: los tramos ya salen ordenados por nacimiento,
         // porque un temporal nace donde se le asigna por primera vez.
-        let mut libres: Vec<u8> = disponibles.to_vec();
+        // `pop` saca del FINAL, asi que se invierte: los baratos primero.
+        let mut libres: Vec<u8> = pool.iter().rev().copied().collect();
         // (fin del tramo, registro) de lo que esta vivo ahora.
         let mut vivos: Vec<(usize, u8, u32)> = Vec::new();
 

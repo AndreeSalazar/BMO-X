@@ -111,26 +111,58 @@ funcion mas_tarde(x es entero64) devuelve entero64
     assert_eq!(ejecuta_en(f, "principal", 5, 0), 105);
 }
 
-/// ** El freno del asignador, ejercitado por fin.
+/// ** Con llamadas se reparten los PRESERVADOS, y el valor SOBREVIVE.
 ///
-/// Una funcion con llamadas no reparte registros -- los tres se los puede pisar
-/// la funcion llamada. Y lo que importa es que **sigue dando el resultado
-/// correcto**: el freno no rompe nada, solo deja de optimizar.
+/// Hasta el 2026-09-18 una funcion con llamadas no repartia nada: los tres
+/// registros de temporales son de los que una llamada pisa. Ahora reparte
+/// `rbx`/`r12`..`r15`, que la funcion llamada devuelve por contrato. Lo que
+/// importa sigue siendo lo mismo: **el resultado correcto**. `uno(a)` queda
+/// vivo en un registro mientras corre `uno(b)` --que tiene sus propios
+/// temporales en `rdx`/`rsi`/`rdi`-- y la suma solo cuadra si sobrevivio.
 #[test]
-fn con_llamadas_no_se_reparten_registros_y_sigue_bien() {
+fn con_llamadas_se_reparten_preservados_y_el_valor_sobrevive() {
     let con = "\
 perfil llano
 
 funcion uno(x es entero64) devuelve entero64
-    devuelve x
+    cambiante y2 es entero64 = x * 3
+    cambiante z es entero64 = y2 - x - x
+    devuelve z
 
 funcion principal(a es entero64, b es entero64) devuelve entero64
     devuelve uno(a) + uno(b)
 ";
     let e = emitido(con);
-    assert!(e.en_registros == 0, "con llamadas, nada a registros");
-    assert!(e.en_pila > 0, "y los temporales van al marco");
+    assert!(e.en_registros > 0, "con llamadas, los preservados si se reparten");
     assert_eq!(ejecuta_en(con, "principal", 6, 7), 13);
+}
+
+/// ** Y LO QUE SE TOMA SE DEVUELVE: el que llama sigue con lo suyo.
+///
+/// `principal` guarda un temporal en un preservado y llama a `f`, que reparte
+/// el MISMO preservado para los suyos. Si `f` no lo guardara y devolviera, el
+/// temporal de `principal` volveria pisado y la cuenta saldria mal.
+#[test]
+fn el_preservado_que_toma_una_funcion_vuelve_intacto_al_que_llamo() {
+    let con = "\
+perfil llano
+
+funcion hoja(x es entero64) devuelve entero64
+    devuelve x + 1
+
+funcion f(a es entero64) devuelve entero64
+    cambiante s es entero64 = 0
+    cambiante i es entero64 = 0
+    repite mientras i < 5
+        s = s + hoja(i)
+        i = i + 1
+    devuelve s + a
+
+funcion principal(a es entero64, b es entero64) devuelve entero64
+    devuelve hoja(a) * 1000 + f(b)
+";
+    // hoja(a) = 7, vive en un preservado durante f(b); f(6) = 15 + 6 = 21.
+    assert_eq!(ejecuta_en(con, "principal", 6, 6), 7021);
 }
 
 /// La pila queda alineada a 16 antes de cada llamada. Si no lo estuviera, el
@@ -417,18 +449,18 @@ funcion f(a es entero64, b es entero64) devuelve natural64
     );
 }
 
-/// ** UNA LLAMADA SI LO APAGA, y eso NO es una regresion.
+/// ** UNA LLAMADA APAGA LOS BARATOS, no el reparto entero (desde el 18-09).
 ///
 /// OJO: `en_registros` es del MODULO, no de una funcion. Por eso `otra` devuelve
 /// una constante -- si hiciera una cuenta, su propio temporal contaria y la
 /// prueba mediria otra cosa. Costo un fallo verlo.
 ///
 /// Al otro lado de un `call` hay codigo que este emisor no ha visto, asi que no
-/// se puede acotar lo que pisa. La diferencia entre las dos es la mitad del
-/// valor del arreglo: si esto empezara a repartir registros, la sonda de arriba
-/// seguiria verde y los programas con llamadas se romperian en silencio.
+/// se puede acotar lo que pisa **de los baratos**. Los preservados los devuelve
+/// por contrato, y son los que se reparten aqui: el bucle con la llamada tiene
+/// temporales, y alguno cae en registro.
 #[test]
-fn una_llamada_si_apaga_el_reparto() {
+fn una_llamada_reparte_solo_preservados() {
     let f = "\
 perfil llano
 
@@ -441,11 +473,8 @@ funcion f(a es entero64, b es entero64) devuelve entero64
         i = otra(i)
     devuelve i
 ";
-    assert_eq!(
-        en_registro(f),
-        0,
-        "una llamada tiene que seguir frenando el reparto: no se sabe que pisa"
-    );
+    // (Solo se compila: `otra` devuelve 1 y el bucle no acabaria nunca.)
+    assert!(en_registro(f) > 0, "con una llamada se reparten los preservados");
 }
 
 /// **Y LO QUE LA TABLA DICE QUE SE PISA, NO SE REPARTE.**

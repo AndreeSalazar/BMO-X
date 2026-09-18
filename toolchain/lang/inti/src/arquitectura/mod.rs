@@ -73,6 +73,9 @@ pub struct Maquina {
     /// deberia serlo**.
     temporales: Vec<String>,
     trabajo: Vec<String>,
+    /// Los que sobreviven a una llamada, y por eso son los unicos que se
+    /// pueden repartir en una funcion que llama. `[reparto] preservados_en_uso`.
+    preservados_en_uso: Vec<String>,
     /// Como se cruza la puerta del sistema EN ESTA MAQUINA.
     ///
     /// ** Fijate en lo que este campo NO es: no es la lista de lo que se puede
@@ -196,6 +199,7 @@ impl Maquina {
             registros,
             temporales: lista("temporales"),
             trabajo: lista("trabajo"),
+            preservados_en_uso: lista("preservados_en_uso"),
             puerta: raiz.get("puerta").and_then(|p| {
                 let texto = |c: &str| p.get(c).and_then(|v| v.as_str()).map(String::from);
                 let vector = |c: &str| -> Vec<String> {
@@ -274,6 +278,11 @@ impl Maquina {
             .iter()
             .filter_map(|n| self.registro(n))
             .collect()
+    }
+
+    /// Los preservados que la tabla pone en uso: sobreviven a una llamada.
+    pub fn preservados(&self) -> Vec<u8> {
+        self.preservados_en_uso.iter().filter_map(|n| self.registro(n)).collect()
     }
 
     /// Los de trabajo: donde se hace toda operacion binaria.

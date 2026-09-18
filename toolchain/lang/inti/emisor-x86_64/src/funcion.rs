@@ -33,7 +33,13 @@ pub(crate) fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) 
         .copied()
         .filter(|r| !pisados.contains(r))
         .collect();
-    let marco = Marco::con_registros(f, &libres);
+    let preservados: Vec<u8> = taller
+        .preservados
+        .iter()
+        .copied()
+        .filter(|r| !pisados.contains(r))
+        .collect();
+    let marco = Marco::con_registros(f, &libres, &preservados);
     let mut cuenta = Cuenta {
         en_registros: marco.en_registros(),
         en_pila: f.temporales as usize - marco.en_registros(),
@@ -80,6 +86,12 @@ pub(crate) fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) 
     for i in 6..f.parametros as usize {
         mov_de_marco(out, 0, 16 + ((i - 6) as i32) * 8);
         mov_a_marco(out, marco.local(Local(i as u32)), 0);
+    }
+    // ** Y SE GUARDAN LOS PRESERVADOS QUE ESTA FUNCION REPARTE (2026-09-18):
+    // son de quien llamo, y se le devuelven en cada epilogo. Solo los que se
+    // usen: una funcion que no reparte ninguno no paga nada.
+    for (k, reg) in marco.guardados().iter().enumerate() {
+        mov_a_marco(out, marco.sitio_guardado(k), *reg);
     }
 
     // Los saltos se rellenan al final, cuando se sabe donde cayo cada etiqueta.
@@ -323,7 +335,7 @@ pub(crate) fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) 
                 if let Some(v) = v {
                     carga(out, IZQ, v, &marco);
                 }
-                epilogo(out);
+                epilogo(out, &marco);
             }
 
             Instr::Salta(e) => {
@@ -621,7 +633,7 @@ pub(crate) fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) 
     }
 
     // Toda funcion acaba volviendo, aunque el fuente no lo diga.
-    epilogo(out);
+    epilogo(out, &marco);
 
     // ** EL SITIO AL QUE VAN LAS COMPROBACIONES QUE FALLAN -- uno POR CODIGO.
     //
@@ -687,7 +699,7 @@ pub(crate) fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) 
         // aterrice en vez de enterrar-- y el error como dato. Con (b), la sonda
         // vuelve a poder preguntar tres veces.
         x86::mov_r64_imm64(out, IZQ, codigo);
-        epilogo(out);
+        epilogo(out, &marco);
         // ** Y se APUNTA DONDE QUEDO. Es el unico momento en toda la compilacion
         // en que se sabe: dentro de un instante estos bytes son indistinguibles
         // del resto del codigo.
