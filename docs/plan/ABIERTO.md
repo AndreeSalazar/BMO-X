@@ -7,7 +7,7 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   298 casillas ABIERTAS en 35 planes
+   297 casillas ABIERTAS en 35 planes
    208 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
@@ -188,15 +188,6 @@
 - [ ] A5a -- las cinco que ya se pueden decidir al compilar (contador,
 - ... y 4 mas
 
-## [`PLAN_RED_TX.md`](PLAN_RED_TX.md) -- 7 abiertas, 8 hechas
-
-*PLAN RED TX -- transmitir, con el DMA contado y el cable detras de un grifo*
-
-- [ ] E4 -- el muro: IOMMU, si la placa lo da. Foto de placa (la operacion
-- [ ] E5 -- la pila encima: un ping que contesta. platform/shared/bmo-pila
-- [ ] E6 -- firmas: cifrado autenticado sobre UDP. ChaCha20-Poly1305 y
-- ... y 4 mas
-
 ## [`PLAN_DOOM.md`](PLAN_DOOM.md) -- 6 abiertas, 3 hechas
 
 *El plan largo: de "BMO C compila 69 de 81" a "DOOM se juega en el Ryzen"*
@@ -222,6 +213,15 @@
 - [ ] Y1.1 subir el bInterval del raton a Ring 0 y a Ring 3. Sin ese
 - [ ] Y1.2 que BUS_PERIOD_MS salga del minimo de los aparatos vivos y no
 - [ ] no promete 0 ms, y llamarlo asi seria vender humo: un pixel viaja por
+- ... y 3 mas
+
+## [`PLAN_RED_TX.md`](PLAN_RED_TX.md) -- 6 abiertas, 8 hechas
+
+*PLAN RED TX -- transmitir, con el DMA contado y el cable detras de un grifo*
+
+- [ ] E4 -- el muro: IOMMU, si la placa lo da. Foto de placa (la operacion
+- [ ] E5 -- la pila encima: un ping que contesta. platform/shared/bmo-pila
+- [ ] E6 -- firmas: cifrado autenticado sobre UDP. ChaCha20-Poly1305 y
 - ... y 3 mas
 
 ## [`PLAN_SEGURIDAD.md`](PLAN_SEGURIDAD.md) -- 6 abiertas, 26 hechas

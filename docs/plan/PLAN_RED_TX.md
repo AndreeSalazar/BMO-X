@@ -151,8 +151,19 @@ son cinco clases de linea.
       2026-09-14: una pregunta A por UDP, punteros de compresion solo hacia atras
       y CNAME seguido solo dentro de la respuesta. `red dns <nombre>`. **Como se
       sabe:** un nombre da la misma IP que da Windows en el mismo cable.
-- [ ] **G5 -- TCP de verdad.** `platform/shared/bmo-pila/src/tcp` contra un
-      servidor real: el saludo de tres pasos y un cierre limpio.
+- [~] **G5 -- TCP de verdad.** En codigo el 2026-09-18, esperando el Ryzen.
+      La maquina de estados ya estaba (`platform/shared/bmo-pila/src/tcp`, 12
+      pruebas); lo que faltaba era el CABLE: `red hola <ip>` en
+      `Ultra_userspace/services/director/src/commands/red_tcp.rs` -- ARP del
+      salto, `Tcp::conectar` a 7117, cada vuelta del escritorio el buzon
+      alimenta `Tcp::entrada` y `Tcp::salida` sale por `Nodo::envolver`;
+      manda `HOLA ANTENA/1`, recoge la linea, `cerrar` y espera TIME-WAIT.
+      Y una prueba mas en `tcp/pruebas.rs`: dos NODOS por tramas Ethernet
+      enteras (Nodo::envolver -> Nodo::atender -> Hecho::Tcp), tres pasos,
+      HOLA ida y vuelta, cierre limpio. Cero cambios en el kernel.
+      **Como se sabe:** `red hola 192.168.0.103` con `antena.py` en el HONOR
+      dice `CONECTADA en N ms`, `la antena dice: HOLA ANTENA/1 <nombre>` y
+      `CIERRE LIMPIO`; F11 no acusa nada.
 - [ ] **G6 -- TLS 1.3: EL MURO.** En `platform/shared/bmo-cripto`, con los
       vectores oficiales: X25519 (RFC 7748), ChaCha20-Poly1305 (RFC 8439), HKDF
       (RFC 5869) y la maquina de estados del handshake (RFC 8446). SHA-256 y
