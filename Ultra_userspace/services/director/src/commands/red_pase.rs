@@ -459,7 +459,7 @@ fn no_envia(e: NoEnvia) -> &'static [u8] {
 
 fn arp(s: &mut Output, resto: &[u8]) {
     let Some(ip) = ipv4(resto) else {
-        s.text(b"  uso: red arp 192.168.1.1   (o `red prueba`, que elige la IP oyendo el cable)\n");
+        s.text(b"  uso: red arp <ip>   (o `red prueba`, que elige la IP oyendo el cable)\n");
         return;
     };
     match enviar_arp(ip) {

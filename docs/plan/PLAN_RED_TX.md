@@ -119,7 +119,7 @@
 > cada peldano dice donde se mira.
 
 La primera foto (2026-09-13): pase ABIERTO, `salieron 1`, 56 tramas en el
-buzon, y el ARP a 192.168.1.1 sin respuesta. Salir del grifo no probaba salir al
+buzon, y el ARP a la IP elegida sin respuesta. Salir del grifo no probaba salir al
 cable, y la IP se eligio a ciegas; por eso existe `red prueba`.
 
 Gemini es el destino bueno porque se ahorra lo mas caro de HTTPS: el certificado
@@ -161,7 +161,7 @@ son cinco clases de linea.
       Y una prueba mas en `tcp/pruebas.rs`: dos NODOS por tramas Ethernet
       enteras (Nodo::envolver -> Nodo::atender -> Hecho::Tcp), tres pasos,
       HOLA ida y vuelta, cierre limpio. Cero cambios en el kernel.
-      **Como se sabe:** `red hola 192.168.0.103` con `antena.py` en el HONOR
+      **Como se sabe:** `red hola <ip-de-la-antena>` con `antena.py` en el HONOR
       dice `CONECTADA en N ms`, `la antena dice: HOLA ANTENA/1 <nombre>` y
       `CIERRE LIMPIO`; F11 no acusa nada.
 - [ ] **G6 -- TLS 1.3: EL MURO.** En `platform/shared/bmo-cripto`, con los

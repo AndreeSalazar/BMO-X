@@ -174,7 +174,7 @@ pub(crate) fn activa() -> bool {
 /// **`red hola <ip>`.**
 pub(crate) fn hola(s: &mut Output, resto: &[u8]) {
     let Some(ip) = crate::commands::red_pase::ipv4(resto) else {
-        s.text(b"  uso: red hola 192.168.0.103   (la antena, puerto 7117)\n");
+        s.text(b"  uso: red hola <ip-de-la-antena>   (puerto 7117)\n");
         return;
     };
     empezar(s, ip.to_be_bytes(), GUION_HOLA, &[]);
@@ -187,7 +187,7 @@ pub(crate) fn pagina(s: &mut Output, resto: &[u8]) {
         None => (resto, &b""[..]),
     };
     let Some(ip) = crate::commands::red_pase::ipv4(ip_txt) else {
-        s.text(b"  uso: red pagina 192.168.0.103 https://example.com\n");
+        s.text(b"  uso: red pagina <ip-de-la-antena> https://example.com\n");
         return;
     };
     if !bmo_antena::url_valida(url) {

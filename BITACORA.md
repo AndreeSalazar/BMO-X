@@ -4495,7 +4495,7 @@ azar incluidas. **Ningun byte ha salido por el cable todavia**: la prueba es
 
 ### La primera foto, y lo que no probaba
 
-`red abrir 60` y `red arp 192.168.1.1`: el pase abrio, el buzon recogio 56
+`red abrir 60` y `red arp <ip>`: el pase abrio, el buzon recogio 56
 tramas sin syscall, `salieron 1`... y el router no contesto. Salir del grifo no
 es salir al cable, y la IP se eligio a ciegas. Desde entonces `red pase` dice
 cuantas devolvio la tarjeta ENVIADAS y quien habla ARP en el cable, y `red

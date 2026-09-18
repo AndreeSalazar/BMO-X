@@ -250,7 +250,7 @@ de esta casa; prometer 60 fps por ESPEJO es S6 y cuesta lo que dice la seccion
       de buzon entre los dos: cierra la cadena antena -> TCP -> juez ->
       NAVEGAR con lo que hay. Una antena que se sale del protocolo o una
       lamina que no pasa el juez se dicen con su falta y su linea, y no se
-      guarda nada. **Como se sabe:** `red pagina 192.168.0.103
+      guarda nada. **Como se sabe:** `red pagina <ip-de-la-antena>
       https://example.com` dice `LAMINA 640x800, 7 elementos, guardada`, y
       `run apps/navegar.ibx` pinta example.com traido por el HONOR.
 - [~] **N3 -- el ANTENISTA: la lamina OFRECIDA, sin el disco** (2026-09-18,

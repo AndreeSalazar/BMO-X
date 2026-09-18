@@ -34,6 +34,9 @@
 /platform/shared/bmo-carga-juicio/           @AndreeSalazar
 /platform/shared/bmo-channel/                @AndreeSalazar
 /platform/shared/bmo-ciudad/                 @AndreeSalazar
+# bmo-cola entro en Ring 0 el 18-09 (A0 de PLAN_EL_BUS_APARTE) y esta lista no
+# se entero hasta que el build lo enseno: se desfaso en UN dia.
+/platform/shared/bmo-cola/                   @AndreeSalazar
 /platform/shared/bmo-cripto/                 @AndreeSalazar
 /platform/shared/bmo-dibujo/                 @AndreeSalazar
 /platform/shared/bmo-disco-juicio/           @AndreeSalazar
@@ -84,6 +87,7 @@
 /toolchain/tools/perfil-campos/              @AndreeSalazar
 /toolchain/tools/perfil-placa/               @AndreeSalazar
 /toolchain/tools/planes/                     @AndreeSalazar
+/toolchain/tools/privacidad/                 @AndreeSalazar
 /toolchain/tools/relevo/                     @AndreeSalazar
 /toolchain/tools/tamano/                     @AndreeSalazar
 

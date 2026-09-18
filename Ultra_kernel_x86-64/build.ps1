@@ -184,6 +184,12 @@ Guardian 'Validating source encoding (sources are ASCII)' `
     'toolchain\tools\ascii-sweep\ascii_sweep.py' 'la codificacion' `
     'codificacion: hay no-ASCII donde la regla no lo permite (ver arriba)'
 
+# ** La regla del 13-09 --ni IP de casa ni MAC entera en el repo publico-- se
+# rompio el 18-09 sin que nada avisara: vivia solo en un texto. Ver su cabecera.
+Guardian 'Validating no home IP or device MAC is published' `
+    'toolchain\tools\privacidad\privacidad.py' 'la privacidad de la red' `
+    'privacidad: hay una IP de casa o una MAC de fabricante en el repo (ver arriba)'
+
 # ---------------------------------------------------------------------------
 # ** EL QUINTO GUARDIAN: LAS CITAS A DOCUMENTOS (2026-08-17).
 #

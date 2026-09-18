@@ -159,7 +159,7 @@ pub(crate) fn preparar(s: &mut Output, destino: Ip) -> Option<Ip> {
 /// **`red ping <ip>`.**
 pub(crate) fn ping(s: &mut Output, resto: &[u8]) {
     let Some(ip) = crate::commands::red_pase::ipv4(resto) else {
-        s.text(b"  uso: red ping 192.168.0.1\n");
+        s.text(b"  uso: red ping <ip>\n");
         return;
     };
     let destino = ip.to_be_bytes();
@@ -332,7 +332,7 @@ fn diagnostico(s: &mut Output, t: &Tarea) {
             s.text(b"; la ultima no se creyo: ");
             s.text(r.texto().as_bytes());
         } else if t.del_servidor == 0 {
-            s.text(b": ninguna -- prueba en Windows `nslookup geminiprotocol.net 192.168.0.1`");
+            s.text(b": ninguna -- prueba en Windows `nslookup geminiprotocol.net <ip-del-router>`");
         }
         s.byte(b'\n');
     }

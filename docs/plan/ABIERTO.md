@@ -7,7 +7,7 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   297 casillas ABIERTAS en 35 planes
+   296 casillas ABIERTAS en 35 planes
    208 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
@@ -287,15 +287,6 @@
 - [ ] sus filas de banco -- las ocho reglas del DMA, en el anfitrion
 - ... y 1 mas
 
-## [`PLAN_NAVEGAR.md`](PLAN_NAVEGAR.md) -- 4 abiertas, 7 hechas
-
-*PLAN NAVEGAR -- la propuesta maestra de la app que navega sin ser navegador*
-
-- [ ] N3 -- el ANTENISTA. Ultra_userspace/services/antenista: Rust, Ring
-- [ ] N4 -- la lamina VIVA. La antena reemite al cambiar el DOM (suelo 250
-- [ ] N5 -- el HISTORIAL. Cada lamina que entra se guarda en ESTRATOS con
-- ... y 1 mas
-
 ## [`PLAN_EL_SILICIO.md`](PLAN_EL_SILICIO.md) -- 3 abiertas, 5 hechas
 
 *PLAN EL SILICIO*
@@ -303,6 +294,14 @@
 - [ ] S6 -- el techo de crudo (roca 3): hoy no lo acota nadie
 - [ ] S7 -- las katanas del silicio, P4 y P5 de la seccion 5 de este mismo
 - [ ] S8 -- que el barrido NIEGUE en vez de callar cuando no puede leer una
+
+## [`PLAN_NAVEGAR.md`](PLAN_NAVEGAR.md) -- 3 abiertas, 7 hechas
+
+*PLAN NAVEGAR -- la propuesta maestra de la app que navega sin ser navegador*
+
+- [ ] N4 -- la lamina VIVA. La antena reemite al cambiar el DOM (suelo 250
+- [ ] N5 -- el HISTORIAL. Cada lamina que entra se guarda en ESTRATOS con
+- [ ] AA0 -- la app Android, en el repo. toolchain/tools/antena/android/
 
 ## [`PLAN_AUDIO.md`](PLAN_AUDIO.md) -- 2 abiertas, 10 hechas
 
