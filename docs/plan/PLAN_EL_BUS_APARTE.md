@@ -102,15 +102,21 @@ porque hay un nucleo, y el dia que haya dos no habra que buscarlas.
 - [x] 18-09 -- `PUMPING` es `AtomicBool` con `swap`; `BUSY` de CABINA se toma
       con `compare_exchange` y `EV_SEQ`/`EV_LOST` son atomicos
       (`cabina/ring.rs`). CABINA sigue sin girar: tomado = perdido y contado.
-- [ ] A0.1 -- el radar de CABINA (`cabina/radar.rs`) suma en `static mut`
-      desde `record_fmt`; con dos escritores pierde cuentas. Atomicos.
-- [ ] A0.2 -- `set_leds` deja de ser un control transfer desde el escritorio:
-      se PIDE (un byte atomico con los LEDs deseados) y lo manda el hilo del
-      bus en su vuelta. Es el ultimo sitio donde el lado del escritorio toca
-      el bus (`dev/usb/teclas.rs::sync_leds`).
-- [ ] A0.3 -- un barrido de `static mut` en `dev/usb/` que diga de cada uno
-      QUIEN escribe (bus / escritorio / los dos) en su comentario, y el
-      guardian del censo lo cuente. Hoy son 70 y nadie lo sabe sin leerlos.
+- [x] 18-09 -- A0.1: el radar de CABINA (`cabina/radar.rs`) YA ERA atomico
+      (`CUENTA`, `ULTIMO`, `RITMO`, `VENTANAS`: `AtomicU32`/`AtomicU64`). La
+      casilla se escribio sin mirar; se miro, y no habia nada que hacer.
+- [x] 18-09 -- A0.2: el escritorio ya NO bombea el bus mientras el hilo late.
+      `bus.rs::pump_bus` cede (`PUMP_CEDIDOS`) si hay hilo, no soy el, y
+      su latido tiene menos de un segundo; con eso los LEDs (`sync_leds`, un
+      control transfer) y todo el reparto son del lado del bus. Si el hilo
+      lleva un segundo sin latir, el syscall bombea el solo: el rescate.
+      De paso desaparecen los dos cambios de CR3 por fotograma del syscall.
+- [x] 18-09 -- A0.3: los 57 `static mut` de `dev/usb/` dicen en su linea
+      quien los escribe (`// [escribe] bus|bombeo|escritorio|arranque|ambos`)
+      y `toolchain/tools/escritores/escritores.py` lo exige en el build:
+      uno nuevo sin etiqueta para, y `ambos` (hoy 7: audio TUBO/CEROS/
+      PRESTADO, bus PUMP_OVERLAPS, rescate PRIMER_INTENTO/SWALLOW_ESC_RELEASE/
+      SOLTADA) solo puede bajar. Esos siete son la lista exacta de A2.
 
 ## A1 -- un nucleo que puede FALLAR sin apagar la maquina (el sub-director)
 

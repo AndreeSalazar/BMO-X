@@ -181,7 +181,7 @@ pub(crate) fn altgr_active() -> bool {
 /// Manda al teclado el estado de sus LEDs cuando cambia. Un SET_REPORT por
 /// cambio, no por sondeo: es un control transfer y no hace falta mas.
 pub(crate) fn sync_leds() {
-    static mut LAST_LEDS: u8 = 0xFF;
+    static mut LAST_LEDS: u8 = 0xFF; // [escribe] bombeo
     let want = crate::ring0::dev::keyboard::led_mask();
     unsafe {
         if LAST_LEDS == want { return; }

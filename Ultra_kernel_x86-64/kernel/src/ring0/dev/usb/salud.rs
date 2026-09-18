@@ -87,14 +87,14 @@ pub const USB_SALUD_EDAD_VIEJA: u64 = 0xFFFF;
 
 /// La foto del ultimo bombeo. Solo bits; la edad no se guarda porque **envejece
 /// sola** y guardarla seria guardar una mentira que crece.
-static mut FOTO: u64 = 0;
+static mut FOTO: u64 = 0; // [escribe] bombeo
 
 /// **Lo que la foto ANTERIOR decia del controlador**, y nada mas.
 ///
 /// Existe para distinguir dos cosas que el bit no distingue: *"sigue
 /// averiado"* de *"ACABA de averiarse"*. Sin esto solo caben dos malas
 /// opciones -- callarse (lo que habia) o gritar 250 veces por segundo.
-static mut AVERIADO_ANTES: bool = false;
+static mut AVERIADO_ANTES: bool = false; // [escribe] bombeo
 
 /// **Mira el bus y guarda lo que ve.** Se llama desde `pump_bus`, con el PML4
 /// del kernel ya cargado -- ver la cabecera del modulo.
@@ -244,7 +244,7 @@ pub fn estado() -> u64 {
 /// medido con el que contar el tiempo. **No se inventa un cero**: un cero aqui
 /// significa *"acaba de latir"*, que es la afirmacion mas fuerte de todo este
 /// fichero y la que no se puede regalar.
-fn edad_latido_ms() -> u64 {
+pub(super) fn edad_latido_ms() -> u64 {
     use crate::ring0::task::scheduler;
     let ultimo = bus::ultimo_latido();
     if ultimo == 0 {

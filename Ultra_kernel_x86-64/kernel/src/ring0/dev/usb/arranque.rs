@@ -140,7 +140,7 @@ pub(crate) fn delay_ms(ms: u64) {
 /// el elegido, `[16..24)` aparatos en OTRO xHC (huerfanos), `[24..48)`
 /// bus/dev/func del elegido como `bus<<16 | dev<<8 | func`, y el bit 63 dice
 /// que hay elegido (sin el, los demas campos son cero de verdad).
-static mut CENSO: u64 = 0;
+static mut CENSO: u64 = 0; // [escribe] arranque
 
 /// El censo empaquetado. Cero antes de `init`.
 pub fn censo() -> u64 {

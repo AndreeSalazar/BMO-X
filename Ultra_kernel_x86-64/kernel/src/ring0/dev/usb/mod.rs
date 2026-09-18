@@ -104,8 +104,8 @@ pub use arranque::*;
 pub use enchufe::*;
 pub use teclas::*;
 
-static mut DLOG: [u8; DLOG_MAX] = [0u8; DLOG_MAX];
-static mut DLOG_N: usize = 0;
+static mut DLOG: [u8; DLOG_MAX] = [0u8; DLOG_MAX]; // [escribe] bombeo
+static mut DLOG_N: usize = 0; // [escribe] bombeo
 
 fn dlog_push(s: &str) {
     serial_write(s); // serial keeps the verbatim stream
@@ -222,17 +222,17 @@ impl XhciHal for KernelXhciHal {
 }
 
 static HAL: KernelXhciHal = KernelXhciHal;
-static mut HID: UsbHidHal = UsbHidHal::new();
-static mut READY: bool = false;
-static mut SHIFT: bool = false;
-static mut CAPS: bool = false;
+static mut HID: UsbHidHal = UsbHidHal::new(); // [escribe] bombeo
+static mut READY: bool = false; // [escribe] arranque
+static mut SHIFT: bool = false; // [escribe] bombeo
+static mut CAPS: bool = false; // [escribe] bombeo
 /// AltGr mantenido (Alt derecho): abre el tercer nivel del teclado espanol.
-static mut ALTGR: bool = false;
+static mut ALTGR: bool = false; // [escribe] bombeo
 /// Ctrl mantenido (cualquiera de los dos).
-static mut CTRL: bool = false;
+static mut CTRL: bool = false; // [escribe] bombeo
 /// Alt IZQUIERDO mantenido. Windows acepta Ctrl+Alt como AltGr, y quien
 /// aprendio ahi lo tiene en los dedos: aqui tambien vale.
-static mut LALT: bool = false;
+static mut LALT: bool = false; // [escribe] bombeo
 
 /// **La tecla WINDOWS.** `bmo_uhid` ya la entrega --`MOD_LGUI -> 0x5B`,
 /// `MOD_RGUI -> 0x5C`-- y hasta hoy **nadie la reconocia**: caia a la tabla de
@@ -254,7 +254,7 @@ static mut LALT: bool = false;
 /// [!] Y NO produce caracter, igual que Ctrl o Alt. Por eso entra en la rama de
 /// modificadores con su `continue`: sin el, cada pulsacion metia un caracter
 /// fantasma en la cola.
-static mut GUI: bool = false;
+static mut GUI: bool = false; // [escribe] bombeo
 
 // -- Repeticion al mantener (typematic) --------------------------------------
 //
@@ -263,7 +263,7 @@ static mut GUI: bool = false;
 // mantener el retroceso borra UN caracter y se queda mirando.
 
 /// Ultima tecla que sigue pulsada (0 = ninguna) y su contexto.
-static mut HELD_CODE: u8 = 0;
+static mut HELD_CODE: u8 = 0; // [escribe] bombeo
 
 /// **OLVIDAR TODO LO QUE EL TECLADO CREIA TENER PULSADO.**
 ///
@@ -322,25 +322,25 @@ pub fn olvidar_estado_de_teclado(motivo: &'static str) {
         crate::ring0::cabina::count("usb", "  ...y teclas viejas tiradas de la cola", tirados as u64);
     }
 }
-static mut HELD_SHIFT: bool = false;
-static mut HELD_ALTGR: bool = false;
-static mut HELD_CTRL: bool = false;
+static mut HELD_SHIFT: bool = false; // [escribe] bombeo
+static mut HELD_ALTGR: bool = false; // [escribe] bombeo
+static mut HELD_CTRL: bool = false; // [escribe] bombeo
 /// TSC del momento en que se pulso, y del ultimo disparo automatico.
-static mut HELD_SINCE: u64 = 0;
-static mut HELD_LAST: u64 = 0;
+static mut HELD_SINCE: u64 = 0; // [escribe] bombeo
+static mut HELD_LAST: u64 = 0; // [escribe] bombeo
 /// Espera antes de empezar a repetir, y periodo entre repeticiones (ms).
 /// Los mismos valores de siempre: medio segundo de gracia, luego ~30 por
 /// segundo -- lo bastante rapido para borrar una linea sin pasarse.
 const REPEAT_DELAY_MS: u64 = 500;
 const REPEAT_RATE_MS: u64 = 33;
-static mut PRESENT: bool = false;
+static mut PRESENT: bool = false; // [escribe] bombeo
 // Diagnostico DETALLADO del HID (pedido del usuario: "llamar al mouse, mas
 // detallado total"). Estado por dispositivo + telemetria viva del mouse, para
 // que la proxima foto diga exactamente que enumero y si el mouse late.
-static mut KBD_RDY: bool = false;
-static mut MOUSE_RDY: bool = false;
-static mut KBD_SLOT: u8 = 0;
-static mut MOUSE_SLOT: u8 = 0;
+static mut KBD_RDY: bool = false; // [escribe] bombeo
+static mut MOUSE_RDY: bool = false; // [escribe] bombeo
+static mut KBD_SLOT: u8 = 0; // [escribe] bombeo
+static mut MOUSE_SLOT: u8 = 0; // [escribe] bombeo
 // ** LA FRONTERA ENTRE EL BUS Y EL ESCRITORIO ES ATOMICA (2026-09-18, A0 de
 // PLAN_EL_BUS_APARTE): esto lo escribe el hilo del bus y lo lee el escritorio
 // desde su syscall. Hoy es el mismo nucleo; el dia que no lo sea, un `i32`
@@ -350,8 +350,8 @@ static MOUSE_X: AtomicI32 = AtomicI32::new(0);      // posicion acumulada (relat
 static MOUSE_Y: AtomicI32 = AtomicI32::new(0);      // posicion acumulada (relativa) Y
 static MOUSE_BTN: AtomicU8 = AtomicU8::new(0);      // bitmap de botones actual
 static KEY_EVENTS: AtomicU32 = AtomicU32::new(0);   // no de teclas imprimibles entregadas
-static mut FIRST_KEY: bool = false;   // ya se grabo la primera tecla en CABINA?
-static mut FIRST_MOUSE: bool = false; // idem para el primer movimiento de mouse
+static mut FIRST_KEY: bool = false;   // ya se grabo la primera tecla en CABINA? // [escribe] escritorio
+static mut FIRST_MOUSE: bool = false; // idem para el primer movimiento de mouse // [escribe] bombeo
 /// Vueltas de rueda acumuladas desde la ultima lectura. Se vacia al leerlo.
 static MOUSE_WHEEL: AtomicI32 = AtomicI32::new(0);
 static HID_EVENTS: AtomicU32 = AtomicU32::new(0);   // no TOTAL de InputEvents de hid.poll (kbd+mouse)

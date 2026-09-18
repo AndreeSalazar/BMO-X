@@ -217,7 +217,7 @@ fn segunda_pulsacion() -> bool {
 }
 
 /// Cuando se pidio ayuda y no habia a quien rescatar. `0` = no hay intento vivo.
-static mut PRIMER_INTENTO: u64 = 0;
+static mut PRIMER_INTENTO: u64 = 0; // [escribe] ambos
 
 /// Segundos que dura la ventana de la segunda llamada.
 ///
@@ -258,7 +258,7 @@ const SC1_ESC: u8 = 0x01;
 /// Without this the program would get a "ESC released" for a key it never saw
 /// pressed. Not fatal -- almost nobody looks at the ESC release -- but an
 /// unpaired event is the kind of thing that costs an afternoon to find.
-static mut SWALLOW_ESC_RELEASE: bool = false;
+static mut SWALLOW_ESC_RELEASE: bool = false; // [escribe] ambos
 
 /// **Se solto el atajo desde la ultima vez que conto?**
 ///
@@ -268,7 +268,7 @@ static mut SWALLOW_ESC_RELEASE: bool = false;
 /// Es lo que convierte "dos pulsaciones" en una pregunta con respuesta: un
 /// plazo mide cuanto ha pasado, y lo que hacia falta saber es si el dedo se
 /// levanto. Ver `segunda_pulsacion`.
-static mut SOLTADA: bool = true;
+static mut SOLTADA: bool = true; // [escribe] ambos
 
 /// [`rescue_owner`] seen from the RAW door. Counterpart of [`tecla_del_dueno`].
 pub(super) fn raw_key_from_owner(t: Option<(u8, bool)>) -> Option<(u8, bool)> {

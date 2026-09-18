@@ -250,6 +250,14 @@ Guardian 'Validating plan checkboxes are verifiable' `
 Guardian 'Validating the open-work index matches the plans' `
     'toolchain\tools\planes\planes.py' 'el indice de lo que falta' `
     'planes: el indice y los planes no dicen lo mismo (se arregla con --apply)'
+# ** QUIEN ESCRIBE CADA `static mut` DEL USB (2026-09-18, PLAN_EL_BUS_APARTE
+# A0.3). El bus quiere su propio nucleo, y la primera pregunta --cuales de
+# sus 57 estaticos tocan los dos lados-- no tenia respuesta sin leer el codigo
+# entero. Ahora cada uno lo dice en su linea, uno nuevo sin decirlo para el
+# build, y `ambos` es un trinquete. Ver toolchain/tools/escritores/escritores.py
+Guardian 'Validating every USB static says who writes it' `
+    'toolchain\tools\escritores\escritores.py' 'los escritores del USB' `
+    'escritores: un static mut del USB no dice quien lo escribe, o `ambos` subio (ver arriba)'
 Guardian 'Validating compiler warnings do not grow' `
     'toolchain\tools\avisos\avisos.py' 'los avisos del compilador' `
     'avisos: los avisos del compilador SUBIERON (ver arriba)'

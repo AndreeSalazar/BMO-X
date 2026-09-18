@@ -65,7 +65,7 @@ static PUMPING: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool:
 
 /// El tid del hilo del bus, y `None` mientras no exista (en el arranque, o si
 /// no hubo ranura). Lo preguntan [`soy_el_hilo_del_bus`] y [`hay_hilo`].
-static mut BUS_TID: Option<u32> = None;
+static mut BUS_TID: Option<u32> = None; // [escribe] arranque
 
 /// **Estoy corriendo EN el hilo del bus?** (2026-09-18)
 ///
@@ -91,10 +91,26 @@ pub(super) fn hay_hilo() -> bool {
 
 /// How many turns the bus thread has taken. If this stops rising the thread died
 /// or never started -- and the keyboard depends on somebody asking again.
-static mut BUS_TURNS: u64 = 0;
+static mut BUS_TURNS: u64 = 0; // [escribe] bus
 /// How many times the pump was found already running. A high number is not a
 /// failure: it is the thread and a syscall asking at the same time.
-static mut PUMP_OVERLAPS: u64 = 0;
+static mut PUMP_OVERLAPS: u64 = 0; // [escribe] ambos
+
+/// Bombeos que un syscall NO hizo porque el hilo del bus esta vivo (A0.2 de
+/// PLAN_EL_BUS_APARTE, 2026-09-18): el escritorio solo drena. Si el hilo
+/// lleva mas de [`LATIDO_MUERTO_MS`] sin latir, el syscall vuelve a bombear
+/// el solo, como antes, y eso es el rescate.
+static mut PUMP_CEDIDOS: u64 = 0; // [escribe] escritorio
+
+/// Un segundo sin latido = el hilo del bus esta caido o colgado, y quien
+/// pida teclas bombea por su cuenta. Mientras late, no. Es 250 veces el
+/// periodo: una enumeracion que duerme (250 ms) no lo alcanza.
+const LATIDO_MUERTO_MS: u64 = 1000;
+
+/// Cuantos bombeos cedio un syscall al hilo. Para el panel.
+pub fn bombeos_cedidos() -> u64 {
+    unsafe { PUMP_CEDIDOS }
+}
 
 // == *** EL RITMO SE MIDE CONTRA UN RELOJ, NO CONTRA EL TRABAJO (2026-09-07) ==
 //
@@ -146,15 +162,15 @@ static mut PUMP_OVERLAPS: u64 = 0;
 
 /// **Cuando VENCE el proximo latido**, en TSC absoluto. Cero mientras no se haya
 /// anclado el reloj, que ocurre en la primera vuelta.
-static mut PROXIMO: u64 = 0;
+static mut PROXIMO: u64 = 0; // [escribe] bus
 /// Latidos que llegaron DESPUES de su hora.
-static mut LATIDOS_TARDE: u64 = 0;
+static mut LATIDOS_TARDE: u64 = 0; // [escribe] bus
 /// Turnos ENTEROS que cabian en el retraso y no se dieron. Esta es la fila que
 /// duele: `LATIDOS_TARDE` dice que hubo retraso, esta dice cuanto bus se perdio.
-static mut LATIDOS_PERDIDOS: u64 = 0;
+static mut LATIDOS_PERDIDOS: u64 = 0; // [escribe] bus
 /// El peor retraso visto, en milisegundos. Un maximo y no una media: una media
 /// de latencias esconde justo el pico que el dueno nota con la mano.
-static mut PEOR_RETRASO_MS: u64 = 0;
+static mut PEOR_RETRASO_MS: u64 = 0; // [escribe] bus
 
 /// A partir de aqui un retraso deja de ser ruido y se dice en CABINA.
 ///
@@ -206,7 +222,7 @@ const NOMBRES: [&str; 8] = [
 ];
 
 /// Lo peor que ha tardado cada uno, en microsegundos. **Desde el arranque.**
-static mut PEOR_US: [u64; 8] = [0; 8];
+static mut PEOR_US: [u64; 8] = [0; 8]; // [escribe] bombeo
 
 // == *** UN MAXIMO QUE NO CADUCA NO SABE DECIR "AHORA" (2026-09-09) =========
 //
@@ -231,13 +247,13 @@ static mut PEOR_US: [u64; 8] = [0; 8];
 // ventana, porque la pregunta que se hace mirando la barra es *"esta pasando?"*.
 
 /// Lo peor de cada uno DENTRO de la ventana que se esta midiendo.
-static mut PEOR_VENTANA: [u64; 8] = [0; 8];
+static mut PEOR_VENTANA: [u64; 8] = [0; 8]; // [escribe] bombeo
 
 /// Lo peor de la ULTIMA ventana cerrada. Es lo que se publica.
-static mut PEOR_PUBLICO: [u64; 8] = [0; 8];
+static mut PEOR_PUBLICO: [u64; 8] = [0; 8]; // [escribe] bombeo
 
 /// TSC del principio de la ventana en curso. Cero = todavia no arranco.
-static mut VENTANA_T0: u64 = 0;
+static mut VENTANA_T0: u64 = 0; // [escribe] bombeo
 
 /// **Cierra la ventana si ya paso un segundo.** Se llama al final de la vuelta.
 ///
@@ -370,7 +386,7 @@ fn anota(i: usize, desde: u64, por_us: u64) -> u64 {
 ///
 /// Lo pone el hilo y solo el hilo: bombear desde un syscall NO es un latido. Si
 /// esto se queda quieto, E1 esta caida aunque el bus siga avanzando a ratos.
-static mut ULTIMO_LATIDO: u64 = 0;
+static mut ULTIMO_LATIDO: u64 = 0; // [escribe] bus
 
 /// `(thread turns, overlapped pumps)`. For the panel.
 pub fn bus_stats() -> (u64, u64) {
@@ -388,6 +404,22 @@ pub fn ultimo_latido() -> u64 {
 /// **This is the only place that calls `bombear_interno`.**
 pub(super) fn pump_bus() {
     use crate::ring0::mm::vmm;
+    // ** EL BUS LO BOMBEA SU HILO; EL ESCRITORIO SOLO DRENA (A0.2, 18-09).
+    //
+    // Hasta hoy un syscall que pedia teclas bombeaba el bus entero: sondeo,
+    // reparto, y el SET_REPORT de los LEDs -- un control transfer al teclado
+    // desde el nucleo del escritorio, con dos cambios de CR3 por fotograma.
+    // Con el hilo vivo, nada de eso hace falta: late cada 4 ms y las colas
+    // (`bmo-cola`) ya estan llenas cuando el syscall llega. Y el dia que el
+    // bus viva en otro nucleo, esto es lo que impide que dos nucleos toquen
+    // el xHC: el escritorio ya no lo toca.
+    //
+    // Si el hilo deja de latir un segundo, el syscall vuelve a bombear: es el
+    // rescate de siempre, y se cuenta aparte para que se vea.
+    if hay_hilo() && !soy_el_hilo_del_bus() && super::salud::edad_latido_ms() < LATIDO_MUERTO_MS {
+        unsafe { PUMP_CEDIDOS = PUMP_CEDIDOS.wrapping_add(1) };
+        return;
+    }
     if PUMPING.swap(true, core::sync::atomic::Ordering::AcqRel) {
         unsafe { PUMP_OVERLAPS = PUMP_OVERLAPS.wrapping_add(1) };
         return;

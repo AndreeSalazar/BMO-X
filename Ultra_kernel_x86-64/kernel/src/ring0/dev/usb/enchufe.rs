@@ -236,11 +236,11 @@ const BARRIDO_PERIODO_MS: u64 = 500;
 /// TSC del ultimo barrido. En cero al arrancar, y eso hace que el primer bombeo
 /// barra -- que es justo cuando mas falta hace: el firmware acaba de soltar el
 /// bus y `init()` solo lo recorrio una vez.
-static mut BARRIDO_ULTIMO: u64 = 0;
+static mut BARRIDO_ULTIMO: u64 = 0; // [escribe] bus
 /// Cuantos barridos se han hecho y cuantos repararon algo. Para el panel: si el
 /// primero sube y el segundo no, el bus esta sano.
-static mut BARRIDOS: u64 = 0;
-static mut BARRIDOS_UTILES: u64 = 0;
+static mut BARRIDOS: u64 = 0; // [escribe] bus
+static mut BARRIDOS_UTILES: u64 = 0; // [escribe] bus
 
 /// `(barridos hechos, barridos que repararon algo)`.
 pub fn barrido_stats() -> (u64, u64) {

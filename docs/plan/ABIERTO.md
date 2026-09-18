@@ -7,8 +7,8 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   301 casillas ABIERTAS en 35 planes
-   201 hechas
+   298 casillas ABIERTAS en 35 planes
+   204 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -71,15 +71,6 @@
 - [ ] o que el kernel sepa reabrir un fichero para reescribirlo sin
 - ... y 9 mas
 
-## [`PLAN_EL_BUS_APARTE.md`](PLAN_EL_BUS_APARTE.md) -- 12 abiertas, 7 hechas
-
-*PLAN EL BUS APARTE -- el USB en su propio nucleo, y lo que hay que pagar antes*
-
-- [ ] pendiente [~] a medias, y se dice cuanto [x] hecho, con fecha
-- [ ] A0.1 -- el radar de CABINA (cabina/radar.rs) suma en static mut
-- [ ] A0.2 -- set_leds deja de ser un control transfer desde el escritorio:
-- ... y 9 mas
-
 ## [`PLAN_EL_COMPAS.md`](PLAN_EL_COMPAS.md) -- 12 abiertas, 0 hechas
 
 *PLAN EL COMPAS -- el quantum se retira, y el turno se CONCEDE*
@@ -114,6 +105,15 @@
 - [ ] el DIRECTOR le dice el hueco: una ranura de buzon con bit propio
 - [ ] la app puede REEMPLAZAR su superficie: hoy una segunda oferta del
 - [ ] DOOM elige escala con el hueco, como ya hace al tomar la pantalla
+- ... y 6 mas
+
+## [`PLAN_EL_BUS_APARTE.md`](PLAN_EL_BUS_APARTE.md) -- 9 abiertas, 10 hechas
+
+*PLAN EL BUS APARTE -- el USB en su propio nucleo, y lo que hay que pagar antes*
+
+- [ ] pendiente [~] a medias, y se dice cuanto [x] hecho, con fecha
+- [ ] A1.1 -- PER_CPUS[i] para un AP: GS con su ficha, TSS con pila de
+- [ ] A1.2 -- la prueba: una parte del catalogo que hace ud2 a proposito en
 - ... y 6 mas
 
 ## [`PLAN_EL_CODEGEN.md`](PLAN_EL_CODEGEN.md) -- 9 abiertas, 0 hechas

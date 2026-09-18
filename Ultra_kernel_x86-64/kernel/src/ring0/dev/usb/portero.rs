@@ -100,13 +100,13 @@ struct Ficha {
 const VACIA: Ficha =
     Ficha { vid: 0, pid: 0, puerto: 0, iface: 0, clase: 0, subclase: 0, proto: 0, veredicto: 0, detalle: 0 };
 
-static mut LIBRO: [Ficha; FICHAS] = [VACIA; FICHAS];
+static mut LIBRO: [Ficha; FICHAS] = [VACIA; FICHAS]; // [escribe] bombeo
 /// Cuantas fichas hay escritas. Se detiene en `FICHAS`: ver [`apunta`].
-static mut ESCRITAS: usize = 0;
+static mut ESCRITAS: usize = 0; // [escribe] bombeo
 /// Llegadas que no cupieron. Un cero aqui dice que el libro esta entero.
-static mut SIN_SITIO: u64 = 0;
-static mut ADMITIDOS: u64 = 0;
-static mut RECHAZADOS: u64 = 0;
+static mut SIN_SITIO: u64 = 0; // [escribe] bombeo
+static mut ADMITIDOS: u64 = 0; // [escribe] bombeo
+static mut RECHAZADOS: u64 = 0; // [escribe] bombeo
 
 /// `(admitidos, rechazados, llegadas que no cupieron)`.
 pub fn stats() -> (u64, u64, u64) {

@@ -152,7 +152,7 @@ const AL_ENDPOINT_DE_CLASE: u8 = 0x22;
 const CTRL_FRECUENCIA: u16 = 0x0100;
 
 /// Lo que quedo abierto, para que el bucle que alimente el tubo lo encuentre.
-static mut TUBO: Option<Tubo> = None;
+static mut TUBO: Option<Tubo> = None; // [escribe] ambos
 
 /// **Un tubo de audio abierto.** Todo lo que hace falta para empujar muestras.
 #[derive(Clone, Copy)]
@@ -309,10 +309,10 @@ pub fn abrir(slot: u8, p: &bmo_uaudio::stream::Playback) -> bool {
 /// El silencio es el mismo silencio: no hace falta un bufer por trama. Cuando
 /// haya musica de verdad esto pasa a ser un anillo de bufers prestados (A4), y
 /// **esa es la unica diferencia** entre este bucle y el definitivo.
-static mut CEROS: u64 = 0;
+static mut CEROS: u64 = 0; // [escribe] ambos
 
 /// Esta el tubo empujando?
-static mut ARMADO: bool = false;
+static mut ARMADO: bool = false; // [escribe] escritorio
 
 /// **Cuantas tramas se encolan en cada latido del bus.**
 ///
@@ -435,7 +435,7 @@ pub fn cuentas() -> (u64, u64) {
 ///
 /// Sin separarlas, un audio que chasquea manda a mirar el driver cuando la mitad
 /// de las veces el que llega tarde es quien produce las muestras.
-static mut HUECOS: u64 = 0;
+static mut HUECOS: u64 = 0; // [escribe] bombeo
 
 /// Cuantas tramas salieron en silencio por falta de muestras.
 pub fn huecos() -> u64 {
@@ -486,11 +486,11 @@ struct Prestado {
     leido: u64,
 }
 
-static mut PRESTADO: Option<Prestado> = None;
+static mut PRESTADO: Option<Prestado> = None; // [escribe] ambos
 
 /// Tramas que el juez del DMA VETO. **Tiene que ser CERO**: cada una es un
 /// tramo que se salia del bufer que la app presto, y que el xHC habria leido.
-static mut VETOS: u64 = 0;
+static mut VETOS: u64 = 0; // [escribe] escritorio
 
 /// La cuenta de los vetos, para quien la quiera ensenar.
 pub fn vetos_dma() -> u64 {
