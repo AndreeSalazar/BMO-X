@@ -178,6 +178,22 @@ impl XhciHal for KernelXhciHal {
     fn delay_ms(&self, ms: u64) {
         delay_ms(ms);
     }
+    /// En el hilo del bus, un respiro es dormir un milisegundo: el reloj
+    /// late a 1 kHz y `park_until` suelta el nucleo al escritorio. Fuera del
+    /// hilo no hay a quien cederlo sin romper algo, y se gira como siempre.
+    fn respirar(&self) -> bool {
+        if !bus::soy_el_hilo_del_bus() {
+            return false;
+        }
+        let f = crate::ring0::task::scheduler::tsc_freq();
+        if f == 0 {
+            return false;
+        }
+        crate::ring0::task::scheduler::park_until(
+            crate::ring0::task::scheduler::rdtsc().saturating_add(f / 1000),
+        );
+        true
+    }
     /// **EL PORTERO.** El driver ya tenia el veredicto; hasta hoy solo lo
     /// mandaba al log, que se va con el scroll. Ver `portero.rs`.
     fn papeles(

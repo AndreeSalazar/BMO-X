@@ -56,6 +56,17 @@ pub trait XhciHal {
         }
     }
 
+    /// **Un respiro mientras se espera al controlador** (2026-09-18): quien
+    /// implementa el HAL puede DORMIR ~1 ms aqui y devolver `true`; si no
+    /// tiene donde dormir --tests, o un contexto que no puede ceder--
+    /// devuelve `false` y el que espera sigue girando. Lo llama
+    /// `evt_poll_block` cuando el controlador lleva medio milisegundo sin
+    /// contestar: lo normal contesta antes, y lo anormal --un aparato que
+    /// hace NAK sin fin-- no merece un nucleo entero girando hasta el plazo.
+    fn respirar(&self) -> bool {
+        false
+    }
+
     /// **LOS PAPELES DE UN APARATO QUE LLEGO, Y QUE SE LE CONTESTO.**
     ///
     /// El driver ya miraba clase, subclase y protocolo de cada interfaz -- y los
@@ -468,6 +479,13 @@ unsafe fn evt_poll_block(
     ctrl: &mut XhciController,
     esp: Espera,
 ) -> Option<(u32, u32, u32, u32)> {
+    // El plazo: 500.000 miradas al anillo girando (decenas de ms), o, si el
+    // HAL sabe dormir, 4.000 girando (~medio ms: lo que un controlador sano
+    // tarda en contestar) y despues 100 respiros de ~1 ms. Ver `respirar`.
+    const GIRANDO: u32 = 4_000;
+    const RESPIROS: u32 = 100;
+    let mut vacias = 0u32;
+    let mut respiros = 0u32;
     for _ in 0..500000 {
         if let Some(ev) = desaparcar_que_cuadre(esp) {
             return Some(ev);
@@ -490,7 +508,17 @@ unsafe fn evt_poll_block(
                 }
                 aparcar(ev);
             }
-            None => core::hint::spin_loop(),
+            None => {
+                vacias += 1;
+                if vacias >= GIRANDO && hal().respirar() {
+                    respiros += 1;
+                    if respiros >= RESPIROS {
+                        return None;
+                    }
+                } else {
+                    core::hint::spin_loop();
+                }
+            }
         }
     }
     None
