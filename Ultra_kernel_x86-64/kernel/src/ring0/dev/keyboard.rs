@@ -269,28 +269,21 @@ enum Out {
 // pierden" -- escribir rapido se comia letras. Ahora todo entra en esta cola y
 // el shell la vacia a su ritmo.
 
+//
+// ** Y es una `bmo_cola::Cola` desde el 2026-09-18 (PLAN_EL_BUS_APARTE, A0):
+// la llena el hilo del bus y la vacia el escritorio desde su syscall, y el
+// dia que el bus viva en otro nucleo cada lado tiene que tocar solo su
+// indice. La politica es la que ya era: llena, se descarta lo nuevo.
 const OUT_MAX: usize = 32;
-static mut OUT_BUF: [u8; OUT_MAX] = [0; OUT_MAX];
-static mut OUT_R: usize = 0;
-static mut OUT_W: usize = 0;
+static OUT: bmo_cola::Cola<u8, OUT_MAX> = bmo_cola::Cola::nueva(0);
 
 fn push_out(b: u8) {
-    unsafe {
-        let next = (OUT_W + 1) % OUT_MAX;
-        if next == OUT_R { return; } // cola llena: se descarta lo nuevo
-        OUT_BUF[OUT_W] = b;
-        OUT_W = next;
-    }
+    OUT.empujar(b);
 }
 
 /// Saca el siguiente caracter pendiente, si lo hay.
 pub fn pop_out() -> Option<u8> {
-    unsafe {
-        if OUT_R == OUT_W { return None; }
-        let b = OUT_BUF[OUT_R];
-        OUT_R = (OUT_R + 1) % OUT_MAX;
-        Some(b)
-    }
+    OUT.sacar()
 }
 
 /// Signo muerto pendiente (0 = ninguno).

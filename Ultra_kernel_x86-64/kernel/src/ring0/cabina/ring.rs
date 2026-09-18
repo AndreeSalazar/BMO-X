@@ -15,6 +15,7 @@
 //! BootContext check and the shell, the ring already holds what happened.
 
 use super::*;
+use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 // -- Buffer de EVENTOS: la grabadora -----------------------------------------
 // Ring de eventos con severidad/capa/entidad. `cabina-core::Event` ya trae
@@ -23,10 +24,17 @@ use super::*;
 pub(crate) const EVENT_RING: usize = 48;
 pub(crate) static mut EVENTS: [Event; EVENT_RING] = [Event::ZERO; EVENT_RING];
 pub(crate) static mut EV_WRITE: usize = 0;
-pub(crate) static mut EV_SEQ: u64 = 0;
+pub(crate) static EV_SEQ: AtomicU64 = AtomicU64::new(0);
 pub(crate) static mut EV_TOTAL: u64 = 0;
-pub(crate) static mut EV_LOST: u64 = 0;
-pub(crate) static mut BUSY: bool = false;
+pub(crate) static EV_LOST: AtomicU64 = AtomicU64::new(0);
+/// El cerrojo del anillo. Era un `bool` y bastaba: con `cli` puesto, en un
+/// nucleo solo una excepcion puede entrar encima. Desde el 2026-09-18 es
+/// atomico y se toma con `compare_exchange` (A0 de PLAN_EL_BUS_APARTE): el
+/// dia que el hilo del bus escriba CABINA desde otro nucleo, `cli` no lo
+/// para, y dos escritores en el mismo hueco es un evento con la mitad de
+/// cada uno. Sigue sin girar: si esta tomado, se cuenta como perdido y se
+/// sale, igual que antes.
+pub(crate) static BUSY: AtomicBool = AtomicBool::new(false);
 
 #[inline]
 pub(crate) fn irq_save() -> u64 {
@@ -95,17 +103,17 @@ pub fn record_fmt(sev: Severity, module: &str, msg: &str, value: u64, fmt: Fmt) 
         // ** Y el `seq` se le pasa YA sumado, porque el que genera la serie es
         // el anillo. Dos sitios generando numeros de secuencia son dos series
         // que se separan. Ver `cabina/radar.rs`.
-        EV_SEQ = EV_SEQ.wrapping_add(1);
-        super::radar::apunta(sev, layer, EV_SEQ);
+        let seq = EV_SEQ.fetch_add(1, Ordering::AcqRel).wrapping_add(1);
+        super::radar::apunta(sev, layer, seq);
 
-        // Reentrancia (excepcion a media escritura): contar y salir. Nunca
-        // dejar el anillo a medio escribir ni girar en un lock imposible.
-        if BUSY {
-            EV_LOST = EV_LOST.wrapping_add(1);
+        // Reentrancia (excepcion a media escritura) o el otro nucleo: contar
+        // y salir. Nunca dejar el anillo a medio escribir ni girar en un lock
+        // imposible.
+        if BUSY.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_err() {
+            EV_LOST.fetch_add(1, Ordering::Relaxed);
             irq_restore(flags);
             return;
         }
-        BUSY = true;
 
         let mut ev = Event::new(sev, layer, Entity::Module, module, 0, msg, value)
             .en(sitio.file(), sitio.line())
@@ -114,14 +122,14 @@ pub fn record_fmt(sev: Severity, module: &str, msg: &str, value: u64, fmt: Fmt) 
         // Ya lo sumo el barrido, arriba. El evento y su cuenta llevan el MISMO
         // numero, que es lo que permite preguntar despues si este todavia se
         // puede leer.
-        ev.seq = EV_SEQ;
+        ev.seq = seq;
         ev.tick_ns = crate::ring0::reloj::ticks();
         let arr = core::ptr::addr_of_mut!(EVENTS) as *mut Event;
         core::ptr::write(arr.add(EV_WRITE), ev);
         EV_WRITE = (EV_WRITE + 1) % EVENT_RING;
         EV_TOTAL = EV_TOTAL.wrapping_add(1);
 
-        BUSY = false;
+        BUSY.store(false, Ordering::Release);
     }
     irq_restore(flags);
     // ** Y TAMBIEN A LA CAJA NEGRA EN RAM, como texto (2026-09-11).

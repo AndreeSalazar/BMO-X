@@ -51,6 +51,10 @@ members = [
     "platform/shared/bmo-dma-forma",
     "platform/shared/bmo-dma-juicio",
     "platform/shared/bmo-channel",
+    # LA COLA de un productor y un consumidor en nucleos distintos (18-09):
+    # las teclas y los caracteres cruzan del hilo del bus al escritorio por
+    # aqui. Paso A0 de docs/plan/PLAN_EL_BUS_APARTE.md; se prueba con dos hilos.
+    "platform/shared/bmo-cola",
     # La ciudad de neon del arranque: la dibuja la CPU, no se guarda.
     "platform/shared/bmo-ciudad",
     # El rasterizador de referencia y el LIENZO. Vivia en Ring 3, y por eso el

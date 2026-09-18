@@ -107,6 +107,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-cola"
+version = "0.1.0"
+
+[[package]]
 name = "bmo-config"
 version = "0.1.0"
 dependencies = [
@@ -295,6 +299,7 @@ dependencies = [
  "bmo-carga-juicio",
  "bmo-channel",
  "bmo-ciudad",
+ "bmo-cola",
  "bmo-dibujo",
  "bmo-disco-juicio",
  "bmo-dma-forma",

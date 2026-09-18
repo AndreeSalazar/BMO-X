@@ -25,6 +25,7 @@ use bmo_input::event::{InputEvent, InputEventKind};
 use bmo_input::hal::InputHal;
 use bmo_uhid::UsbHidHal;
 use bmo_xhci::XhciHal;
+use core::sync::atomic::{AtomicI32, AtomicU32, AtomicU8, Ordering};
 
 use crate::ring0::dev::console::serial_write;
 use crate::ring0::mm::{self, phys};
@@ -340,16 +341,20 @@ static mut KBD_RDY: bool = false;
 static mut MOUSE_RDY: bool = false;
 static mut KBD_SLOT: u8 = 0;
 static mut MOUSE_SLOT: u8 = 0;
-static mut MOUSE_EVENTS: u32 = 0;   // no de reportes de movimiento/boton vistos
-static mut MOUSE_X: i32 = 0;        // posicion acumulada (relativa) X
-static mut MOUSE_Y: i32 = 0;        // posicion acumulada (relativa) Y
-static mut MOUSE_BTN: u8 = 0;       // bitmap de botones actual
-static mut KEY_EVENTS: u32 = 0;     // no de teclas imprimibles entregadas
+// ** LA FRONTERA ENTRE EL BUS Y EL ESCRITORIO ES ATOMICA (2026-09-18, A0 de
+// PLAN_EL_BUS_APARTE): esto lo escribe el hilo del bus y lo lee el escritorio
+// desde su syscall. Hoy es el mismo nucleo; el dia que no lo sea, un `i32`
+// a medio escribir es un puntero que salta. Cuesta lo mismo y no miente.
+static MOUSE_EVENTS: AtomicU32 = AtomicU32::new(0); // no de reportes de movimiento/boton vistos
+static MOUSE_X: AtomicI32 = AtomicI32::new(0);      // posicion acumulada (relativa) X
+static MOUSE_Y: AtomicI32 = AtomicI32::new(0);      // posicion acumulada (relativa) Y
+static MOUSE_BTN: AtomicU8 = AtomicU8::new(0);      // bitmap de botones actual
+static KEY_EVENTS: AtomicU32 = AtomicU32::new(0);   // no de teclas imprimibles entregadas
 static mut FIRST_KEY: bool = false;   // ya se grabo la primera tecla en CABINA?
 static mut FIRST_MOUSE: bool = false; // idem para el primer movimiento de mouse
 /// Vueltas de rueda acumuladas desde la ultima lectura. Se vacia al leerlo.
-static mut MOUSE_WHEEL: i32 = 0;
-static mut HID_EVENTS: u32 = 0;     // no TOTAL de InputEvents de hid.poll (kbd+mouse)
+static MOUSE_WHEEL: AtomicI32 = AtomicI32::new(0);
+static HID_EVENTS: AtomicU32 = AtomicU32::new(0);   // no TOTAL de InputEvents de hid.poll (kbd+mouse)
 
 
 /// **EL PUNTERO EMPIEZA EN EL CENTRO.**
@@ -374,10 +379,8 @@ pub fn centrar_puntero() {
         crate::ring0::cabina::warn("usb", "sin panel: el puntero se queda donde estaba", 0);
         return;
     }
-    unsafe {
-        MOUSE_X = (w / 2) as i32;
-        MOUSE_Y = (h / 2) as i32;
-    }
+    MOUSE_X.store((w / 2) as i32, Ordering::Relaxed);
+    MOUSE_Y.store((h / 2) as i32, Ordering::Relaxed);
 }
 
 /// Se inicializo un teclado USB?
@@ -517,7 +520,7 @@ fn bombear_interno() {
         olvidar_estado_de_teclado("aparato reiniciado por errores: se olvida lo pulsado");
         unsafe { refrescar_presencia() };
     }
-    unsafe { HID_EVENTS = HID_EVENTS.wrapping_add(n as u32); }
+    HID_EVENTS.fetch_add(n as u32, Ordering::Relaxed);
     repartir_eventos(&evs[..n]);
 }
 
@@ -615,25 +618,31 @@ fn repartir_eventos(evs: &[InputEvent]) {
                     crate::info::FB_WIDTH.max(1) as i32 - 1,
                     crate::info::FB_HEIGHT.max(1) as i32 - 1,
                 );
-                MOUSE_X = MOUSE_X.saturating_add(ev.mouse_dx() as i32).clamp(0, ancho);
-                MOUSE_Y = MOUSE_Y.saturating_add(ev.mouse_dy() as i32).clamp(0, alto);
-                MOUSE_EVENTS = MOUSE_EVENTS.wrapping_add(1);
+                // Un solo escritor (el bus): leer, sumar, recortar, guardar.
+                // `centrar_puntero` tambien escribe, una vez, desde el otro
+                // lado; si coinciden, gana el ultimo y el puntero se centra
+                // un movimiento mas tarde.
+                let x = MOUSE_X.load(Ordering::Relaxed).saturating_add(ev.mouse_dx() as i32).clamp(0, ancho);
+                let y = MOUSE_Y.load(Ordering::Relaxed).saturating_add(ev.mouse_dy() as i32).clamp(0, alto);
+                MOUSE_X.store(x, Ordering::Relaxed);
+                MOUSE_Y.store(y, Ordering::Relaxed);
+                MOUSE_EVENTS.fetch_add(1, Ordering::Relaxed);
                 if !FIRST_MOUSE {
                     FIRST_MOUSE = true;
                     crate::ring0::cabina::info("usb", "primer movimiento de mouse recibido", 0);
                 }
             },
-            InputEventKind::MouseButton => unsafe {
-                MOUSE_BTN = ev.mouse_buttons();
-                MOUSE_EVENTS = MOUSE_EVENTS.wrapping_add(1);
-            },
+            InputEventKind::MouseButton => {
+                MOUSE_BTN.store(ev.mouse_buttons(), Ordering::Relaxed);
+                MOUSE_EVENTS.fetch_add(1, Ordering::Relaxed);
+            }
             // * El delta de la rueda se TIRABA: solo se contaba el evento.
             // Otro valor que el sistema tenia y no decia. Se acumula y se
             // entrega al leerlo, que es como se consume un evento.
-            InputEventKind::MouseWheel => unsafe {
-                MOUSE_WHEEL = MOUSE_WHEEL.saturating_add(ev.mouse_wheel_delta() as i32);
-                MOUSE_EVENTS = MOUSE_EVENTS.wrapping_add(1);
-            },
+            InputEventKind::MouseWheel => {
+                MOUSE_WHEEL.fetch_add(ev.mouse_wheel_delta() as i32, Ordering::Relaxed);
+                MOUSE_EVENTS.fetch_add(1, Ordering::Relaxed);
+            }
         }
     }
 

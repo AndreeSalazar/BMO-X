@@ -1,0 +1,13 @@
+[package]
+name = "bmo-cola"
+version = "0.1.0"
+edition = "2021"
+description = "La cola de UN productor y UN consumidor que pueden estar en nucleos distintos"
+license = "Apache-2.0"
+
+[lib]
+
+# ** CERO DEPENDENCIAS, igual que sus hermanos de `platform/shared`: la
+# consumen el kernel (sin asignador) y `cargo test` en el anfitrion. Lo unico
+# que necesita son los atomicos de `core`.
+[dependencies]

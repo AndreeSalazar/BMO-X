@@ -1,14 +1,14 @@
 <!-- GENERADO por toolchain/tools/planes. No se edita a mano. -->
 
-# LO QUE FALTA -- las casillas abiertas de los 37 planes
+# LO QUE FALTA -- las casillas abiertas de los 38 planes
 
 > Generado por `toolchain/tools/planes`. **El build comprueba que
 > este fichero y los planes dicen lo mismo**, asi que no puede
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   289 casillas ABIERTAS en 34 planes
-   194 hechas
+   301 casillas ABIERTAS en 35 planes
+   201 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -69,6 +69,15 @@
 - [ ] un programa recibe QUE abrir: MI_DOCUMENTO, hermano de MI_PAQUETE
 - [ ] y decidir si viaja como DERECHO (capability) o como NOMBRE, sabiendo
 - [ ] o que el kernel sepa reabrir un fichero para reescribirlo sin
+- ... y 9 mas
+
+## [`PLAN_EL_BUS_APARTE.md`](PLAN_EL_BUS_APARTE.md) -- 12 abiertas, 7 hechas
+
+*PLAN EL BUS APARTE -- el USB en su propio nucleo, y lo que hay que pagar antes*
+
+- [ ] pendiente [~] a medias, y se dice cuanto [x] hecho, con fecha
+- [ ] A0.1 -- el radar de CABINA (cabina/radar.rs) suma en static mut
+- [ ] A0.2 -- set_leds deja de ser un control transfer desde el escritorio:
 - ... y 9 mas
 
 ## [`PLAN_EL_COMPAS.md`](PLAN_EL_COMPAS.md) -- 12 abiertas, 0 hechas

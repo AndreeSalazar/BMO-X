@@ -17,9 +17,11 @@
 //! letra se escribio: pregunta si la flecha abajo esta pulsada AHORA**. Sin el
 //! soltar, quien anda no para nunca.
 //!
-//! [!] Y si la cola cruda se llena se tira **lo mas VIEJO**, no lo nuevo: tirar
-//! lo nuevo dejaria entregado un `pulsar` cuyo `soltar` no llega, y el juego se
-//! quedaria andando solo.
+//! [!] Y si la cola cruda se llena se tira lo NUEVO y se cuenta (2026-09-18).
+//! Tiraba lo viejo --para no perder un `soltar`-- moviendo el indice del
+//! consumidor desde el productor, y eso es lo unico que una cola entre dos
+//! nucleos no puede hacer. Las dos politicas pierden lo mismo al llenarse;
+//! la respuesta es que `perdidos` sea cero. Ver `bmo-cola`.
 //!
 //! ** El reparto es MOVER TEXTO (L6d): ni una linea cambia de contenido.
 
@@ -41,32 +43,23 @@ use super::*;
 // sondeo -- no hay dos lectores del bus.
 //
 // 64 entries: un informe boot trae hasta 6 teclas y el sondeo va por
-// fotograma. Si se llena, se tira **lo mas VIEJO** y se cuenta. Tirar lo nuevo
-// seria peor de una forma concreta: se perderia el `soltar` de una tecla cuyo
-// `pulsar` ya se entrego, y el juego se quedaria andando solo.
+// fotograma. Si se llena, se tira lo nuevo y se cuenta (`perdidos`): si ese
+// numero sube, el consumidor no drena lo bastante rapido, y es un numero, no
+// una sospecha.
+//
+// ** ES UNA `bmo_cola::Cola` desde el 2026-09-18 (PLAN_EL_BUS_APARTE, A0):
+// el productor es el hilo del bus y el consumidor el escritorio desde su
+// syscall, y el dia que el bus viva en otro nucleo esto tiene que seguir
+// siendo verdad sin cerrojo. Cada lado toca solo su indice.
 const EVENTOS_CRUDOS: usize = 64;
-static mut CRUDOS: [u16; EVENTOS_CRUDOS] = [0; EVENTOS_CRUDOS];
-static mut CRUDOS_LEE: usize = 0;
-static mut CRUDOS_ESCRIBE: usize = 0;
-/// Cuantos se han tirado por cola llena. Si esto sube, el consumidor no esta
-/// drenando lo bastante rapido -- y es un numero, no una sospecha.
-static mut CRUDOS_PERDIDOS: u32 = 0;
+static CRUDOS: bmo_cola::Cola<u16, EVENTOS_CRUDOS> = bmo_cola::Cola::nueva(0);
+/// El productor no puede vaciar la cola (seria mover el indice del
+/// consumidor): la PIDE vaciar, y el consumidor lo hace en su siguiente
+/// lectura. Ver `vaciar_cola_cruda`.
+static VACIAR_CRUDA: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 
 pub(crate) fn empujar_evento(scancode: u8, pulsada: bool) {
-    unsafe {
-        let siguiente = (CRUDOS_ESCRIBE + 1) % EVENTOS_CRUDOS;
-        if siguiente == CRUDOS_LEE {
-            // Llena: se tira la mas vieja para hacer sitio.
-            CRUDOS_LEE = (CRUDOS_LEE + 1) % EVENTOS_CRUDOS;
-            CRUDOS_PERDIDOS = CRUDOS_PERDIDOS.saturating_add(1);
-        }
-        CRUDOS[CRUDOS_ESCRIBE] = if pulsada {
-            0x100 | scancode as u16
-        } else {
-            scancode as u16
-        };
-        CRUDOS_ESCRIBE = siguiente;
-    }
+    CRUDOS.empujar(if pulsada { 0x100 | scancode as u16 } else { scancode as u16 });
 }
 
 /// La siguiente tecla cruda: `Some((scancode Set 1, pulsada))`, o `None`.
@@ -94,14 +87,13 @@ pub fn evento_tecla() -> Option<(u8, bool)> {
 }
 
 fn sacar_crudo() -> Option<(u8, bool)> {
-    unsafe {
-        if CRUDOS_LEE == CRUDOS_ESCRIBE {
-            return None;
-        }
-        let v = CRUDOS[CRUDOS_LEE];
-        CRUDOS_LEE = (CRUDOS_LEE + 1) % EVENTOS_CRUDOS;
-        Some(((v & 0xFF) as u8, v & 0x100 != 0))
+    // Lo primero: si el bus pidio vaciar (un aparato se fue o llego), lo que
+    // hay es de ANTES y se tira aqui, que es donde esta el consumidor.
+    if VACIAR_CRUDA.swap(false, core::sync::atomic::Ordering::AcqRel) {
+        CRUDOS.vaciar();
     }
+    let v = CRUDOS.sacar()?;
+    Some(((v & 0xFF) as u8, v & 0x100 != 0))
 }
 
 /// Eventos crudos tirados por cola llena. Para el panel.
@@ -123,20 +115,20 @@ fn sacar_crudo() -> Option<(u8, bool)> {
 /// [!] Los perdidos NO se ponen a cero: son la bitacora de cuantos eventos se
 /// tiraron por saturacion desde el arranque, y esa cuenta es un sintoma que hay
 /// que poder seguir viendo crecer.
+///
+/// ** Y desde el 2026-09-18 esto NO vacia: lo PIDE. Quien llama es el hilo
+/// del bus --el productor-- y vaciar es mover el indice del consumidor. Se
+/// deja la peticion y `sacar_crudo` la cumple en la siguiente lectura, antes
+/// de entregar nada. Lo que devuelve es cuanto habia en ese instante: lo que
+/// se va a tirar, salvo lo que entre entre medias.
 pub fn vaciar_cola_cruda() -> u32 {
-    unsafe {
-        let habia = if CRUDOS_ESCRIBE >= CRUDOS_LEE {
-            CRUDOS_ESCRIBE - CRUDOS_LEE
-        } else {
-            EVENTOS_CRUDOS - CRUDOS_LEE + CRUDOS_ESCRIBE
-        };
-        CRUDOS_LEE = CRUDOS_ESCRIBE;
-        habia as u32
-    }
+    let habia = CRUDOS.cuantos() as u32;
+    VACIAR_CRUDA.store(true, core::sync::atomic::Ordering::Release);
+    habia
 }
 
 pub fn eventos_crudos_perdidos() -> u32 {
-    unsafe { CRUDOS_PERDIDOS }
+    CRUDOS.perdidos()
 }
 
 /// Esta activo el tercer nivel? AltGr, o el Ctrl+Alt al que acostumbra
@@ -222,8 +214,8 @@ pub(crate) fn repeat_held() {
 /// despues comparando contadores.
 pub(crate) fn drain() -> Option<u8> {
     let b = crate::ring0::dev::keyboard::pop_out()?;
+    KEY_EVENTS.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
     unsafe {
-        KEY_EVENTS = KEY_EVENTS.wrapping_add(1);
         if !FIRST_KEY {
             FIRST_KEY = true;
             crate::ring0::cabina::info("usb", "primera tecla recibida: el teclado WRITES", b as u64);
@@ -240,7 +232,8 @@ pub(crate) fn drain() -> Option<u8> {
 /// Lo que `KIND_INPUT` entrega a Ring 3. Son los deltas del HID ya acumulados;
 /// el recorte al panel lo hace `input.rs`, que es quien sabe de pantallas.
 pub fn puntero() -> (i32, i32, u8, u32) {
-    unsafe { (MOUSE_X, MOUSE_Y, MOUSE_BTN, MOUSE_EVENTS) }
+    use core::sync::atomic::Ordering::Relaxed;
+    (MOUSE_X.load(Relaxed), MOUSE_Y.load(Relaxed), MOUSE_BTN.load(Relaxed), MOUSE_EVENTS.load(Relaxed))
 }
 
 /// Las vueltas de rueda desde la ultima vez, y las pone a cero.
@@ -250,11 +243,9 @@ pub fn puntero() -> (i32, i32, u8, u32) {
 /// cada llamante a guardar el anterior y restar, y el primero que lo olvidara
 /// tendria un scroll que se va solo.
 pub fn rueda() -> i32 {
-    unsafe {
-        let v = MOUSE_WHEEL;
-        MOUSE_WHEEL = 0;
-        v
-    }
+    // `swap` y no leer-y-poner-a-cero: entre las dos el bus puede sumar una
+    // vuelta, y esa vuelta se perderia.
+    MOUSE_WHEEL.swap(0, core::sync::atomic::Ordering::AcqRel)
 }
 
 /// Vuelve a leer del driver quien hay y en que slot.

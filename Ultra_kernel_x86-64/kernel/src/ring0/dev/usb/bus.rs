@@ -58,7 +58,10 @@ use super::{bombear_interno, PRESENT};
 // [!] This is NOT SMP-safe and does not pretend to be: it holds because only the
 // BSP runs. The day an AP touches the bus, this flag is a race. Written down on
 // purpose instead of pretending otherwise.
-static mut PUMPING: bool = false;
+// Atomico desde el 2026-09-18 (A0): es el cerrojo que impide dos bombeos a la
+// vez, y un `bool` que se lee y se escribe en dos instrucciones no cierra
+// nada entre dos nucleos. `swap` lo toma o lo encuentra tomado, en una.
+static PUMPING: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
 
 /// El tid del hilo del bus, y `None` mientras no exista (en el arranque, o si
 /// no hubo ranura). Lo preguntan [`soy_el_hilo_del_bus`] y [`hay_hilo`].
@@ -385,12 +388,9 @@ pub fn ultimo_latido() -> u64 {
 /// **This is the only place that calls `bombear_interno`.**
 pub(super) fn pump_bus() {
     use crate::ring0::mm::vmm;
-    unsafe {
-        if PUMPING {
-            PUMP_OVERLAPS = PUMP_OVERLAPS.wrapping_add(1);
-            return;
-        }
-        PUMPING = true;
+    if PUMPING.swap(true, core::sync::atomic::Ordering::AcqRel) {
+        unsafe { PUMP_OVERLAPS = PUMP_OVERLAPS.wrapping_add(1) };
+        return;
     }
     // xHCI MMIO is only mapped in the kernel PML4. See the header of
     // [`poll_ascii`]: if we are already on the kernel one, this costs nothing.
@@ -426,7 +426,7 @@ pub(super) fn pump_bus() {
     if switched {
         vmm::switch_to(previous);
     }
-    unsafe { PUMPING = false };
+    PUMPING.store(false, core::sync::atomic::Ordering::Release);
 }
 
 /// How often the bus beats, in milliseconds.

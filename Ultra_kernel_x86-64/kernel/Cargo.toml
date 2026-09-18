@@ -31,6 +31,10 @@ bmo-disco-juicio = { path = "../../platform/shared/bmo-disco-juicio" }
 # EL JUEZ DEL DMA: se le puede dar esta direccion fisica a este aparato? Paso
 # N2 de docs/plan/PLAN_EL_NEUTRO_VIGILADO.md.
 bmo-dma-forma = { path = "../../platform/shared/bmo-dma-forma" }
+# LA COLA entre el hilo del bus y el escritorio: teclas y caracteres. Un
+# productor, un consumidor, y ninguno toca el indice del otro -- lo que hace
+# falta el dia que el bus viva en su propio nucleo (PLAN_EL_BUS_APARTE A0).
+bmo-cola = { path = "../../platform/shared/bmo-cola" }
 bmo-dma-juicio = { path = "../../platform/shared/bmo-dma-juicio" }
 # El FORMATO de TRIM: un rango de LBA convertido en descriptores de
 # `DATA SET MANAGEMENT`. Fuera del kernel por lo mismo que los dos de arriba --

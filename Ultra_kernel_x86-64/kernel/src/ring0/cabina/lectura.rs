@@ -14,7 +14,7 @@ use super::*;
 pub fn event_total() -> u64 { unsafe { EV_TOTAL } }
 /// Eventos perdidos por reentrancia. Deberia ser 0; si no lo es, algo falto
 /// durante un fault y la bitacora lo dice en vez de callarlo.
-pub fn event_lost() -> u64 { unsafe { EV_LOST } }
+pub fn event_lost() -> u64 { EV_LOST.load(core::sync::atomic::Ordering::Relaxed) }
 
 // =====================================================================
 //  CABINA A RING 3 -- mirar TODO sin poder tocar nada

@@ -12,9 +12,11 @@
 use super::*;
 
 pub fn hid_stats() -> (bool, bool, u8, u8, u32, i32, i32, u8, u32) {
+    use core::sync::atomic::Ordering::Relaxed;
     unsafe {
         (KBD_RDY, MOUSE_RDY, KBD_SLOT, MOUSE_SLOT,
-         MOUSE_EVENTS, MOUSE_X, MOUSE_Y, MOUSE_BTN, KEY_EVENTS)
+         MOUSE_EVENTS.load(Relaxed), MOUSE_X.load(Relaxed), MOUSE_Y.load(Relaxed),
+         MOUSE_BTN.load(Relaxed), KEY_EVENTS.load(Relaxed))
     }
 }
 
@@ -24,7 +26,7 @@ pub fn hid_stats() -> (bool, bool, u8, u8, u32, i32, i32, u8, u32) {
 /// ring/doorbell). Si TEV sube pero HEV no -> el evento no matchea al teclado.
 /// Si HEV sube pero kev no -> mapeo (ya no deberia tras el keypad).
 pub fn xfer_stats() -> (u32, u32, u32) {
-    (bmo_xhci::xfer_events(), bmo_xhci::raw_events(), unsafe { HID_EVENTS })
+    (bmo_xhci::xfer_events(), bmo_xhci::raw_events(), HID_EVENTS.load(core::sync::atomic::Ordering::Relaxed))
 }
 
 /// El reparto de informes: `(bombea el teclado, bombea el raton, huerfanos)`.
