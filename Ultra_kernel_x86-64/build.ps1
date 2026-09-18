@@ -190,6 +190,12 @@ Guardian 'Validating no home IP or device MAC is published' `
     'toolchain\tools\privacidad\privacidad.py' 'la privacidad de la red' `
     'privacidad: hay una IP de casa o una MAC de fabricante en el repo (ver arriba)'
 
+# ** CODEOWNERS es la lista de Ring 0 (cerrado el 17-09) y se desfaso en UN dia:
+# `bmo-cola` entro en el kernel y la lista no se entero. Ver su cabecera.
+Guardian 'Validating CODEOWNERS covers what the kernel links' `
+    'toolchain\tools\codeowners\codeowners.py' 'el cerrojo de Ring 0' `
+    'codeowners: la lista de Ring 0 no dice lo que el kernel enlaza (ver arriba)'
+
 # ---------------------------------------------------------------------------
 # ** EL QUINTO GUARDIAN: LAS CITAS A DOCUMENTOS (2026-08-17).
 #

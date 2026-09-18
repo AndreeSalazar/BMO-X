@@ -23,9 +23,11 @@
 
 # == 1. Lo que el kernel ENLAZA ===============================================
 #
-# Sale de `cargo tree` sobre bmo-kernel, no de memoria: 37 crates el 17-09, y
-# CERO de terceros. Si el kernel empieza a enlazar un crate nuevo, TIENE que
-# entrar aqui el mismo dia.
+# Sale de `cargo tree` sobre bmo-kernel, no de memoria: 36 crates el 17-09 (se
+# escribio 37: el recuento conto `bmo-input` dos veces) y 37 desde el 18-09 con
+# `bmo-cola`; CERO de terceros. El numero de HOY lo da el guardian
+# `toolchain/tools/codeowners` en cada build, y el build para si un crate que el
+# kernel enlaza no esta aqui, o si una linea de aqui ya no apunta a nada.
 
 /Ultra_kernel_x86-64/                        @AndreeSalazar
 /platform/drivers/                           @AndreeSalazar
@@ -87,7 +89,8 @@
 /toolchain/tools/perfil-campos/              @AndreeSalazar
 /toolchain/tools/perfil-placa/               @AndreeSalazar
 /toolchain/tools/planes/                     @AndreeSalazar
-/toolchain/tools/privacidad/                 @AndreeSalazar
+/toolchain/tools/privacidad/                 @AndreeSalazar
+/toolchain/tools/codeowners/                 @AndreeSalazar
 /toolchain/tools/relevo/                     @AndreeSalazar
 /toolchain/tools/tamano/                     @AndreeSalazar
 
