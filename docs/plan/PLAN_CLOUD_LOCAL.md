@@ -1235,3 +1235,125 @@ lado, y sus tres bloqueantes siguen siendo los mismos.
       RESULTADO (texto, numero, QOI) debajo; cada trabajo y su resultado van a
       ESTRATOS. **Como se sabe:** `print("hola")` tecleado en el Ryzen vuelve
       pintado en la misma ventana, y `historial` lo lista.
+
+---
+
+# 13. WINDOWS COMO CONSOLA: el juego corre alla, se ve y se juega aqui (2026-09-18)
+
+> Lo dijo el dueno mientras iba andando, y la primera version sono a chiste:
+>
+> > *"no se si es un chiste fuerte: Windows 11 como ANTENA para que BMO-X
+> > procese todo. Windows se degrada por completo, y BMO-X simplemente lo toma
+> > limpio"* ... *"Windows como intermedio para que procese burocracia y la
+> > GPU, por completo; DirectX en Windows, como juegos, le pasa a BMO-X limpio
+> > para ejecutar. Windows en burocracia y BMO-X en bare metal."*
+>
+> No es un chiste: es un diseno que ya existe en produccion y nadie lo llama
+> asi. La Xbox One es un hipervisor con un OS minimo para el juego y un OS
+> derivado de Windows para la burocracia (tienda, red, fondo). Los DPU de
+> verdad (BlueField) son un Linux entero en la tarjeta que le quita al host
+> la burocracia de red. El nombre de la industria: **plano de control /
+> plano de datos**. Aqui, con la direccion al reves: el kernel minimo lo
+> escribe el dueno, y Windows queda de sirviente.
+
+## 13.1 Lo que puede cruzar el cable LIMPIO, y lo que no
+
+Si DirectX y la GPU viven en Windows, del juego solo puede llegar a BMO-X
+una cosa limpia: **pixeles**. Todo lo demas no sobrevive al cable:
+
+```text
+   QUE                         CUANTO                         CRUZA?
+   las llamadas de dibujo      MB por fotograma, sin latencia   NO: nadie lo hace a
+   (el "GPU por red")          que perder                       escala de juego
+   el juego entero             necesita la GPU que esta alla    NO
+   los cuadros ya pintados     640x360 MPEG-1: ~1,5 Mbit/s      SI: es lo que ANTENA/1
+                                                                ya manda (VIDEO)
+   la entrada de vuelta        teclas y raton: bytes            SI: falta el mensaje
+```
+
+Asi que el reparto es el de **Moonlight / Steam Link**, con Windows de consola
+y BMO-X de cara: el juego corre y se pinta alla; aqui se ve, y de aqui salen
+las teclas y el raton. Y la regla de la seccion 11 se cumple sola: **de
+Windows no cruza ni un byte de codigo, solo cuadros**. Que Windows se degrade
+no toca a BMO-X, que es exactamente lo que pidio el dueno.
+
+## 13.2 La palabra que cambia: BMO-X aqui NO es fuerza bruta, es el ADMINISTRADOR
+
+En este reparto la fuerza bruta es de Windows (la GPU). BMO-X pone lo otro:
+**que ventana, cuando, el foco, la entrada, y quien manda** -- el celo del
+orquestador (`docs/maestro`, EL ORQUESTAL). La fuerza bruta de BMO-X en metal
+sigue siendo para lo suyo: INTI, DOOM en CPU, COBOL, lo que compila aqui.
+Son DOS papeles legitimos, y conviene no llamarlos igual.
+
+## 13.3 El numero incomodo: la latencia, y donde esta el techo de esta maquina
+
+```text
+   captura del escritorio en Windows (ddagrab)     ~16 ms (un fotograma)
+   codificar MPEG-1 por software (ffmpeg)          ~10 ms a 640x360
+   la LAN                                            1 ms (medido en L3c: 0,03 s ida y vuelta)
+   decodificar en BMO-X (pl_mpeg)                    ? -- SIN MEDIR: S1 no esta hecho
+   componer y volcar (el DIRECTOR)                 ~4 ms en ventana; 27,6 ms a pantalla ENTERA
+   ----------------------------------------------------------------------------------------
+   de la mano al pixel                             ~40-60 ms en ventana, si pl_mpeg cabe en 14 ms
+```
+
+Moonlight con codificador por hardware baja a ~15 ms; con MPEG-1 por software,
+no. Jugable en casi todo; en un shooter competitivo se nota, y se dice.
+
+** Y el techo NO es el codec: `PLAN_MEDIOS.md` seccion 3 ya lo midio. A
+pantalla completa esta maquina vuelca en 27,6 ms, asi que un video de 24 fps
+deja **14,1 ms** para decodificar, convertir de YUV a RGB y escalar. Por eso
+la consola se ve EN VENTANA (640x360) y no a pantalla entera: no es una
+decision de estilo, es el blit.
+
+## 13.4 Lo que ya existe, y lo que falta -- dicho sin adornos
+
+```text
+   YA                                              FALTA
+   antena.py convierte EN VIVO a MPEG-1+MP2        PANTALLA: capturar el escritorio/juego en
+   640x360 con ffmpeg y lo sirve (PIDE/VIDEO)      vez de un fichero (ffmpeg -f ddagrab)
+   bmo-antena habla ANTENA/1 con banco             ENTRADA de vuelta: TECLA/RATON de BMO-X a
+                                                   la antena, y SendInput en Windows
+   el stream se verifico en VLC (A1, 16-09)        S1: pl_mpeg en BMO-X. **BMO-X todavia no
+                                                   sabe ENSENAR video**; y G5 (TCP) para
+                                                   traerlo por el cable, y N3 (el ANTENISTA)
+   la antena en Windows es 7x mas rapida           P0: EMPAREJAR. Una consola sin dueno es
+   que el HONOR (L3b)                              una pantalla que cualquiera de la LAN mueve
+```
+
+[!] Dos kernels en la MISMA maquina no entra aqui: eso es un hipervisor con
+Windows de huesped, la GPU partida (SR-IOV) y todo lo que Microsoft cobra en
+Hyper-V. Un PC aparte por LAN es lo que ya hay en codigo y no cuesta nada mas.
+Y Windows vive en el NVMe de ESTE PC: la consola es el otro PC (o el portatil).
+
+## Los escalones nuevos
+
+El orden lo manda lo que falta, no la idea: S1, G5 y N3 son de otras
+secciones y van ANTES. Esto empieza cuando BMO-X ensene un `.mpg` del disco.
+
+- [ ] **K0 -- MEDIR pl_mpeg en el Ryzen.** Antes de prometer nada: S1 hecho,
+      y `save` (o el `[perf]` de la app) dice cuantos ms cuesta un fotograma
+      de 640x360 decodificado, convertido y pintado en ventana. **Como se
+      sabe:** el numero esta en `docs/plan/PLAN_MEDIOS.md` seccion 3 al lado
+      de los 14,1 ms, medido y no estimado. Si no cabe, la consola espera al
+      escalado por obreros (`bmo-orquesta::Escalar`) o a la GPU.
+
+- [ ] **K1 -- PANTALLA en la antena.** `toolchain/tools/antena/antena.py`:
+      `PANTALLA` sirve la captura viva de Windows (`ffmpeg -f ddagrab` o
+      `gdigrab`, mismo codec y tamano que `PIDE`) hasta que el cliente cierra;
+      en Termux contesta `NO sin pantalla`. **Como se sabe:** `cliente.py
+      pantalla` en el portatil ensena el escritorio del PC en VLC con menos de
+      un segundo de retraso a ojo, y `medidas.txt` apunta captura+codificacion.
+
+- [ ] **K2 -- la ENTRADA de vuelta.** `bmo-antena`: `TECLA <codigo> <1|0>` y
+      `RATON <dx> <dy> <botones>` en ANTENA/1 (solo emparejado, P0); en
+      `antena.py`, `SendInput` en Windows. **Como se sabe:** `cargo test -p
+      bmo-antena` con las dos lineas mutadas; y desde `cliente.py` una tecla
+      llega al Bloc de notas del PC.
+
+- [ ] **K3 -- la ventana CONSOLA en BMO-X.** La app del reproductor (S1) con
+      el stream de PANTALLA en vez del fichero y la entrada de su ventana
+      saliendo por K2 mientras tiene el foco; `Ctrl+Alt+Esc` la corta como a
+      cualquiera. **Como se sabe:** el Bloc de notas de Windows se ve en una
+      ventana del Ryzen y lo que se teclea en el Ryzen aparece alla; `save`
+      dice la latencia de la mano al pixel medida con el latido.
