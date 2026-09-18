@@ -89,6 +89,9 @@ DEPS_DE_FRONTEND = {
     # FORMATO de los eventos, no el servicio. Si cabina-core se muda a la Base
     # (pendiente desde el 17-09), este permiso se revisa: la Base es x86-64.
     "cabina-core": "el formato de los eventos de CABINA (capa Lang)",
+    # 2026-09-18: la regla de disposicion de un agregado. Salio de `bmo-abi`
+    # justo para que C y C++ la usen sin depender del ABI de x86-64.
+    "bmo-disposicion": "la regla de disposicion de struct/union: aritmetica, sin dependencias",
 }
 DEPS_DE_FRONTEND.update({c: "otro frontend" for c in FRONTENDS.values()})
 # Lenguajes cuyo frontend y emisor de x86-64 comparten crate todavia, con por que.

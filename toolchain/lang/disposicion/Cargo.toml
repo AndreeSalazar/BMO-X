@@ -1,0 +1,14 @@
+[package]
+name = "bmo-disposicion"
+version = "0.1.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "La regla de disposicion de un agregado (struct, union, registro). Sin dependencias, no_std, ninguna maquina."
+
+# SIN dependencias, a proposito: lo enlazan los frontends (que no pueden
+# depender de nada que emita) y el ABI de x86-64 (`bmo-abi`, que es `no_std`).
+[dependencies]
+
+[lib]
+name = "bmo_disposicion"
+path = "src/lib.rs"

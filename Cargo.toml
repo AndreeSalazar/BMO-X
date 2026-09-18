@@ -200,6 +200,9 @@ members = [
     # nombrar una maquina (hay un test) y un emisor la nombra en cada linea.
     # La frontera del agnosticismo no es una convencion, es el arbol.
     "toolchain/lang/inti/emisor-x86_64",
+    # La regla de disposicion de un agregado: la comparten los frontends y el
+    # ABI, sin dependencias y sin maquina (2026-09-18).
+    "toolchain/lang/disposicion",
     "toolchain/lang/ada",
     # Su emisor, partido igual que el de INTI (2026-09-18).
     "toolchain/lang/ada/emisor-x86_64",
