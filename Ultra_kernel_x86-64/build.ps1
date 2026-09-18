@@ -505,6 +505,30 @@ try {
         if ($_ -match 'Compiling|Finished|error') { Write-Host ('    [uefi_chain] ' + $_) -ForegroundColor DarkGray }
     }
     if ($LASTEXITCODE -ne 0) { Fail 'uefi_chain build failed' }
+
+    # ** EL EFI SE ENLAZA DOS VECES Y TIENE QUE SALIR IGUAL (2026-09-18). Hasta
+    # ese dia dos builds del MISMO arbol daban un BOOTX64.EFI distinto en 10
+    # bytes (hora y PDB), y nadie podia comprobar que el EFI publicado sale de
+    # este fuente. `/Brepro` + `/DEBUG:NONE` en uefi_chain/.cargo/config.toml lo
+    # arreglan; esto impide que vuelva sin ruido.
+    $efiUno = Join-Path $uefiTarget 'x86_64-unknown-uefi\release\uefi_chain.efi'
+    $huellaUno = Hash256 $efiUno
+    # ** DOS trampas, las dos cazadas mutando (quitadas las dos opciones, esto
+    # tiene que dar rojo -- y dio VERDE dos veces):
+    #  1. Borrar el .efi NO re-enlaza: cargo guarda el enlazado en
+    #     `build/uefi-chain/<hash>/out/` y solo lo vuelve a copiar. Se comparaba
+    #     el mismo fichero consigo mismo. `cargo clean -p` borra ESE crate (es
+    #     pequeno; los payloads ya estan hechos) y obliga a enlazar de nuevo.
+    #  2. El sello del enlazador va en SEGUNDOS: sin la espera, dos enlaces en el
+    #     mismo segundo coinciden aunque no sean reproducibles.
+    Start-Sleep -Seconds 2
+    $null = cargo +nightly clean --release --target x86_64-unknown-uefi --target-dir $uefiTarget -p uefi-chain 2>&1
+    $null = cargo +nightly build --release --target x86_64-unknown-uefi --target-dir $uefiTarget 2>&1
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $efiUno)) { Fail 'uefi_chain: el segundo enlace fallo' }
+    if ((Hash256 $efiUno) -ne $huellaUno) {
+        Fail 'uefi_chain NO es reproducible: dos enlaces del mismo arbol dan un EFI distinto'
+    }
+    Write-Host ('    [uefi_chain] reproducible: dos enlaces, la misma huella ' + $huellaUno.Substring(0, 16)) -ForegroundColor DarkGray
 } finally {
     Pop-Location
     Remove-Item Env:\BMO_S1_BIN, Env:\BMO_S2_BIN, Env:\BMO_KERNEL_BIN -ErrorAction SilentlyContinue

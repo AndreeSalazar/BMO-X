@@ -2,4 +2,12 @@
 rustflags = [
   "-C", "link-arg=/ENTRY:efi_main",
   "-C", "link-arg=/SUBSYSTEM:EFI_APPLICATION",
+  # ** REPRODUCIBLE (2026-09-18). Sin esto, dos builds del MISMO arbol daban un
+  # BOOTX64.EFI distinto en 10 bytes: el TimeDateStamp de la cabecera PE y el
+  # identificador de depuracion. Un binario que no se puede reconstruir igual
+  # no se puede comprobar contra su fuente -- y Ring 0 esta cerrado justo para
+  # que se pueda (el motivo xz). `/Brepro` pone un hash del contenido en vez
+  # de la hora. build.ps1 lo COMPRUEBA: enlaza dos veces y compara.
+  "-C", "link-arg=/Brepro",
+  "-C", "link-arg=/DEBUG:NONE",
 ]
