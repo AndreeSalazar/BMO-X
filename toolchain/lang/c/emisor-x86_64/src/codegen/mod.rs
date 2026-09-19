@@ -1290,16 +1290,88 @@ impl Codegen {
         }
     }
 
+    /// **La condicion de un `if`, `while` o `for`: salta a `false_label` si
+    /// NO se cumple.**
+    ///
+    /// === *** LA COMPARACION SE FUNDE EN EL SALTO (2026-09-18) ==============
+    ///
+    /// Una comparacion en una condicion no necesita valer 0 o 1: necesita
+    /// saltar o no. Antes se fabricaba el numero y se volvia a preguntar por
+    /// el, y el metro lo puso en la mesa con el bucle de `blit`:
+    ///
+    /// ```text
+    ///    antes   cmp rax, 1900 ; setl al ; movzx rax, al ; test eax, eax ; je    5
+    ///    ahora   cmp rax, 1900 ; jge                                             2
+    /// ```
+    ///
+    /// ** `setcc` y `jcc` comparten el codigo de condicion en el nibble bajo
+    /// (`0F 9c` / `0F 8c`), y NEGAR una condicion es voltear su bit 0: `l`
+    /// (0xC) contra `ge` (0xD), `e` (0x4) contra `ne` (0x5). Por eso `cc ^ 1`
+    /// es "salta si no se cumple", para las doce.
+    ///
+    /// [!] Solo comparaciones ENTERAS: `condicion_entera` contesta `None` para
+    /// las de coma flotante (`comisd` deja las banderas en forma no ordenada
+    /// y el NaN necesita `setcc` + `movzx` como hasta hoy) y para lo que no es
+    /// comparacion (`if (p)`, `if (a && b)`), que siguen por `test eax, eax`.
     fn emit_test_cond(&mut self, expr: &Expr, false_label: u32) {
+        if let Some((a, b, cc)) = self.condicion_entera(expr) {
+            self.emit_cmp_banderas(a, b);
+            self.emit_jcc_reloc(cc ^ 1, false_label);
+            return;
+        }
         self.emit_expr(expr);
         self.code.extend_from_slice(&[0x85, 0xC0]);
         self.emit_jz_reloc(false_label);
     }
 
+    /// La del `do ... while`: salta a `label` si SE cumple.
     fn emit_test_cond_jnz(&mut self, expr: &Expr, label: u32) {
+        if let Some((a, b, cc)) = self.condicion_entera(expr) {
+            self.emit_cmp_banderas(a, b);
+            self.emit_jcc_reloc(cc, label);
+            return;
+        }
         self.emit_expr(expr);
         self.code.extend_from_slice(&[0x85, 0xC0]);
         self.emit_jnz_reloc(label);
+    }
+
+    /// Los operandos y el codigo de condicion de una comparacion ENTERA.
+    ///
+    /// Las cuatro de ORDEN llevan dos codigos: con signo y sin el, porque `<`
+    /// no es la misma pregunta para `long` que para `unsigned long` (ver el
+    /// comentario largo en `emitir/valor.rs`). Las de igualdad, uno. Y para
+    /// coma flotante contesta `None`: ese camino es `emit_fcmp`.
+    fn condicion_entera<'e>(&self, e: &'e Expr) -> Option<(&'e Expr, &'e Expr, u8)> {
+        let (a, b, con_signo, sin_signo) = Self::codigos_de_comparacion(e)?;
+        if self.expr_is_float(a) || self.expr_is_float(b) {
+            return None;
+        }
+        let cc = if self.expr_is_unsigned(a) || self.expr_is_unsigned(b) { sin_signo } else { con_signo };
+        Some((a, b, cc))
+    }
+
+    /// `(a, b, setcc con signo, setcc sin signo)` de una comparacion, o `None`
+    /// si `e` no lo es. El sin signo es tambien el de coma flotante: `comisd`
+    /// deja las banderas como una comparacion sin signo.
+    pub(super) fn codigos_de_comparacion(e: &Expr) -> Option<(&Expr, &Expr, u8, u8)> {
+        Some(match e {
+            Expr::Eq(a, b) => (a, b, 0x94, 0x94),
+            Expr::Neq(a, b) => (a, b, 0x95, 0x95),
+            Expr::Lt(a, b) => (a, b, 0x9C, 0x92),
+            Expr::Gt(a, b) => (a, b, 0x9F, 0x97),
+            Expr::Le(a, b) => (a, b, 0x9E, 0x96),
+            Expr::Ge(a, b) => (a, b, 0x9D, 0x93),
+            _ => return None,
+        })
+    }
+
+    /// `jcc rel32` con el codigo de condicion `cc` (el byte del `setcc`, o su
+    /// nibble bajo: solo cuenta ese nibble).
+    fn emit_jcc_reloc(&mut self, cc: u8, label: u32) {
+        self.code.extend_from_slice(&[0x0F, 0x80 | (cc & 0x0F)]);
+        self.pending_relocs.push(PendingReloc { offset: self.code.len(), target_label: label });
+        self.code.extend_from_slice(&[0, 0, 0, 0]);
     }
 
     fn emit_drop(&mut self) {}
@@ -1434,16 +1506,21 @@ impl Codegen {
     /// derecho. Con operandos chicos el resultado parecia correcto de puro
     /// milagro; `printf("%d", x == y)` con una `x` grande imprimia basura.
     fn emit_cmp(&mut self, a: &Expr, b: &Expr, setcc: u8) {
+        self.emit_cmp_banderas(a, b);
+        self.code.extend_from_slice(&[0x0F, setcc, 0xC0]); // setcc al
+        self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
+    }
+
+    /// **`a - b`, solo en las BANDERAS.** Lo que comparten `emit_cmp` (que
+    /// despues hace el 0/1) y `emit_test_cond` (que despues salta).
+    fn emit_cmp_banderas(&mut self, a: &Expr, b: &Expr) {
         // La misma regla que `emit_binop`: si el derecho es una constante, no
         // hace falta la pila. Y en una comparacion es todavia mas frecuente --
         // `x > 0`, `i < n`, `c == 'a'` son el bucle de cualquier programa.
         // ** Y si CABE en la instruccion, ni siquiera se carga: `cmp rax, imm`.
-        // `i < 1900` pasa de ocho instrucciones a tres.
         if let Some(imm) = decidir::inmediato::inmediato_de(b) {
             self.emit_expr(a);
             self.emit_alu_imm(7, imm); // cmp rax, imm
-            self.code.extend_from_slice(&[0x0F, setcc, 0xC0]);
-            self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]);
             return;
         }
         if decidir::plegado::solo_toca_rax(b) {
@@ -1451,8 +1528,6 @@ impl Codegen {
             self.code.extend_from_slice(&[0x48, 0x89, 0xC2]); // mov rdx, rax
             self.emit_expr(b);
             self.code.extend_from_slice(&[0x48, 0x39, 0xC2]); // cmp rdx, rax
-            self.code.extend_from_slice(&[0x0F, setcc, 0xC0]);
-            self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]);
             return;
         }
         self.emit_expr(a);
@@ -1460,8 +1535,6 @@ impl Codegen {
         self.emit_expr(b); // rax = derecho
         self.code.push(0x5A); // pop rdx (izquierdo)
         self.code.extend_from_slice(&[0x48, 0x39, 0xC2]); // cmp rdx, rax -> a - b
-        self.code.extend_from_slice(&[0x0F, setcc, 0xC0]); // setcc al
-        self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]); // movzx rax, al
     }
 
 

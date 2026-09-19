@@ -266,6 +266,13 @@ fn la_libc_aparte_hace_lo_mismo_que_la_copiada() {
 ///
 /// Los 88 bytes que la libc enlazada sigue costando de mas no son cuerpos: son
 /// su `rodata`, que no se poda (ver `tirar.rs`).
+///
+/// ** Y SE MIDE EL CODIGO, NO EL FICHERO (2026-09-18). El fichero va en
+/// tramos de 512 B, asi que la misma diferencia de 15 B de codigo sale como
+/// 88 B o como 600 B segun donde caiga el tramo. El 18-09 el emisor encogio
+/// todo un 7 % (el inmediato), la copia bajo de tramo y la libc aparte no, y
+/// esta fila se puso roja **sin que el enlazador cambiara**. Una prueba del
+/// enlazador que se cae por el emisor esta midiendo lo que no dice.
 #[test]
 fn enlazar_contra_la_libc_entera_ya_no_cuesta_mas() {
     let copia = enlazar(&[objeto_con("solo.bo", USA_LIBC, bmo_c_x86_64::Libc::Copia)]).unwrap();
@@ -278,12 +285,23 @@ fn enlazar_contra_la_libc_entera_ya_no_cuesta_mas() {
         libc,
     ])
     .unwrap();
+    let (copia, aparte) = (codigo_de(&copia), codigo_de(&aparte));
     assert!(
-        aparte.len() <= copia.len() + copia.len() / 10,
-        "enlazar contra la libc entera no puede costar mas que copiarsela:          copiada {} B, enlazada {} B",
-        copia.len(),
-        aparte.len()
+        aparte <= copia + copia / 10,
+        "enlazar contra la libc entera no puede costar mas que copiarsela:          copiada {copia} B de codigo, enlazada {aparte} B"
     );
+}
+
+/// Los bytes de la seccion de codigo de un `.bex`.
+fn codigo_de(bex: &[u8]) -> usize {
+    use bmo_abi::bef::sections::{SectionEntry, SectionKind};
+    let tabla = u64::from_le_bytes(bex[32..40].try_into().unwrap()) as usize;
+    let n = u32::from_le_bytes(bex[40..44].try_into().unwrap()) as usize;
+    (0..n)
+        .map(|i| tabla + i * SectionEntry::SIZE)
+        .filter(|&e| bex[e] == SectionKind::Code as u8)
+        .map(|e| u64::from_le_bytes(bex[e + 16..e + 24].try_into().unwrap()) as usize)
+        .sum()
 }
 
 /// Dos unidades que usan la MISMA funcion de cabecera no chocan: cada una se

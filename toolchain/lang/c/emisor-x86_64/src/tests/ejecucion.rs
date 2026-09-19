@@ -68,6 +68,54 @@ fn el_operador_con_inmediato_da_lo_mismo_que_por_la_pila() {
     }
 }
 
+/// ** LA COMPARACION FUNDIDA EN EL SALTO (2026-09-18): en un `if`, `while`,
+/// `for` o `do` la comparacion ya no fabrica un 0/1, salta. Las doce
+/// condiciones (seis con signo, seis sin el) en las dos direcciones, con el
+/// valor justo en la frontera; y lo que NO se funde --un puntero, un `&&`,
+/// una comparacion de coma flotante-- tiene que seguir contestando igual.
+#[test]
+fn la_comparacion_fundida_en_el_salto_decide_igual_que_el_0_o_1() {
+    let mut cuerpo = String::new();
+    // con signo: -5 contra 3, y el empate
+    for (op, a, b, esperado) in [
+        ("<", -5, 3, 1), ("<", 3, -5, 0), ("<", 3, 3, 0),
+        (">", -5, 3, 0), (">", 3, -5, 1), (">", 3, 3, 0),
+        ("<=", 3, 3, 1), ("<=", 4, 3, 0),
+        (">=", 3, 3, 1), (">=", 2, 3, 0),
+        ("==", 3, 3, 1), ("==", -3, 3, 0),
+        ("!=", 3, 3, 0), ("!=", -3, 3, 1),
+    ] {
+        cuerpo.push_str(&format!(
+            "{{ int a = {a}; int b = {b}; int r = 0; if (a {op} b) r = 1; printf(\"%d \", r == {esperado}); }}\n"
+        ));
+    }
+    // sin signo: 0xFFFFFFF0 es GRANDE, no negativo. Con OTROS nombres, porque
+    // hoy una variable redeclarada en un bloque hermano conserva el TIPO de
+    // la primera (`a` seguiria siendo `int` aqui): es un fallo aparte del
+    // emisor, visto el 18-09 al escribir esta fila, y esta fila no es suya.
+    for (op, a, b, esperado) in [
+        ("<", "0xFFFFFFF0u", "3u", 0), (">", "0xFFFFFFF0u", "3u", 1),
+        ("<=", "3u", "0xFFFFFFF0u", 1), (">=", "3u", "0xFFFFFFF0u", 0),
+    ] {
+        cuerpo.push_str(&format!(
+            "{{ unsigned ua = {a}; unsigned ub = {b}; int r = 0; if (ua {op} ub) r = 1; printf(\"%d \", r == {esperado}); }}\n"
+        ));
+    }
+    // while, for y do-while cuentan lo mismo; y el do-while entra al menos una vez
+    cuerpo.push_str("{ int i = 0; int n = 0; while (i < 10) { i = i + 1; n = n + 1; } printf(\"%d \", n); }\n");
+    cuerpo.push_str("{ int i; int n = 0; for (i = 10; i >= 1; i = i - 1) n = n + 1; printf(\"%d \", n); }\n");
+    cuerpo.push_str("{ int i = 0; int n = 0; do { n = n + 1; i = i + 1; } while (i != 7); printf(\"%d \", n); }\n");
+    cuerpo.push_str("{ int i = 100; int n = 0; do { n = n + 1; } while (i < 10); printf(\"%d \", n); }\n");
+    // lo que NO se funde
+    cuerpo.push_str("{ int t[1]; int *p = t; int *q = 0; int r = 0; if (p) r = r + 1; if (q) r = r + 10; printf(\"%d \", r); }\n");
+    cuerpo.push_str("{ int a = 1; int b = 0; int r = 0; if (a && b) r = 1; if (a || b) r = r + 2; if (!(a < b)) r = r + 4; printf(\"%d \", r); }\n");
+    cuerpo.push_str("{ double d = 2.5; int r = 0; if (d < 3.0) r = 1; if (d > 3.0) r = r + 2; printf(\"%d \", r); }\n");
+    // y la sonda: el 0/1 de siempre, para saber de quien es la culpa si falla
+    cuerpo.push_str("{ unsigned ua = 0xFFFFFFF0u; unsigned ub = 3u; printf(\"%d%d%d%d\", ua < ub, ua > ub, ub <= ua, ub >= ua); }\n");
+    let out = run_c(&format!("int main() {{\n{cuerpo} return 0; }}"));
+    assert_eq!(out, "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 10 10 7 1 1 6 1 0110");
+}
+
 /// La division entera es CON SIGNO. Antes dividia sin signo, asi que un
 /// negativo daba un numero astronomico.
 #[test]

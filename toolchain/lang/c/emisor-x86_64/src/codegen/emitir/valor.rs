@@ -195,8 +195,18 @@ impl Codegen {
             // orden y usan el setcc que les toca. Antes `<`, `>` y `>=`
             // comparaban al reves --`1 < 2` daba 0-- porque la comparacion se
             // hacia sobre `b - a` con el setcc de la forma directa.
-            Expr::Eq(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x94) } else { self.emit_cmp(a, b, 0x94) },
-            Expr::Neq(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x95) } else { self.emit_cmp(a, b, 0x95) },
+            // ** Los codigos viven en `codigos_de_comparacion` desde el 18-09,
+            // porque `emit_test_cond` los necesita para fundir la comparacion
+            // en el salto. Aqui se fabrica el 0/1; alli se salta.
+            Expr::Eq(..) | Expr::Neq(..) | Expr::Lt(..) | Expr::Gt(..) | Expr::Le(..) | Expr::Ge(..) => {
+                match self.condicion_entera(expr) {
+                    Some((a, b, cc)) => self.emit_cmp(a, b, cc),
+                    None => {
+                        let (a, b, _, flotante) = Self::codigos_de_comparacion(expr).expect("es comparacion");
+                        self.emit_fcmp(a, b, flotante)
+                    }
+                }
+            }
             // ** Las cuatro de ORDEN llevan DOS `setcc`: con signo y sin el.
             //
             // `setl`/`setb` no son la misma instruccion porque `<` no es la
@@ -209,18 +219,6 @@ impl Codegen {
             // banderas en la forma no ordenada, y esos son justo los codigos
             // `setb`/`seta`/`setbe`/`setae`. Por eso el brazo de float ya los
             // usaba y el entero no.
-            Expr::Lt(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x92) }
-                else if self.expr_is_unsigned(a) || self.expr_is_unsigned(b) { self.emit_cmp(a, b, 0x92) }
-                else { self.emit_cmp(a, b, 0x9C) },
-            Expr::Gt(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x97) }
-                else if self.expr_is_unsigned(a) || self.expr_is_unsigned(b) { self.emit_cmp(a, b, 0x97) }
-                else { self.emit_cmp(a, b, 0x9F) },
-            Expr::Le(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x96) }
-                else if self.expr_is_unsigned(a) || self.expr_is_unsigned(b) { self.emit_cmp(a, b, 0x96) }
-                else { self.emit_cmp(a, b, 0x9E) },
-            Expr::Ge(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x93) }
-                else if self.expr_is_unsigned(a) || self.expr_is_unsigned(b) { self.emit_cmp(a, b, 0x93) }
-                else { self.emit_cmp(a, b, 0x9D) },
             Expr::BitAnd(a, b) => self.emit_alu(a, b, 4, &[0x48, 0x21, 0xD0]),
             Expr::BitXor(a, b) => self.emit_alu(a, b, 6, &[0x48, 0x31, 0xD0]),
             Expr::BitOr(a, b) => self.emit_alu(a, b, 1, &[0x48, 0x09, 0xD0]),
