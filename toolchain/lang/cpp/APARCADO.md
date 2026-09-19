@@ -194,10 +194,13 @@ funciona; una biblioteca, no, hasta el enlazador.
 
 - [ ] **el metal**: `run cpp/cuentas.bex` en el Ryzen, y que salga lo que dice
       la cabecera de `cuentas.cpp`. Ningun `.bex` de C++ ha tocado un CPU todavia
-- [ ] el paso 4: la lista de inicializacion de miembros (`: Base(x)`), que el
-      ejemplo tuvo que rodear con un metodo `abrir`
-- [ ] los constructores de la base al construir un derivado -- la otra mitad de
-      la cadena del 7.3, y la simetrica del destructor
+- [x] el paso 4: la lista de inicializacion de miembros (`: Base(x)`), que el
+      ejemplo tuvo que rodear con un metodo `abrir` -- **HECHA el 2026-09-18**
+      (`parser/iniciales.rs`; seis filas nuevas de la matriz que EJECUTAN, y
+      cada una cae con su mutacion)
+- [x] los constructores de la base al construir un derivado -- la otra mitad de
+      la cadena del 7.3, y la simetrica del destructor -- **HECHOS el
+      2026-09-18**, con el constructor IMPLICITO que construye la base
 - [x] **la compilacion separada: HECHA el 2026-09-17** (E5e del plan del
       enlazador), y costo cuatro lineas -- C++ baja al arbol de BMO C y usa su
       codegen, asi que E2 se la habia pagado sin saberlo. `bmo-cpp-front -c`

@@ -62,6 +62,22 @@ pub struct Method {
     pub is_const: bool,
     pub access: Access,
     pub class_name: String,
+    /// Solo en un constructor: lo que hace ANTES de su cuerpo. Vacio en el
+    /// resto. Ver `parser/iniciales.rs`.
+    pub iniciales: Iniciales,
+}
+
+/// **Lo que un constructor hace antes de su cuerpo**, ya resuelto por el
+/// parser (paso 4, 2026-09-18). El orden de [class.base.init]: la base, el
+/// `vptr` (lo pone el descenso) y los miembros en orden de DECLARACION.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Iniciales {
+    /// El constructor de la base, ya elegido por la sobrecarga, y sus
+    /// argumentos. `None` si no hay base o la base no tiene constructor.
+    pub base: Option<(String, Vec<Expr>)>,
+    /// `this->campo = valor` por cada miembro de la lista, en orden de
+    /// declaracion.
+    pub miembros: Vec<Expr>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

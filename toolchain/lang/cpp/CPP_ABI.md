@@ -90,6 +90,11 @@ El `vptr` de un objeto se apunta a su tabla **antes** de llamar al constructor:
 un constructor puede llamar a un metodo virtual de si mismo, y con la tabla sin
 poner llamaria a la nada.
 
+** Y desde el 2026-09-18 **cada constructor lo vuelve a apuntar a la tabla de
+SU clase, justo despues de construir su base**. Mientras corre el constructor
+de la base, el objeto todavia ES la base ([class.cdtor]): un virtual llamado
+desde ahi va a la version de la base, y no a un derivado a medio construir.
+
 ### El despacho
 
 ```text
@@ -207,6 +212,21 @@ para constructores), pero **D1 y D2 difieren solo con bases virtuales**, que
 estan descartadas con motivo. Seis variantes se quedan en dos -- y no por
 recortar, sino por una decision ya tomada por otro motivo. D0 (el que ademas
 libera) aparecera el dia que existan `new`/`delete`.
+
+**Lo que hace un constructor antes de su cuerpo** (2026-09-18), en este orden,
+que es el de [class.base.init]:
+
+```text
+   P.P#<args>(this, ...)
+     1. Base.Base#<...>(this, ...)   la que nombre `: Base(...)`, o la sin argumentos
+     2. this->vptr. = vtabla.P       solo si P tiene virtuales
+     3. this->m = ...                los miembros de la lista, en orden de DECLARACION
+     4. el cuerpo
+```
+
+El `this` de la base es el MISMO puntero: el derivado empieza por la base
+entera. Una clase sin constructor cuya base si tiene recibe `P.P#` implicito,
+que solo hace el paso 1 (y el 2 si tiene virtuales).
 
 ## 4. El puente con C: `extern "C"` sin escribirlo
 

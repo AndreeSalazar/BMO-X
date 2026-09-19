@@ -430,6 +430,29 @@ pub fn descender_unidad(p: &cpp::Program, objeto: bool) -> Result<c::Program, Cp
             let mut f = metodo(cl, ctor, &info)?;
             f.name = mangling::constructor(&[], &cl.name,
                 &ctor.params.iter().map(|p| p.typ.clone()).collect::<Vec<_>>());
+            // ** Lo que el constructor hace ANTES de su cuerpo, en el orden de
+            // [class.base.init] (paso 4, 2026-09-18; ver `parser/iniciales.rs`):
+            // la base, el `vptr` de ESTA clase y los miembros de la lista. El
+            // `vptr` va DESPUES de la base: mientras corre el constructor de la
+            // base el objeto es la base, y un virtual llamado desde ahi va a la
+            // version de la base.
+            let mut antes = Vec::new();
+            if let Some((simbolo, args)) = &ctor.iniciales.base {
+                let mut a = vec![c::Expr::Var("this".into())];
+                for x in args { a.push(expr(x)?); }
+                antes.push(c::Stmt::Expr(c::Expr::Call(simbolo.clone(), a)));
+            }
+            if !cl.vtabla.is_empty() {
+                antes.push(c::Stmt::Expr(c::Expr::AssignArrow(
+                    Box::new(c::Expr::Var("this".into())),
+                    crate::parser::VPTR.into(),
+                    Box::new(c::Expr::Var(nombre_vtabla(&cl.name))),
+                )));
+            }
+            for m in &ctor.iniciales.miembros {
+                antes.push(c::Stmt::Expr(expr(m)?));
+            }
+            f.body.splice(0..0, antes);
             out.functions.push(f);
         }
         // The destructor chain: own body first, then the base's -- in that

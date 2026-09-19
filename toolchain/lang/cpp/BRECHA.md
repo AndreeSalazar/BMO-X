@@ -222,8 +222,14 @@ fichero vacio.
    ★ El valor del `return` se calcula **antes** de destruir (si no, `return
    p.leer()` devolveria lo que quedara en la pila), y `break` y `continue` no
    destruyen lo mismo: un `switch` para al primero y no al segundo.
-   ⏳ Esperan al paso 4: la lista de inicializacion (`P() : x(0)`), varios
-   constructores, y el de copia.
+   ✅ **La lista de inicializacion y la base, HECHAS el 2026-09-18**
+   (`parser/iniciales.rs`). El orden es el de [class.base.init]: la base (la
+   que nombre la lista, o su constructor sin argumentos), el `vptr` de la
+   propia clase, los miembros **en orden de declaracion**, y el cuerpo. Una
+   clase sin constructor cuya base si lo tiene recibe uno IMPLICITO; hasta hoy
+   nacia con la base sin construir y nadie lo decia. Varios constructores ya
+   estaban (paso 4).
+   ⏳ Espera al paso 5: el constructor de copia (`P b = a;`).
    ★ **`new`/`delete` YA NO esperan a nadie (medido el 2026-09-17).** Decia
    aqui que esperaban "a que haya asignador", y el asignador existe: `malloc`,
    `free`, `calloc` y `realloc` son un asignador de verdad en

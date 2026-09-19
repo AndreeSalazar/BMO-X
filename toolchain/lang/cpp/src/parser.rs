@@ -42,6 +42,7 @@ use std::collections::{HashMap, HashSet};
 // the derived-to-base conversion, and the L6a ratchet said NO to this file
 // growing. Paid by moving the whole question out, not by raising the ceiling.
 mod sobrecarga;
+mod iniciales;
 
 /// El nombre del puntero a la vtabla dentro del objeto.
 ///
@@ -431,7 +432,7 @@ impl Parser {
                     dtor = Some((inicio, Method {
                         name: format!("~{name}"), ret_type: TypeSpec::Void, params: vec![],
                         body: Vec::new(), is_virtual: false, is_override: false,
-                        is_const: false, access: Access::Public, class_name: name.clone(),
+                        is_const: false, access: Access::Public, class_name: name.clone(), iniciales: Default::default(),
                     }));
                     continue;
                 }
@@ -443,21 +444,16 @@ impl Parser {
                     self.avanzar();
                     let params = self.parametros()?;
                     self.exige(&Token::CloseParen)?;
-                    // `P() : x(0) {}` -- la lista de inicializacion de miembros.
-                    // No entra todavia: pide resolver un inicializador POR
-                    // MIEMBRO en el orden de declaracion (que no es el orden en
-                    // que se escriben), y ese es trabajo del paso 4. Mientras
-                    // tanto el cuerpo `{ x = 0; }` hace lo mismo.
-                    if *self.peek() == Token::Colon {
-                        return Err(self.pendiente(
-                            "la lista de inicializacion de miembros (`P() : x(0)`)", 4));
-                    }
+                    // `P() : x(0) {}` -- la lista de inicializacion (paso 4,
+                    // 2026-09-18). Se salta aqui y se lee en la vuelta 2, junto
+                    // al cuerpo: ver `parser/iniciales.rs`.
                     let inicio = self.pos;
+                    if *self.peek() == Token::Colon { self.saltar_lista_ini()?; }
                     self.saltar_bloque()?;
                     ctores.push((inicio, Method {
                         name: name.clone(), ret_type: TypeSpec::Void, params,
                         body: Vec::new(), is_virtual: false, is_override: false,
-                        is_const: false, access: acceso, class_name: name.clone(),
+                        is_const: false, access: acceso, class_name: name.clone(), iniciales: Default::default(),
                     }));
                     continue;
                 }
@@ -493,7 +489,7 @@ impl Parser {
                 cuerpos.push((inicio, Method {
                     name: miembro, ret_type: tipo, params, body: Vec::new(),
                     is_virtual: virtual_ahora, is_override: es_override, is_const: es_const,
-                    access: acceso, class_name: name.clone(),
+                    access: acceso, class_name: name.clone(), iniciales: Default::default(),
                 }));
                 virtual_ahora = false;
             } else {
@@ -613,6 +609,7 @@ impl Parser {
             base: base.clone(), vtabla: vtabla.clone(), ranura_de, tam,
         };
         self.clases.insert(name.clone(), info);
+        let implicito = self.ctor_implicito(&name)?;
 
         // -- Vuelta 2: los cuerpos, con la clase ya registrada --
         let vuelta = self.pos;
@@ -622,6 +619,7 @@ impl Parser {
             p.ambitos.entrar();
             p.ambitos.declarar("this", TypeSpec::Ptr(Box::new(TypeSpec::ClassRef(name.clone()))));
             for pa in &m.params { p.ambitos.declarar(&pa.name, pa.typ.clone()); }
+            if m.name == m.class_name { m.iniciales = p.iniciales(&m.class_name)?; }
             m.body = p.bloque()?;
             p.ambitos.salir();
             p.clase_actual = None;
@@ -637,6 +635,7 @@ impl Parser {
             cuerpo_de(self, inicio, &mut m)?;
             constructors.push(m);
         }
+        constructors.extend(implicito);
         let destructor = match dtor {
             Some((inicio, mut m)) => { cuerpo_de(self, inicio, &mut m)?; Some(m) }
             None => None,
@@ -703,27 +702,6 @@ impl Parser {
             },
             _ => None,
         }
-    }
-
-    /// Elige el constructor de `cls` para estos argumentos.
-    ///
-    /// `None` significa *"esta clase no tiene constructor"*, que es legal y
-    /// deja el objeto sin inicializar -- igual que un `struct` de C. Pedir
-    /// argumentos a una clase sin constructor si es error.
-    fn resolver_ctor(&self, cls: &str, args: &[Expr]) -> Result<Option<String>, CppError> {
-        let Some(info) = self.clases.get(cls) else {
-            return Err(self.err(format!("la clase `{cls}` no esta definida")));
-        };
-        if info.constructores.is_empty() {
-            if !args.is_empty() {
-                return Err(self.err(format!(
-                    "`{cls}` no tiene constructor, asi que no acepta argumentos")));
-            }
-            return Ok(None);
-        }
-        let firmas = info.constructores.clone();
-        let tipos = self.tipos_de(args, cls)?;
-        Ok(Some(self.resolver(cls, &firmas, &tipos)?.simbolo.clone()))
     }
 
     /// Registra una funcion y devuelve su simbolo.

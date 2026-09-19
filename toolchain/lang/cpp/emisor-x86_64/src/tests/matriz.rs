@@ -304,6 +304,50 @@ fn matriz_cpp_ejecuta_correctamente() {
                        doble(21), doble(10, 11));\n\
                 return 0;\n\
             }", "0 14 42 | 42 50 | 42 42"),
+
+        // -- El paso 4 que faltaba: la lista y la base (2026-09-18) --
+        //
+        // * Los miembros se inicializan en el orden de DECLARACION, no en el
+        // de la lista ([class.base.init]/13). Escritos al reves a proposito:
+        // si se siguiera la lista, `b` se calcularia con un `a` sin valor.
+        ("lista-en-orden-de-declaracion", "@FULL@\
+            class P { public: int a; int b; P(int n) : b(a + 1), a(n) {} };\n\
+            int main() { P p(41); printf(\"%d %d\", p.a, p.b); return 0; }",
+            "41 42"),
+        ("lista-base-con-argumentos", "@FULL@\
+            class Cuenta { public: int saldo; Cuenta(int s) { saldo = s; } };\n\
+            class Ahorro : public Cuenta { public: int tasa;\n\
+                Ahorro(int s, int t) : Cuenta(s * 2), tasa(t) {} };\n\
+            int main() { Ahorro a(20, 2); printf(\"%d %d\", a.saldo, a.tasa); return 0; }",
+            "40 2"),
+        // * La base que nadie nombra se construye con su constructor sin
+        // argumentos, y ANTES que el cuerpo del derivado.
+        ("base-sin-nombrarla", "@FULL@\
+            class A { public: int x; A() { x = 42; printf(\"A \"); } };\n\
+            class B : public A { public: int y; B(int v) { y = v; printf(\"B \"); } };\n\
+            int main() { B b(7); printf(\"%d %d\", b.x, b.y); return 0; }",
+            "A B 42 7"),
+        // * El constructor IMPLICITO construye la base. Hasta hoy no existia y
+        // `b.x` salia con lo que hubiera en la pila.
+        ("ctor-implicito-construye-la-base", "@FULL@\
+            class A { public: int x; A() { x = 42; } };\n\
+            class B : public A { public: int y; };\n\
+            int main() { B b; printf(\"%d\", b.x); return 0; }",
+            "42"),
+        ("cadena-de-tres-bases", "@FULL@\
+            class A { public: int a; A() { printf(\"A \"); } };\n\
+            class B : public A { public: int b; B() { printf(\"B \"); } };\n\
+            class C : public B { public: int c; C() { printf(\"C\"); } };\n\
+            int main() { C c; return 0; }",
+            "A B C"),
+        // * Mientras corre el constructor de la base, el objeto ES la base: un
+        // virtual llamado desde ahi va a la version de la base. Despues, sobre
+        // el objeto terminado, al derivado.
+        ("virtual-en-ctor-de-la-base", "@FULL@\
+            class A { public: int x; A() { x = quien(); } virtual int quien() { return 1; } };\n\
+            class B : public A { public: B() {} int quien() override { return 2; } };\n\
+            int main() { B b; printf(\"%d %d\", b.x, b.quien()); return 0; }",
+            "1 2"),
     ];
 
     let total = casos.len();
@@ -339,7 +383,6 @@ fn matriz_cpp_rechaza_con_el_paso_escrito() {
         ("auto", "auto x = 1;", 2),
         ("sizeof", "printf(\"%d\", sizeof(int));", 2),
         ("referencia", "@FULL@int f(int &r) { return r; } int main(){return 0;}", 2),
-        ("lista-de-inicializacion", "@FULL@class P { int x; public: P() : x(0) {} };\nint main(){return 0;}", 4),
         ("copia", "@FULL@class P { public: int x; }; int main(){ P a; P b = a; return 0; }", 5),
         ("new", "int *p = new P();", 3),
         ("delete", "int *p = 0; delete p;", 3),
@@ -406,6 +449,25 @@ fn matriz_cpp_explica_lo_que_esta_mal() {
         ("sobrecargar-por-retorno",
          "@FULL@int f(int a); char f(int a); int main() { return 0; }",
          "tipo de retorno"),
+        // -- La lista y la base (2026-09-18): nunca una base sin construir --
+        ("base-sin-ctor-por-defecto",
+         "@FULL@class A { public: int x; A(int v) { x = v; } }; \
+          class B : public A { public: B() {} }; int main() { B b; return 0; }",
+         "no tiene constructor sin argumentos"),
+        ("implicito-sin-ctor-por-defecto",
+         "@FULL@class A { public: int x; A(int v) { x = v; } }; \
+          class B : public A { public: int y; }; int main() { B b; return 0; }",
+         "no tiene constructor sin argumentos"),
+        ("lista-nombre-que-no-existe",
+         "@FULL@class P { public: int x; P() : z(1) {} }; int main() { return 0; }",
+         "no es la base ni un miembro"),
+        ("lista-miembro-repetido",
+         "@FULL@class P { public: int x; P() : x(1), x(2) {} }; int main() { return 0; }",
+         "dos veces"),
+        ("lista-campo-de-la-base",
+         "@FULL@class A { public: int x; }; class B : public A { public: B() : x(1) {} }; \
+          int main() { return 0; }",
+         "campo de la base"),
         ("dos-metodos-iguales",
          "@FULL@class P { public: int f() { return 1; } int f() { return 2; } }; \
           int main() { return 0; }",
