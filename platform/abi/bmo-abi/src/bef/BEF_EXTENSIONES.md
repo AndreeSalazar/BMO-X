@@ -52,11 +52,16 @@ Concretamente, el kernel mapea **cuatro** tipos y nada mas:
 | `0x03` Data | Datos mutables | R+W |
 | `0x04` Bss | Sin inicializar | R+W, a ceros |
 
-Todo lo demas --`Imports`, `Exports`, `Relocs`, `Symbols`, `Manifest`,
-`Shaders`, `Resources`, `Tls`, `Unwind`, `Debug`, `Signature`, **y cualquier
-tipo que este kernel no conozca**-- es data para OTRO: para el enlazador, para
+Todo lo demas --`Relocs`, `Symbols`, `Manifest`, `Resources`, `Signature`,
+`Requisitos`, `Katanas`, **y cualquier tipo que este kernel no conozca**-- es
+data para OTRO: para el enlazador, para
 el verificador, para el runtime de un lenguaje del que Ring 0 no tiene por que
 saber que existe.
+
+** **La excepcion, 2026-09-19: `0x05` Imports, `0x06` Exports y `0x0C` Tls
+se RECHAZAN** (`Falta::EnlazadoDinamico`). No son data para otro: dicen "alguien
+resolvera mis llamadas al cargar", y BMO-X enlaza estatico y no tiene TLS. Ver
+`docs/plan/PLAN_BEF_NATIVO.md`, que ademas propone reemplazar este formato.
 
 **Se salta, pero se valida.** Sus limites tienen que caber dentro del archivo:
 una seccion mal formada sigue siendo un rechazo. Lo que no hace el kernel es
