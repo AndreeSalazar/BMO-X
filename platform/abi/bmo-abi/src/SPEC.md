@@ -41,26 +41,26 @@ resuelve imports y ofrece syscalls BMO; no compila lenguajes en Ring 0.
 
 ---
 
-## 1.1 Perfil de CPU BMO v1
+## 1.1 La maquina: una, y MEDIDA
 
-BMO v1 define un contrato nativo, no un objetivo generico de escritorio:
+BMO-X es x86-64 y nada mas (`toolchain/tools/isa`). La maquina es la del
+banco, y su perfil no se elige al compilar: se MIDE al arrancar
+(`Ultra_kernel_x86-64/kernel/src/ring0/cpu_vendor/`) y se escribe en
+`PERFIL/CPU.txt`, con dos columnas por fila -- lo esperado (hoja de AMD) y lo
+visto (foto del Ryzen) -- y un guardian (`toolchain/tools/perfil-campos`).
 
-| Propiedad | Contrato v1 |
+| Propiedad | Hoy |
 |---|---|
-| Arquitectura | x86-64, little-endian |
-| Modelo de datos | punteros y `usize` de 64 bits |
-| Paginas base | 4 KiB |
-| CPU base | AMD Zen 3 (`target-cpu=znver3`) |
-| ISA requerida | SSE4.2, AVX, AVX2, FMA, BMI1/2, AES, PCLMULQDQ, RDTSCP, invariant TSC |
-| Perfil por defecto | AMD Ryzen 5 5600X |
-| Perfil alternativo v1 | AMD EPYC Zen 3 |
+| Arquitectura | x86-64, little-endian, punteros de 64 bits, paginas de 4 KiB |
+| Maquina | AMD Ryzen 5 5600X (Zen 3 Vermeer), 6 nucleos / 12 hilos, 1 CCX |
+| Caches | `PERFIL/CPU.txt`, tabla de caches (medida con CPUID 0x8000001D) |
+| ISA que BMO USA | la columna `Yes` de `cpu_vendor/features/usage.rs`: SSE2, RDRAND, XSAVE/OSXSAVE/XSAVEOPT, ERMS, RDTSCP, TSC invariante, MONITORX, NX, SMEP, SMAP, UMIP |
 
-El perfil se selecciona en Cargo (`cpu-ryzen-5-5600x` o
-`cpu-epyc-zen3`) y queda disponible para registrarse en el manifest BEF.
-El loader debe validar
-los requisitos mediante CPUID antes de transferir control al programa.
-Una futura arquitectura conservara el modelo de datos BMO y BEF, pero
-definira su propio contrato de registros e instrucciones.
+** Hasta el 2026-09-19 esta seccion decia que la ISA requerida era SSE4.2,
+AVX, AVX2, FMA, BMI1/2, AES, PCLMULQDQ; que habia un "perfil alternativo AMD
+EPYC Zen 3" elegible con una feature de Cargo; y que el loader validaba el
+perfil con CPUID. Nada de eso lo hacia nadie, y se borro con `cpu_profiles/`.
+Una extension que BMO use y el silicio no tenga la pinta `ext` como CONFLICTO.
 
 ---
 

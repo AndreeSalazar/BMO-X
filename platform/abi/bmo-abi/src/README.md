@@ -1,115 +1,54 @@
-# `bmo_abi` -- BMO Application Binary Interface
+# `bmo_abi` -- the BMO-X contract, x86-64 only
 
-> The native ABI for BMO. It defines BMO's binary contract instead of inheriting
-> the C ABI (cdecl / Win64 / SysV AMD64). Every Ring 0 to Ring 3 boundary uses
-> BMO types.
+> What two parts of BMO-X have to agree on: the two kernel doors, the calling
+> convention, the BEF format and the types that cross the Ring 0 / Ring 3
+> boundary. It is not a libc (that is `toolchain/lang/base` for C and
+> `bmo-rt` for Rust) and it is not portable: BMO-X is x86-64 and nothing else
+> (`toolchain/tools/isa`).
 
-## Specification
+Canonical text: **[`SPEC.md`](./SPEC.md)**.
 
-Read **[`SPEC.md`](./SPEC.md)** -- canonical specification including:
-
-- Calling convention (6 GPRs, return in RAX, no red zone) -- `types/convention.rs`, imported by the C and INTI emitters
-- CPU contract: x86-64 Zen 3 (`Ryzen 5 5600X` default; Zen 3 EPYC profile)
-- Type layouts with compile-time `static_assert!` (34 assertions)
-- Two kernel doors (INVOKE 0x00, WAIT 0x02) + `syscall0`-`syscall6` wrappers
-- BEF format: header (48 B), sections, relocs, imports/exports, TLS, signing
-- Reflect system wired to `TypeRegistry`
-
-## Module Map (56 files, ~5 KLOC)
+## What is here (2026-09-19) -- and every module has a live user
 
 ```
 bmo_abi/
-+-- fundamentals/       Types used by EVERY BMO module (15 sub-modules)
-|   +-- primitives/     bx_u8..u128, bx_i8..i128, bx_f32/64, bx_f16, bx_bool
-|   +-- status/         BmoStatus (16 B), StatusFlags
-|   +-- handle/         BmoHandle (64-bit tag+gen+idx), 34 HandleKind variants
-|   +-- capability/     BmoCap + BmoCapSet (64-bit bitset)
-|   +-- option/         BmoOption<T> FFI-safe repr(C)
-|   +-- result/         BmoResult<T,E> FFI-safe repr(C)
-|   +-- error/          BmoError (16 B unified error type)
-|   +-- convert/        BmoStatus <-> BmoError <-> ErrorCode
-|   +-- string/         BmoStr (borrowed 16 B), BmoString (owned 24 B)
-|   +-- memory/         BmoSlice, BmoRange, BmoAligned
-|   +-- buffer/         BmoBuffer (32 B shared memory descriptor)
-|   +-- allocator/      BmoAllocator trait + Global wrapper
-|   +-- fmt/            BmoFormatter stack-allocated (256 B)
-|   +-- sync/           BmoAtomicU32/U64/Bool, BmoSpinLock
-|
-+-- values/             Value types with own semantics (8 sub-modules)
-|   +-- time/           BmoInstant (RDTSC monotonic), BmoDuration
-|   +-- clock/          BmoClockId, sleep, sleep_until
-|   +-- uuid/           BmoUuid 128-bit (RFC 4122)
-|   +-- version/        BmoVersion semver (12 B)
-|   +-- math/           sqrt, sin, cos, pow (Newton/Taylor, no_std)
-|   +-- hash/           FNV-1a 32/64, CRC32c (SSE4.2), CRC32
-|   +-- net/            BmoIpv4Addr, BmoIpv6Addr, BmoSocketAddr
-|   +-- reflect/        BmoTypeInfo, TypeKind, ReflectQuery + TypeRegistry
-|
-+-- runtime/            TypeRegistry (256 slots), VTableStore, LangBridge
-+-- windowing/          BmoWindowClass, create info, 6 event types
-+-- fs/                 BmoFileHandle, BmoOpenFlags, BmoStat (72 B), BmoDirEntry
-+-- surface/            BmoFormat (22 pixel formats), BmoSurfaceInfo
-+-- error_code/         BmoErrorCode enum (21 codes), severity, flags
-+-- bef/                BEF format -- complete toolchain
-|   +-- header/         BefHeader 48 B, BefMagic::detect() (PE/ELF/BEF)
-|   +-- sections/       SectionKind (10 types), SectionEntry 48 B
-|   +-- writer/         BefBuilder + BefSection -- produce valid BEF
-|   +-- validator/      validate() -- structural integrity check
-|   +-- loader/         load() -- zero-copy parser + import callback
-|   +-- blake3/         Full BLAKE3 (294 L, no_std, no deps)
-|   +-- relocations/    3 types: Abs64, Rel32, Got64
-|   +-- imports/        ImportEntry 24 B, ImportTable
-|   +-- exports/        ExportEntry 32 B, ExportTable
-|   +-- symbols/        Symbol 32 B, SymbolTable
-|   +-- manifest/       Provenance (Native/PeDevoured/ElfDevoured)
-|   +-- tls/            TlsTemplate 24 B, TLS setup/teardown
-|   +-- signing/        SectionHash 40 B, SignatureHeader 8 B
-|
-+-- syscalls/           Syscall number table (0x100..0x1FF) + syscall0-syscall6
-+-- profile/            BmoLanguageProfile + ALL_PROFILES
++-- fundamentals/
+|   +-- primitives/     bx_u8..u64, bx_i*, bx_f*, bx_bool
+|   +-- status/         BmoStatus: code | flags << 32 in RAX, value in RDX
+|   +-- handle/         BmoHandle (tag 63, kind 62..56, gen 55..40, index 39..0)
+|   +-- sync/           BmoSpinLock + atomics (used by bmo-rt's heap)
++-- types/              calling convention (IMPORTED by the C and INTI emitters)
+|                       + aggregate layout rule (C, C++, COBOL, INTI)
++-- syscalls/           INVOKE (0x00), WAIT (0x02), syscall0..syscall6
++-- bef/                header, sections, relocations, symbols, signing (BLAKE3),
+|                       requisitos, recursos, paquete, katanas, objeto (.bo),
+|                       writer (BefBuilder), validator
++-- bex.rs              BEX = an executable BEF
++-- dynobj/             text, list, table: INTI's runtime objects
 ```
 
-## Key Features
+| Fact | Value | Where it is decided |
+|---|---|---|
+| Kernel doors | 2: INVOKE 0x00, WAIT 0x02 (0x01 reserved) | `syscalls/surface/puertas.rs` |
+| Door arguments | RDI, RSI, RDX, R10, R8, R9 -> RAX (code), RDX (value) | `types/convention.rs` |
+| Call arguments | RDI, RSI, RDX, RCX, R8, R9; 7th+ on the stack | `types/convention.rs::ARGUMENTOS` |
+| Return | RAX | `types/convention.rs::RETORNO` |
+| Preserved | RBX, RBP, R12-R15 | `types/convention.rs::PRESERVADOS` |
+| Red zone | none | `types/convention.rs::RED_ZONE_BYTES` |
+| Stack at `call` | 8 B guaranteed | `types/convention.rs::STACK_ALIGN_BYTES` |
+| TLS | none (no one programs FS_BASE for Ring 3) | -- |
+| ABI versions accepted | 2.x only | `supports_abi` + `bmo-bex-gate` (tied by a test) |
+| Linking | static | `bef/objeto.rs`, `bmo-enlazar` |
+| Machine | Ryzen 5 5600X, MEASURED | `PERFIL/CPU.txt`, kernel `cpu_vendor/` |
 
-| Feature | Status |
-|---------|--------|
-| 34 `static_assert!` for repr(C) type sizes | ✅ |
-| BEF writer/validator/loader | ✅ |
-| BLAKE3 hashing (no_std) | ✅ |
-| Syscall wrappers (syscall0-6) with inline asm | ✅ |
-| Reflect system wired to TypeRegistry | ✅ |
-| 42 unit tests + 7 integration tests passing | ✅ |
-| PE/ELF detection (`BefMagic::detect`) | ✅ |
-| Ed25519 signature infrastructure | ✅ |
-| PE/ELF devourers | 🔜 |
+## What left on 2026-09-19, and why
 
-## Comparison with Legacy ABIs
+About 8.500 lines with no live user: the v1 syscall table (0x100..0x1FF, which
+the kernel answers with "unsupported" -- a `malloc` built on it wrote to
+address 0xA), ABI 1.0 acceptance, a 7-register calling convention no emitter
+ever used, `values/`, `runtime/`, `ir/`, `fs/`, `windowing/`, `surface/`,
+`error_code/`, ten of the fourteen `fundamentals/`, the v1 loader, TLS setup
+(a `wrmsr` from a contract crate), `cpu_profiles/` (a CPU chosen by a Cargo
+feature) and `profile/`. The 25 `#![allow(dead_code)]` went with them.
 
-| Aspect            | MS x64        | SysV AMD64    | **BMO ABI**        |
-|-------------------|---------------|---------------|--------------------|
-| Integer args      | 4 GPRs        | 6 GPRs        | **6 GPRs**         |
-| Shadow space      | 32 B          | 0 B           | **0 B**            |
-| Stack alignment   | 16 B          | 16 B          | **8 B guaranteed** |
-| Red zone          | 0 B           | 128 B         | **0 B**            |
-| Return (<=128 bit) | RAX           | RAX:RDX       | **RAX**            |
-| Error reporting   | `HRESULT`+TLS | `errno`+TLS   | **BmoStatus 16 B** |
-| Strings           | `char*` nul   | `char*` nul   | **(ptr, len) UTF-8** |
-| Handles           | `HANDLE void*`| `int fd`      | **BmoHandle 64-bit with tag+generation** |
-| Kernel doors      | many          | ~450          | **2 (INVOKE, WAIT)** |
-
-## CPU profiles
-
-BMO v1 is not a generic desktop target. Its native CPU contract is x86-64,
-little-endian, 64-bit pointers, 4 KiB pages and the Zen 3 feature baseline
-(`SSE4.2`, `AVX2`, `FMA`, `BMI1/2`, `AES`, `PCLMULQDQ`, `RDTSCP`, invariant
-TSC). `cpu_profiles/` is the single ABI-facing source of those requirements.
-
-Cargo selects the deployment profile:
-
-```toml
-bmo-abi = { path = "...", default-features = false, features = ["cpu-epyc-zen3"] }
-```
-
-`Ryzen 5 5600X` remains the default profile. A future ARM or RISC-V profile
-will keep the BMO data model and BEF semantics, while supplying its own
-register and CPU-feature contract.
+The history is in git and in `SPEC.md`.
