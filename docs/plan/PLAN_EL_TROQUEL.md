@@ -372,32 +372,45 @@ salto 14 %, pila 11 %. Ya no hay un cuello: hay un emisor de acumulador. Lo
 que queda son ganancias de un digito, y por la ley de optimizacion solo se
 tocan si el metro las pide:
 
-- [ ] **T1 -- el recorte del `int` en registro.** `i = i + 1` con `i` en r12
-      es `add r12, 1 ; movsxd r12, r12d`: dos instrucciones donde una
-      bastaria si el registro guardara el `int` de OTRA forma. Cambiar la
-      invariante de `emit_guardar_en_registro` (hoy: "lo mismo que la pila")
-      es tocar el sitio peligroso del troquel; el ahorro es una instruccion
-      por vuelta de cada bucle con contador `int`
-- [ ] **T2 -- leer la matriz sin `mov rax, rN`** cuando el resultado no
-      necesita ir a rax: `t[i]` con `i` en la matriz ya lo hace (`lea rdx,
-      [rdx + r12*8]`); faltan `and`/`or`/`xor` con el izquierdo en la
-      matriz (no hay forma de tres operandos: es `mov` + `op` igual) y el
-      valor de `t[i] = i` (hoy `mov rax, r12 ; mov [rdx], eax`, podria ser
-      `mov [rdx], r12d`)
-- [ ] **T3 -- `IndexPtr` (`p->arr[i]`, `(p+1)[i]`) sin pila.** Es el unico
-      camino de indexacion que sigue con `push`/`pop`: `push` base, indice,
-      `pop`. Quitarlo cuesta un byte por sitio (`mov rdx, rax` son 3 B contra
-      2 del `push`/`pop`) y el trinquete de bytes lo para: hay que decidir
-      si el trinquete admite +1 B por -1 instruccion, o compensarlo en el
-      mismo commit
-- [ ] **T4 -- el metro no ve la memoria.** Cuenta instrucciones: `mov rax,
-      r12` y `movsxd rax, [rbp-8]` valen lo mismo para el. El troquel por
-      variable no bajo ni una instruccion y quito el 60 % de los accesos al
-      marco. Un segundo numero --accesos a memoria, o ciclos del Ryzen con
-      `c/ciclos.bex`-- es lo que falta para que el metro juzgue eso
+- [ ] **T1 -- el recorte del `int` en registro.** MEDIDO el 19-09: el
+      `movsxd rN, rNd` tras cada `add rN, imm` es el 6,2 % del banco de C, y
+      es TODO `int` con signo. Quitarlo obliga a que el registro deje de
+      guardar el valor extendido (la invariante de `emit_guardar_en_registro`)
+      o a asumir que el desborde de `int` no ocurre -- y el banco protege el
+      desborde (`int x = 2147483647; x + 1 == -2147483648`). Se deja con su
+      numero; no se toca sin cambiar la regla, y eso es decision del dueno
+- [x] **T2 -- leer la matriz sin `mov rax, rN`**: `t[i] = v` con `v` en la
+      matriz escribe `mov [rdx], r12d` directo (`c833ace2`); `and`/`or`/`xor`
+      con el izquierdo en la matriz siguen con `mov` + `op` (no hay forma de
+      tres operandos)
+- [x] **T3 -- `IndexPtr` sin pila** (`c833ace2`): con el indice en la matriz,
+      `lea rax, [rax + r12*s]`; con indice sin pila y escala > 1, la base a
+      rdx. La escala 1 con indice general sigue por la pila, a proposito (+1 B)
+- [x] **T4 -- el metro ve la memoria** (`8b775d35`): tercer numero, `accesos`
+      (pila + marco + memoria), trinquete como los otros dos; `lea` ya no
+      cuenta como acceso
 - [ ] **T5 -- DOOM pasa por el metro.** Hoy esta fuera del arbol y del banco;
-      encogio un 10,7 % en el dia y NADIE lo ha visto correr. Hoja del metal
-      del 18-09, seccion 3b
+      encogio un 12,7 % desde el 18-09 y NADIE lo ha visto correr. Hoja del
+      metal del 18-09, seccion 3b
+
+** Y lo que salio del censo POR PATRON (19-09, `--caliente` volcando todas
+las cuentas y sumando por bytes de opcode), que no estaba en esta lista:
+
+- [x] el prologo cargaba cada parametro en rax "por si algun dia" (4,9 %), y
+      guardaba los cuatro registros de la matriz aunque usara uno (`8b775d35`)
+- [x] el bucle ROTADO: la condicion abajo y el `jmp` de vuelta (6,1 %)
+      desaparece; y al rotar salio un FALLO: `break` en `do ... while` no
+      rompia (`8b775d35`)
+- [x] `x = constante` directo al marco o a la matriz, recortada al compilar
+- [x] los argumentos de un intrinseco directos a su registro: el envoltorio
+      de la puerta pasa de 31 a 13 instrucciones (`c833ace2`)
+
+Cierre del 19-09: 451.306 -> 197.052 instrucciones (**-56 %** desde el
+18-09), accesos 40.737, y el reparto sigue plano: `jcc` 9 %, el recorte de
+T1 6 %, `lea [rip]` de los globales 5 %, `push` de argumentos de llamada 4 %,
+`mov rax, rN` 4 %. Lo siguiente grande no es una instruccion: es la
+convencion de llamada (argumentos por la pila y parametros en el marco), y
+eso es otro plan.
 
 [!] Lo que la seccion 3 llamaba S1-S5 sigue en pie como forma (la libreria de
 codificacion con contrato). Lo del 18-09 se hizo SIN ella, en `decidir/` +

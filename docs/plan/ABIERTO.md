@@ -7,8 +7,8 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   300 casillas ABIERTAS en 35 planes
-   209 hechas
+   297 casillas ABIERTAS en 35 planes
+   216 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -53,15 +53,6 @@
 - [ ] P2.4 -- envejecimiento en choose_next, y SOLO si P2.1+P2.2 no bastan.
 - ... y 11 mas
 
-## [`PLAN_EL_TROQUEL.md`](PLAN_EL_TROQUEL.md) -- 14 abiertas, 0 hechas
-
-*PLAN EL TROQUEL -- la geometria de los registros, estampada de un golpe*
-
-- [ ] S1 -- EL CONTRATO, EN PAPEL Y ANTES QUE EL CODIGO. Que entra y que
-- [ ] S2 -- LA TABLA DE REGISTROS COMO DATO, no como codigo. x86-64 nombra
-- [ ] S3 -- EL PRIMER CLIENTE: INTI. Porque puede declarar el alias. Y
-- ... y 11 mas
-
 ## [`PLAN_EL_ASISTENTE.md`](PLAN_EL_ASISTENTE.md) -- 13 abiertas, 2 hechas
 
 *PLAN EL ASISTENTE -- un ayudante que corre DENTRO de BMO-X*
@@ -88,6 +79,15 @@
 - [ ] E1 -- EL TIEMPO DE CPU POR TAREA. Un contador en el cambio de contexto
 - [ ] E2 -- (C,T) DECLARADOS Y EL AFORO. Cada tarea trae su compas; el kernel
 - ... y 9 mas
+
+## [`PLAN_EL_TROQUEL.md`](PLAN_EL_TROQUEL.md) -- 11 abiertas, 7 hechas
+
+*PLAN EL TROQUEL -- la geometria de los registros, estampada de un golpe*
+
+- [ ] S1 -- EL CONTRATO, EN PAPEL Y ANTES QUE EL CODIGO. Que entra y que
+- [ ] S2 -- LA TABLA DE REGISTROS COMO DATO, no como codigo. x86-64 nombra
+- [ ] S3 -- EL PRIMER CLIENTE: INTI. Porque puede declarar el alias. Y
+- ... y 8 mas
 
 ## [`PLAN_LA_PUERTA_SE_PARTE.md`](PLAN_LA_PUERTA_SE_PARTE.md) -- 11 abiertas, 8 hechas
 
