@@ -270,13 +270,25 @@ impl Codegen {
     }
 
     /// El recorte de `emit_guardar_en_registro`, hecho de `rN` a `rN`.
-    ///
-    /// `reg` = rN y `rm` = rN: REX.R y REX.B a la vez (`4D` con W, `45` sin).
     pub(super) fn emit_recorte_en_registro(&mut self, r: u8, tipo: &TypeSpec) {
-        let modrm = 0xC0 | ((r & 7) << 3) | (r & 7);
-        // REX.R y REX.B a la vez (el mismo registro en los dos campos); con W
-        // en las formas de 64 bits, y siempre presente en la de byte
-        let rb = ((r >> 3) << 2) | (r >> 3);
+        self.emit_recorte_de_a(r, r, tipo);
+    }
+
+    /// **`dst = src` con la anchura y el signo de `tipo`, en UNA instruccion.**
+    ///
+    /// Es la misma familia que el recorte en sitio (`movsx`, `movzx`, `movsxd`,
+    /// `mov r32`), con `reg` = `dst` y `rm` = `src`: REX.R sale de `dst`, REX.B
+    /// de `src`. Con ocho bytes es un `mov`, y si `dst == src` no es nada.
+    ///
+    /// Nacio el 19-09 para el TRASLADO de un parametro (`rdx` -> `r10` con su
+    /// tipo): antes era `mov rax, rdx` + `movsxd r10, eax`, dos instrucciones
+    /// donde el volcado al marco era una, y el metro no dejaba pasar el cambio.
+    /// Vale igual para llevar un parametro a la matriz del troquel.
+    pub(super) fn emit_recorte_de_a(&mut self, dst: u8, src: u8, tipo: &TypeSpec) {
+        let modrm = 0xC0 | ((dst & 7) << 3) | (src & 7);
+        // REX.R de `dst`, REX.B de `src`; con W en las formas de 64 bits, y
+        // siempre presente en la de byte (sin REX, `sil`/`dil` serian `dh`/`bh`)
+        let rb = ((dst >> 3) << 2) | (src >> 3);
         match tipo {
             TypeSpec::Char => self.code.extend_from_slice(&[0x48 | rb, 0x0F, 0xBE, modrm]),
             TypeSpec::UnsignedChar => self.code.extend_from_slice(&[0x48 | rb, 0x0F, 0xB6, modrm]),
@@ -285,10 +297,14 @@ impl Codegen {
             TypeSpec::Int => self.code.extend_from_slice(&[0x48 | rb, 0x63, modrm]),
             TypeSpec::UnsignedInt => {
                 if rb != 0 { self.code.push(0x40 | rb); }
-                self.code.extend_from_slice(&[0x89, modrm]);
+                self.code.extend_from_slice(&[0x8B, modrm]);
             }
-            // Ocho bytes: no hay nada que ensanchar.
-            _ => {}
+            // Ocho bytes: no hay nada que ensanchar, solo mover si hace falta.
+            _ => {
+                if dst != src {
+                    self.code.extend_from_slice(&[0x48 | rb, 0x8B, modrm]);
+                }
+            }
         }
     }
 }

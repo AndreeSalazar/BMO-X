@@ -143,3 +143,25 @@ fn guardar_en_campos_y_por_puntero_sin_pila() {
     );
     assert_eq!(out, "7 9 42 9");
 }
+
+/// La residencia de los SEIS (19-09, tarde): en una hoja rdi, rsi, r8 y r9
+/// se quedan y rdx/rcx se TRASLADAN a r10/r11 -- y por eso una division (que
+/// pisa rdx) y un desplazamiento (que pisa rcx) sobre el tercero y el cuarto
+/// dan lo correcto. Con tipos estrechos, que el traslado lleva el recorte
+/// dentro; y modificando los seis.
+#[test]
+fn los_seis_parametros_residen_y_los_de_rdx_rcx_se_trasladan() {
+    let out = run_c(
+        "int seis(int a, unsigned int b, char c, unsigned char d, long e, short f) {            a = a / c; b = b >> d; c = c + 1; d = d * 2; e = e % 7; f = f - a;            if (a < 0 && c < 0) return a + b + c + d + e + f; return 0; }          int division(int x, int y, int p3, int p4, int p5, int p6) { return p3 / p4 + (p5 << p6) + (p6 % p3) + x - y; }          int main() { unsigned int u = 100;            printf(\"%d %d %d\", seis(-90, 1024, u - 103, 3, 30, 7), division(1, 2, 45, 9, 3, 4), division(1, 2, u - 103, 3, 3, 4)); return 0; }",
+    );
+    // seis: c = u - 103 = -3 (char, recortado al entrar); a = -90 / -3 = 30, no es negativo -> 0
+    // division: 45/9=5, 3<<4=48, 4%45=4, +1-2 = 56; y con p3 = u - 103 = -3 SIN convertir
+    // por el llamante (unsigned -> int, la misma anchura): el traslado a r10 tiene que
+    // extender el signo, o -3/3 seria 4294967293/3. -1 + 48 + (4 % -3 = 1) + 1 - 2 = 47
+    assert_eq!(out, "0 56 47");
+    let out = run_c(
+        "int seis(int a, unsigned int b, char c, unsigned char d, long e, short f) {            a = a / c; b = b >> d; c = c + 1; d = d * 2; e = e % 7; f = f - a;            return a + (int)b + c + d + (int)e + f; }          int main() { unsigned int u = 100; printf(\"%d\", seis(90, 1024, u - 103, 3, 30, 7)); return 0; }",
+    );
+    // a = 90 / -3 = -30; b = 1024 >> 3 = 128; c = -2; d = 6; e = 2; f = 7 - (-30) = 37 -> 141
+    assert_eq!(out, "141");
+}

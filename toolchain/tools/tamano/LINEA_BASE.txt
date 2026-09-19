@@ -2,7 +2,7 @@
 # REPORTERO, no trinquete: ver toolchain/tools/tamano/tamano.py
 # Se regenera con:  py toolchain/tools/tamano/tamano.py --fijar
 ada/cierre.bex 2352
-apps/doom.bex 742168
+apps/doom.bex 741656
 apps/navegar.ibx 47152
 c/blit.bex 4848
 c/caja.bex 8428

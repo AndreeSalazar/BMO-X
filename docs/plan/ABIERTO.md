@@ -7,8 +7,8 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   308 casillas ABIERTAS en 35 planes
-   216 hechas
+   306 casillas ABIERTAS en 35 planes
+   218 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -26,14 +26,14 @@
 - [ ] S1b -- la Biblioteca ensena lo de ESTRATOS. Hoy
 - ... y 42 mas
 
-## [`PLAN_EL_TROQUEL.md`](PLAN_EL_TROQUEL.md) -- 22 abiertas, 7 hechas
+## [`PLAN_EL_TROQUEL.md`](PLAN_EL_TROQUEL.md) -- 20 abiertas, 9 hechas
 
 *PLAN EL TROQUEL -- la geometria de los registros, estampada de un golpe*
 
 - [ ] S1 -- EL CONTRATO, EN PAPEL Y ANTES QUE EL CODIGO. Que entra y que
 - [ ] S2 -- LA TABLA DE REGISTROS COMO DATO, no como codigo. x86-64 nombra
 - [ ] S3 -- EL PRIMER CLIENTE: INTI. Porque puede declarar el alias. Y
-- ... y 19 mas
+- ... y 17 mas
 
 ## [`PLAN_AUTOCURACION.md`](PLAN_AUTOCURACION.md) -- 17 abiertas, 0 hechas
 

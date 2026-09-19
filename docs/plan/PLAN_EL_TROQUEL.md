@@ -465,14 +465,23 @@ el 18-09: **451.306 -> 183.875, -59 %**.
       del 18-09, seccion 3b: si el `[perf]` sale y se juega, la convencion
       esta viva. Va ANTES que C2-C4: no se apila mas encima de lo que el
       metal no ha visto
-- [ ] **C2 -- residencia en r8 y r9.** Hoy solo rdi y rsi se quedan; rdx y
-      rcx son scratch y no pueden, pero r8/r9 no se le deben a nadie y el
-      quinto y sexto parametro se vuelcan sin motivo. Pide un `--caliente`
-      que diga cuantas funciones hoja tienen 5-6 parametros
-- [ ] **C3 -- el troquel y la residencia se pelean.** Un parametro con 6+
-      usos ponderados va a la matriz (`mov r12, rdi` + push/pop de r12)
-      cuando ya estaba en rdi gratis. Con residencia posible, el troquel
-      deberia dejarlo en paz. Medir cuantos casos son
+- [x] **C2 -- la residencia de los SEIS** (19-09 tarde). El censo (`BMO_CENSO`
+      en `frame.rs`, un `eprintln` de quita y pon) dijo donde estaba el
+      dinero, y no era en r8/r9: en el metro, 5 parametros de hoja en r8/r9
+      y **22 en rdx/rcx**; en DOOM, 7 y **54**. rdx y rcx son scratch (la
+      division, el operando derecho) y no pueden quedarse, asi que se
+      TRASLADAN a r10/r11 --libres, nadie los emite fuera de lo que hace
+      `pisa`-- en UNA instruccion con el recorte dentro (`movsxd r10, edx`,
+      `emit_recorte_de_a`); rdi, rsi, r8 y r9 se quedan. `llamada::residencia`
+      es la decision. Lo que dio: 183.875 -> 183.869 instrucciones, accesos
+      29.358 -> **29.262**, -81 B; DOOM -512 B. Pequeno, como el censo dijo;
+      y la primera version (traslado en dos instrucciones) el trinquete la
+      paro por +48 instrucciones
+- [x] **C3 -- el troquel y la residencia NO se pelean**: `build_var_map`
+      corre `repartir` y despues la residencia, y `insert` gana. Lo que si
+      pasa: un parametro que `repartir` eligio gasta un hueco de la matriz
+      que luego no usa; una local de menos entra en r12-r15. Sin numero;
+      se mide si el metro lo pide
 - [ ] **C4 -- reenvio con argumentos de pila.** `return f(a, b, c, d, e, g,
       h)` con 7 no es reenvio; y tampoco `return f(a, s)` con un struct. Son
       pocos; se hacen si el censo los cuenta

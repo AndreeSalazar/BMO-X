@@ -78,9 +78,50 @@ pub(in crate::codegen) fn clasificar(de_registro: &[bool], variadica: bool) -> V
         .collect()
 }
 
+/// **Donde se queda un parametro en una funcion HOJA** (19-09, tarde).
+///
+/// Una funcion que no llama a nadie, no copia structs y no pone a cero (ver
+/// `registros::pisa_argumentos`) no tiene por que bajar sus parametros al
+/// marco: pueden vivir en un registro toda la funcion, y sin push/pop, porque
+/// ninguno de estos se le debe a quien llamo. Pero no todos pueden quedarse
+/// DONDE llegaron:
+///
+/// ```text
+///    rdi, rsi, r8, r9    se quedan: el emisor no los toca fuera de una llamada
+///    rdx                 se TRASLADA a r10: el resto de la division cae en rdx
+///                        y `t[i] = v` lo usa de direccion
+///    rcx                 se TRASLADA a r11: es el scratch del operando derecho
+///                        y la cuenta de todo desplazamiento
+/// ```
+///
+/// El censo que lo pidio (19-09, `BMO_CENSO`): en los 25 programas del metro
+/// habia 5 parametros en r8/r9 de funciones hoja y **22 en rdx/rcx**; en DOOM,
+/// 7 y **54**. Lo que bajaba al marco sin motivo eran el tercero y el cuarto,
+/// no el quinto y el sexto -- y por eso el traslado y no solo la residencia.
+///
+/// r10 y r11 son de los que una llamada PISA y el emisor solo los emite
+/// dentro de `scanf`, `printf`, los intrinsecos y las sintetizadas: todo lo
+/// que hace `pisa == true`. En una hoja estan enteros sin usar.
+pub(in crate::codegen) fn residencia(reg: u8) -> u8 {
+    match reg {
+        2 => 10,
+        1 => 11,
+        r => r,
+    }
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn en_una_hoja_los_de_argumento_se_quedan_y_los_scratch_se_trasladan() {
+        assert_eq!(REGISTROS.map(residencia), [7, 6, 10, 11, 8, 9]);
+        // y ningun destino es otro origen: el traslado no pisa a nadie
+        for d in REGISTROS.map(residencia) {
+            assert!(d == residencia(d));
+        }
+    }
 
     #[test]
     fn seis_escalares_van_en_orden_y_el_septimo_a_la_pila() {

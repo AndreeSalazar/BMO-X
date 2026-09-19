@@ -147,21 +147,25 @@ impl Codegen {
         for (n, r) in super::decidir::registros::repartir(cand) {
             self.var_regs.insert(n, r);
         }
-        // === *** LA RESIDENCIA (2026-09-19): rdi y rsi se quedan ==========
+        // === *** LA RESIDENCIA (2026-09-19): los parametros se quedan =====
         //
-        // Un parametro que llego en rdi o rsi no necesita hueco ni volcado si
-        // el cuerpo no puede pisarlos: ni llamadas, ni copias de struct, ni
-        // poner a cero. Entonces vive en su registro de llegada, gratis --
-        // ni siquiera cuesta el push/pop de la matriz, porque rdi y rsi no se
-        // le deben a nadie. Es lo que hace que un metodo `this->c = c` o un
-        // `FixedMul(a, b)` no paguen la convencion. Ver `pisa_argumentos`.
+        // Un parametro que llego en registro no necesita hueco ni volcado si
+        // el cuerpo no puede pisarlo: ni llamadas, ni copias de struct, ni
+        // poner a cero. Entonces vive en un registro toda la funcion, gratis
+        // -- ni siquiera cuesta el push/pop de la matriz, porque ninguno de
+        // esos se le debe a nadie. Es lo que hace que un metodo `this->c = c`
+        // o un `FixedMul(a, b)` no paguen la convencion. Ver `pisa_argumentos`.
+        //
+        // ** Cual registro lo dice `llamada::residencia`: rdi, rsi, r8 y r9 se
+        // quedan donde llegaron; rdx y rcx son scratch del emisor y se
+        // TRASLADAN a r10 y r11 (un `mov` en la entrada en vez de un hueco y
+        // una lectura por uso). Y gana al troquel: un parametro que `repartir`
+        // hubiera puesto en la matriz vive aqui sin guardar ni devolver nada.
         let es_agregado = |e: &Expr| crate::tipos::tipo_de(self, e).map_or(true, |t| self.es_agregado(&t));
         if !super::decidir::registros::pisa_argumentos(&func.body, &es_agregado) {
             for (n, reg) in self.param_regs.clone() {
-                if reg == 6 || reg == 7 {
-                    if !tomadas.incluye(&n) {
-                        self.var_regs.insert(n, reg);
-                    }
+                if !tomadas.incluye(&n) {
+                    self.var_regs.insert(n, super::decidir::llamada::residencia(reg));
                 }
             }
         }
@@ -207,15 +211,12 @@ impl Codegen {
                 self.emit_recorte_en_registro(reg, &tipo);
                 continue;
             }
+            // A otro registro: la matriz del troquel, o el TRASLADO de un
+            // residente que llego en rdx/rcx (`llamada::residencia`). UNA
+            // instruccion, con el recorte de su tipo dentro (`movsxd r10, edx`).
             if let Some(&r) = self.var_regs.get(&name) {
                 let tipo = self.var_type_of(&name).expect("un parametro tiene tipo");
-                if self.type_stack_size(&tipo) == 8 {
-                    // mov rN, reg: REX.W + REX.R(rN) + REX.B(reg)
-                    self.code.extend_from_slice(&[0x48 | ((r >> 3) << 2) | (reg >> 3), 0x8B, 0xC0 | ((r & 7) << 3) | (reg & 7)]);
-                } else {
-                    self.code.extend_from_slice(&[0x48 | (reg >> 3), 0x8B, 0xC0 | (reg & 7)]); // mov rax, reg
-                    self.emit_guardar_en_registro(r, &tipo);
-                }
+                self.emit_recorte_de_a(r, reg, &tipo);
                 continue;
             }
             let Some(&(off, _)) = self.var_offsets.get(&name) else { continue };
