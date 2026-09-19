@@ -117,6 +117,9 @@ mod sistema;
 /// **VEX**: la codificacion de AVX2. Aparte porque es otra codificacion, no
 /// mas instrucciones -- ver la cabecera de `vex.rs`.
 mod vex;
+/// Un `.bex` entero montado como lo monta el cargador (el metro lo usa).
+mod cargar;
+pub use cargar::cargar_bex;
 
 // ** El reparto de este directorio (L6b), y el corte es por la PREGUNTA:
 //
@@ -259,6 +262,9 @@ pub struct Machine {
     pub syscalls: Vec<ObservedSyscall>,
     /// True cuando el programa invoco `TASK_OP_EXIT`.
     pub exited: bool,
+    /// ** Cuantas instrucciones ejecuto `run` (2026-09-18). Es el metro del
+    /// emisor: determinista, y sale igual en cualquier maquina que compile.
+    pub pasos: u64,
     /// El disco, modelado: ruta -> contenido.
     ///
     /// Sin esto el File I/O de COBOL no se podria probar de ninguna forma --
@@ -439,6 +445,7 @@ impl Machine {
             console: String::new(),
             syscalls: Vec::new(),
             exited: false,
+            pasos: 0,
             archivos: HashMap::new(),
             fallo_al_guardar: HashSet::new(),
             entrada: Vec::new(),
@@ -1772,6 +1779,7 @@ pub fn run(mut m: Machine, max_steps: usize) -> Machine {
     while m.rip < m.code.len() && !m.exited {
         m.step();
         steps += 1;
+        m.pasos += 1;
         assert!(
             steps < max_steps,
             "el codigo emitido no termina (>{max_steps} instrucciones)"

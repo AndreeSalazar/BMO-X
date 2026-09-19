@@ -238,6 +238,8 @@ members = [
     # empaquetar es un paso posterior y no una opcion del codegen.
     "toolchain/tools/bmo-pack",
     "toolchain/tools/bmo-enlazar",
+    # El metro del emisor de x86-64 (2026-09-18): pasos, bytes y salida de un banco fijo.
+    "toolchain/tools/metro",
     # *** LA HERRAMIENTA DE FIRMAR, y la unica del arbol que enciende la
     # bandera `firmar` de `bmo-cripto`. Vive en el ANFITRION y no baja: una
     # maquina que puede firmar tiene dentro con que falsificar lo que ejecuta.

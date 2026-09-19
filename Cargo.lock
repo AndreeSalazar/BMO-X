@@ -444,6 +444,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "bmo-metro"
+version = "0.1.0"
+dependencies = [
+ "bmo-abi",
+ "bmo-ada-x86-64",
+ "bmo-c-x86-64",
+ "bmo-cobol-x86-64",
+ "bmo-cpp-x86-64",
+ "bmo-enlazar",
+ "bmo-lower",
+]
+
+[[package]]
 name = "bmo-mmio-juicio"
 version = "0.1.0"
 

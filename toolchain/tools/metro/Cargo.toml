@@ -1,0 +1,21 @@
+[package]
+name = "bmo-metro"
+version = "0.1.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "El metro del emisor de x86-64: instrucciones ejecutadas, bytes de codigo y la huella de la salida de un banco fijo de programas."
+
+# Herramienta de anfitrion: compila con los emisores de verdad y ejecuta en el
+# emulador. No corre en la maquina.
+[dependencies]
+bmo-lower = { path = "../../forge/bmo-lower", features = ["emulator"] }
+bmo-abi = { path = "../../../platform/abi/bmo-abi" }
+bmo-enlazar = { path = "../bmo-enlazar" }
+bmo-c-x86-64 = { path = "../../lang/c/emisor-x86_64" }
+bmo-cpp-x86-64 = { path = "../../lang/cpp/emisor-x86_64" }
+bmo-cobol-x86-64 = { path = "../../lang/cobol/emisor-x86_64" }
+bmo-ada-x86-64 = { path = "../../lang/ada/emisor-x86_64" }
+
+[[bin]]
+name = "metro"
+path = "src/main.rs"

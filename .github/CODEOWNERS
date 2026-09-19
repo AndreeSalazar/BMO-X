@@ -92,6 +92,7 @@
 /toolchain/tools/privacidad/                 @AndreeSalazar
 /toolchain/tools/codeowners/                 @AndreeSalazar
 /toolchain/tools/isa/                        @AndreeSalazar
+/toolchain/tools/metro/                      @AndreeSalazar
 /toolchain/tools/relevo/                     @AndreeSalazar
 /toolchain/tools/tamano/                     @AndreeSalazar
 

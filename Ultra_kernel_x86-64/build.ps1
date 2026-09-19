@@ -202,6 +202,12 @@ Guardian 'Validating this repository is x86-64 only' `
     'toolchain\tools\isa\isa.py' 'que el repo sea de una sola arquitectura' `
     'isa: hay codigo, un target o una carpeta para otra CPU (ver arriba)'
 
+# ** El metro del emisor de x86-64 (2026-09-18): instrucciones, bytes y la
+# salida de un banco fijo de programas. Nada sube y ninguna salida cambia.
+Guardian 'Validating the x86-64 emitters do not get worse' `
+    'toolchain\tools\metro\metro.py' 'el metro del emisor' `
+    'metro: un emisor emite mas, o una salida cambio (ver arriba)'
+
 # ---------------------------------------------------------------------------
 # ** EL QUINTO GUARDIAN: LAS CITAS A DOCUMENTOS (2026-08-17).
 #
