@@ -405,15 +405,168 @@ las cuentas y sumando por bytes de opcode), que no estaba en esta lista:
 - [x] los argumentos de un intrinseco directos a su registro: el envoltorio
       de la puerta pasa de 31 a 13 instrucciones (`c833ace2`)
 
-Cierre del 19-09: 451.306 -> 197.052 instrucciones (**-56 %** desde el
-18-09), accesos 40.737, y el reparto sigue plano: `jcc` 9 %, el recorte de
-T1 6 %, `lea [rip]` de los globales 5 %, `push` de argumentos de llamada 4 %,
-`mov rax, rN` 4 %. Lo siguiente grande no es una instruccion: es la
-convencion de llamada (argumentos por la pila y parametros en el marco), y
-eso es otro plan.
+Cierre de la manana del 19-09: 451.306 -> 197.052 instrucciones (**-56 %**
+desde el 18-09), accesos 40.737, y el reparto sigue plano: `jcc` 9 %, el
+recorte de T1 6 %, `lea [rip]` de los globales 5 %, `push` de argumentos de
+llamada 4 %, `mov rax, rN` 4 %. Lo siguiente grande no era una instruccion:
+era la convencion de llamada, y es la seccion 11.
 
 [!] Lo que la seccion 3 llamaba S1-S5 sigue en pie como forma (la libreria de
 codificacion con contrato). Lo del 18-09 se hizo SIN ella, en `decidir/` +
 `operando.rs` + `en_sitio.rs`, y funciono porque cada decision es pura y el
 banco la juzga. `emit_lea` es el primer codificador general que nace con
 clientes: es el embrion de S2.
+
+---
+
+# 11. LA CONVENCION DE LLAMADA HIBRIDA (19-09), Y LO QUE LE FALTA
+
+Hasta el 19-09 BMO C pasaba TODOS los argumentos por la pila y el prologo
+los copiaba uno a uno a su hueco. Eso era el 4 % de `push` y otro tanto de
+`mov` que el censo por patron veia y ninguna instruccion suelta arreglaba. El
+commit `0e84c825` lo cambia, y la forma importa mas que el numero porque es
+la que INTI va a copiar (seccion 12):
+
+```text
+   escalares y punteros    rdi  rsi  rdx  rcx  r8  r9      en ese orden
+   el septimo en adelante  la pila, de derecha a izquierda
+   structs y flotantes     la pila, siempre (no hay xmm en la convencion)
+   una VARIADICA           TODO por la pila: `va_arg` es `*ap++` y no cambia
+   su direccion            NO compila: por un puntero nadie sabria
+```
+
+Y las tres piezas que hacen que la convencion GANE en vez de solo cambiar
+de sitio el coste:
+
+- **los argumentos van directos** (`argumentos.rs`): constante, variable o
+  direccion de funcion se cargan en su registro sin pasar por rax; una
+  expresion sin pila hace `mov`; solo lo que llama a alguien aparca en la
+  pila. El de rcx va el ultimo porque rcx es el scratch del operando derecho
+- **el REENVIO** (`decidir/reenvio.rs`): `return destino(params, constantes)`
+  no tiene marco. Baraja los registros (un ciclo pasa por r11) y salta con
+  `jmp`, o pone los bytes del intrinseco y `ret`. `bmo_valor` 31 -> 13
+- **la RESIDENCIA** (`registros::pisa_argumentos`): si el cuerpo no llama, no
+  copia structs y no pone a cero, rdi y rsi se quedan donde llegaron --
+  recortados a su tipo en la entrada, nunca si se toma su direccion
+
+Y de rebote: `p->c = v`, `*p = v`, `v.c = x` escriben con la direccion en
+rdx y el desplazamiento dentro del `mov` (7 -> 3), y 17 emisores que solo
+sabian de r12-r15 aprendieron REX entero.
+
+El metro: 197.052 -> **183.875** instrucciones (-6,7 %), accesos 40.737 ->
+**29.358** (-28 %), codigo 128,6 -> 124,4 KB; `sonda_C.c` 5.872 -> 964
+accesos (-84 %). DOOM 763.672 -> 742.168 B. Las 25 salidas identicas. Desde
+el 18-09: **451.306 -> 183.875, -59 %**.
+
+** Y lo que le falta, medido antes de tocarlo:
+
+- [ ] **C1 -- el metal.** Todo esto compila y corre en el emulador, y ningun
+      CPU lo ha ejecutado (LEY 24). La foto es DOOM en el Ryzen con la hoja
+      del 18-09, seccion 3b: si el `[perf]` sale y se juega, la convencion
+      esta viva. Va ANTES que C2-C4: no se apila mas encima de lo que el
+      metal no ha visto
+- [ ] **C2 -- residencia en r8 y r9.** Hoy solo rdi y rsi se quedan; rdx y
+      rcx son scratch y no pueden, pero r8/r9 no se le deben a nadie y el
+      quinto y sexto parametro se vuelcan sin motivo. Pide un `--caliente`
+      que diga cuantas funciones hoja tienen 5-6 parametros
+- [ ] **C3 -- el troquel y la residencia se pelean.** Un parametro con 6+
+      usos ponderados va a la matriz (`mov r12, rdi` + push/pop de r12)
+      cuando ya estaba en rdi gratis. Con residencia posible, el troquel
+      deberia dejarlo en paz. Medir cuantos casos son
+- [ ] **C4 -- reenvio con argumentos de pila.** `return f(a, b, c, d, e, g,
+      h)` con 7 no es reenvio; y tampoco `return f(a, s)` con un struct. Son
+      pocos; se hacen si el censo los cuenta
+- [ ] **C5 -- INTI pasa por el metro.** Los 25 programas son C, C++, COBOL y
+      Ada: INTI tiene seis `.ibx` en el build y ningun trinquete. Es lo
+      primero de la seccion 12, porque sin metro cada paso de INTI se elige
+      por corazonada
+
+---
+
+# 12. EL 50/50 DE INTI: el frontend MAESTRO y el REGISTRO
+
+> Eddi, 19-09: *"el INTI eso vamos a ver luego, pero aisla como se hace en
+> 50/50 el frontend MAESTRO y el REGISTRO de INTI, que INTI tiene que hablar
+> con la CPU literalmente por registro por algo."*
+
+Esta seccion no es codigo ni casillas de hoy: es la forma, aislada, para
+que cuando toque no haya que reinventarla. Y la forma ya existe dos veces
+en el arbol: en BMO C desde el 19-09 (`decidir/` no sabe un byte;
+`operando.rs`, `argumentos.rs` y `frame.rs` no saben un motivo) y en INTI
+desde el 19-08 (`marco.rs` dice *"la IR habla de `Local(3)` y `Temporal(7)`:
+indices sin sitio"*, y `inti.toml` da los registros POR ROL). Lo que falta
+es escribir la frontera con las palabras justas y ver que cada pieza de la
+seccion 11 cae en un lado y solo en uno.
+
+## 12.1 La frase que parte en dos
+
+```text
+   EL FRONTEND MAESTRO dice HECHOS sobre el arbol.
+   EL REGISTRO dice NOMBRES sobre la maquina.
+   Y lo que cruza es un hecho hacia abajo -- nunca un nombre hacia arriba.
+```
+
+Un hecho es algo que se comprueba mirando SOLO el fuente: *este parametro
+es un escalar*, *a esta local le toman la direccion*, *esta funcion llama a
+alguien*, *este valor nace aqui y muere aqui*, *esta funcion solo reexpide
+sus parametros*, *este nombre se usa 14 veces y 12 dentro de un bucle*. Un
+nombre es *rdi*, *r12*, *el cuarto va en r10 porque `syscall` machaca rcx*.
+El frontend de INTI tiene PROHIBIDO por test nombrar una maquina; el
+emisor no tiene por que recorrer el arbol. La frontera es exactamente esa.
+
+## 12.2 Cada pieza de la seccion 11, a su lado
+
+| pieza (BMO C, 19-09) | el HECHO (frontend MAESTRO) | el NOMBRE (REGISTRO x86-64) |
+|---|---|---|
+| clasificar (`decidir/llamada.rs`) | `de_registro[i]`: el i-esimo es escalar o puntero; `variadica` | `[registros] argumento orden 1..6`; el resto a la pila |
+| argumentos directos (`argumentos.rs`) | `sin_pila(e)`: evaluar `e` no llama a nadie ni aparca | `mov reg, imm` / `mov reg, [rbp+off]` / push+pop |
+| recibir (`frame.rs`) | `contar(cuerpo, p) == 0`: el parametro no se nombra | el hueco negativo, o nada |
+| el troquel (`decidir/registros.rs`) | el PESO de cada nombre (usos x profundidad de bucle), `tomadas` | `[reparto] preservados_en_uso`, umbral 6 |
+| la residencia (`pisa_argumentos`) | `pisa`: el cuerpo llama, copia agregados o pone a cero | cuales son `argumento` y no scratch (rdi, rsi; no rdx, rcx) |
+| el reenvio (`decidir/reenvio.rs`) | `reenvia`: el cuerpo es `devuelve f(params, constantes)`; el orden de las fuentes | `bailar` sobre `argumento orden`, el temporal r11 (`libre`), `jmp` |
+| el recorte de entrada | el ANCHO del tipo del parametro (`disposicion` ya lo sabe) | `movsxd` / `movzx` / nada |
+
+Ni una fila tiene un registro a la izquierda ni un `Stmt` a la derecha. Eso
+es el 50/50: no *la mitad de las lineas en cada crate*, sino **que cada
+decision tenga UN dueno** y que se pueda probar en su lado sin el otro
+(`clasificar` tiene tres tests sin emisor; `bailar` cuatro; `marco.rs` se
+prueba con `RESPALDO` sin la tabla).
+
+## 12.3 Como se hace en INTI, en orden
+
+Hoy `FuncionIr` trae `parametros`, `locales`, `medidas_locales`,
+`temporales`, `instrucciones` -- cuantos, que miden, y el cuerpo. Los
+HECHOS de la tabla de arriba se calculan desde ahi, en el frontend, y
+viajan como campos de la IR. `marco.rs` los lee y reparte por rol.
+
+- [ ] **I0 -- INTI en el metro** (= C5). Seis `.ibx`, tres numeros y las
+      salidas fijas. Sin esto no hay I1
+- [ ] **I1 -- los hechos en la IR.** `FuncionIr` gana `pisa: bool`,
+      `tomadas: Vec<Local>`, `peso: Vec<u32>` (por local), y
+      `reenvia: Option<Reenvio>`. Calculados en `ir/`, probados en `ir/`
+      sin un emisor. El test que prohibe nombrar la maquina sigue en pie y
+      es el que vigila que ningun campo nuevo sea un numero de registro
+- [ ] **I2 -- las LOCALES en registro** (ESTADO.md 2.3, *"lo que sigue en
+      el marco"*). `marco.rs` reparte `preservados_en_uso` entre las locales
+      con mas `peso` que no esten en `tomadas`, con el umbral de C (6) hasta
+      que el metro de INTI diga otro. Es el troquel, y el asignador lineal
+      de temporales no cambia
+- [ ] **I3 -- la residencia.** Con `pisa == false`, los parametros 1-2 no
+      bajan al marco: `marco.local(Local(i))` contesta `Sitio::Registro(
+      argumento[i])`. Hoy el prologo baja los seis SIEMPRE (`funcion.rs`:
+      *"lo primero que hace toda funcion es bajarlos"*); esa linea es la que
+      cambia y ninguna otra
+- [ ] **I4 -- el reenvio.** `reenvia` en la IR; en el emisor, `bailar` es
+      la misma funcion que en C (`decidir/reenvio.rs` no depende de nada de
+      C: es una barajada de u8 y puede vivir en `sem-asm` junto a la tabla)
+- [ ] **I5 -- la tabla dice el scratch.** `inti.toml` sabe `trabajo`,
+      `argumento`, `libre`, `preservado`; la residencia necesita saber que
+      rdx y rcx son argumento Y scratch (la division cae en rdx, el operando
+      derecho en rcx). Es una nota en la tabla (`scratch = true`), no un
+      `if` en el emisor
+
+** Y lo que NO se copia de C: C recorta el `int` en cada operacion (T1, 6 %)
+porque su invariante es *"el registro guarda el valor extendido"*; INTI
+comprueba el desborde por regla (Regla 1, `jo`) y su entero es de 64 bits,
+asi que ese coste no existe alli. La forma se copia; el precio no.
+
