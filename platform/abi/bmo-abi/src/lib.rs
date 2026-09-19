@@ -49,10 +49,12 @@
 //!
 //! Este es **el ABI de BMO-X para x86-64**, no un ABI "portable" con un x86
 //! dentro. La puerta es la instruccion `syscall`, sus argumentos van en
-//! `rdi, rsi, rdx, r10, r8, r9` (una llamada normal usa siete, con `rcx`: ver
-//! `types::convention`), el resultado vuelve en `rax:rdx`, el puntero
-//! del hilo es `FS_BASE`, y el formato BEF solo admite imagenes de arquitectura
-//! `0x01`. Nada de eso se abstrae: una capa que "podria ser otra CPU" es un
+//! `rdi, rsi, rdx, r10, r8, r9` y vuelve codigo en `rax` y valor en `rdx`; una
+//! llamada normal usa SEIS registros, `rdi, rsi, rdx, rcx, r8, r9`, y devuelve
+//! en `rax` (ver `types::convention`, que es lo que leen los emisores); NO hay
+//! puntero de hilo -- ningun emisor usa `fs:` y el kernel no programa
+//! `FS_BASE` para Ring 3 --, y el formato BEF solo admite imagenes de
+//! arquitectura `0x01`. Nada de eso se abstrae: una capa que "podria ser otra CPU" es un
 //! camino que ninguna maquina de este repositorio ejecuta.
 //!
 //! En BMO-X todo es x86-64 MENOS los frontends de los compiladores

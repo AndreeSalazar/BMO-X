@@ -73,6 +73,11 @@ la_pila_crece = "hacia_abajo"
 #
 #    trabajo      donde se hace la operacion. Toda binaria los usa
 #    argumento    por aqui llegan los parametros, en este orden
+#                 ** El ORDEN lo dice `orden = k`, tambien en `rcx`, que es de
+#                 trabajo Y el cuarto argumento. Hasta el 2026-09-19 faltaba ahi
+#                 y esta tabla decia CINCO. La verdad vive en
+#                 `bmo_abi::types::convention::ARGUMENTOS`; esta tabla la repite
+#                 para quien lee, y `pruebas/convencion.rs` la obliga a coincidir.
 #    libre        se puede usar sin pedir permiso... hasta la proxima llamada
 #    preservado   si lo tocas, lo devuelves como estaba
 #    pila/marco   no se tocan nunca. La maquina los usa para saber donde esta
@@ -84,7 +89,7 @@ la_pila_crece = "hacia_abajo"
 [registros]
 #  numero, nombre, rol, y el porque cuando lo tiene.
 rax = { n = 0, rol = "trabajo",    nota = "y por aqui se devuelve el resultado" }
-rcx = { n = 1, rol = "trabajo",    nota = "el otro lado de toda operacion binaria" }
+rcx = { n = 1, rol = "trabajo",    orden = 4, nota = "el otro lado de toda operacion binaria, y el CUARTO argumento" }
 rdx = { n = 2, rol = "argumento",  orden = 3, nota = "y el resto de una division cae aqui" }
 rbx = { n = 3, rol = "preservado", nota = "usarlo cuesta guardarlo y devolverlo" }
 rsp = { n = 4, rol = "pila",       nota = "la cima. No se toca" }

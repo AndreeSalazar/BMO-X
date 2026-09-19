@@ -8,10 +8,10 @@
 
 Read **[`SPEC.md`](./SPEC.md)** -- canonical specification including:
 
-- Calling convention (7 GPRs, 256 B red zone, 64 B stack alignment)
+- Calling convention (6 GPRs, return in RAX, no red zone) -- `types/convention.rs`, imported by the C and INTI emitters
 - CPU contract: x86-64 Zen 3 (`Ryzen 5 5600X` default; Zen 3 EPYC profile)
 - Type layouts with compile-time `static_assert!` (34 assertions)
-- Syscall numbering (0x100..0x1FF) + `syscall0`-`syscall6` wrappers
+- Two kernel doors (INVOKE 0x00, WAIT 0x02) + `syscall0`-`syscall6` wrappers
 - BEF format: header (48 B), sections, relocs, imports/exports, TLS, signing
 - Reflect system wired to `TypeRegistry`
 
@@ -87,15 +87,15 @@ bmo_abi/
 
 | Aspect            | MS x64        | SysV AMD64    | **BMO ABI**        |
 |-------------------|---------------|---------------|--------------------|
-| Integer args      | 4 GPRs        | 6 GPRs        | **7 GPRs**         |
+| Integer args      | 4 GPRs        | 6 GPRs        | **6 GPRs**         |
 | Shadow space      | 32 B          | 0 B           | **0 B**            |
-| Stack alignment   | 16 B          | 16 B          | **64 B**           |
-| Red zone          | 0 B           | 128 B         | **256 B**          |
-| Return (<=128 bit) | RAX           | RAX:RDX       | **RAX:RDX**        |
+| Stack alignment   | 16 B          | 16 B          | **8 B guaranteed** |
+| Red zone          | 0 B           | 128 B         | **0 B**            |
+| Return (<=128 bit) | RAX           | RAX:RDX       | **RAX**            |
 | Error reporting   | `HRESULT`+TLS | `errno`+TLS   | **BmoStatus 16 B** |
 | Strings           | `char*` nul   | `char*` nul   | **(ptr, len) UTF-8** |
 | Handles           | `HANDLE void*`| `int fd`      | **BmoHandle 64-bit with tag+generation** |
-| Syscall range     | 0x1000+       | 0x0001..      | **0x100..0x1FF**   |
+| Kernel doors      | many          | ~450          | **2 (INVOKE, WAIT)** |
 
 ## CPU profiles
 

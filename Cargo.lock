@@ -315,6 +315,7 @@ dependencies = [
  "bmo-mods",
  "bmo-sem-asm",
  "bmo-verify",
+ "toml",
 ]
 
 [[package]]

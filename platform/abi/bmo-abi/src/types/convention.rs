@@ -1,118 +1,97 @@
-//! Calling convention -- defines register usage, stack rules, and argument passing.
+//! **LA CONVENCION DE LLAMADA DE BMO-X** -- una sola, x86-64, y la que los
+//! emisores EJECUTAN, no la que alguien escribio antes que ellos.
 //!
-//! Encodes the BMO ABI calling convention as Rust code (not just SPEC.md docs).
-//! Language frontends and code generators query this to know which registers to use.
+//! ```text
+//!    argumentos escalares   rdi, rsi, rdx, rcx, r8, r9      (ARGUMENTOS)
+//!    del septimo en adelante   la pila, empujados de derecha a izquierda;
+//!                              el que LLAMA los quita al volver
+//!    agregados y flotantes  la pila (BMO C), por ranuras de 8
+//!    funciones variadicas   TODO por la pila (el `va_arg` de BMO C es `*ap++`)
+//!    resultado              rax                              (RETORNO)
+//!    preservados            rbx, rbp, r12, r13, r14, r15    (PRESERVADOS)
+//!    zona roja              NINGUNA                          (RED_ZONE_BYTES = 0)
+//!    pila al hacer `call`   alineada a 8 garantizado         (STACK_ALIGN_BYTES)
+//! ```
+//!
+//! # [!] 2026-09-19: lo que decia antes, y por que era peor que no decir nada
+//!
+//! Este fichero declaraba SIETE registros (con `r10`), retorno en `rax:rdx`,
+//! zona roja de 256 y pila alineada a 64. Ningun emisor hizo nunca nada de eso,
+//! y un test (`abi_layout.rs`) blindaba el siete. A la vez `inti.toml` decia
+//! CINCO (le faltaba el cuarto: `rcx` figuraba solo como "trabajo") y C e INTI
+//! llevaban cada uno su lista de seis escrita a mano. Tres fuentes, tres
+//! respuestas, y la unica verdadera era la que no estaba en el contrato.
+//!
+//! ** Ahora los dos emisores IMPORTAN [`ARGUMENTOS`] en vez de copiarlo: que
+//! diverjan no es algo que un test tenga que cazar, es algo que no compila.
+//!
+//! # Lo que NO se promete, y por que
+//!
+//! - **16 bytes al hacer `call`.** INTI redondea su marco a 16, pero un numero
+//!   impar de argumentos por la pila lo deja en 8; BMO C alinea sus locales a 8
+//!   y empuja temporales entre medias. Lo garantizado es 8. Mientras ningun
+//!   emisor guarde en la pila con una instruccion alineada (`movaps`), no hace
+//!   falta mas; el dia que se quiera, se sube AQUI y se exige a los dos.
+//! - **Zona roja.** El reenvio de BMO C (19-09) ya va sin marco, pero no
+//!   escribe por debajo de `rsp`. Usarla es rapido en Ring 3 y una corrupcion
+//!   cada pocos miles de arranques donde una interrupcion comparte la pila.
+//! - **Retorno en `rax:rdx`.** Solo la PUERTA devuelve dos registros (codigo y
+//!   valor, [`X86_64_SYSCALL_RETURN_REGISTERS`]); una funcion devuelve uno.
 
 use crate::bmo_abi::primitives::{bx_u32, bx_u8};
 
-/// Number of GPR (General Purpose Register) argument slots.
-pub const GPR_ARG_COUNT: usize = 7;
+/// Los registros de argumento, POR SU NUMERO de x86-64, en orden: rdi, rsi,
+/// rdx, rcx, r8, r9. **Lo leen los emisores** (C: `decidir/llamada.rs`, INTI:
+/// `emisor-x86_64/src/lib.rs`).
+pub const ARGUMENTOS: [u8; 6] = [7, 6, 2, 1, 8, 9];
+/// Los mismos, por su nombre.
+pub const ARGUMENTOS_NOMBRE: [&str; 6] = ["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
+/// Cuantos argumentos van en registro.
+pub const GPR_ARG_COUNT: usize = ARGUMENTOS.len();
+/// Por donde vuelve el resultado: `rax`.
+pub const RETORNO: u8 = 0;
+/// Los que sobreviven a una llamada: rbx, rbp, r12..r15. El que los usa, los
+/// devuelve como estaban.
+pub const PRESERVADOS: [u8; 6] = [3, 5, 12, 13, 14, 15];
 
-/// The privileged x86-64 syscall boundary is separate from native calls.
-/// `RCX` and `R11` are destroyed by the CPU, so argument four uses `R10`.
+/// La puerta del kernel NO es una llamada: `syscall` destruye `rcx` (el `rip`
+/// de vuelta) y `r11` (las banderas), asi que el cuarto argumento va en `r10`.
 pub const SYSCALL_GPR_ARG_COUNT: usize = 6;
 pub const X86_64_SYSCALL_ARG_REGISTERS: &[&str] =
     &["rdi", "rsi", "rdx", "r10", "r8", "r9"];
+/// La puerta si devuelve dos: el CODIGO en `rax` y el VALOR en `rdx`.
 pub const X86_64_SYSCALL_RETURN_REGISTERS: &[&str] = &["rax", "rdx"];
 
-/// Red zone size in bytes below RSP.
-///
-/// === * AUDITED 2026-08-02 -- declared, and deliberately NOT used ===
-///
-/// 256 bytes, twice System V's 128. That is free performance for a leaf
-/// function in Ring 3 -- and a **hazard everywhere else**, because the red zone
-/// is memory below RSP that anything pushing onto that stack overwrites: an
-/// interrupt, a fault handler, a context switch.
-///
-/// **Nothing in BMO uses it today, and that was checked, not assumed:**
-///
-/// - **BMO C** always emits `sub rsp, frame_size` in its prologue and addresses
-///   locals as `[rbp+disp]` *inside* the frame. It never writes below RSP.
-/// - **The Rust kernel** builds for `x86_64-unknown-none`, a bare-metal target
-///   that disables the red zone by definition.
-///
-/// So this constant describes a permission the ABI grants and no code takes.
-///
-/// [!] **Before using it, read this.** The obvious optimisation -- "a leaf
-/// function with a small frame can skip the `sub rsp`" -- is exactly the change
-/// that turns this number into a bug, and only in code that runs with
-/// interrupts enabled. It would work in every test and fail once every few
-/// thousand boots, when the timer lands in the wrong microsecond. If that
-/// optimisation is ever wanted, it needs a per-profile switch: **on in Ring 3,
-/// off anywhere an interrupt can land on the same stack.**
-pub const RED_ZONE_BYTES: u32 = 256;
+/// Zona roja: NINGUNA. Ver la cabecera del fichero.
+pub const RED_ZONE_BYTES: u32 = 0;
 
-/// Required stack alignment before a call.
-pub const STACK_ALIGN_BYTES: u32 = 64;
+/// Alineacion de la pila GARANTIZADA al hacer `call`. Ver la cabecera.
+pub const STACK_ALIGN_BYTES: u32 = 8;
 
-/// Calling convention variant.
+/// La convencion. Una, porque BMO-X es una maquina: el `SystemVAmd64` que
+/// habia aqui era "para shims de compatibilidad ELF" que no existen.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CallingConvention {
-    /// BMO native x86-64: 7 GPR args (RDI, RSI, RDX, RCX, R8, R9, R10), RAX:RDX return.
-    /// Red zone: 256 bytes. Stack alignment: 64 bytes. No shadow space.
     BmoX86_64 = 0,
-
-    // ** 1 y 2 eran ARM64 y RISC-V "para el futuro puerto". Desde el 2026-09-18
-    // este repositorio es SOLO x86-64 (`toolchain/tools/isa`): otra CPU es otro
-    // repositorio, con su propia convencion. Los numeros no se reutilizan.
-
-    /// System V AMD64 ABI (Linux compatibility): RDI, RSI, RDX, RCX, R8, R9.
-    /// Used for ELF binary compatibility shims.
-    SystemVAmd64 = 3,
+    // ** 1 y 2 fueron ARM64 y RISC-V y 3 System V: no se reutilizan.
 }
 
 impl CallingConvention {
-    /// Number of GPR argument registers.
+    /// Cuantos argumentos van en registro.
     pub const fn gpr_arg_count(self) -> bx_u8 {
-        match self {
-            Self::BmoX86_64 => 7,
-            Self::SystemVAmd64 => 6,
-        }
+        GPR_ARG_COUNT as bx_u8
     }
 
-    /// Returns the GPR registers used for arguments (as register names).
-    pub fn arg_registers(self) -> &'static [&'static str] {
-        match self {
-            Self::BmoX86_64 => &["rdi", "rsi", "rdx", "rcx", "r8", "r9", "r10"],
-            Self::SystemVAmd64 => &["rdi", "rsi", "rdx", "rcx", "r8", "r9"],
-        }
-    }
-
-    /// Return value registers.
-    pub fn return_registers(self) -> &'static [&'static str] {
-        match self {
-            Self::BmoX86_64 | Self::SystemVAmd64 => &["rax", "rdx"],
-        }
-    }
-
-    /// Stack alignment required before a call.
+    /// Alineacion garantizada al hacer `call`.
     pub const fn stack_align(self) -> bx_u32 {
-        match self {
-            Self::BmoX86_64 | Self::SystemVAmd64 => 64,
-        }
+        STACK_ALIGN_BYTES
     }
 
-    /// Red zone size (0 if none).
-    pub const fn red_zone(self) -> bx_u32 {
-        match self {
-            Self::BmoX86_64 => 256,
-            Self::SystemVAmd64 => 128,
-        }
-    }
-
-    /// Human-readable name.
     pub fn name(self) -> &'static str {
-        match self {
-            Self::BmoX86_64 => "bmo-x86_64",
-            Self::SystemVAmd64 => "systemv-amd64",
-        }
+        "bmo-x86_64"
     }
 
-    /// La convencion de BMO-X. ** Hasta el 2026-09-18 dependia de la CPU del
-    /// que COMPILABA: en un Mac ARM, las herramientas habrian creido que BMO-X
-    /// era ARM64 y emitido con otra convencion. Lo que BMO-X ejecuta no depende
-    /// de donde corre el compilador.
     pub const NATIVE: CallingConvention = CallingConvention::BmoX86_64;
 }
 

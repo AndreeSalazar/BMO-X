@@ -78,7 +78,15 @@ fn bmo_status_layout() {
 #[test]
 fn syscall_contract_is_distinct_from_native_calls() {
     use bmo_abi::types::convention::*;
-    assert_eq!(GPR_ARG_COUNT, 7);
+    // ** Era 7 (con `r10`) y ningun emisor lo hizo nunca: la convencion real
+    // son SEIS, y los emisores la importan de aqui (2026-09-19).
+    assert_eq!(GPR_ARG_COUNT, 6);
+    let por_numero = ["rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi", "r8", "r9"];
+    for (i, n) in ARGUMENTOS.iter().enumerate() {
+        assert_eq!(por_numero[*n as usize], ARGUMENTOS_NOMBRE[i], "el argumento {i}");
+    }
+    assert_eq!(RETORNO, 0, "rax");
+    assert_eq!(RED_ZONE_BYTES, 0, "BMO-X no usa zona roja");
     assert_eq!(SYSCALL_GPR_ARG_COUNT, 6);
     assert_eq!(X86_64_SYSCALL_ARG_REGISTERS, &["rdi", "rsi", "rdx", "r10", "r8", "r9"]);
 

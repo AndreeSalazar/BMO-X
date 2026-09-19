@@ -91,12 +91,14 @@ use puerta::Puerta;
 pub(crate) const IZQ: u8 = 0; // rax
 pub(crate) const DER: u8 = 1; // rcx
 
-/// Por donde llegan y se mandan los argumentos, en orden.
+/// Por donde llegan y se mandan los argumentos, en orden: rdi, rsi, rdx, rcx,
+/// r8, r9.
 ///
 /// Es la convencion de llamada de esta maquina, y por eso esta linea solo puede
 /// existir en este crate: el frontend tiene prohibido saber que existe algo
-/// llamado "registro de argumento".
-const ARGUMENTOS: [u8; 6] = [7, 6, 2, 1, 8, 9]; // rdi, rsi, rdx, rcx, r8, r9
+/// llamado "registro de argumento". ** Y desde el 2026-09-19 no se escribe
+/// aqui: se LEE del contrato, el mismo sitio del que la lee BMO C.
+use bmo_abi::types::convention::ARGUMENTOS;
 
 /// Lo que sale de emitir un modulo.
 pub struct Emitido {

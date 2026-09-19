@@ -452,6 +452,7 @@ fn lo_escrito(m: &Machine) -> Vec<String> {
 //  los ocho. Un fichero de pruebas que ademas tiene que traerse su forma de
 //  compilar es dos ficheros disfrazados de uno.
 
+mod convencion;
 mod decimal;
 mod disposicion;
 mod flotante;

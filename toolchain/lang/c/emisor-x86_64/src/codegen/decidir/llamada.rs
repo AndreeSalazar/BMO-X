@@ -48,8 +48,10 @@
 //! las unidades (`.bo`) las compila este mismo emisor, asi que no hay dos
 //! convenciones vivas en un mismo `.bex`.
 
-/// Los seis registros de argumento, por su numero, en orden.
-pub(in crate::codegen) const REGISTROS: [u8; 6] = [7, 6, 2, 1, 8, 9]; // rdi rsi rdx rcx r8 r9
+/// Los seis registros de argumento, por su numero, en orden: rdi rsi rdx rcx
+/// r8 r9. ** Los DICE el contrato (2026-09-19) y aqui solo se leen: hasta hoy
+/// estaban copiados a mano en C, en INTI y --distintos-- en `bmo-abi`.
+pub(in crate::codegen) const REGISTROS: [u8; 6] = bmo_abi::types::convention::ARGUMENTOS;
 
 /// Por donde viaja un argumento.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

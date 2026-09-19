@@ -287,14 +287,23 @@ bidireccionales en `fundamentals/convert/`.
 
 ## 7. Convencion de llamada (BMO Call)
 
+La fuente es `types/convention.rs`, y **los emisores la importan** (C:
+`decidir/llamada.rs`; INTI: `emisor-x86_64/src/lib.rs`). Esto la resume:
+
 ```
-Argument registers (7 GPRs): RDI, RSI, RDX, RCX, R8, R9, R10
-Return: RAX:RDX (hasta 128 bits)
-Stack alignment: 64 B (vs 16 B SysV)
-Red zone: 256 B (vs 128 B SysV)
-Shadow space: 0 B (vs 32 B Win64)
-Scratch registers: RAX, RCX, RDX, RSI, RDI, R8-R11
+Argumentos (6 GPR): RDI, RSI, RDX, RCX, R8, R9
+Del 7o en adelante: pila, de derecha a izquierda; los quita el que llama
+Agregados y flotantes (BMO C): pila, por ranuras de 8
+Variadicas: TODO por la pila
+Retorno: RAX (solo la puerta del kernel devuelve RAX:RDX)
+Preservados: RBX, RBP, R12-R15
+Pila al hacer `call`: 8 B garantizado (INTI mantiene 16 salvo impares)
+Zona roja: NINGUNA
+Shadow space: 0 B
 ```
+
+** Hasta el 2026-09-19 esta seccion decia 7 registros (con R10), retorno en
+RAX:RDX, pila a 64 y zona roja de 256. Ningun emisor lo hizo nunca.
 
 ---
 
@@ -311,8 +320,7 @@ El loader de BEF salta a `_bmo_start` despues de:
 1. Mapear secciones en memoria
 2. Aplicar relocalizaciones
 3. Resolver imports
-4. Inicializar TLS
-5. Configurar stack con red zone de 256 B
+4. Preparar la pila (sin zona roja, y sin TLS: BMO-X no tiene puntero de hilo)
 
 ---
 
