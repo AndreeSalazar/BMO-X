@@ -244,6 +244,14 @@ fichero vacio.
    el enlazador**. O sea que `new P()` es literalmente `malloc` mas el
    constructor, y `delete p` el destructor mas `free`, y se puede senalar con el
    dedo en el enlace. Lo que falta es escribirlo.
+   ✅ **`new`/`delete` de una clase, HECHOS el 2026-09-18** (`parser/nuevo.rs`,
+   `descenso.rs`). Y la frase de arriba era verdad a medias: sin el monton,
+   el `malloc` de BMO C es la peticion CRUDA al kernel (tope de cuatro por
+   proceso) y `free` no hace nada -- el quinto `new` salia nulo. Por eso
+   `new` trae `<bmo/monton.h>` solo, como el `operator new` implicito de C++,
+   y una fila hace veinte `new`/`delete` para demostrarlo.
+   ⏳ Siguen fuera, rechazados con motivo: `new int`, `new P[n]`/`delete[]` y
+   el destructor virtual.
 4. ✅ **HECHO -- mangling y sobrecarga.** Esquema propio y **no el de Itanium**:
    este existe para enlazar objetos de compiladores distintos, y BMO no enlaza
    nada de nadie. Se heredan sus **propiedades** --determinista, sin colisiones,

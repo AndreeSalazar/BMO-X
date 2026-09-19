@@ -49,22 +49,49 @@ pub fn a_c(source: &str, ruta: &Path, objeto: bool) -> Result<c::Program, CppErr
         otra.push('\n');
     }
 
-    let mut salida = descenso::descender_unidad(&parser::parse(&en_cpp)?, objeto)?;
-    if en_c.trim().is_empty() {
-        return Ok(salida);
-    }
+    let programa = parser::parse(&en_cpp)?;
+    let salida = descenso::descender_unidad(&programa, objeto)?;
     let rasgos = bmo_c_front::StandardFeatures::load_standard(ESTANDAR);
-    let mut cabeceras = bmo_c_front::parse_with_features(&en_c, &rasgos).map_err(de_c)?;
-    bmo_c_front::politica_libc(&mut cabeceras, &rangos, Libc::Copia);
+    let mut cabeceras = if en_c.trim().is_empty() {
+        None
+    } else {
+        let mut c = bmo_c_front::parse_with_features(&en_c, &rasgos).map_err(de_c)?;
+        bmo_c_front::politica_libc(&mut c, &rangos, Libc::Copia);
+        Some(c)
+    };
 
-    cabeceras.globals.append(&mut salida.globals);
-    cabeceras.functions.append(&mut salida.functions);
-    cabeceras.exported.append(&mut salida.exported);
-    cabeceras.disposiciones.extend(salida.disposiciones);
-    cabeceras.enlace.prototipos.append(&mut salida.enlace.prototipos);
-    cabeceras.enlace.estaticos.append(&mut salida.enlace.estaticos);
-    cabeceras.enlace.solo_externos.append(&mut salida.enlace.solo_externos);
-    Ok(cabeceras)
+    // ** `new` y `delete` traen el monton SIN pedirlo (2026-09-18). En C++ el
+    // `operator new` esta declarado de forma implicita: obligar a escribir un
+    // `#include` para usarlo haria a BMO C++ mas raro que C++. Entra como si
+    // se hubiera incluido `<bmo/monton.h>` -- leido como C y como copia
+    // privada -- y si la unidad ya lo trajo, no se duplica.
+    let ya_esta = cabeceras.as_ref().map_or(false, |c| c.functions.iter().any(|f| f.name == "malloc"));
+    if programa.usa_monton && !ya_esta {
+        let (texto, r) = bmo_c_front::preprocesar_con_rangos("#include <bmo/monton.h>\n", ruta, ESTANDAR)
+            .map_err(de_c)?;
+        let mut m = bmo_c_front::parse_with_features(&texto, &rasgos).map_err(de_c)?;
+        bmo_c_front::politica_libc(&mut m, &r, Libc::Copia);
+        cabeceras = Some(match cabeceras {
+            Some(mut c) => { juntar(&mut c, m); c }
+            None => m,
+        });
+    }
+
+    match cabeceras {
+        None => Ok(salida),
+        Some(mut c) => { juntar(&mut c, salida); Ok(c) }
+    }
+}
+
+/// `detras` va DETRAS de `delante`: lo de las cabeceras declara antes de usarse.
+fn juntar(delante: &mut c::Program, mut detras: c::Program) {
+    delante.globals.append(&mut detras.globals);
+    delante.functions.append(&mut detras.functions);
+    delante.exported.append(&mut detras.exported);
+    delante.disposiciones.extend(detras.disposiciones);
+    delante.enlace.prototipos.append(&mut detras.enlace.prototipos);
+    delante.enlace.estaticos.append(&mut detras.enlace.estaticos);
+    delante.enlace.solo_externos.append(&mut detras.enlace.solo_externos);
 }
 
 fn de_c(e: bmo_c_front::CError) -> CppError {

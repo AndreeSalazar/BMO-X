@@ -296,8 +296,23 @@ impl<'a> Cuerpo<'a> {
             }
             S::Assign(n, e) => vec![c::Stmt::Expr(
                 c::Expr::Assign(n.clone(), Box::new(expr(e)?)))],
-            S::Delete(_) => return Err(pendiente("`delete`", 3,
-                "un asignador de memoria sobre `KIND_MEMORIA`, que todavia no existe")),
+            // `delete p` -> si no es nulo: el destructor (el de la clase del
+            // PUNTERO: no hay destructores virtuales, ver `parser/nuevo.rs`) y
+            // `free`. `delete` de un nulo no hace nada, como manda el estandar.
+            S::Delete(n, clase) => {
+                let var = c::Expr::Var(n.clone());
+                let mut cuerpo = Vec::new();
+                if let Some(cl) = clase {
+                    if self.clases.get(cl).map_or(false, |i| i.dtor) {
+                        cuerpo.push(c::Stmt::Expr(c::Expr::Call(
+                            mangling::destructor(&[], cl), vec![var.clone()])));
+                    }
+                }
+                cuerpo.push(c::Stmt::Expr(c::Expr::Call("free".into(), vec![var.clone()])));
+                vec![c::Stmt::If(
+                    c::Expr::Neq(Box::new(var), Box::new(c::Expr::Int(0))),
+                    Box::new(c::Stmt::Block(cuerpo)), None)]
+            }
         })
     }
 }
@@ -508,6 +523,10 @@ pub fn descender_unidad(p: &cpp::Program, objeto: bool) -> Result<c::Program, Cp
         }
     }
 
+    for (cls, ctor) in &p.nuevos {
+        out.functions.push(nuevo(p, cls, ctor)?);
+    }
+
     for g in &p.globals {
         let cpp::GlobalDecl::Var(ts, name, init) = g;
         let tipo = tipo(ts)?;
@@ -564,6 +583,79 @@ pub fn descender_unidad(p: &cpp::Program, objeto: bool) -> Result<c::Program, Cp
     }
 
     Ok(out)
+}
+
+/// El nombre de la funcion que hace `new` para esta clase y este constructor.
+fn nombre_nuevo(cls: &str, ctor: &Option<String>) -> String {
+    match ctor {
+        Some(s) => format!("{s}.nuevo"),
+        None => format!("{cls}.nuevo"),
+    }
+}
+
+/// ** `new P(args)`, como lo escribia Cfront: `malloc` y el constructor
+/// (2026-09-18, paso 3; ver `parser/nuevo.rs`).
+///
+/// ```text
+///   struct P *P.P#i.nuevo(int a1) {
+///       struct P *t = (struct P *) malloc(<tamano de P>);
+///       if (t != 0) { t->vptr = vtabla.P;  P.P#i(t, a1); }
+///       return t;
+///   }
+/// ```
+///
+/// El `vptr` se apunta aqui igual que al declarar un objeto, para las clases
+/// con virtuales y sin constructor. Y sin excepciones, un `new` que no
+/// encuentra memoria devuelve un nulo sin construir nada -- lo que en C++
+/// estandar es `new (std::nothrow)` --, en vez de llamar al constructor sobre
+/// la direccion 0.
+fn nuevo(p: &cpp::Program, cls: &str, ctor: &Option<String>) -> Result<c::Function, CppError> {
+    let cl = p.classes.iter().find(|c| c.name == cls)
+        .ok_or_else(|| CppError::new(0, format!("`new {cls}`: la clase no esta en esta unidad")))?;
+    let tipos: Vec<cpp::TypeSpec> = match ctor {
+        Some(s) => cl.constructors.iter()
+            .map(|m| m.params.iter().map(|x| x.typ.clone()).collect::<Vec<_>>())
+            .find(|t| mangling::constructor(&[], cls, t) == *s)
+            .ok_or_else(|| CppError::new(0, format!("`new {cls}`: el constructor `{s}` no esta")))?,
+        None => Vec::new(),
+    };
+    let puntero = c::TypeSpec::Ptr(Box::new(c::TypeSpec::StructRef(cls.to_string())));
+    let mut params = Vec::new();
+    for (i, t) in tipos.iter().enumerate() {
+        params.push(c::Param { typ: tipo(t)?, name: format!("a{}", i + 1) });
+    }
+    let t = c::Expr::Var("t".into());
+    let mut si_hay = Vec::new();
+    if !cl.vtabla.is_empty() {
+        si_hay.push(c::Stmt::Expr(c::Expr::AssignArrow(
+            Box::new(t.clone()), crate::parser::VPTR.into(),
+            Box::new(c::Expr::Var(nombre_vtabla(cls))))));
+    }
+    if let Some(s) = ctor {
+        let mut a = vec![t.clone()];
+        for pa in &params { a.push(c::Expr::Var(pa.name.clone())); }
+        si_hay.push(c::Stmt::Expr(c::Expr::Call(s.clone(), a)));
+    }
+    let mut cuerpo = vec![c::Stmt::DeclAssign(puntero.clone(), "t".into(), Some(c::Expr::Cast(
+        puntero.clone(),
+        Box::new(c::Expr::Call("malloc".into(), vec![c::Expr::Int(cl.size.max(1) as i64)])))))];
+    if !si_hay.is_empty() {
+        cuerpo.push(c::Stmt::If(c::Expr::Neq(Box::new(t.clone()), Box::new(c::Expr::Int(0))),
+            Box::new(c::Stmt::Block(si_hay)), None));
+    }
+    cuerpo.push(c::Stmt::Return(Some(t)));
+    let mut var_names: Vec<String> = params.iter().map(|x| x.name.clone()).collect();
+    var_names.push("t".into());
+    Ok(c::Function {
+        ret_type: puntero,
+        name: nombre_nuevo(cls, ctor),
+        params,
+        var_count: 1,
+        var_names,
+        body: cuerpo,
+        line: 0,
+        variadica: false,
+    })
 }
 
 fn metodo(cl: &cpp::Class, m: &cpp::Method, info: &HashMap<String, Info>)
@@ -793,8 +885,11 @@ fn expr(e: &cpp::Expr) -> Result<c::Expr, CppError> {
             for x in args { a.push(expr(x)?); }
             c::Expr::CallPtr(Box::new(destino), a)
         }
-        E::New(cl, _) => return Err(pendiente(&format!("`new {cl}`"), 3,
-            "el constructor, y encima la capability de memoria")),
+        E::New(cl, ctor, args) => {
+            let mut a = Vec::new();
+            for x in args { a.push(expr(x)?); }
+            c::Expr::Call(nombre_nuevo(cl, ctor), a)
+        }
         E::TemplateCall(n, _, _) => return Err(pendiente(&format!("la plantilla `{n}`"), 6,
             "la monomorfización")),
         E::Syscall(d, _) => return Err(pendiente(&format!("la puerta `{}`", d.name), 1,

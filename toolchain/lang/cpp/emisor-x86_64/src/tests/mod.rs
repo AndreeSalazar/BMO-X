@@ -245,3 +245,22 @@ fn lo_que_falta_se_rechaza_diciendo_el_paso() {
         );
     }
 }
+
+/// ** El monton entra UNA vez (2026-09-18). `new` lo trae solo si la unidad no
+/// lo incluyo; si lo incluyo, traerlo otra vez daria dos `malloc` en el mismo
+/// programa -- y el codegen de C no lo rechaza, asi que ninguna fila que
+/// EJECUTA lo veria. Se cuenta en el arbol de C.
+#[test]
+fn el_monton_no_se_duplica() {
+    let cuenta = |src: &str| {
+        let c = bmo_cpp_front::preproceso::a_c(src, std::path::Path::new("entrada.cpp"), false)
+            .expect("compila");
+        c.functions.iter().filter(|f| f.name == "malloc").count()
+    };
+    let clase = "class P { public: int x; P(int v) : x(v) {} };
+                 int main() { P *p = new P(1); delete p; return 0; }";
+    assert_eq!(cuenta(clase), 1, "sin #include: el monton lo trae `new`");
+    assert_eq!(cuenta(&format!("#include <bmo/monton.h>
+{clase}")), 1, "con #include: uno, no dos");
+    assert_eq!(cuenta("int main() { return 0; }"), 0, "sin `new`, no hay monton");
+}

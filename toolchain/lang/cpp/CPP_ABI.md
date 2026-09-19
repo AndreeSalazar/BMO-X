@@ -210,8 +210,16 @@ un miembro llamado `P` **es** el constructor --el lenguaje reserva el nombre-- y
 ★ **Hay UN destructor, no tres.** El ABI de Itanium define D0/D1/D2 (y C1/C2/C3
 para constructores), pero **D1 y D2 difieren solo con bases virtuales**, que
 estan descartadas con motivo. Seis variantes se quedan en dos -- y no por
-recortar, sino por una decision ya tomada por otro motivo. D0 (el que ademas
+recortar, sino por una decision ya tomada por otro motivo. ** Y el 2026-09-18,
+con `new`/`delete`, D0 tampoco hizo falta: `delete p` es `if (p) { P.~P#(p);
+free(p); }` en el sitio, sin variante del destructor. D0 (el que ademas
 libera) aparecera el dia que existan `new`/`delete`.
+
+**`new P(args)`** (2026-09-18) llama a `P.P#<args>.nuevo(args)` --o `P.nuevo`
+si `P` no tiene constructor--, una funcion que se emite solo si la unidad usa
+ese `new`: `malloc` del tamano de `P`, y si no es nulo, el `vptr` y el
+constructor. Sin excepciones, un `new` sin memoria devuelve nulo sin construir
+nada (lo que en C++ estandar es `new (std::nothrow)`).
 
 **Lo que hace un constructor antes de su cuerpo** (2026-09-18), en este orden,
 que es el de [class.base.init]:

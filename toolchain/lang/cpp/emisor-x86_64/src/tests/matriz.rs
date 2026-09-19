@@ -357,6 +357,46 @@ fn matriz_cpp_ejecuta_correctamente() {
         ("pp-cabecera-del-sistema", "@FULL@#include <string.h>\nint main() { printf(\"%d\", strlen(\"hola\")); return 0; }", "4"),
         // * El monton de C, desde C++: es el camino que va a usar `new`.
         ("pp-monton", "@FULL@#include <bmo/monton.h>\nint main() { int *p = (int*) malloc(16); p[1] = 42; printf(\"%d\", p[1]); free(p); return 0; }", "42"),
+        // -- `new` y `delete` (2026-09-18) --
+        // * `new` es malloc + el constructor, y `delete` el destructor + free.
+        // SIN `#include`: el monton entra solo, como el `operator new` implicito.
+        ("new-y-delete", "@FULL@\
+            class P { public: int x; P(int v) : x(v) { printf(\"+\"); } ~P() { printf(\"-\"); } };\n\
+            int main() { P *p = new P(42); printf(\"%d\", p->x); delete p; printf(\".\"); return 0; }",
+            "+42-."),
+        ("new-sin-constructor", "@FULL@\
+            class Q { public: int a; };\n\
+            int main() { Q *q = new Q; q->a = 7; printf(\"%d\", q->a); delete q; return 0; }",
+            "7"),
+        // * Dos `new` son dos objetos: sitios distintos y valores propios.
+        ("new-dos-objetos", "@FULL@\
+            class P { public: int x; P(int v) : x(v) {} };\n\
+            int main() { P *a = new P(1); P *b = new P(2); printf(\"%d %d %d\", a->x, b->x, a != b); \
+            delete a; delete b; return 0; }",
+            "1 2 1"),
+        // * El `vptr` lo pone `new`: un puntero a la base sobre un derivado
+        // creado con `new` despacha al derivado.
+        ("new-virtual", "@FULL@\
+            class A { public: virtual int f() { return 1; } };\n\
+            class B : public A { public: int f() override { return 2; } };\n\
+            int main() { A *a = new B; printf(\"%d\", a->f()); delete a; return 0; }",
+            "2"),
+        // * `delete` de un nulo no hace nada: ni destructor ni free.
+        ("delete-nulo", "@FULL@\
+            class P { public: int x; ~P() { printf(\"-\"); } };\n\
+            int main() { P *p = nullptr; delete p; printf(\"ok\"); return 0; }",
+            "ok"),
+        // ** Sin el monton, `malloc` es la peticion CRUDA al kernel (una por
+        // llamada, tope de cuatro) y `free` no hace nada: el quinto `new`
+        // saldria nulo. Veinte `new`/`delete` solo caben si el monton entro.
+        ("new-veinte-veces", "@FULL@            class P { public: int x; P(int v) : x(v) {} };
+            int main() { int s = 0; for (int i = 0; i < 20; i++) { P *p = new P(i); s = s + p->x; delete p; }             printf(\"%d\", s); return 0; }",
+            "190"),
+        // * Si la unidad ya trajo el monton, no se duplica.
+        ("new-con-monton-incluido", "@FULL@#include <bmo/monton.h>\n\
+            class P { public: int x; P(int v) : x(v) {} };\n\
+            int main() { P *p = new P(5); printf(\"%d\", p->x); delete p; return 0; }",
+            "5"),
         ("pp-clase-y-cabecera", "@FULL@#include <string.h>\nclass P { public: int n; P(char *s) : n(strlen(s)) {} };\nint main() { P p(\"hola\"); printf(\"%d\", p.n); return 0; }", "4"),
     ];
 
@@ -393,8 +433,11 @@ fn matriz_cpp_rechaza_con_el_paso_escrito() {
         ("sizeof", "printf(\"%d\", sizeof(int));", 2),
         ("referencia", "@FULL@int f(int &r) { return r; } int main(){return 0;}", 2),
         ("copia", "@FULL@class P { public: int x; }; int main(){ P a; P b = a; return 0; }", 5),
-        ("new", "int *p = new P();", 3),
-        ("delete", "int *p = 0; delete p;", 3),
+        // `new`/`delete` de una clase entran el 18-09; lo que sigue faltando:
+        ("new-de-no-clase", "int *p = new int;", 3),
+        ("new-array", "@FULL@class P { public: int x; };\nint main(){ P *p = new P[3]; return 0; }", 3),
+        ("delete-array", "@FULL@class P { public: int x; };\nint main(){ P *p = new P; delete[] p; return 0; }", 3),
+        ("destructor-virtual", "@FULL@class P { public: virtual ~P() {} };\nint main(){return 0;}", 5),
         ("miembro-static", "@FULL@class P { public: static int n; };\nint main(){return 0;}", 4),
         ("operador", "@FULL@class P { public: int operator+(int a) { return a; } };\nint main(){return 0;}", 4),
         ("friend", "@FULL@class P { friend int f(); };\nint main(){return 0;}", 4),

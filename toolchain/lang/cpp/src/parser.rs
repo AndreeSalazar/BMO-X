@@ -43,6 +43,7 @@ use std::collections::{HashMap, HashSet};
 // growing. Paid by moving the whole question out, not by raising the ceiling.
 mod sobrecarga;
 mod iniciales;
+mod nuevo;
 
 /// El nombre del puntero a la vtabla dentro del objeto.
 ///
@@ -158,6 +159,9 @@ struct Parser {
     /// La clase cuyo metodo se esta parseando, si alguno. Es lo que le da
     /// sentido a `this` y a un campo nombrado a secas dentro de un metodo.
     clase_actual: Option<String>,
+    /// Lo que `new`/`delete` dejan apuntado para el `Program`. Ver `parser/nuevo.rs`.
+    nuevos: Vec<(String, Option<String>)>,
+    monton: bool,
 }
 
 impl Parser {
@@ -170,7 +174,7 @@ impl Parser {
             espacios: Vec::new(),
             plantillas: HashSet::new(),
             clases: HashMap::new(),
-            clase_actual: None,
+            clase_actual: None, nuevos: Vec::new(), monton: false,
         };
         p.ambitos.entrar(); // ambito de fichero
         p
@@ -230,6 +234,7 @@ impl Parser {
             Expr::MemberAccess(_, _, _, t) | Expr::Arrow(_, _, _, t) => t.clone(),
             Expr::AssignMember(_, _, _, t, _) | Expr::AssignArrow(_, _, _, t, _) => t.clone(),
             Expr::Cast(t, _) => t.clone(),
+            Expr::New(cls, _, _) => T::Ptr(Box::new(T::ClassRef(cls.clone()))),
             Expr::Call(simbolo, _) => self.retornos.get(simbolo)?.clone(),
             Expr::MethodCall(_, _, simbolo, _) => self.retornos.get(simbolo)?.clone(),
             Expr::Deref(b) => match self.tipo_de(b)? {
@@ -298,6 +303,7 @@ impl Parser {
                 _ => self.declaracion_de_fichero(&mut p)?,
             }
         }
+        p.nuevos = std::mem::take(&mut self.nuevos); p.usa_monton = self.monton;
         Ok(p)
     }
 
@@ -413,6 +419,7 @@ impl Parser {
 
                 // -- Destructor: `~P() { ... }` --
                 Token::Tilde => {
+                    if virtual_ahora { return Err(self.pendiente("el destructor virtual (`virtual ~P()`)", 5)); }
                     self.avanzar();
                     match self.avanzar() {
                         Token::Ident(n) if n == name => {}
@@ -936,17 +943,7 @@ impl Parser {
             Token::Do => self.hacer(),
             Token::For => self.para(),
             Token::Switch => self.segun(),
-            Token::Delete => {
-                self.avanzar();
-                self.come(&Token::OpenBracket);
-                self.come(&Token::CloseBracket);
-                let n = match self.avanzar() {
-                    Token::Ident(n) => n,
-                    otro => return Err(self.err(format!("`delete` de {otro:?}"))),
-                };
-                self.exige(&Token::Semicolon)?;
-                Ok(Stmt::Delete(n))
-            }
+            Token::Delete => self.borrar(),
             Token::Hash => Err(self.pendiente("las directivas del preprocesador", 1)),
             Token::Class | Token::Struct => Err(self.pendiente("las clases", 2)),
             _ if self.parece_declaracion() => self.declaracion_local(),
@@ -1268,7 +1265,7 @@ impl Parser {
                 Expr::Var(n) => Ok(Expr::PreDec(n)),
                 _ => Err(self.err("`--` pide una variable")),
             } }
-            Token::New => Err(self.pendiente("`new`", 3)),
+            Token::New => self.expr_new(),
             Token::Sizeof => Err(self.pendiente("`sizeof`", 2)),
             // `(T)e` -- una conversion. Se distingue de `(expr)` porque dentro
             // del parentesis hay una palabra clave de tipo.

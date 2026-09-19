@@ -7,11 +7,17 @@ pub struct Program {
     pub globals: Vec<GlobalDecl>,
     pub functions: Vec<Function>,
     pub classes: Vec<Class>,
+    /// `(clase, constructor)` de cada `new` de la unidad, sin repetir: una
+    /// funcion `nuevo` por pareja (ver `descenso.rs`). 2026-09-18.
+    pub nuevos: Vec<(String, Option<String>)>,
+    /// La unidad usa `new` o `delete`, asi que necesita el monton.
+    pub usa_monton: bool,
 }
 
 impl Program {
     pub fn new() -> Self {
-        Self { includes: vec![], namespaces: vec![], globals: vec![], functions: vec![], classes: vec![] }
+        Self { includes: vec![], namespaces: vec![], globals: vec![], functions: vec![], classes: vec![],
+               nuevos: vec![], usa_monton: false }
     }
 }
 
@@ -184,7 +190,8 @@ pub enum Stmt {
     Block(Vec<Stmt>),
     Break,
     Continue,
-    Delete(String),
+    /// `delete p;` -- la variable y, si apunta a una clase, cual.
+    Delete(String, Option<String>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -212,7 +219,8 @@ pub enum Expr {
     /// divergen, que es la misma leccion que los offsets.
     MethodCall(Box<Expr>, String, String, Vec<Expr>),
     VirtualCall(Box<Expr>, String, u32, Vec<Expr>), // this, method_name, vtable_offset, args
-    New(String, Vec<Expr>),
+    /// `new P(args)` -- la clase, el constructor ya elegido y los argumentos.
+    New(String, Option<String>, Vec<Expr>),
     Assign(String, Box<Expr>),
     /// `base.campo` -- *(base, nombre, offset, TIPO del campo)*.
     ///

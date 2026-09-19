@@ -12,7 +12,7 @@
 [TECHOS]
   1869  toolchain/lang/cobol/emisor-x86_64/src/codegen.rs
   1563  toolchain/lang/cobol/src/parser.rs
-  1094  toolchain/lang/cpp/src/parser.rs
+  1090  toolchain/lang/cpp/src/parser.rs
   1107  platform/abi/bmo-abi/src/bef/validator.rs
 
 # EXENTOS -- un "no" con motivo escrito, que se puede discutir.
