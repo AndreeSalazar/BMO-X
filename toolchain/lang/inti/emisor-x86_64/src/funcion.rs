@@ -435,12 +435,11 @@ pub(crate) fn emitir_funcion(f: &FuncionIr, out: &mut Vec<u8>, taller: &Taller) 
                         salida_huecos.push((out.len(), n.clone()));
                         out.extend_from_slice(&[0, 0, 0, 0]);
                     }
-                    otro => {
-                        // Una llamada a un valor --una funcion guardada en una
-                        // variable-- pide `call reg`. Se deja sin emitir en vez
-                        // de emitir algo que salta a donde no debe.
-                        let _ = otro;
-                    }
+                    // Una llamada a un valor --una funcion guardada en una
+                    // variable-- pide `call reg`. No se emite, y NO en silencio:
+                    // `nombres_sueltos` (lib.rs) la pone en `sin_emitir`, y con
+                    // eso `cadena` se niega a escribir el `.bex`.
+                    _ => {}
                 }
 
                 // Lo que se empujo se retira: la pila vuelve a donde estaba.

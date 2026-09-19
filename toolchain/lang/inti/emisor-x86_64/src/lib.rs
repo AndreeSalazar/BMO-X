@@ -339,12 +339,7 @@ pub fn emitir_con(m: &ModuloIr, taller: &Taller) -> Emitido {
             .extend(cuenta.reubicaciones_del_monton);
         salida.sin_emitir.extend(cuenta.sin_emitir);
         // ** Y los nombres que se van a bajar a un cero, con el suyo delante.
-        for n in nombres_sueltos(f) {
-            salida.sin_emitir.push(format!(
-                "`{}`: el emisor no sabe que es y lo baja a un CERO",
-                n
-            ));
-        }
+        salida.sin_emitir.extend(nombres_sueltos(f));
     }
 
     // *** EL POZO DE TEXTOS SE CALCULA Y NO LO LEE NADIE (2026-08-22).
@@ -517,12 +512,27 @@ fn auditar(e: &Emitido) -> bmo_verify::Verdict {
 /// El destino de una llamada. `Instr::Llama { que: Valor::Nombre(f) }` es lo
 /// normal: asi se llama a una funcion, y se resuelve al final del modulo con los
 /// huecos. Contarlo aqui llenaria el informe de ruido y entrenaria a no mirarlo.
+///
+/// ## ** Y la familia entera (2026-09-19)
+///
+/// `carga()` tambien baja a cero un `Const::Decimal` (un literal que no cabe en
+/// `i64`, o un decimal de `pleno` que llega hasta aqui) y un `Const::Texto`. Y
+/// una llamada cuyo destino NO es un nombre --una funcion guardada en una
+/// variable-- cargaba sus argumentos y **no emitia el `call`**. Las tres cosas
+/// compilaban. Ahora las tres salen por aqui, con lo que son.
 fn nombres_sueltos(f: &FuncionIr) -> Vec<String> {
     let mut sueltos = Vec::new();
-    let mira = |v: &Valor, sueltos: &mut Vec<String>| {
-        if let Valor::Nombre(n) = v {
-            sueltos.push(n.clone());
+    let mira = |v: &Valor, sueltos: &mut Vec<String>| match v {
+        Valor::Nombre(n) => {
+            sueltos.push(format!("`{n}`: el emisor no sabe que es y lo baja a un CERO"))
         }
+        Valor::Const(Const::Decimal(t)) => sueltos.push(format!(
+            "el numero `{t}` no cabe en una palabra y el emisor lo baja a un CERO"
+        )),
+        Valor::Const(Const::Texto(t)) => sueltos.push(format!(
+            "el texto {t:?} llego como constante y el emisor lo baja a un CERO"
+        )),
+        _ => {}
     };
     for i in &f.instrucciones {
         // ** SIN COMODIN, y por lo que le paso a `marco.rs` el 22-08: un `_ =>`
@@ -545,8 +555,17 @@ fn nombres_sueltos(f: &FuncionIr) -> Vec<String> {
                 }
             }
             Instr::Convierte { valor, .. } => mira(valor, &mut sueltos),
-            // `que` es el DESTINO de la llamada: ahi un nombre es lo normal.
-            Instr::Llama { argumentos, .. } => {
+            // `que` es el DESTINO de la llamada: ahi un nombre es lo normal, y
+            // cualquier otra cosa pide un `call reg` que este emisor no sabe
+            // hacer todavia (la funcion como valor aun se carga como cero).
+            Instr::Llama { que, argumentos, .. } => {
+                if !matches!(que, Valor::Nombre(_)) {
+                    sueltos.push(
+                        "una llamada a un VALOR (una funcion guardada, no por su nombre): \
+                         este emisor no emite `call reg` todavia"
+                            .to_string(),
+                    );
+                }
                 for a in argumentos {
                     mira(a, &mut sueltos);
                 }

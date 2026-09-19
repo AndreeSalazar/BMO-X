@@ -892,6 +892,45 @@ fn un_nombre_que_el_emisor_no_resuelve_no_se_baja_a_cero_en_silencio() {
     );
 }
 
+/// ** La familia entera (2026-09-19): un numero que no cabe en una palabra
+/// llegaba a `carga()` como `Const::Decimal` y salia CERO, sin aviso.
+#[test]
+fn un_numero_que_no_cabe_no_se_baja_a_cero_en_silencio() {
+    let f = "perfil llano\n\nfuncion f devuelve entero64\n    devuelve 99999999999999999999\n";
+    let e = emitido(f);
+    assert!(
+        e.sin_emitir.iter().any(|x| x.contains("99999999999999999999") && x.contains("CERO")),
+        "el aviso no dice lo que pasa: {:?}",
+        e.sin_emitir
+    );
+}
+
+/// ** Y la llamada a un VALOR cargaba los argumentos y no emitia el `call`: el
+/// programa seguia como si hubiera llamado. El frontend todavia no la produce,
+/// asi que la IR se construye a mano -- el dia que la produzca, esto ya esta.
+#[test]
+fn una_llamada_a_un_valor_no_se_calla() {
+    use bmo_inti_front::ir::{FuncionIr, Instr, Local, Temporal, Valor};
+    let f = FuncionIr {
+        nombre: "f".into(),
+        parametros: 0,
+        locales: 1,
+        temporales: 1,
+        instrucciones: vec![
+            Instr::Llama {
+                destino: Some(Temporal(0)),
+                que: Valor::Local(Local(0)),
+                argumentos: vec![],
+            },
+            Instr::Devuelve(Some(Valor::Temporal(Temporal(0)))),
+        ],
+        sin_ancho: 0,
+        medidas_locales: Vec::new(),
+    };
+    let avisos = nombres_sueltos(&f);
+    assert!(avisos.iter().any(|x| x.contains("llamada a un VALOR")), "{avisos:?}");
+}
+
 /// La tabla de necesidades de las pruebas: **la incrustada**.
 ///
 /// ** Y no la del disco a proposito. Una prueba que leyera `$BMO_MODS` diria
