@@ -73,6 +73,7 @@
 //!        era emision disfrazada
 //! ```
 
+pub(super) mod ambitos;
 pub(super) mod imagen;
 pub(super) mod inmediato;
 pub(super) mod plegado;

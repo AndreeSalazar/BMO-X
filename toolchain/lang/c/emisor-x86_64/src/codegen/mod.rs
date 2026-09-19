@@ -1016,6 +1016,16 @@ impl Codegen {
         //
         // La asimetria que quedaba escrita aqui --"devolver un double se puede,
         // pasarlo no"-- se acabo: ahora las dos.
+        // ** Las SOMBRAS se renombran antes de mirar nada mas (2026-09-18):
+        // el emisor entero trabaja por nombre y un hueco por funcion, asi que
+        // dos locales con el mismo nombre en dos bloques compartian hueco y
+        // TIPO. Ver `decidir/ambitos.rs`: la segunda `a` pasa a ser `a.2`.
+        let params: Vec<String> = func.params.iter().map(|p| p.name.clone()).collect();
+        let renombrada = Function {
+            body: decidir::ambitos::renombrar_sombras(&params, &func.body),
+            ..func.clone()
+        };
+        let func = &renombrada;
         self.build_var_map(&func.params, &func.var_names, func);
         // Lo que `__va_arg` necesita saber, y solo se sabe aqui: si esta
         // funcion admite variadicos y donde acaban los que tienen nombre.

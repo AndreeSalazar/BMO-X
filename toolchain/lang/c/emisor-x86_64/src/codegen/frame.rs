@@ -71,7 +71,9 @@ impl Codegen {
         for stmt in &func.body { Self::collect_decls_stmt(stmt, &mut decls); }
         let mut cur: i32 = 0;
         for (name, typ) in &decls {
-            if self.var_offsets.contains_key(*name) { continue; } // sombra: un solo slot
+            // Desde el 18-09 las sombras llegan ya renombradas (`decidir/ambitos`);
+            // esto solo protege del parser registrando dos veces el mismo nombre.
+            if self.var_offsets.contains_key(*name) { continue; }
             let sz = self.type_stack_size(typ).max(8);
             let sz = ((sz + 7) / 8 * 8) as i32;
             cur -= sz;
