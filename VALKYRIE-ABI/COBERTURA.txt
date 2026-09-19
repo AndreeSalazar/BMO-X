@@ -12,4 +12,4 @@
 #
 # [!] Lo que esto NO mide: si la cabecera es BUENA. Mide que exista.
 117
-# de 252 constantes del ABI que son de app; la frontera deja fuera 137
+# de 259 constantes del ABI que son de app; la frontera deja fuera 137
