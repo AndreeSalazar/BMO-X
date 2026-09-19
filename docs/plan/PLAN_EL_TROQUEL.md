@@ -482,13 +482,28 @@ el 18-09: **451.306 -> 183.875, -59 %**.
       pasa: un parametro que `repartir` eligio gasta un hueco de la matriz
       que luego no usa; una local de menos entra en r12-r15. Sin numero;
       se mide si el metro lo pide
-- [ ] **C4 -- reenvio con argumentos de pila.** `return f(a, b, c, d, e, g,
-      h)` con 7 no es reenvio; y tampoco `return f(a, s)` con un struct. Son
-      pocos; se hacen si el censo los cuenta
-- [ ] **C5 -- INTI pasa por el metro.** Los 25 programas son C, C++, COBOL y
-      Ada: INTI tiene seis `.ibx` en el build y ningun trinquete. Es lo
-      primero de la seccion 12, porque sin metro cada paso de INTI se elige
-      por corazonada
+- [x] **C4 -- CERRADO CON EL NUMERO, sin hacerlo** (19-09). El censo de
+      `return f(...)` que no es reenvio: en el metro **1** caso de C4
+      (`bmo_imagen_pinta -> bmo_imagen_pinta_escala`, 8 parametros y una
+      constante), 3 con expresiones (`sen(x * 2)`, `f(g(n))`); en DOOM **0**
+      de C4, 4 con expresiones y 4 envoltorios variadicos (imposibles). Y el
+      unico caso es el que NO admite `jmp`: nosotros recibimos 2 argumentos
+      en la pila y el destino quiere 3; el area de argumentos es de quien nos
+      llamo y la limpia con SU cuenta. Solo cabria `push` + `call` + `ret`
+      sin marco: ~16 instrucciones por llamada, una llamada por imagen
+      pintada. Un camino nuevo para eso es lo que la regla de optimizacion
+      prohibe. Si un dia el censo cuenta mas, la forma correcta es la de
+      `call`, no la de `jmp`
+- [x] **C5 -- INTI pasa por el metro** (19-09). La cadena de seis pasos salio
+      de `main.rs` a `cadena::compilar` (byte a byte lo mismo: comprobado
+      contra el `.ibx` del build) y el metro la llama con el nombre RELATIVO
+      (el manifiesto lleva el nombre del fichero). Cinco programas: `pulso`,
+      `ventana`, `bico`, `musica`, `navegar`; `cpu.inti` fuera por `cpuid`
+      como `ciclos_C.c` por `rdtsc`. Cuatro de los cinco salen por su camino
+      de "no pude" (sin ventana, antena, audio ni ficheros en el emulador) y
+      `pulso` hace 667.750 instrucciones de trabajo. **Y el desglose ya
+      eligio I2**: INTI gasta el **30,2 %** de sus pasos en el marco (C, 4,2 %)
+      -- las locales `cambiante`, que siempre viven en la pila
 
 ---
 
@@ -548,8 +563,9 @@ Hoy `FuncionIr` trae `parametros`, `locales`, `medidas_locales`,
 HECHOS de la tabla de arriba se calculan desde ahi, en el frontend, y
 viajan como campos de la IR. `marco.rs` los lee y reparte por rol.
 
-- [ ] **I0 -- INTI en el metro** (= C5). Seis `.ibx`, tres numeros y las
-      salidas fijas. Sin esto no hay I1
+- [x] **I0 -- INTI en el metro** (= C5, 19-09). Cinco `.ibx` (`cpu` fuera
+      por `cpuid`), tres numeros y las salidas fijas: 673.831 instrucciones,
+      y el 30,2 % en el marco
 - [ ] **I1 -- los hechos en la IR.** `FuncionIr` gana `pisa: bool`,
       `tomadas: Vec<Local>`, `peso: Vec<u32>` (por local), y
       `reenvia: Option<Reenvio>`. Calculados en `ir/`, probados en `ir/`

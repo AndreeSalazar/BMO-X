@@ -7,8 +7,8 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   306 casillas ABIERTAS en 35 planes
-   218 hechas
+   303 casillas ABIERTAS en 35 planes
+   221 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -26,15 +26,6 @@
 - [ ] S1b -- la Biblioteca ensena lo de ESTRATOS. Hoy
 - ... y 42 mas
 
-## [`PLAN_EL_TROQUEL.md`](PLAN_EL_TROQUEL.md) -- 20 abiertas, 9 hechas
-
-*PLAN EL TROQUEL -- la geometria de los registros, estampada de un golpe*
-
-- [ ] S1 -- EL CONTRATO, EN PAPEL Y ANTES QUE EL CODIGO. Que entra y que
-- [ ] S2 -- LA TABLA DE REGISTROS COMO DATO, no como codigo. x86-64 nombra
-- [ ] S3 -- EL PRIMER CLIENTE: INTI. Porque puede declarar el alias. Y
-- ... y 17 mas
-
 ## [`PLAN_AUTOCURACION.md`](PLAN_AUTOCURACION.md) -- 17 abiertas, 0 hechas
 
 *El plan de la AUTO-CURACION: de informar a actuar*
@@ -42,6 +33,15 @@
 - [ ] 1.0 (S) ★ Contar lo que queda del muerto DESPUES de revocar y
 - [ ] 1.1 (S) Si algo no volvio, la linea sale en ROJO y dice que no
 - [ ] 1.2 (S) La misma comprobacion en EXIT: una salida limpia tambien
+- ... y 14 mas
+
+## [`PLAN_EL_TROQUEL.md`](PLAN_EL_TROQUEL.md) -- 17 abiertas, 12 hechas
+
+*PLAN EL TROQUEL -- la geometria de los registros, estampada de un golpe*
+
+- [ ] S1 -- EL CONTRATO, EN PAPEL Y ANTES QUE EL CODIGO. Que entra y que
+- [ ] S2 -- LA TABLA DE REGISTROS COMO DATO, no como codigo. x86-64 nombra
+- [ ] S3 -- EL PRIMER CLIENTE: INTI. Porque puede declarar el alias. Y
 - ... y 14 mas
 
 ## [`PLAN_EL_GUARDIAN.md`](PLAN_EL_GUARDIAN.md) -- 15 abiertas, 0 hechas

@@ -33,10 +33,16 @@
 //!                    el codigo volcado a un fichero para desensamblarlo
 //!                    (llvm-objcopy -I binary -O elf64-x86-64 + llvm-objdump)
 //!
-//! [!] Lo que NO mide todavia, dicho: INTI (su cadena son seis pasos y sus
-//! programas de ejemplo tocan hardware), y los ciclos del Ryzen -- las
-//! instrucciones no son ciclos; eso lo miden `c/coste.bex` y `c/ciclos.bex` en
-//! el metal.
+//! ** INTI entro el 19-09 (C5 de `PLAN_EL_TROQUEL.md`): cinco programas por
+//! `cadena::compilar`, la MISMA cadena que la linea de ordenes, con el nombre
+//! relativo en el manifiesto. Cuatro de los cinco tocan hardware que el
+//! emulador no tiene (ventana, antena, audio, ficheros) y salen por su camino
+//! de "no pude": es un camino del emisor igual que los otros, y lo que hace
+//! `pulso.inti` --667.750 instrucciones-- es trabajo de verdad. `cpu.inti` se
+//! queda fuera por `cpuid`, como `ciclos_C.c` por `rdtsc`.
+//!
+//! [!] Lo que NO mide, dicho: los ciclos del Ryzen -- las instrucciones no son
+//! ciclos; eso lo miden `c/coste.bex` y `c/ciclos.bex` en el metal.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -51,6 +57,7 @@ const LIMITE: usize = 50_000_000;
 /// El banco. **Fijo a proposito**: si cambia, la linea base se rehace entera.
 /// Fuera, con su motivo:
 ///   c/ciclos_C.c, c/coste_C.c   opcodes que el emulador no ejecuta (rdtsc)
+///   inti/sondas/cpu.inti        idem (cpuid)
 const BANCO: &[(&str, &str)] = &[
     ("c", "toolchain/lang/c/examples/hola_C.c"),
     ("c", "toolchain/lang/c/examples/memoria_C.c"),
@@ -77,6 +84,11 @@ const BANCO: &[(&str, &str)] = &[
     ("cobol", "toolchain/lang/cobol/examples/8-parrafos/cierre.cob"),
     ("cobol", "toolchain/lang/cobol/examples/9-decision/comision.cob"),
     ("ada", "toolchain/lang/ada/examples/1-basico/cierre.adb"),
+    ("inti", "toolchain/lang/inti/sondas/pulso.inti"),
+    ("inti", "toolchain/lang/inti/sondas/ventana.inti"),
+    ("inti", "toolchain/lang/inti/ejemplos/bico.inti"),
+    ("inti", "toolchain/lang/inti/ejemplos/musica.inti"),
+    ("inti", "Ultra_userspace/apps/navegar/navegar.inti"),
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -93,7 +105,7 @@ fn raiz() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..").join("..")
 }
 
-fn compilar(lenguaje: &str, ruta: &Path, fuente: &str) -> Result<Vec<u8>, String> {
+fn compilar(lenguaje: &str, ruta: &Path, rel: &str, fuente: &str) -> Result<Vec<u8>, String> {
     let nombre = ruta.file_name().and_then(|n| n.to_str()).unwrap_or("unidad").to_string();
     let enlazar = |objeto: Vec<u8>| {
         bmo_enlazar::enlazar(&[(nombre.clone(), objeto)]).map_err(|e| format!("enlace: {e:?}"))
@@ -107,6 +119,13 @@ fn compilar(lenguaje: &str, ruta: &Path, fuente: &str) -> Result<Vec<u8>, String
         "cobol" => bmo_cobol_x86_64::compile_source_to_bex(fuente)
             .map_err(|e| format!("{e:?}")),
         "ada" => bmo_ada_x86_64::compilar(fuente).map_err(|e| format!("{e:?}")),
+        // ** INTI por su cadena entera (`cadena::compilar`, la misma que la
+        // linea de ordenes), con el nombre RELATIVO: el manifiesto lleva el
+        // nombre del fichero y un camino absoluto cambiaria el `.ibx` de una
+        // maquina a otra.
+        "inti" => bmo_inti_x86_64::cadena::compilar(fuente, rel, &bmo_mods::Roots::find())
+            .map(|c| c.bytes)
+            .map_err(|e| e.to_string()),
         otro => Err(format!("lenguaje desconocido `{otro}`")),
     }
 }
@@ -137,7 +156,7 @@ fn huella(s: &str) -> String {
 fn medir(lenguaje: &str, rel: &str) -> Result<Medida, String> {
     let ruta = raiz().join(rel);
     let fuente = std::fs::read_to_string(&ruta).map_err(|e| format!("no se lee: {e}"))?;
-    let bex = compilar(lenguaje, &ruta, &fuente)?;
+    let bex = compilar(lenguaje, &ruta, rel, &fuente)?;
     let maquina = bmo_lower::emu::cargar_bex(&bex)?;
     let m = std::panic::catch_unwind(move || bmo_lower::emu::run(maquina, LIMITE))
         .map_err(|_| format!("no termina en {LIMITE} instrucciones o el emulador no sabe una"))?;
@@ -242,7 +261,7 @@ fn caliente(rel: &str, salida: Option<&str>) {
     };
     let ruta = raiz().join(rel);
     let fuente = std::fs::read_to_string(&ruta).expect("leer el fuente");
-    let bex = compilar(lenguaje, &ruta, &fuente).expect("compilar");
+    let bex = compilar(lenguaje, &ruta, rel, &fuente).expect("compilar");
     let maquina = bmo_lower::emu::cargar_bex(&bex).expect("cargar");
     let codigo = maquina.code.clone();
     let mut cuentas: BTreeMap<usize, u64> = BTreeMap::new();
@@ -320,7 +339,7 @@ fn main() {
                 exit(1);
             }
             let aviso = if bajaron > 0 { format!("; {bajaron} bajaron: fija con --fijar") } else { String::new() };
-            println!("clean: metro del emisor -- {} programas (C, C++, COBOL, Ada), {pasos} instrucciones, {accesos} accesos a memoria, {codigo} B de codigo, ninguna salida cambio{aviso}", medidas.len());
+            println!("clean: metro del emisor -- {} programas (C, C++, COBOL, Ada, INTI), {pasos} instrucciones, {accesos} accesos a memoria, {codigo} B de codigo, ninguna salida cambio{aviso}", medidas.len());
         }
         _ => {
             println!("{:<58} {:>12} {:>9} {:>9}  salida", "programa", "pasos", "accesos", "codigo");

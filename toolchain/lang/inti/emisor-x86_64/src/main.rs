@@ -90,129 +90,43 @@ fn main() {
 
     // -- El compilador entero, por el mismo camino que usan las pruebas -----
     //
-    // ** Por `informar` y no montando los analisis a mano: si este programa
-    // compilara por otro camino, estaria probando otro compilador. Es la misma
-    // regla que el banco se puso en F2d.
-    let (parte, eventos) = bmo_inti_front::informar(&texto, &nombre);
-
-    // ** LOS AVISOS SALEN DE `comprobar`, QUE ES EL QUE LOS JUNTA TODOS.
-    //
-    // Aqui habia una lista escrita a mano con TRES analisis --sintaxis,
-    // disposicion, tipos-- y el compilador corria los cinco. Los otros dos
-    // --`perfil` y `nombres`-- se calculaban y **se tiraban**.
-    //
-    // *** Lo que eso significaba: `crudo` dentro de `perfil pleno` NO SE
-    // DENUNCIABA. Un nombre desconocido tampoco. La sonda `p04_crudo_en_pleno`
-    // del censo daba su E0071 en el banco y salia limpia por la linea de
-    // ordenes, que es por donde la usa una persona.
-    //
-    // ** Y la causa no era olvidar dos lineas: era escribir a mano una lista que
-    // ya existia en otro sitio. Es el mismo fallo que el censo tenia con sus
-    // diez sondas, y por eso el arreglo no es anadir dos entradas -- es usar la
-    // funcion que los junta, para que no se pueda volver a olvidar ninguno.
-    let revisado = bmo_inti_front::comprobar(&texto);
-
-    let arbol = bmo_inti_front::armar(&texto);
+    // ** Los seis pasos viven en `cadena::compilar` desde el 19-09, porque el
+    // metro del emisor los necesita por el MISMO camino: aqui solo se pinta lo
+    // que salio. Lo que la cadena explica de si misma esta alli.
     let raices = bmo_mods::Roots::find();
-    let modulos = bmo_inti_front::tablas::Modulos::cargar(&raices);
-    let plano = bmo_inti_front::disposicion::comprobar(
-        &arbol.valor,
-        bmo_inti_front::disposicion::Medidas::cargar(&raices),
-    );
-
-    // -- Los avisos, con el formato de cuatro partes ------------------------
-    //
-    // Se pintan TODOS antes de decidir si se sigue: un compilador que para en
-    // el primero obliga a compilar diez veces para ver diez errores.
-    let mut hay_error = false;
-    for a in &revisado.avisos {
-        eprint!("{}", a.pintar(&nombre));
-        if a.codigo.0.starts_with('E') {
-            hay_error = true;
+    let compilado = match bmo_inti_x86_64::cadena::compilar(&texto, &nombre, &raices) {
+        Ok(c) => c,
+        Err(bmo_inti_x86_64::cadena::Fallo::Avisos(pintados)) => {
+            eprint!("{pintados}");
+            eprintln!("no se ha escrito nada.");
+            exit(1);
         }
-    }
-    if hay_error {
-        eprintln!("no se ha escrito nada.");
-        exit(1);
-    }
-
-    // -- El descenso y los bytes -------------------------------------------
-    let metal = bmo_inti_front::ir::metal_que_declara(&arbol.valor, &raices, &modulos);
-    let ir = bmo_inti_front::ir::bajar_con(&arbol.valor, &modulos, &plano.valor, &metal,
-        &bmo_inti_front::necesidades::Necesidades::cargar(&raices)).valor;
-    let emitido = bmo_inti_x86_64::emitir(&ir);
-
-    // ** LO QUE NO LLEGO A UN BYTE, y sale ANTES de escribir nada.
-    //
-    // Un intrinseco mudo no rompe la compilacion --el resto del programa esta
-    // bien-- asi que sin esto la unica senal seria el binario haciendo otra cosa
-    // en metal. Y para un fichero que va a un Ryzen, esa senal llega tarde.
-    // *** Y ESTO YA NO ES UN AVISO: ES UN NO (2026-08-23).
-    //
-    // ## Las manos desnudas del gate
-    //
-    // Aqui ponia `eprintln!("aviso: ...")` y se seguia: el `.ibx` se escribia
-    // igual. Y eso deja pasar lo que ninguna tabla de tipos puede ver -- **una
-    // llamada sin destino es un `call` a un simbolo que no existe**, o sea un
-    // binario que carga, salta a la nada, y se lleva la maquina por delante.
-    //
-    // ** El gate de perfiles lo tapaba por accidente: como `pleno` no compilaba,
-    // nadie llegaba hasta aqui. Al hacer el gate ATOMICO --que mira lo que usas
-    // en vez de tu etiqueta-- ese agujero quedaba a la vista, y taparlo es la
-    // otra mitad del mismo cambio.
-    //
-    // *** Y es la ley de esta casa aplicada sin excepcion: **nada que compile y
-    // no haga lo que dice**. Cada linea de `sin_emitir` es literalmente "esto se
-    // pidio y no llego a un byte". Un binario con una de esas no hace lo que
-    // dice su fuente, y no hay grado intermedio.
-    if !emitido.sin_emitir.is_empty() {
-        eprintln!(
-            "E0075 {} cosa(s) se pidieron y no llegaron a un byte.",
-            emitido.sin_emitir.len()
-        );
-        for m in &emitido.sin_emitir {
-            eprintln!("  - {}", m);
+        // *** ESTO NO ES UN AVISO: ES UN NO (2026-08-23). Cada linea es
+        // literalmente "esto se pidio y no llego a un byte", y un binario con
+        // una de esas no hace lo que dice su fuente. Antes el `.ibx` salia igual.
+        Err(bmo_inti_x86_64::cadena::Fallo::SinEmitir(faltan)) => {
+            eprintln!("E0075 {} cosa(s) se pidieron y no llegaron a un byte.", faltan.len());
+            for m in &faltan {
+                eprintln!("  - {}", m);
+            }
+            eprintln!("   Un binario al que le falta algo no hace lo que dice su fuente, asi que");
+            eprintln!("   no se escribe. Antes esto era un aviso y el `.ibx` salia igual.");
+            eprintln!("no se ha escrito nada.");
+            exit(1);
         }
-        eprintln!(
-            "   Un binario al que le falta algo no hace lo que dice su fuente, asi que"
-        );
-        eprintln!("   no se escribe. Antes esto era un aviso y el `.ibx` salia igual.");
-        eprintln!("no se ha escrito nada.");
-        exit(1);
-    }
+        Err(bmo_inti_x86_64::cadena::Fallo::Gate(e)) => fin(&format!("el `.bex` no pasa el gate: {}", e)),
+    };
+    let emitido = compilado.emitido;
+    let bytes = compilado.bytes;
 
     if informe {
-        pinta_informe(&parte, &emitido, eventos.len());
+        pinta_informe(&compilado.parte, &emitido, compilado.eventos);
     }
 
     if solo_mirar {
         println!("ok: {} compila", nombre);
         return;
     }
-
-    // -- LO QUE EL BINARIO VA A DECIR DE SI MISMO --------------------------
-    //
-    // ** Hasta el 2026-08-22 el `.bex` salia con UNA seccion, `Code`, y el
-    // perfil moria en la consola. Un `.bex` de INTI llegaba al kernel
-    // indistinguible de cualquier otra cosa: para saber si podia correr en Ring
-    // 0 habia que tener el fuente delante.
-    //
-    // Sale de `arbol` y de `revisado`, que son los que YA se calcularon arriba.
-    // Calcularlo por otro camino seria describir un modulo distinto del que se
-    // acaba de emitir.
-    let manifiesto = bmo_inti_front::manifiesto::de(&arbol.valor, &revisado.valor, &nombre);
-    let manifiesto = manifiesto.a_toml();
-
-    // -- EL GATE, y va antes de escribir -----------------------------------
-    //
-    // `empaquetar` llama a `bmo-verify`. Verificar despues dejaria un fichero
-    // malo en el disco con un mensaje al lado, y el que lo encuentre manana vera
-    // el `.bex` y no el mensaje. Un gate que avisa cuando el dano ya esta hecho
-    // es un informe, no un gate.
-    let bytes = match bmo_inti_x86_64::empaquetar(&emitido, Some(&manifiesto)) {
-        Ok(b) => b,
-        Err(e) => fin(&format!("el `.bex` no pasa el gate: {}", e)),
-    };
 
     // -- ** `.ibx`, Y NO ES UNA ETIQUETA -------------------------------------
     //

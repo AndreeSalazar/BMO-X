@@ -15,6 +15,8 @@ bmo-c-x86-64 = { path = "../../lang/c/emisor-x86_64" }
 bmo-cpp-x86-64 = { path = "../../lang/cpp/emisor-x86_64" }
 bmo-cobol-x86-64 = { path = "../../lang/cobol/emisor-x86_64" }
 bmo-ada-x86-64 = { path = "../../lang/ada/emisor-x86_64" }
+bmo-inti-x86-64 = { path = "../../lang/inti/emisor-x86_64" }
+bmo-mods = { path = "../../forge/bmo-mods" }
 
 [[bin]]
 name = "metro"

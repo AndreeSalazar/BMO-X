@@ -453,7 +453,9 @@ dependencies = [
  "bmo-cobol-x86-64",
  "bmo-cpp-x86-64",
  "bmo-enlazar",
+ "bmo-inti-x86-64",
  "bmo-lower",
+ "bmo-mods",
 ]
 
 [[package]]

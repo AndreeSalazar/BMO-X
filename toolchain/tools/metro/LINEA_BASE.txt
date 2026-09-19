@@ -2,6 +2,7 @@
 # TRINQUETE: `pasos`, `accesos` y `codigo` solo bajan; `salida` no cambia nunca.
 # Se reescribe con `cargo run --release -p bmo-metro -- --fijar`.
 # programa  pasos  accesos  codigo  salida
+Ultra_userspace/apps/navegar/navegar.inti 2826 1112 41024 e60f459908bf3458
 toolchain/lang/ada/examples/1-basico/cierre.adb 369 69 1560 ed567b986aa22dd2
 toolchain/lang/c/examples/blit_C.c 57720 6438 3035 25042ff916c7a1d5
 toolchain/lang/c/examples/caja_C.c 331 118 5947 c7825b639babd44d
@@ -27,3 +28,7 @@ toolchain/lang/cobol/examples/7-empaquetado/cuentas.cob 1418 170 5569 52118ba4ce
 toolchain/lang/cobol/examples/8-parrafos/cierre.cob 694 93 4308 e3a5047d373bbbde
 toolchain/lang/cobol/examples/9-decision/comision.cob 3978 538 9224 b74edb36d777ee06
 toolchain/lang/cpp/examples/1-clases/cuentas.cpp 599 139 1245 ee45374b921d5109
+toolchain/lang/inti/ejemplos/bico.inti 644 234 16076 56b0f2120340652f
+toolchain/lang/inti/ejemplos/musica.inti 428 147 22565 031a8f1d4e77e2bb
+toolchain/lang/inti/sondas/pulso.inti 667750 209322 5082 9961033a811a7779
+toolchain/lang/inti/sondas/ventana.inti 2183 793 16808 52f287b1b72f3aa2

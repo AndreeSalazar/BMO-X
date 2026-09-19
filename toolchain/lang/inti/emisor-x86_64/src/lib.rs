@@ -57,6 +57,7 @@
 //! hace falta para que el primer `.bex` exista y pase el gate.
 
 pub mod arranque;
+pub mod cadena;
 pub mod barrido;
 pub mod funcion;
 use funcion::emitir_funcion;
