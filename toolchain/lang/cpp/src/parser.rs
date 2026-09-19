@@ -44,6 +44,7 @@ use std::collections::{HashMap, HashSet};
 mod sobrecarga;
 mod iniciales;
 mod nuevo;
+mod enlace;
 
 /// El nombre del puntero a la vtabla dentro del objeto.
 ///
@@ -162,6 +163,8 @@ struct Parser {
     /// Lo que `new`/`delete` dejan apuntado para el `Program`. Ver `parser/nuevo.rs`.
     nuevos: Vec<(String, Option<String>)>,
     monton: bool,
+    /// Dentro de `extern "C"`: el simbolo es el nombre. Ver `parser/enlace.rs`.
+    enlace_c: bool,
 }
 
 impl Parser {
@@ -174,7 +177,7 @@ impl Parser {
             espacios: Vec::new(),
             plantillas: HashSet::new(),
             clases: HashMap::new(),
-            clase_actual: None, nuevos: Vec::new(), monton: false,
+            clase_actual: None, nuevos: Vec::new(), monton: false, enlace_c: false,
         };
         p.ambitos.entrar(); // ambito de fichero
         p
@@ -300,6 +303,7 @@ impl Parser {
                 Token::Using => return Err(self.pendiente("`using`", 4)),
                 Token::Enum => return Err(self.pendiente("`enum`", 4)),
                 Token::Semicolon => { self.avanzar(); }
+                Token::Extern => self.extern_c(&mut p)?,
                 _ => self.declaracion_de_fichero(&mut p)?,
             }
         }
@@ -709,34 +713,6 @@ impl Parser {
             },
             _ => None,
         }
-    }
-
-    /// Registra una funcion y devuelve su simbolo.
-    ///
-    /// Rechaza redeclarar la MISMA firma con otro retorno, que es lo que C++
-    /// prohibe: no se puede sobrecargar por retorno, asi que dos `f(int)` con
-    /// retornos distintos son la misma funcion declarada dos veces mal.
-    fn declarar_funcion(&mut self, name: &str, params: &[Param], ret: &TypeSpec)
-        -> Result<String, CppError>
-    {
-        let tipos: Vec<TypeSpec> = params.iter().map(|p| p.typ.clone()).collect();
-        let simbolo = if name == "main" && self.espacios.is_empty() {
-            "main".to_string()
-        } else {
-            crate::mangling::funcion(&self.espacios, name, &tipos)
-        };
-        let lista = self.funciones.entry(name.to_string()).or_default();
-        if let Some(ya) = lista.iter().find(|f| f.simbolo == simbolo) {
-            if &ya.ret != ret {
-                return Err(self.err(format!(
-                    "`{name}` ya esta declarada con los mismos parametros y otro retorno: \
-                     C++ no permite sobrecargar por el tipo de retorno")));
-            }
-        } else {
-            lista.push(Firma { params: tipos, ret: ret.clone(), simbolo: simbolo.clone() });
-        }
-        self.retornos.insert(simbolo.clone(), ret.clone());
-        Ok(simbolo)
     }
 
     fn parametros(&mut self) -> Result<Vec<Param>, CppError> {

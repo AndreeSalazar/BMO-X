@@ -244,9 +244,13 @@ funcionando: una funcion de C tiene el simbolo que tiene, porque quien la
 escribio no sabia que C++ existia.
 
 Es exactamente lo que `extern "C"` nombra en el estandar, solo que aqui es el
-comportamiento por defecto para lo que C++ no declaro. Cuando entre `extern "C"`
-de verdad (esta como UTIL en `BRECHA.md`) sera la forma **explicita** de pedir
-lo mismo.
+comportamiento por defecto para lo que C++ no declaro.
+
+** Y desde el 2026-09-18 existe la forma **explicita**, que es la que hace falta
+en la otra direccion: `extern "C" int cobrar(int, int) { ... }` (o un bloque
+`extern "C" { ... }`) emite `cobrar` SIN decorar, asi que un `.bo` de C la
+encuentra. Un nombre con enlace de C no admite sobrecarga -- seria un simbolo
+con dos significados -- y es un error. `extern "C++"` es el enlace de siempre.
 
 ## 5. Resolucion de sobrecarga
 

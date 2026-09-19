@@ -397,6 +397,9 @@ fn matriz_cpp_ejecuta_correctamente() {
             class P { public: int x; P(int v) : x(v) {} };\n\
             int main() { P *p = new P(5); printf(\"%d\", p->x); delete p; return 0; }",
             "5"),
+        // -- `extern "C"` (E10, 2026-09-18): el simbolo es el nombre --
+        ("extern-c", "@FULL@extern \"C\" int doble(int x) { return x * 2; }\nint main() { printf(\"%d\", doble(21)); return 0; }", "42"),
+        ("extern-c-bloque", "@FULL@extern \"C\" {\n int uno(int x) { return x + 1; }\n int dos(int x) { return x + 2; }\n}\nint main() { printf(\"%d\", uno(20) + dos(19)); return 0; }", "42"),
         ("pp-clase-y-cabecera", "@FULL@#include <string.h>\nclass P { public: int n; P(char *s) : n(strlen(s)) {} };\nint main() { P p(\"hola\"); printf(\"%d\", p.n); return 0; }", "4"),
     ];
 
@@ -437,6 +440,7 @@ fn matriz_cpp_rechaza_con_el_paso_escrito() {
         ("new-de-no-clase", "int *p = new int;", 3),
         ("new-array", "@FULL@class P { public: int x; };\nint main(){ P *p = new P[3]; return 0; }", 3),
         ("delete-array", "@FULL@class P { public: int x; };\nint main(){ P *p = new P; delete[] p; return 0; }", 3),
+        ("extern-sin-c", "@FULL@extern int x;\nint main(){return 0;}", 4),
         ("destructor-virtual", "@FULL@class P { public: virtual ~P() {} };\nint main(){return 0;}", 5),
         ("miembro-static", "@FULL@class P { public: static int n; };\nint main(){return 0;}", 4),
         ("operador", "@FULL@class P { public: int operator+(int a) { return a; } };\nint main(){return 0;}", 4),
@@ -520,6 +524,14 @@ fn matriz_cpp_explica_lo_que_esta_mal() {
          "@FULL@class A { public: int x; }; class B : public A { public: B() : x(1) {} }; \
           int main() { return 0; }",
          "campo de la base"),
+        // * C no tiene sobrecarga: dos `extern "C"` con el mismo nombre
+        // serian UN simbolo con dos significados.
+        ("extern-c-sin-sobrecarga",
+         "@FULL@extern \"C\" int f(int x) { return x; }\nextern \"C\" int f(long x) { return 1; }\nint main() { return 0; }",
+         "no admite sobrecarga"),
+        ("extern-enlace-que-no-existe",
+         "@FULL@extern \"Pascal\" int f(int x) { return x; }\nint main() { return 0; }",
+         "los enlaces que existen"),
         ("pp-cabecera-que-no-existe",
          "@FULL@#include \"no_existe.h\"\nint main() { return 0; }",
          "file not found"),

@@ -315,12 +315,15 @@ sigue siendo del dueno: este plan escribe los escalones para cuando la tome.
       **Como se sabe**: una unidad con una clase virtual y sin `main`, enlazada
       con otra que si lo tiene, llama al metodo virtual y acierta.
 
-- [ ] **E10 -- `extern "C"`.** C++ DECORA los nombres con la firma
-      (`cobrar#i.i`), que es lo que hace posible sobrecargar -- y por eso un
-      `.bo` de C que pida `cobrar` no lo encuentra. Es el caso de "librerias en
-      C++ para programas en C" que `APARCADO.md` daba como motivo para existir,
-      asi que sin esto ese motivo sigue sin cumplirse.
-      **Como se sabe**: la fila de dos unidades, pero con una en C.
+- [x] **E10 -- `extern "C"`. HECHO el 2026-09-18.** C++ DECORA los nombres con
+      la firma (`cobrar#i.i`), que es lo que hace posible sobrecargar -- y por
+      eso un `.bo` de C que pida `cobrar` no lo encontraba. Es el caso de
+      "librerias en C++ para programas en C" que `APARCADO.md` daba como motivo
+      para existir. `extern "C"` (suelto y en bloque) hace que el simbolo sea el
+      nombre, y rechaza la sobrecarga, que C no tiene (`lang/cpp/src/parser/enlace.rs`).
+      **Como se sabe**: `un_programa_de_c_llama_a_cpp_por_extern_c` en
+      `bmo-enlazar` -- un `main` de C llama a una funcion de C++ que usa una
+      clase con constructor, enlazan y corren; y SIN `extern "C"` no enlaza.
 
 - [ ] **E6 -- COBOL `CALL` estatico.** `toolchain/lang/cobol/PLAN_BANCA.md`, 6.2 y
       6.3, sobre E3. Aqui se prueba que el contrato es de FORMATO: un `.bo` de

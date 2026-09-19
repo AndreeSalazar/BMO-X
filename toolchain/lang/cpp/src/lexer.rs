@@ -37,7 +37,7 @@ pub enum Token {
     Class, Struct, Namespace, Template, Typename,
     Public, Private, Protected, Virtual, Override,
     New, Delete, This, Nullptr, True, False, Operator, Friend, Using, Enum,
-    Const, Static, Sizeof,
+    Const, Static, Sizeof, Extern,
 
     // -- Signos --
     OpenParen, CloseParen, OpenBrace, CloseBrace, OpenBracket, CloseBracket,
@@ -95,6 +95,7 @@ impl Token {
             "operator" => Token::Operator, "friend" => Token::Friend,
             "using" => Token::Using, "enum" => Token::Enum,
             "const" => Token::Const, "static" => Token::Static, "sizeof" => Token::Sizeof,
+            "extern" => Token::Extern,
             _ => return None,
         })
     }

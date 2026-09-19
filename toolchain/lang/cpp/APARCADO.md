@@ -208,10 +208,12 @@ funciona; una biblioteca, no, hasta el enlazador.
       Con DOS techos, los dos dichos al compilar y no en el metal:
       - una unidad con clases y sin `main` no tiene donde rellenar sus tablas
         (E9: inicializacion estatica entre unidades)
-      - los nombres van DECORADOS (`cobrar#i.i`), asi que C todavia no puede
-        llamar a C++ (E10: `extern "C"`) -- o sea que **"librerias en C++ para
-        programas en C", el motivo por el que esto no se borro, sigue sin
-        cumplirse**
+      - ~~los nombres van DECORADOS (`cobrar#i.i`), asi que C todavia no puede
+        llamar a C++ (E10: `extern "C"`)~~ **CERRADO el 2026-09-18**: con
+        `extern "C"`, un programa de C llama a una libreria de C++ y el enlazador
+        los junta. **"Librerias en C++ para programas en C", el motivo por el que
+        esto no se borro, YA SE CUMPLE** (`bmo-enlazar`,
+        `un_programa_de_c_llama_a_cpp_por_extern_c`).
 
 [!] Y lo que NO cambia: sin excepciones, sin RTTI, sin la bola moderna
 (`PROPOSITO.md`, *"Remember the Vasa"*). Darle la oportunidad es terminar lo

@@ -7,8 +7,8 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   296 casillas ABIERTAS en 35 planes
-   208 hechas
+   295 casillas ABIERTAS en 35 planes
+   209 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -125,15 +125,6 @@
 - [ ] S3 -- EL PRIMER CLIENTE: INTI. Porque puede declarar el alias. Y
 - ... y 6 mas
 
-## [`PLAN_EL_ENLAZADOR.md`](PLAN_EL_ENLAZADOR.md) -- 8 abiertas, 8 hechas
-
-*PLAN EL ENLAZADOR -- la pieza que madura a CINCO lenguajes a la vez*
-
-- [ ] E4 -- EL METAL. Ese .bex enlazado, en el Ryzen. Hoy corre en el
-- [ ] E5f -- errno, Y LOS extern QUE NADIE DEFINE. Lo encontro DOOM al
-- [ ] E5d -- EL bss NO SE SABE NOMBRAR. Salio al hacer E5b: una reloc del
-- ... y 5 mas
-
 ## [`PLAN_VATIOS.md`](PLAN_VATIOS.md) -- 8 abiertas, 4 hechas
 
 *PLAN_VATIOS -- lo que gasta el CPU en reposo, y por que*
@@ -159,6 +150,15 @@
 - [ ] pendiente [~] a medias, y se dice cuanto [x] hecho, con fecha
 - [ ] A1.3 -- el AP con reloj: un LAPIC timer propio, o el MWAITX con plazo
 - [ ] A2.1 -- bmo-orquesta: una clase de parte nueva, RESIDENTE, que no
+- ... y 4 mas
+
+## [`PLAN_EL_ENLAZADOR.md`](PLAN_EL_ENLAZADOR.md) -- 7 abiertas, 9 hechas
+
+*PLAN EL ENLAZADOR -- la pieza que madura a CINCO lenguajes a la vez*
+
+- [ ] E4 -- EL METAL. Ese .bex enlazado, en el Ryzen. Hoy corre en el
+- [ ] E5f -- errno, Y LOS extern QUE NADIE DEFINE. Lo encontro DOOM al
+- [ ] E5d -- EL bss NO SE SABE NOMBRAR. Salio al hacer E5b: una reloc del
 - ... y 4 mas
 
 ## [`PLAN_ESTRUCTURA.md`](PLAN_ESTRUCTURA.md) -- 7 abiertas, 1 hechas

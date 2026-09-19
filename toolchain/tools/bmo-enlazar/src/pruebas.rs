@@ -394,8 +394,8 @@ int main() {
 ///
 /// ** Y lo que esta fila NO dice: llamar a esto desde C. C++ DECORA los nombres
 /// con la firma (`cobrar#i.i`), que es lo que hace posible sobrecargar, asi que
-/// un `.bo` de C pide `cobrar` y no lo encuentra. Lo que falta para eso es
-/// `extern "C"`, y es casilla E10 del plan -- no un arreglo del enlazador.
+/// un `.bo` de C pide `cobrar` y no lo encuentra. Lo arreglo `extern "C"`
+/// (E10, 2026-09-18), no el enlazador: ver la fila de abajo.
 #[test]
 fn dos_unidades_de_cpp_se_llaman_y_el_programa_corre() {
     const CLASE: &str = r#"
@@ -425,6 +425,51 @@ int main() {
     let bex = enlazar(&[("principal.bo".to_string(), dos), ("cuenta.bo".to_string(), uno)])
         .expect("tiene que enlazar");
     assert_eq!(correr(&bex), "42");
+}
+
+/// *** E10: C LLAMA A C++ (2026-09-18).
+///
+/// La prueba de arriba dejo escrito lo que faltaba: un `.bo` de C que pide
+/// `cobrar` no la encontraba, porque de C++ sale DECORADA. Con `extern "C"` el
+/// simbolo es el nombre, y la clase sigue viviendo dentro de la unidad de C++:
+/// "librerias en C++ para programas en C", el motivo por el que C++ no se
+/// borro. Y lo mismo SIN `extern "C"` no enlaza: esa es la otra mitad.
+#[test]
+fn un_programa_de_c_llama_a_cpp_por_extern_c() {
+    const LIBRERIA_CPP: &str = r#"
+class Cuenta {
+    int saldo;
+public:
+    Cuenta(int s) : saldo(s) {}
+    int ingresar(int cuanto) { saldo = saldo + cuanto; return saldo; }
+};
+extern "C" int cobrar(int base, int extra) {
+    Cuenta c(base);
+    return c.ingresar(extra);
+}
+"#;
+    const PRINCIPAL_C: &str = r#"
+int cobrar(int base, int extra);
+int main() {
+    printf("%d", cobrar(20, 22));
+    return 0;
+}
+"#;
+    let principal = bmo_c_x86_64::compile_source_to_object(PRINCIPAL_C)
+        .unwrap_or_else(|e| panic!("el C debe compilar a objeto: {}", e.message));
+    let libreria = bmo_cpp_x86_64::compile_source_to_object(LIBRERIA_CPP)
+        .unwrap_or_else(|e| panic!("el C++ debe compilar a objeto: {}", e.message));
+    let bex = enlazar(&[("principal.bo".to_string(), principal.clone()), ("cuenta.bo".to_string(), libreria)])
+        .expect("con extern \"C\" tiene que enlazar");
+    assert_eq!(correr(&bex), "42");
+
+    // La otra mitad: sin `extern "C"`, el nombre sale decorado y C no lo halla.
+    let decorada = bmo_cpp_x86_64::compile_source_to_object(&LIBRERIA_CPP.replace("extern \"C\" ", ""))
+        .expect("compila igual");
+    assert!(
+        enlazar(&[("principal.bo".to_string(), principal), ("cuenta.bo".to_string(), decorada)]).is_err(),
+        "sin extern \"C\" el simbolo sale decorado y C no deberia encontrarlo"
+    );
 }
 
 /// *** E5c: LOS EJEMPLOS DEL ARBOL, POR LOS DOS CAMINOS, Y LA MISMA SALIDA.
