@@ -348,6 +348,16 @@ fn matriz_cpp_ejecuta_correctamente() {
             class B : public A { public: B() {} int quien() override { return 2; } };\n\
             int main() { B b; printf(\"%d %d\", b.x, b.quien()); return 0; }",
             "1 2"),
+
+        // -- El preprocesador, que es el de C (2026-09-18) --
+        ("pp-define", "@FULL@#define N 42\nint main() { printf(\"%d\", N); return 0; }", "42"),
+        ("pp-ifdef", "@FULL@#define A\nint main() {\n#ifdef A\nprintf(\"si\");\n#else\nprintf(\"no\");\n#endif\nreturn 0; }", "si"),
+        // * Una cabecera DEL SISTEMA se lee como C, no como C++: trae cuerpos
+        // con cosas que el parser de C++ no sabe, y el de C si.
+        ("pp-cabecera-del-sistema", "@FULL@#include <string.h>\nint main() { printf(\"%d\", strlen(\"hola\")); return 0; }", "4"),
+        // * El monton de C, desde C++: es el camino que va a usar `new`.
+        ("pp-monton", "@FULL@#include <bmo/monton.h>\nint main() { int *p = (int*) malloc(16); p[1] = 42; printf(\"%d\", p[1]); free(p); return 0; }", "42"),
+        ("pp-clase-y-cabecera", "@FULL@#include <string.h>\nclass P { public: int n; P(char *s) : n(strlen(s)) {} };\nint main() { P p(\"hola\"); printf(\"%d\", p.n); return 0; }", "4"),
     ];
 
     let total = casos.len();
@@ -379,7 +389,6 @@ fn matriz_cpp_ejecuta_correctamente() {
 #[test]
 fn matriz_cpp_rechaza_con_el_paso_escrito() {
     let casos: &[(&str, &str, u8)] = &[
-        ("preprocesador", "@FULL@#include \"x.h\"\nint main(){return 0;}", 1),
         ("auto", "auto x = 1;", 2),
         ("sizeof", "printf(\"%d\", sizeof(int));", 2),
         ("referencia", "@FULL@int f(int &r) { return r; } int main(){return 0;}", 2),
@@ -468,6 +477,9 @@ fn matriz_cpp_explica_lo_que_esta_mal() {
          "@FULL@class A { public: int x; }; class B : public A { public: B() : x(1) {} }; \
           int main() { return 0; }",
          "campo de la base"),
+        ("pp-cabecera-que-no-existe",
+         "@FULL@#include \"no_existe.h\"\nint main() { return 0; }",
+         "file not found"),
         ("dos-metodos-iguales",
          "@FULL@class P { public: int f() { return 1; } int f() { return 2; } }; \
           int main() { return 0; }",

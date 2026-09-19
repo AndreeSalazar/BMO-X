@@ -44,6 +44,7 @@ pub mod descenso;
 pub mod lexer;
 pub mod mangling;
 pub mod parser;
+pub mod preproceso;
 
 use ast::*;
 

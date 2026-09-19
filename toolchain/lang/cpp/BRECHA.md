@@ -202,7 +202,11 @@ fichero vacio.
    simbolos se hablan** -- sin eso `a<b>(c)` no se desambigua (ver
    `MAESTROS.md`), y el punto de decision ya existe aunque el conjunto de
    plantillas este vacio hasta el paso 6.
-   ⏳ **Falta el preprocesador** (`#include`, `#define`): se rechaza con motivo.
+   ✅ **El preprocesador, HECHO el 2026-09-18** (`preproceso.rs`): es el de
+   BMO C. Lo de las cabeceras DEL SISTEMA se lee como C --traen cuerpos que el
+   parser de C++ no sabe leer, y `<bmo/monton.h>` es el caso-- y el resto como
+   C++; los dos arboles se juntan, y lo de las cabeceras queda como copia
+   privada de la unidad, la misma regla que en C (`politica_libc`).
 2. ✅ **HECHO -- clase con metodos.** El desazucarado de Cfront: clase ->
    `struct`, metodo -> funcion libre con `this` de primer parametro
    (`P.doble(P* this)`, y el punto es ilegal en C, asi que no choca). Corren

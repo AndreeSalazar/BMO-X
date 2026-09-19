@@ -95,7 +95,10 @@ pub const FUENTE_LIBC: &str = "#include <stdio.h>\n\
 /// no tiene por que saber que existe un enlazador, y esto es exactamente una
 /// decision de enlace. Lo unico que hace falta es el numero de linea, que el
 /// arbol ya trae.
-fn politica_libc(program: &mut Program, rangos: &[(usize, usize)], libc: Libc) {
+///
+/// `pub` desde el 2026-09-18: C++ lee las cabeceras del sistema como C y les
+/// aplica ESTA regla, no una copia de ella (ver `lang/cpp/src/preproceso.rs`).
+pub fn politica_libc(program: &mut Program, rangos: &[(usize, usize)], libc: Libc) {
     if libc == Libc::Soy || rangos.is_empty() {
         return;
     }
@@ -139,6 +142,22 @@ fn politica_libc(program: &mut Program, rangos: &[(usize, usize)], libc: Libc) {
 ///
 /// That happened, and guessing lost twice. So the fix is not a better message:
 /// it is being able to open the line.
+/// **El texto expandido Y que lineas vinieron de una cabecera del sistema**
+/// (`<...>`), en rangos `(primera, ultima)` de base 1. Lo necesita C++, que lee
+/// esas lineas como C (2026-09-18, `lang/cpp/src/preproceso.rs`). El mismo
+/// preprocesador que `preprocess_only`: una sola forma de resolver un `#include`.
+pub fn preprocesar_con_rangos(
+    source: &str,
+    file_path: &Path,
+    std: CStandard,
+) -> Result<(String, Vec<(usize, usize)>), CError> {
+    let features = StandardFeatures::load_standard(std);
+    let include_paths = module::discover_include_paths();
+    let mut pp = parser::preprocessor::Preprocessor::new(&features, include_paths);
+    let expandido = pp.preprocess(source, file_path)?;
+    Ok((expandido, pp.rangos_sistema))
+}
+
 pub fn preprocess_only(source: &str, file_path: &Path, std: CStandard) -> Result<String, CError> {
     let features = StandardFeatures::load_standard(std);
     let include_paths = module::discover_include_paths();

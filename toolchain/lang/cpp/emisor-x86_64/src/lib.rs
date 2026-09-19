@@ -27,10 +27,7 @@ pub fn profile() -> BmoLanguageProfile {
 /// byte de x86-64 escrito por C++, y ese es el objetivo: el backend que se
 /// hereda tiene 223 tests y esta verificado en el Ryzen.
 pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CppError> {
-    let programa = parse(source)?;
-    let en_c = descenso::descender(&programa)?;
-    bmo_c_x86_64::codegen::compile_to_bef_bytes(&en_c)
-        .map_err(|e| CppError::new(e.line, e.message))
+    compilar_fichero(source, std::path::Path::new("entrada.cpp"), false)
 }
 
 /// **Lo mismo, a un OBJETO (`.bo`)** para que `bmo-enlazar` lo junte con otros.
@@ -40,10 +37,21 @@ pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CppError> {
 /// son cuatro lineas y no un compilador -- la compilacion separada de C++ la
 /// pago E2 sin saberlo.
 pub fn compile_source_to_object(source: &str) -> Result<Vec<u8>, CppError> {
-    let programa = parse(source)?;
-    let en_c = descenso::descender_unidad(&programa, true)?;
-    bmo_c_x86_64::codegen::compile_to_object(&en_c)
-        .map_err(|e| CppError::new(e.line, e.message))
+    compilar_fichero(source, std::path::Path::new("entrada.cpp"), true)
+}
+
+/// **Un fichero de verdad, con su ruta** -- que es de donde se resuelve un
+/// `#include "mio.h"`. Pasa por el preprocesador (2026-09-18,
+/// `preproceso.rs`): lo de las cabeceras del sistema se lee como C, el resto
+/// como C++, y los dos arboles de C van juntos al codegen de x86-64.
+pub fn compilar_fichero(source: &str, ruta: &std::path::Path, objeto: bool) -> Result<Vec<u8>, CppError> {
+    let en_c = preproceso::a_c(source, ruta, objeto)?;
+    let bytes = if objeto {
+        bmo_c_x86_64::codegen::compile_to_object(&en_c)
+    } else {
+        bmo_c_x86_64::codegen::compile_to_bef_bytes(&en_c)
+    };
+    bytes.map_err(|e| CppError::new(e.line, e.message))
 }
 
 #[cfg(test)]

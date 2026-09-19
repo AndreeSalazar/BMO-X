@@ -232,7 +232,6 @@ fn los_errores_llevan_la_linea_real() {
 #[test]
 fn lo_que_falta_se_rechaza_diciendo_el_paso() {
     let casos: &[(&str, &str)] = &[
-        ("#include \"algo.h\"\nint main(){ return 0; }", "PASO 1"),
         ("namespace n { }\nint main(){ return 0; }", "PASO 4"),
         ("template<class T> T f(T x) { return x; }\nint main(){ return 0; }", "PASO 6"),
     ];

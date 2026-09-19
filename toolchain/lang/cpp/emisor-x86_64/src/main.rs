@@ -14,7 +14,7 @@
 use std::path::PathBuf;
 use std::process;
 
-use bmo_cpp_x86_64::{compile_source_to_bef, compile_source_to_object};
+use bmo_cpp_x86_64::compilar_fichero;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -48,7 +48,7 @@ fn main() {
     }
 
     let Some(ruta) = fuente else {
-        eprintln!("uso: bmo-cpp-front <fichero.cpp> [-o salida.bex] [-c]");
+        eprintln!("uso: cpp <fichero.cpp> [-o salida.bex] [-c]");
         process::exit(2);
     };
 
@@ -60,7 +60,8 @@ fn main() {
         }
     };
 
-    let bef = match if objeto { compile_source_to_object(&texto) } else { compile_source_to_bef(&texto) } {
+    // Con su ruta: un `#include "mio.h"` se busca junto al fichero.
+    let bef = match compilar_fichero(&texto, std::path::Path::new(&ruta), objeto) {
         Ok(b) => b,
         Err(e) => {
             if e.line > 0 {
