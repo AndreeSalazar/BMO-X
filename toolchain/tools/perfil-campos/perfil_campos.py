@@ -20,6 +20,12 @@ Lo que se puede comparar, y lo que NO
                medido no necesita que un fichero de texto lo confirme; lo que
                necesita es que nadie lo suponga. Aqui se dice para que la
                ausencia de comprobacion no se lea como un descuido
+            ** y desde el 2026-09-18 la TABLA DE EXTENSIONES, contra
+               `cpu_vendor/features/`: las filas son exactamente los nombres
+               del censo (`Feat::name`), lo que `usage.rs` declara `Yes` tiene
+               que estar `si` en `esperado` y no estar `no` en `visto`, y se
+               cuentan las filas sin foto. Es la primera tabla de PERFIL/ que
+               lee una maquina, y existe para que un emisor pueda preguntar
 
     GPU     `pci_vendor` y que `pci_devices` siga VACIO. Lo segundo importa mas
             que lo primero: en cuanto alguien meta una SKU ahi sin tarjeta
@@ -100,6 +106,67 @@ CIERRES = [
 ]
 
 
+# -- CPU: la tabla de extensiones contra el censo del kernel ----------------
+FEATURES = os.path.join(K, "cpu_vendor", "features")
+
+
+def extensiones_del_perfil(texto):
+    """Las filas `nombre | esperado | visto` de CPU.txt, en orden."""
+    filas = []
+    for m in re.finditer(r"^\s*(\S[^|]*?)\s*\|\s*(si|no)\s*\|\s*(si|no|\?)\s*$", texto, re.M):
+        filas.append((m.group(1), m.group(2), m.group(3)))
+    return filas
+
+
+def censo_del_kernel():
+    """`(nombres en orden, {nombre: usa})` desde `features/mod.rs` y `usage.rs`."""
+    with open(os.path.join(FEATURES, "mod.rs"), "r", encoding="utf-8", errors="replace") as fh:
+        modrs = fh.read()
+    cuerpo = modrs[modrs.index("pub const fn name(self)"):]
+    variante_a_nombre = re.findall(r'Feat::(\w+)\s*=>\s*"([^"]+)"', cuerpo)
+    with open(os.path.join(FEATURES, "usage.rs"), "r", encoding="utf-8", errors="replace") as fh:
+        usage = fh.read()
+    usa = {}
+    for variante, que in re.findall(r"Feat::(\w+)\s*=>\s*Use::(Yes|No)\(", usage):
+        usa[variante] = que == "Yes"
+    nombres = [n for _, n in variante_a_nombre]
+    usa_por_nombre = {n: usa.get(v, False) for v, n in variante_a_nombre}
+    return nombres, usa_por_nombre
+
+
+def comprobar_extensiones(texto, quejas):
+    """Devuelve `(filas comparadas, filas sin foto)`."""
+    if not os.path.isdir(FEATURES):
+        quejas.append("CPU: no existe cpu_vendor/features -- la tabla de extensiones no tiene con que compararse")
+        return 0, 0
+    filas = extensiones_del_perfil(texto)
+    nombres, usa = censo_del_kernel()
+    if not filas:
+        quejas.append("CPU: no hay tabla de extensiones (`nombre | esperado | visto`)")
+        return 0, 0
+    del_perfil = [n for n, _, _ in filas]
+    if del_perfil != nombres:
+        faltan = [n for n in nombres if n not in del_perfil]
+        sobran = [n for n in del_perfil if n not in nombres]
+        if faltan:
+            quejas.append("CPU: el censo del kernel tiene filas que el perfil no: %s" % ", ".join(faltan))
+        if sobran:
+            quejas.append("CPU: el perfil tiene filas que el censo del kernel no: %s" % ", ".join(sobran))
+        if not faltan and not sobran:
+            quejas.append("CPU: las filas de extensiones no van en el orden del censo (`features::Feat`)")
+        return 0, 0
+    sin_foto = 0
+    for nombre, esperado, visto in filas:
+        if visto == "?":
+            sin_foto += 1
+        if usa[nombre] and esperado != "si":
+            quejas.append("CPU: `usage.rs` dice que BMO USA %s y el perfil espera que no este" % nombre)
+        if usa[nombre] and visto == "no":
+            quejas.append("CPU: `usage.rs` dice que BMO USA %s y el Ryzen dijo que NO lo tiene -- "
+                          "la mentira esta en usage.rs, no aqui" % nombre)
+    return len(filas), sin_foto
+
+
 def campo(texto, nombre):
     # Los campos van indentados en los perfiles: `  fabricante: AMD`.
     m = re.search(r"^\s*%s:\s*(.+?)\s*$" % re.escape(nombre), texto, re.M)
@@ -118,6 +185,7 @@ def main():
     quejas = []
     comparados = 0
     sin_comparar = 0
+    extensiones_sin_foto = 0
 
     for dirpath, _, files in os.walk(PERFIL):
         for f in sorted(files):
@@ -140,6 +208,11 @@ def main():
                     "%s no tiene ni reglas de comparacion ni una linea en "
                     "SIN_COMPARAR -- decide cual de las dos es" % f)
                 continue
+
+            if f == "CPU.txt":
+                n, sin_foto = comprobar_extensiones(texto, quejas)
+                comparados += n
+                extensiones_sin_foto = sin_foto
 
             for nombre, fichero, patron, modo in reglas:
                 dice = campo(texto, nombre)
@@ -213,6 +286,9 @@ def main():
 
     print("clean: %d campo(s) y cierre(s) comparados con el codigo, y %d perfil(es) "
           "sin nada que comparar (dicho, no olvidado)" % (comparados, sin_comparar))
+    if extensiones_sin_foto:
+        print("  [i] CPU: %d extension(es) sin foto del Ryzen (`visto: ?`) -- "
+              "se rellenan con la orden `ext`" % extensiones_sin_foto)
     return 0
 
 

@@ -9,9 +9,10 @@ EL PERFIL DEL CPU -- la mitad declarativa
   fichero de texto exigiria un interprete que lo ejecute, o sea un lenguaje mas
   que mantener.
 
-  [!] Este fichero NO tiene guardian todavia. Lo que dice puede separarse de lo
-  que dice el codigo sin que nadie avise. Se escribe igual, porque un perfil que
-  no existe tampoco avisa.
+  Guardian: `toolchain/tools/perfil-campos` compara `fabricante` y
+  `microarquitectura` con `cpu_vendor/ryzen_5_5600x/mod.rs`, y desde el
+  2026-09-18 la tabla de EXTENSIONES con `cpu_vendor/features/` (abajo).
+  Nucleos, hilos, ccx y ccd NO se comparan: el codigo los MIDE al arrancar.
 
 
 EL CPU DE HOY
@@ -26,6 +27,73 @@ EL CPU DE HOY
   hilos: 12
   ccx: 1        un solo grupo de L3: hablar entre nucleos NO cruza el Fabric
   ccd: 1
+
+
+LAS EXTENSIONES -- que sabe hacer este silicio
+-----------------------------------------------
+
+  ** Es la primera tabla de PERFIL/ que lee una MAQUINA, y nacio el 18-09 de
+  una pregunta del dueno: "el emisor pregunta al perfil antes de emitir".
+  Antes de que un emisor pueda preguntar, el perfil tiene que contestar, y
+  hasta hoy hablaba de nucleos y cache y de extensiones nada.
+
+  Tres columnas, y la diferencia entre las dos ultimas es la LEY 24:
+
+     esperado   lo que dice la HOJA DE DATOS de AMD para Zen 3 (Vermeer).
+                Es una suposicion escrita, no una medida
+     visto      lo que la orden `ext` PINTO en el Ryzen. Se rellena de una
+                foto, y `?` significa que la foto no se ha hecho o no llego
+                a esa fila. La del 16-08 dijo `conflictos 0`, o sea que todo
+                lo que BMO USABA ese dia esta; y nombro AVX y NX
+
+  El guardian exige: que las filas sean EXACTAMENTE las del censo del kernel
+  (`features::Feat::name`, ni una mas ni una menos); que lo que `usage.rs`
+  declara `Yes` este `si` en esperado y no este `no` en visto; y cuenta las
+  filas sin foto para que la falta se vea.
+
+  [!] Un `visto: no` en una fila que BMO usa NO se arregla aqui: se arregla
+  en `usage.rs`, que es donde vive la mentira.
+
+  nombre           | esperado | visto
+  SSE2             | si       | si
+  SSE4.1           | si       | ?
+  SSE4.2           | si       | ?
+  AVX              | si       | si
+  AVX2             | si       | ?
+  FMA              | si       | ?
+  F16C             | si       | ?
+  POPCNT           | si       | ?
+  LZCNT            | si       | ?
+  BMI1             | si       | ?
+  BMI2             | si       | ?
+  MOVBE            | si       | ?
+  ADX              | si       | ?
+  RDRAND           | si       | ?
+  RDSEED           | si       | ?
+  AES-NI           | si       | ?
+  PCLMULQDQ        | si       | ?
+  SHA-NI           | si       | ?
+  XSAVE            | si       | si
+  CR4.OSXSAVE      | si       | si
+  XSAVEOPT         | si       | si
+  XSAVEC           | si       | ?
+  XSAVES           | si       | ?
+  ERMS             | si       | si
+  CLFLUSHOPT       | si       | ?
+  CLWB             | si       | ?
+  CLZERO           | si       | ?
+  PAGINAS 1G       | si       | ?
+  RDTSCP           | si       | si
+  TSC INVARIANTE   | si       | si
+  MONITOR/MWAIT    | si       | ?
+  MONITORX         | si       | ?
+  NX               | si       | si
+  SMEP             | si       | ?
+  SMAP             | si       | ?
+  UMIP             | si       | ?
+
+  Para rellenar `visto`: en el escritorio, `ext`, foto, y copiar fila a fila.
+  Es un paso de la hoja del metal del 18-09.
 
 
 LO QUE EL CONTRATO SUBE A RING 0, Y NADA MAS
@@ -61,6 +129,10 @@ A QUIEN EXPONE
 expone: Ultra_kernel_x86-64/kernel/src/ring0/cpu_vendor
    la mitad operativa entera: cpuid, cache, errata, power, presupuesto,
    topologia y TSC. 1.072 lineas que dan por buenos estos numeros
+
+expone: Ultra_kernel_x86-64/kernel/src/ring0/cpu_vendor/features
+   el censo de extensiones: `silicon.rs` pregunta a CPUID, `usage.rs` dice
+   que coge BMO. La tabla de arriba es la foto de lo que contesto
 
 expone: Ultra_kernel_x86-64/kernel/src/ring0/plat/smp
    el reparto de nucleos. `smp orquesta` crea un obrero por cada uno que este
