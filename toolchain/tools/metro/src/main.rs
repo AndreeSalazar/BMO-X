@@ -21,6 +21,10 @@
 //!   metro            la tabla
 //!   metro --check    el juicio del build: 0 si nada sube ni cambia
 //!   metro --fijar    reescribe la linea base (cuando algo BAJO)
+//!   metro --desglose A DONDE se van las instrucciones, por clase y por
+//!                    lenguaje (`emu::clases`). No es trinquete: es el dato
+//!                    que elige la primera optimizacion, en vez de elegirla
+//!                    quien mira
 //!
 //! [!] Lo que NO mide todavia, dicho: INTI (su cadena son seis pasos y sus
 //! programas de ejemplo tocan hardware), y los ciclos del Ryzen -- las
@@ -30,6 +34,8 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::exit;
+
+use bmo_lower::emu::clases::{Censo, Clase};
 
 /// Instrucciones como mucho por programa. Un programa del banco que no termina
 /// es un fallo del emisor, no del metro.
@@ -71,6 +77,8 @@ struct Medida {
     pasos: u64,
     codigo: u64,
     salida: String,
+    /// A donde se fueron los `pasos`. No va a la linea base: es diagnostico.
+    censo: Censo,
 }
 
 fn raiz() -> PathBuf {
@@ -128,7 +136,7 @@ fn medir(lenguaje: &str, rel: &str) -> Result<Medida, String> {
     if !m.exited {
         return Err("no termino por EXIT".into());
     }
-    Ok(Medida { pasos: m.pasos, codigo: bytes_de_codigo(&bex), salida: huella(&m.console) })
+    Ok(Medida { pasos: m.pasos, codigo: bytes_de_codigo(&bex), salida: huella(&m.console), censo: m.censo })
 }
 
 fn linea_base() -> PathBuf {
@@ -144,7 +152,7 @@ fn leer_base() -> Result<BTreeMap<String, Medida>, String> {
         let c: Vec<&str> = l.split_whitespace().collect();
         if c.len() != 4 { return Err(format!("linea base mal formada: `{l}`")); }
         let n = |s: &str| s.parse::<u64>().map_err(|_| format!("numero mal formado: `{s}`"));
-        out.insert(c[0].to_string(), Medida { pasos: n(c[1])?, codigo: n(c[2])?, salida: c[3].to_string() });
+        out.insert(c[0].to_string(), Medida { pasos: n(c[1])?, codigo: n(c[2])?, salida: c[3].to_string(), censo: Censo::default() });
     }
     Ok(out)
 }
@@ -178,6 +186,43 @@ fn juzgar(medidas: &BTreeMap<String, Medida>, base: &BTreeMap<String, Medida>) -
     (quejas, bajaron)
 }
 
+/// Una fila del desglose: cada clase como porcentaje del total de esa fila.
+fn fila_desglose(nombre: &str, c: &Censo) {
+    let t = c.total().max(1) as f64;
+    print!("{nombre:<12} {:>10}", c.total());
+    for k in Clase::TODAS {
+        print!(" {:>6.1}", c.de(k) as f64 * 100.0 / t);
+    }
+    println!();
+}
+
+/// `--desglose`: por lenguaje y en total. Por programa NO, a proposito: el
+/// banco lo dominan tres programas de C (blit, memoria, vivaldi) y una tabla de
+/// 25 filas esconde eso en vez de ensenarlo; por lenguaje es donde se decide
+/// que emisor se toca primero.
+fn desglose(medidas: &BTreeMap<String, Medida>) {
+    let mut por_lenguaje: BTreeMap<&str, Censo> = BTreeMap::new();
+    let mut total = Censo::default();
+    for (lenguaje, rel) in BANCO {
+        if let Some(m) = medidas.get(*rel) {
+            por_lenguaje.entry(lenguaje).or_default().sumar(&m.censo);
+            total.sumar(&m.censo);
+        }
+    }
+    print!("{:<12} {:>10}", "lenguaje", "pasos");
+    for k in Clase::TODAS { print!(" {:>6}", k.nombre()); }
+    println!("   (% de los pasos de esa fila)");
+    for (l, c) in &por_lenguaje { fila_desglose(l, c); }
+    fila_desglose("TOTAL", &total);
+    // Y la conclusion en una linea, porque es lo que se lee.
+    let (pila, marco) = (total.de(Clase::Pila), total.de(Clase::Marco));
+    println!(
+        "
+marco + pila = {} de {} ({:.1} %): lo que un reparto de registros quitaria como techo",
+        pila + marco, total.total(), (pila + marco) as f64 * 100.0 / total.total().max(1) as f64
+    );
+}
+
 fn main() {
     let modo = std::env::args().nth(1).unwrap_or_default();
     let mut medidas = BTreeMap::new();
@@ -208,6 +253,7 @@ fn main() {
             std::fs::write(linea_base(), t).expect("escribir la linea base");
             println!("metro: linea base fijada -- {} programas, {pasos} instrucciones, {codigo} B de codigo", medidas.len());
         }
+        "--desglose" => desglose(&medidas),
         "--check" => {
             let base = match leer_base() {
                 Ok(b) => b,
@@ -237,7 +283,7 @@ mod pruebas {
     use super::*;
 
     fn m(pasos: u64, codigo: u64, salida: &str) -> Medida {
-        Medida { pasos, codigo, salida: salida.into() }
+        Medida { pasos, codigo, salida: salida.into(), censo: Censo::default() }
     }
     fn uno(x: Medida) -> BTreeMap<String, Medida> {
         BTreeMap::from([("p".to_string(), x)])

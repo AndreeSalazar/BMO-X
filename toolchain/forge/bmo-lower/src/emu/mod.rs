@@ -120,6 +120,8 @@ mod vex;
 /// Un `.bex` entero montado como lo monta el cargador (el metro lo usa).
 mod cargar;
 pub use cargar::cargar_bex;
+/// A donde se va cada instruccion: el desglose que el metro pinta.
+pub mod clases;
 
 // ** El reparto de este directorio (L6b), y el corte es por la PREGUNTA:
 //
@@ -265,6 +267,8 @@ pub struct Machine {
     /// ** Cuantas instrucciones ejecuto `run` (2026-09-18). Es el metro del
     /// emisor: determinista, y sale igual en cualquier maquina que compile.
     pub pasos: u64,
+    /// ** Y de que clase fue cada una (`clases.rs`): pila, marco, salto...
+    pub censo: clases::Censo,
     /// El disco, modelado: ruta -> contenido.
     ///
     /// Sin esto el File I/O de COBOL no se podria probar de ninguna forma --
@@ -446,6 +450,7 @@ impl Machine {
             syscalls: Vec::new(),
             exited: false,
             pasos: 0,
+            censo: clases::Censo::default(),
             archivos: HashMap::new(),
             fallo_al_guardar: HashSet::new(),
             entrada: Vec::new(),
@@ -1777,6 +1782,8 @@ enum Operand {
 pub fn run(mut m: Machine, max_steps: usize) -> Machine {
     let mut steps = 0;
     while m.rip < m.code.len() && !m.exited {
+        let clase = clases::clasificar(&m.code[m.rip..]);
+        m.censo.apuntar(clase);
         m.step();
         steps += 1;
         m.pasos += 1;
