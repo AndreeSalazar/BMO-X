@@ -96,7 +96,6 @@
 //! contesta que no **con el renglon del programa en la mano** en vez de
 //! arrancarlo a medias.
 
-#![allow(dead_code)]
 
 use crate::bmo_abi::primitives::{bx_u16, bx_u64};
 use alloc::vec::Vec;

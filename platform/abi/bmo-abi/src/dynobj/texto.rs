@@ -79,7 +79,6 @@
 //! textos"* el dia que solo anden los literales seria exactamente la clase de
 //! frase que este proyecto no deja pasar.
 
-#![allow(dead_code)]
 
 use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 

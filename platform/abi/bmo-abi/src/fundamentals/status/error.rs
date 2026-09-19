@@ -1,8 +1,9 @@
-//! ErrorCode plain constants for C/FFI compatibility.
+//! El texto humano de cada codigo de `BmoStatus`.
 //!
-//! The canonical definitions now live in `crate::bmo_abi::error_code`.
-//! This file re-exports them so existing code using
-//! `crate::bmo_abi::fundamentals::status::error_code::*` continues to compile.
+//! ** Hasta el 2026-09-19 esto decia re-exportar `error_code/`, que tenia otra
+//! copia de los numeros, y `fundamentals/error/` una tercera. Ninguna de las
+//! dos tenia un usuario vivo y se fueron; los numeros de verdad son los que
+//! contesta el kernel (`syscall/ops.rs`, `ERROR_*`).
 //!
 //! -- EL SEMAFORO (L6g) y las dos preguntas de antes (L6e, L6f) --------
 //!
@@ -11,8 +12,8 @@
 //!
 //! [carril]  AMARILLO     los constructores de error de `BmoStatus`
 //! [cuesta]  NADA         se equivoca y un fallo sale con el codigo de otro
-//! [riesgo]  ESPEJO       comparte verdad con `error_code/` y con
-//!                        `error/mod.rs`
+//! [riesgo]  ESPEJO       comparte verdad con los `ERROR_*` del kernel
+//!                        (`Ultra_kernel_x86-64/.../syscall/ops.rs`)
 
 /// Devuelve un texto humano para el codigo de error. Cero asignacion.
 pub const fn message(code: u32) -> &'static str {

@@ -73,7 +73,6 @@
 //! **Esta tabla cierra la mentira facil, no la dificil.** Decirlo aqui vale mas
 //! que descubrirlo el dia que alguien se apoye en ella para algo que no aguanta.
 
-#![allow(dead_code)]
 
 use crate::bmo_abi::primitives::{bx_u16, bx_u32};
 use alloc::vec::Vec;

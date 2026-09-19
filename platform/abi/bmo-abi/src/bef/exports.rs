@@ -8,7 +8,6 @@
 //! como tipo principal -- pero se permite acceso por indice (que actua como
 //! ordinal estable durante una version major).
 
-#![allow(dead_code)]
 
 use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 

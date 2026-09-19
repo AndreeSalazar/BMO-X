@@ -18,14 +18,13 @@
 //! ```
 //!
 //! El kernel **no compila** nada. Solo provee:
-//! - el BEF loader (`crate::bmo_core::bef::loader`)
+//! - la puerta de carga del kernel (`bmo-bex-gate`)
 //! - los runtimes opcionales (`crate::bmo_abi::profile::RuntimeKind`)
 //! - los syscalls (`crate::bmo_abi::syscalls`)
 //!
 //! Compilar es **offline** (el dev lo hace en su maquina). El kernel
 //! solo ejecuta.
 
-#![allow(dead_code)]
 
 // --- Frontend / backend / runtime kinds ---------------------------
 

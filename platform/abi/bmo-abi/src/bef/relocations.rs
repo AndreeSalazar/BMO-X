@@ -8,7 +8,6 @@
 //! Eso cubre el 100 % de los casos que ELF resuelve con sus 38 tipos. El
 //! resto eran legacy (R_X86_64_8, R_X86_64_16, R_X86_64_TPOFF*, etc.).
 
-#![allow(dead_code)]
 
 use crate::bmo_abi::primitives::{bx_i64, bx_u32, bx_u64, bx_u8};
 

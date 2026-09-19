@@ -11,7 +11,7 @@
 # El numero va solo en la primera linea util. Lo de abajo es el inventario, y es
 # comentario: esta para leerlo, no para juzgarlo.
 
-119
+109
 # NADA      Ultra_kernel_x86-64/kernel/src/ring0/cabina/caida.rs
 # NADA      Ultra_kernel_x86-64/kernel/src/ring0/core/autopsy.rs
 # NADA      Ultra_kernel_x86-64/kernel/src/ring0/core/desmontaje.rs
@@ -62,27 +62,17 @@
 # MAQUINA   Ultra_userspace/userland/src/pantalla/roja.rs
 # NADA      Ultra_userspace/userland/src/pantalla/verde.rs
 # TAREA     Ultra_userspace/userland/src/paquete.rs
-# MAQUINA   platform/abi/bmo-abi/src/fundamentals/allocator/mod.rs
-# DATO      platform/abi/bmo-abi/src/fundamentals/buffer/mod.rs
-# MAQUINA   platform/abi/bmo-abi/src/fundamentals/capability/mod.rs
-# NADA      platform/abi/bmo-abi/src/fundamentals/convert/mod.rs
-# NADA      platform/abi/bmo-abi/src/fundamentals/error/mod.rs
-# NADA      platform/abi/bmo-abi/src/fundamentals/fmt/mod.rs
 # PUERTA    platform/abi/bmo-abi/src/fundamentals/handle/kind.rs
 # PUERTA    platform/abi/bmo-abi/src/fundamentals/handle/mod.rs
 # PUERTA    platform/abi/bmo-abi/src/fundamentals/handle/opaque.rs
 # PUERTA    platform/abi/bmo-abi/src/fundamentals/handle/ops.rs
-# MAQUINA   platform/abi/bmo-abi/src/fundamentals/memory/mod.rs
-# NADA      platform/abi/bmo-abi/src/fundamentals/option/mod.rs
 # NADA      platform/abi/bmo-abi/src/fundamentals/primitives/bool.rs
 # NADA      platform/abi/bmo-abi/src/fundamentals/primitives/floats.rs
 # NADA      platform/abi/bmo-abi/src/fundamentals/primitives/ints.rs
 # NADA      platform/abi/bmo-abi/src/fundamentals/primitives/mod.rs
-# NADA      platform/abi/bmo-abi/src/fundamentals/result/mod.rs
 # PUERTA    platform/abi/bmo-abi/src/fundamentals/status/code.rs
 # NADA      platform/abi/bmo-abi/src/fundamentals/status/error.rs
 # PUERTA    platform/abi/bmo-abi/src/fundamentals/status/mod.rs
-# MAQUINA   platform/abi/bmo-abi/src/fundamentals/string/mod.rs
 # MAQUINA   platform/abi/bmo-abi/src/fundamentals/sync/mod.rs
 # DATO      platform/abi/bmo-abi/src/syscalls/surface/superficie.rs
 # NADA      platform/drivers/gpu/rdna4/src/psp.rs

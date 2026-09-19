@@ -109,17 +109,7 @@
 //!                        hereda las dos: hay tablas espejo del kernel, y
 //!                        numeros que no se reciclan
 
-pub mod allocator;
-pub mod buffer;
-pub mod capability;
-pub mod convert;
-pub mod error;
-pub mod fmt;
 pub mod handle;
-pub mod memory;
-pub mod option;
 pub mod primitives;
-pub mod result;
 pub mod status;
-pub mod string;
 pub mod sync;

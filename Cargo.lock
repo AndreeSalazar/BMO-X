@@ -87,6 +87,7 @@ name = "bmo-c-x86-64"
 version = "0.1.0"
 dependencies = [
  "bmo-abi",
+ "bmo-bex-gate",
  "bmo-c-front",
  "bmo-inti-front",
  "bmo-inti-x86-64",
@@ -120,6 +121,7 @@ name = "bmo-cobol-x86-64"
 version = "0.1.0"
 dependencies = [
  "bmo-abi",
+ "bmo-bex-gate",
  "bmo-cobol-front",
  "bmo-lower",
  "bmo-sem-asm",

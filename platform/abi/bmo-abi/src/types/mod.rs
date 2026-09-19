@@ -29,10 +29,6 @@ pub mod convention;
 /// escrita tres veces y una divergencia no da un error, da un programa que
 /// escribe en el campo de al lado.
 pub mod disposicion;
-pub mod field;
-pub mod signature;
 
 pub use convention::*;
 pub use disposicion::{alinear, alineado_de, ranuras, Disposicion, DisposicionUnion};
-pub use field::*;
-pub use signature::*;

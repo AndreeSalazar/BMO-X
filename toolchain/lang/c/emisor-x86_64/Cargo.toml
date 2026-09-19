@@ -28,6 +28,8 @@ name = "c"
 path = "src/main.rs"
 
 [dev-dependencies]
+# La PUERTA del kernel: las pruebas de carga pasan por lo mismo que Ring 0.
+bmo-bex-gate = { path = "../../../../platform/abi/bmo-bex-gate" }
 # Banco de pruebas: ejecuta el codigo emitido (ver forge/bmo-lower).
 bmo-lower = { path = "../../../forge/bmo-lower", features = ["emulator"] }
 # ** LOS GEMELOS (2026-09-16, N0c de docs/plan/PLAN_NAVEGAR.md): C es el

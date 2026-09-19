@@ -18,7 +18,6 @@
 //!                        donde iba `Acquire` funciona en un nucleo y se
 //!                        rompe en doce
 
-#![allow(dead_code)]
 
 use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 

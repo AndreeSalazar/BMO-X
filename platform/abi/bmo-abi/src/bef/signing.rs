@@ -155,7 +155,6 @@
 //! Ver el README, seccion *"Why a capability system is what a bank actually
 //! wants"*, donde esta el argumento entero.
 
-#![allow(dead_code)]
 
 use crate::bmo_abi::primitives::{bx_u16, bx_u32, bx_u8};
 

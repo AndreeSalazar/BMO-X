@@ -54,7 +54,6 @@
 //! indice. Un offset absoluto habria que reescribirlo, y un indice que hay que
 //! reescribir es un indice que un dia se queda sin reescribir.
 
-#![allow(dead_code)]
 
 use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 use alloc::vec::Vec;

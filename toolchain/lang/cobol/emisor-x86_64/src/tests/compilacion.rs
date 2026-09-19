@@ -39,9 +39,9 @@ STOP RUN.
     assert_eq!(u32::from_le_bytes(bef[..4].try_into().unwrap()), bmo_abi::bef::BEF_MAGIC);
     let validation = bmo_abi::bef::validate(&bef);
     assert!(validation.is_valid, "generated BEF must validate: {:?}", validation.issues);
-    let loaded = bmo_abi::bef::load(&bef, 0, bmo_abi::bef::loader::no_imports).unwrap();
-    assert_ne!(loaded.entry_point, 0);
-    assert!(loaded.sections.iter().any(|section| section.kind == bmo_abi::bef::SectionKind::Code));
+    // Por la puerta del kernel, no por el cargador v1 que se borro (19-09).
+    let img = bmo_bex_gate::revisar(&bef, bef.len()).unwrap();
+    assert!(img.buscar(bmo_bex_gate::CODE).is_some());
 }
 
 /// Matriz de conformidad de COBOL: ejecuta cada verbo y compara.

@@ -3,7 +3,6 @@
 //! Reemplaza `.symtab`/`.dynsym` (ELF) y `IMAGE_SYMBOL` (PE/COFF). Una sola
 //! tabla con visibilidad y binding explicitos.
 
-#![allow(dead_code)]
 
 use crate::bmo_abi::primitives::{bx_u32, bx_u64, bx_u8};
 

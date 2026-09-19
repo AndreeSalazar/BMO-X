@@ -1,47 +1,35 @@
-//! `bmo_abi` -- BMO ABI: la convencion y el "stdlib minimo" nativo de BMO.
+//! `bmo_abi` -- el CONTRATO de BMO-X en x86-64: las dos puertas, la
+//! convencion de llamada, el formato BEF y los tipos que cruzan la frontera.
 //!
-//! **Reemplaza al C ABI** (cdecl/stdcall/Win64/SysV AMD64) y a su stdlib
-//! (`<stdint.h>`, `<stddef.h>`, `<string.h>`, `<errno.h>`, `<time.h>`, etc).
+//! No es una libc: la libc de BMO-X es `toolchain/lang/base` (C) y `bmo-rt`
+//! (Rust). Aqui solo vive lo que dos partes tienen que acordar.
 //!
-//! # Estructura
+//! # Estructura (2026-09-19: lo que QUEDA, y todo tiene usuario)
 //!
 //! ```text
 //! bmo_abi/
-//! +-- fundamentals/   -- Tipos que TODO codigo usa
-//! |   +-- primitives/ -- int, bool, float (bx_u8..u64, bx_i*, bx_f*)
-//! |   +-- status/      -- BmoStatus 16-byte, StatusFlags
-//! |   +-- handle/      -- BmoHandle 64-bit + ops (dup, close, wait)
-//! |   +-- capability/  -- BmoCap, BmoCapSet (bitset de permisos)
-//! |   +-- option/      -- BmoOption<T> FFI-safe
-//! |   +-- result/      -- BmoResult<T, E> FFI-safe
-//! |   +-- error/       -- BmoError 16-byte unificado
-//! |   +-- convert/     -- BmoStatus <-> BmoError <-> ErrorCode
-//! |   +-- string/      -- BmoStr (borrowed), BmoString (owned)
-//! |   +-- memory/      -- BmoSlice, BmoRange, BmoAligned
-//! |   +-- buffer/      -- BmoBuffer shared memory descriptor
-//! |   +-- allocator/   -- BmoAllocator trait + Global wrapper
-//! |   +-- fmt/         -- BmoFormatter stack-allocated
-//! |   +-- sync/        -- BmoAtomicU32/U64/Bool, MemOrder, BmoSpinLock
-//! |
-//! +-- values/         -- Tipos valor con semantica propia
-//! |   +-- time/        -- BmoInstant, BmoDuration
-//! |   +-- clock/       -- BmoClockId, sleep, sleep_until
-//! |   +-- uuid/        -- BmoUuid 128-bit (RFC 4122)
-//! |   +-- version/     -- BmoVersion semver (major.minor.patch)
-//! |   +-- math/        -- sqrt, sin, cos, pow
-//! |   +-- hash/        -- FNV-1a, CRC32c, CRC32
-//! |   +-- net/         -- BmoIpv4Addr, BmoIpv6Addr, BmoSocketAddr
-//! |   +-- reflect/     -- ReflectQuery
-//! |
-//! +-- runtime/        -- TypeRegistry, VTableStore, LangBridge
-//! +-- windowing/      -- Contrato de ventanas
-//! +-- fs/             -- File/Dir handles, OpenFlags, Stat
-//! +-- surface/        -- Formatos de pixel, surfaces CPU/GPU
-//! +-- error_code/     -- BmoErrorCode enum, BmoErrorSeverity, constants
-//! +-- bef/            -- Formato BEF (header, secciones, relocs)
-//! +-- syscalls/       -- Las DOS puertas (INVOKE 0x00, WAIT 0x02) y su superficie
-//! +-- profile/        -- BmoLanguageProfile + ALL_PROFILES
+//! +-- fundamentals/   -- lo que cruza la frontera en cada puerta
+//! |   +-- primitives/ -- bx_u8..u64, bx_i*, bx_f*, bx_bool
+//! |   +-- status/     -- BmoStatus 16 B: codigo | banderas << 32 en rax, valor en rdx
+//! |   +-- handle/     -- BmoHandle 64 bits (tag, kind, generacion, indice), HandleKind
+//! |   +-- sync/       -- BmoSpinLock y atomicos (los usa el monton de bmo-rt)
+//! +-- types/          -- la CONVENCION de llamada (la importan C e INTI) y la
+//! |                      regla de disposicion de agregados (C, C++, COBOL, INTI)
+//! +-- syscalls/       -- las DOS puertas (INVOKE 0x00, WAIT 0x02) y su superficie
+//! +-- bef/            -- el formato BEF: cabecera, secciones, relocs, firma,
+//! |                      requisitos, recursos, objetos (.bo), writer y validator
+//! +-- bex.rs          -- el .bex es un BEF ejecutable
+//! +-- dynobj/         -- texto, lista, tabla: los objetos del runtime de INTI
+//! +-- profile/        -- el perfil de cada lenguaje
+//! +-- cpu_profiles/   -- (sale en el corte 5: LEY 24, el perfil se MIDE)
 //! ```
+//!
+//! ** Se fueron el 19-09, ~6.700 lineas sin un solo usuario vivo y tapadas por
+//! veinticinco `#![allow(dead_code)]`: `values/`, `runtime/`, `ir/`,
+//! `standards/`, `windowing/`, `fs/`, `surface/`, `error_code/`, diez de los
+//! catorce `fundamentals/`, `types::{signature, field}` y
+//! `bef::{loader, tls, manifest}`. Los `allow` se fueron con ellos: lo que se
+//! muera a partir de ahora, lo dice el compilador.
 //!
 //! Ver `SPEC.md` para la especificacion completa.
 //!
@@ -61,24 +49,15 @@
 //! (`toolchain/tools/isa`). Un BMO-X de otra CPU es otro repositorio con su
 //! propio ABI; lo unico que comparten es el byte de arquitectura del BEF.
 #![no_std]
-#![allow(dead_code)]
 extern crate alloc;
 pub mod fundamentals;
-pub mod values;
-pub mod runtime;
 pub mod dynobj;
 pub mod types;
-pub mod ir;
-pub mod windowing;
-pub mod fs;
-pub mod surface;
-pub mod error_code;
 pub mod bef;
 pub mod bex;
 pub mod syscalls;
 pub mod profile;
 pub mod cpu_profiles;
-pub mod standards;
 
 // --- Re-exports planos para uso ergonomico -------------------------
 
@@ -87,7 +66,6 @@ pub use fundamentals::status;
 pub use fundamentals::handle;
 pub use fundamentals::sync as sync_re;
 
-pub use values::time as values_time;
 
 // --- Version + magic ----------------------------------------------
 

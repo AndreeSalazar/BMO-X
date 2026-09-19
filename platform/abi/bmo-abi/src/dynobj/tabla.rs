@@ -50,7 +50,6 @@
 //! meses diciendo que no soltaba: **una promesa que no se cumple es peor que una
 //! que no se hace.**
 
-#![allow(dead_code)]
 
 use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 

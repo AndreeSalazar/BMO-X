@@ -4,7 +4,6 @@
 //! (~20 tipos) y PE (~11 tipos) -- mas limitado pero mas limpio: cada
 //! seccion tiene una semantica unica y obligatoria, no es solo "datos".
 
-#![allow(dead_code)]
 
 use crate::bmo_abi::primitives::{bx_u16, bx_u32, bx_u64, bx_u8};
 

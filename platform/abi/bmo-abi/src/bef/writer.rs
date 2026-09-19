@@ -7,7 +7,6 @@ use crate::bmo_abi::bef::{
     sections::*,
     signing::{blake3_256, SectionHash, SignatureHeader},
     symbols::Symbol,
-    tls::TlsTemplate,
 };
 use crate::bmo_abi::primitives::{bx_u16, bx_u32, bx_u64};
 use alloc::vec;
@@ -179,11 +178,6 @@ impl BefSection {
         Self::new(SectionKind::Manifest, toml)
     }
 
-    pub fn tls(template: &TlsTemplate, tls_data: &[u8]) -> Self {
-        let mut buf = Vec::from(bytes_from_struct(template));
-        buf.extend_from_slice(tls_data);
-        Self::new(SectionKind::Tls, buf)
-    }
 }
 
 /// Un requisito que declara el PROGRAMA, no el escritor.

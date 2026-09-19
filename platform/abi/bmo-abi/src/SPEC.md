@@ -66,62 +66,29 @@ definira su propio contrato de registros e instrucciones.
 
 ## 2. Estructura del ABI
 
+** Reescrita el 2026-09-19: aqui se describian `values/`, `runtime/`, `fs/`,
+`windowing/`, un cargador con TLS y veinte tipos mas. Ninguno tenia usuario
+vivo y se borraron. Lo que queda:
+
 ```
 bmo_abi/
-+-- fundamentals/       Tipos que TODO codigo usa
-|   +-- primitives/     bx_u8..u128, bx_i8..i128, bx_f32/64, bx_f16, bx_bool
-|   +-- status/         BmoStatus (16 B), StatusFlags
-|   +-- handle/         BmoHandle (64-bit), HandleKind (34 variants), ops trait
-|   +-- capability/     BmoCap, BmoCapSet (bitset 64)
-|   +-- option/         BmoOption<T> repr(C) FFI-safe
-|   +-- result/         BmoResult<T,E> repr(C) FFI-safe
-|   +-- error/          BmoError (16 B, code+flags+context)
-|   +-- convert/        BmoStatus <-> BmoError <-> ErrorCode
-|   +-- string/         BmoStr (16 B borrowed), BmoString (24 B owned)
-|   +-- memory/         BmoSlice, BmoSliceMut, BmoRange, BmoAligned
-|   +-- buffer/         BmoBuffer (32 B shared memory descriptor)
-|   +-- allocator/      BmoAllocator trait, GlobalAllocator wrapper
-|   +-- fmt/            BmoFormatter stack-allocated (256 B buffer)
-|   +-- sync/           BmoAtomicU32/U64/Bool, BmoSpinLock
-|
-+-- values/             Tipos valor con semantica propia
-|   +-- time/           BmoInstant (RDTSC), BmoDuration
-|   +-- clock/          BmoClockId, sleep, sleep_until
-|   +-- uuid/           BmoUuid 128-bit (RFC 4122)
-|   +-- version/        BmoVersion semver (major.minor.patch)
-|   +-- math/           sqrt, sin, cos, pow (Newton/Taylor, no_std)
-|   +-- hash/           FNV-1a 32/64, CRC32c (SSE4.2), CRC32
-|   +-- net/            BmoIpv4Addr, BmoIpv6Addr, BmoSocketAddr
-|   +-- reflect/        BmoTypeInfo, ReflectQuery (hooked to TypeRegistry)
-|
-+-- runtime/            TypeRegistry, VTableStore, LangBridge
-+-- windowing/          BmoWindowClass, events (paint/key/mouse/resize)
-+-- fs/                 BmoFileHandle, BmoOpenFlags, BmoStat, BmoDirEntry
-+-- surface/            BmoFormat (22 pixel formats), BmoSurfaceInfo
-+-- error_code/         BmoErrorCode enum (21 codes), severity, flags
-+-- bef/                Formato BEF completo
-|   +-- header/         BefHeader 48 B, BefMagic::detect()
-|   +-- sections/       SectionKind (10 types), SectionEntry 48 B
-|   +-- symbols/        Symbol 32 B, SymbolKind, SymbolTable
-|   +-- relocations/    Relocation 24 B (Abs64/Rel32/Got64)
-|   +-- imports/        ImportEntry 24 B, ImportTable
-|   +-- exports/        ExportEntry 32 B, ExportTable
-|   +-- manifest/       Manifest, Identity, Provenance (Native/PeDevoured/ElfDevoured)
-|   +-- tls/            TlsTemplate 24 B, TLS setup
-|   +-- signing/        SectionHash 40 B, SignatureHeader 8 B, BLAKE3
-|   +-- blake3/         BLAKE3 implementation (294 L, no_std)
-|   +-- writer/         BefBuilder + BefSection -- produce BEF valido
-|   +-- validator/      validate() -- comprobacion estructural completa
-|   +-- loader/         load() -- runtime loader con callback de imports
-|
-+-- syscalls/           Las dos puertas (INVOKE, WAIT) + syscall0..syscall6
-+-- profile/            BmoLanguageProfile + ALL_PROFILES
++-- fundamentals/
+|   +-- primitives/     bx_u8..u64, bx_i*, bx_f*, bx_bool
+|   +-- status/         BmoStatus (16 B) y el texto de cada codigo
+|   +-- handle/         BmoHandle (64 bits), HandleKind
+|   +-- sync/           BmoSpinLock y atomicos
++-- types/              convencion de llamada + regla de disposicion
++-- syscalls/           INVOKE (0x00), WAIT (0x02) + syscall0..syscall6
++-- bef/                el formato: header, sections, relocations, symbols,
+|                       imports, exports, signing (BLAKE3), requisitos,
+|                       recursos, paquete, katanas, objeto (.bo),
+|                       writer (BefBuilder) y validator
++-- bex.rs              BEX = BEF ejecutable
++-- dynobj/             texto, lista, tabla (runtime de INTI)
++-- profile/            BmoLanguageProfile
 ```
 
 ### Tipos repr(C) y tamanos verificados
-
-Cada tipo `#[repr(C)]` tiene un `static_assert!` en linea que verifica su
-tamano en tiempo de compilacion. 34 aserciones activas:
 
 | Tipo | Tamano | Area |
 |------|--------|------|
@@ -133,32 +100,9 @@ tamano en tiempo de compilacion. 34 aserciones activas:
 | `ExportEntry` | 32 B | bef |
 | `SectionHash` | 40 B | bef |
 | `SignatureHeader` | 8 B | bef |
-| `TlsTemplate` | 24 B | bef |
 | `BmoStatus` | 16 B | fundamentals |
-| `BmoError` | 16 B | fundamentals |
-| `BmoSlice` | 16 B | fundamentals |
-| `BmoSliceMut` | 16 B | fundamentals |
-| `BmoRange` | 16 B | fundamentals |
-| `BmoAligned` | 16 B | fundamentals |
-| `BmoBuffer` | 32 B | fundamentals |
-| `BmoStr` | 16 B | fundamentals |
-| `BmoString` | 24 B | fundamentals |
-| `BmoAllocResult` | 24 B | fundamentals |
-| `BmoCap` | 8 B | fundamentals |
-| `BmoCapSet` | 8 B | fundamentals |
-| `BmoDuplicateResult` | 24 B | fundamentals |
-| `BmoWaitResult` | 24 B | fundamentals |
-| `ReadResult` | 24 B | fundamentals |
-| `WriteResult` | 24 B | fundamentals |
-| `SeekResult` | 24 B | fundamentals |
-| `BmoVersion` | 12 B | values |
-| `BmoUuid` | 16 B | values |
-| `BmoIpv4Addr` | 4 B | values |
-| `BmoIpv6Addr` | 16 B | values |
-| `BmoTypeInfo` | 40 B | values |
-| `TypeMeta` | 32 B | runtime |
-| `BmoStat` | 72 B | fs |
-| `BmoDirEntry` | 296 B | fs |
+
+Los fija `tests/abi_layout.rs::static_assert_sizes`.
 
 ---
 
@@ -234,13 +178,13 @@ Wrappers: `syscall0()` .. `syscall6()` en `syscalls/` (inline asm, `no_std`).
 - **Multiboot**: detecta PE (`MZ`) y ELF (`\x7FELF`) via `BefMagic::detect()`.
 - **Devour**: PE/ELF -> BEF (traduccion nativa).
 
-### Writer, Validator, Loader
+### Writer, Validator, y la puerta del kernel
 
 | Componente | Archivo | Funcion |
 |------------|---------|---------|
 | Writer | `bef/writer.rs` | `BefBuilder` + `BefSection` -> produce `Vec<u8>` BEF |
 | Validator | `bef/validator.rs` | `validate()` -- comprueba magic, bounds, duplicados, firma |
-| Loader | `bef/loader.rs` | `load()` -- parsea, asigna memoria, resuelve imports, aplica relocs, TLS |
+| Puerta de carga | `platform/abi/bmo-bex-gate` | `revisar()` -- lo que corre en Ring 0 antes de mapear nada; el cargador es el del kernel |
 
 ---
 
@@ -249,11 +193,15 @@ Wrappers: `syscall0()` .. `syscall6()` en `syscalls/` (inline asm, `no_std`).
 `BmoHandle` es un `u64` opaco con tres campos internos:
 
 ```
-bits  0..47  = index (48-bit object table index)
-bits 48..60  = generation (13-bit, detecta use-after-close)
-bit  61      = tag (1 = kernel, 0 = user)
-bits 62..63  = reserved
+bit  63      = tag        (0 = recurso, 1 = canal/cola)
+bits 62..56  = kind       (7 bits)
+bits 55..40  = generation (16 bits, detecta use-after-close)
+bits 39..0   = index      (40 bits, slot en la tabla del proceso)
 ```
+
+(Hasta el 2026-09-19 aqui ponia indice 0..47 y generacion 48..60: no era el
+formato de `handle/opaque.rs` ni el del kernel, que `build/contrato.ps1`
+compara entre si.)
 
 - `0` = `BmoHandle::NULL`, `0xFFFF_FFFF_FFFF_FFFF` = `BmoHandle::INVALID`.
 - El **kind** se almacena en una tabla global del kernel.
@@ -272,16 +220,10 @@ bits 62..63  = reserved
 [8..15] value:  u64  -- handle, contador, offset, etc.
 ```
 
-`BmoError` (16 B) es analogo pero con semantica de error:
-
-```
-[0..3]  code:    u32  -- error_code::* (21 codigos)
-[4..7]  flags:   u32  -- StatusFlags
-[8..15] context: u64  -- payload contextual
-```
-
-Todos los `BmoStatus` <-> `BmoError` <-> `ErrorCode` tienen conversiones
-bidireccionales en `fundamentals/convert/`.
+Por la puerta viaja partido: `rax = code | flags << 32`, `rdx = value`. Los
+numeros de `code` los define el kernel (`syscall/ops.rs`, `ERROR_*`) y su texto
+esta en `fundamentals/status/error.rs`. (`BmoError`, `error_code/` y
+`convert/` eran dos copias mas de lo mismo, sin usuario; se fueron el 19-09.)
 
 ---
 

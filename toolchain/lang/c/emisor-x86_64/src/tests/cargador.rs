@@ -39,39 +39,29 @@ fn emits_bef_with_correct_string_offset() {
 }
 
 #[test]
-fn loads_via_bef_loader() {
-    use bmo_abi::bef::loader::{load, no_imports};
-    use bmo_abi::bef::sections::SectionKind;
+fn pasa_la_puerta_del_kernel() {
+    // ** Por `bmo_bex_gate::revisar`, que es lo que corre en Ring 0. Hasta el
+    // 2026-09-19 esto usaba un cargador v1 de `bmo-abi` que no cargaba nada de
+    // verdad y que solo usaban estas pruebas.
     let bef = compile_source_to_bef("int main() { return 42; }").unwrap();
-    let loaded = load(&bef, 0, no_imports).unwrap();
-    assert!(loaded.entry_point > 0, "entry_point should be non-zero");
-    let has_code = loaded.sections.iter().any(|s| s.kind == SectionKind::Code);
-    assert!(has_code, "should have Code section");
-    // Code section should contain a RET instruction at minimum
-    let code = loaded.sections.iter().find(|s| s.kind == SectionKind::Code).unwrap();
-    assert!(code.size >= 16, "code section should be at least 16 bytes");
-    // Should have non-zero base address
-    assert!(loaded.base_addr > 0, "base_addr should be non-zero");
+    let img = bmo_bex_gate::revisar(&bef, bef.len()).unwrap();
+    let code = img.buscar(bmo_bex_gate::CODE).expect("should have Code section");
+    assert!(code.file_size >= 16, "code section should be at least 16 bytes");
+    assert!(img.entry_offset() < code.mem_size, "the entry point lives in the code");
 }
 
 #[test]
 fn loaded_bef_has_rodata() {
-    use bmo_abi::bef::loader::{load, no_imports};
-    use bmo_abi::bef::sections::SectionKind;
     let bef = compile_source_to_bef("int main() { printf(\"hello\"); return 0; }").unwrap();
-    let loaded = load(&bef, 0, no_imports).unwrap();
-    let has_rodata = loaded.sections.iter().any(|s| s.kind == SectionKind::RoData);
-    assert!(has_rodata, "printf should create RoData section with the string");
+    let img = bmo_bex_gate::revisar(&bef, bef.len()).unwrap();
+    assert!(img.buscar(bmo_bex_gate::RODATA).is_some(), "printf should create RoData section with the string");
 }
 
 #[test]
 fn loaded_bef_has_global_data() {
-    use bmo_abi::bef::loader::{load, no_imports};
-    use bmo_abi::bef::sections::SectionKind;
     let bef = compile_source_to_bef("int g = 42; int main() { return g; }").unwrap();
-    let loaded = load(&bef, 0, no_imports).unwrap();
-    let has_data = loaded.sections.iter().any(|s| s.kind == SectionKind::Data);
-    assert!(has_data, "global vars should create Data section");
+    let img = bmo_bex_gate::revisar(&bef, bef.len()).unwrap();
+    assert!(img.buscar(bmo_bex_gate::DATA).is_some(), "global vars should create Data section");
 }
 
 

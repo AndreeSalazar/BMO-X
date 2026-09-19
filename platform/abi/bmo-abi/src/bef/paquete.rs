@@ -33,7 +33,6 @@
 //! apuntaria a la de al lado -- un programa que carga, arranca, y lee sus
 //! cadenas de otro sitio.
 
-#![allow(dead_code)]
 
 use crate::bmo_abi::bef::{
     header::BEF_MAGIC,

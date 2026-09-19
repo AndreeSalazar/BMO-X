@@ -2,7 +2,6 @@
 //!
 //! Mucho mas compacto que ELF (64 B + Phdr) o PE (264 B DOS stub + IMAGE_NT).
 
-#![allow(dead_code)]
 
 use crate::bmo_abi::primitives::{bx_u16, bx_u32, bx_u64, bx_u8};
 use crate::{supports_abi, BMO_ABI_VERSION};

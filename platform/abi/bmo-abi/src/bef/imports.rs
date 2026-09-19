@@ -8,7 +8,6 @@
 //! a `BmoHandle` en tiempo de carga (eager) o al primer uso (lazy via
 //! trampoline en `.code`).
 
-#![allow(dead_code)]
 
 use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 

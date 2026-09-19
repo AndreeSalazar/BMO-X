@@ -11,7 +11,7 @@
 # El numero va solo en la primera linea util. Lo de abajo es el inventario, y es
 # comentario: esta para leerlo, no para juzgarlo.
 
-111
+101
 # AJENO              Ultra_kernel_x86-64/kernel/src/ring0/cabina/caida.rs
 # SILENCIO           Ultra_kernel_x86-64/kernel/src/ring0/core/autopsy.rs
 # ESPEJO SILENCIO    Ultra_kernel_x86-64/kernel/src/ring0/core/desmontaje.rs
@@ -59,27 +59,17 @@
 # AJENO SILENCIO     Ultra_userspace/userland/src/pantalla/roja.rs
 # ESPEJO             Ultra_userspace/userland/src/pantalla/verde.rs
 # AJENO ESPEJO       Ultra_userspace/userland/src/paquete.rs
-# UNICO              platform/abi/bmo-abi/src/fundamentals/allocator/mod.rs
-# AJENO              platform/abi/bmo-abi/src/fundamentals/buffer/mod.rs
-# SILENCIO           platform/abi/bmo-abi/src/fundamentals/capability/mod.rs
-# ESPEJO             platform/abi/bmo-abi/src/fundamentals/convert/mod.rs
-# ESPEJO             platform/abi/bmo-abi/src/fundamentals/error/mod.rs
-# SILENCIO           platform/abi/bmo-abi/src/fundamentals/fmt/mod.rs
 # ESPEJO UNICO       platform/abi/bmo-abi/src/fundamentals/handle/kind.rs
 # UNICO              platform/abi/bmo-abi/src/fundamentals/handle/mod.rs
 # SILENCIO           platform/abi/bmo-abi/src/fundamentals/handle/opaque.rs
 # UNICO              platform/abi/bmo-abi/src/fundamentals/handle/ops.rs
-# AJENO              platform/abi/bmo-abi/src/fundamentals/memory/mod.rs
-# SILENCIO           platform/abi/bmo-abi/src/fundamentals/option/mod.rs
 # SILENCIO           platform/abi/bmo-abi/src/fundamentals/primitives/bool.rs
 # SILENCIO           platform/abi/bmo-abi/src/fundamentals/primitives/floats.rs
 # ESPEJO             platform/abi/bmo-abi/src/fundamentals/primitives/ints.rs
 # ESPEJO             platform/abi/bmo-abi/src/fundamentals/primitives/mod.rs
-# SILENCIO           platform/abi/bmo-abi/src/fundamentals/result/mod.rs
 # SILENCIO           platform/abi/bmo-abi/src/fundamentals/status/code.rs
 # ESPEJO             platform/abi/bmo-abi/src/fundamentals/status/error.rs
 # SILENCIO           platform/abi/bmo-abi/src/fundamentals/status/mod.rs
-# AJENO              platform/abi/bmo-abi/src/fundamentals/string/mod.rs
 # RELOJ              platform/abi/bmo-abi/src/fundamentals/sync/mod.rs
 # ESPEJO             platform/abi/bmo-abi/src/syscalls/surface/superficie.rs
 # AJENO              platform/drivers/gpu/rdna4/src/psp.rs

@@ -33,7 +33,6 @@
 //! +--------------------------------+
 //! ```
 
-#![allow(dead_code)]
 
 pub mod blake3;
 pub mod exports;
@@ -47,8 +46,11 @@ pub mod imports;
 // enlaza ESTATICO: todo lo que un `.bex` ejecuta viaja dentro de el, y por eso
 // la firma lo cubre entero. El enlazador de verdad es una HERRAMIENTA del
 // anfitrion: docs/plan/PLAN_EL_ENLAZADOR.md. Esta en el historial de git.
-pub mod loader;
-pub mod manifest;
+// ** `loader`, `manifest` y `tls` -- BORRADOS el 2026-09-19. El cargador de
+// verdad es el del kernel (con `bmo-bex-gate`); este era un cargador v1 que
+// solo usaban tres tests. `tls` ejecutaba `wrmsr` (FS_BASE) desde un crate de
+// contrato -- #GP en Ring 3 -- y BMO-X no tiene TLS. `manifest` describia la
+// procedencia de binarios "devorados" de PE/ELF, que no existen.
 /// The unlinked object (`.bo`): the contract of static linking. E1 of
 /// `docs/plan/PLAN_EL_ENLAZADOR.md`.
 pub mod objeto;
@@ -60,7 +62,6 @@ pub mod requisitos;
 pub mod sections;
 pub mod signing;
 pub mod symbols;
-pub mod tls;
 pub mod validator;
 pub mod writer;
 
@@ -78,8 +79,6 @@ pub use sections::{SectionEntry, SectionFlags, SectionKind, SectionTable};
 // --- Re-exports de manifest, signing, relocations, symbols, etc ----
 pub use exports::ExportEntry;
 pub use imports::ImportEntry;
-pub use loader::{load, LoadedBef, LoadedSection};
-pub use manifest::Provenance;
 pub use paquete::{directorio, empaquetar, localizar_recursos};
 pub use recursos::{Directorio, Entrada as EntradaRecurso, RECURSOS_MAGIC};
 pub use relocations::Relocation;
@@ -88,6 +87,5 @@ pub use requisitos::{
 };
 pub use signing::{SectionHash, SignatureHeader};
 pub use symbols::Symbol;
-pub use tls::TlsTemplate;
 pub use validator::validate;
 pub use writer::{BefBuilder, BefSection};

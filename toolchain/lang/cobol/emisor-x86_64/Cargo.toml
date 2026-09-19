@@ -25,5 +25,7 @@ name = "cobol"
 path = "src/main.rs"
 
 [dev-dependencies]
+# La PUERTA del kernel: las pruebas de carga pasan por lo mismo que Ring 0.
+bmo-bex-gate = { path = "../../../../platform/abi/bmo-bex-gate" }
 # El banco de pruebas: ejecuta el codigo emitido en vez de mirarlo.
 bmo-lower = { path = "../../../forge/bmo-lower", features = ["emulator"] }

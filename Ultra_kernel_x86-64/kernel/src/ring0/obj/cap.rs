@@ -15,9 +15,11 @@
 //! the rights bitset, and only then dispatch to the object.
 //!
 //! This is a minimal no-alloc mirror of the canonical `bmo-abi` types
-//! (`BmoHandle` layout, `BmoCapSet` bits, `HandleKind` codes). Keeping the
-//! values here avoids linking the alloc-using ABI crate into Ring 0;
-//! build.ps1 rejects values that drift from bmo-abi.
+//! (`BmoHandle` layout, `HandleKind` codes). Keeping the values here avoids
+//! linking the alloc-using ABI crate into Ring 0; `build/contrato.ps1` rejects
+//! a layout or a kind that drifts from bmo-abi. ** The `RIGHT_*` bits are
+//! Ring 0's alone (2026-09-19): no operation takes a rights mask from Ring 3,
+//! and the `BmoCapSet` copy in bmo-abi had no user -- nothing compared them.
 //!
 //! Handle layout (must match `bmo_abi::fundamentals::handle::opaque`):
 //! ```text

@@ -87,7 +87,6 @@
 //! huecos, asi que pedir uno del doble avanza el cursor aunque el sitio
 //! estuviera ahi. Es fragmentacion, se paga, y esta escrita en `MONTON.md`.
 
-#![allow(dead_code)]
 
 use crate::bmo_abi::primitives::{bx_u32, bx_u64};
 
