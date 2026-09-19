@@ -319,8 +319,8 @@ El loader de BEF salta a `_bmo_start` despues de:
 ## 9. Garantias
 
 1. **ABI v2 estable**: las dos puertas (0x00, 0x02) no cambian dentro de v2.x.
-2. **Migracion gradual**: el kernel v2 acepta BEX ABI 1.0 temporalmente;
-   nuevos productores escriben ABI 2.0.
+2. **Solo ABI 2.x**: el cargador rechaza un BEX 1.0 (2026-09-19). Lo unico
+   que un 1.0 sabia llamar era la tabla v1, que el kernel no despacha.
 3. **Handles son procesos-locales**: un handle de un proceso no es valido
    en otro (salvo via IPC explicito).
 4. **Strings son UTF-8 valido obligatorio**. Una funcion que recibe un

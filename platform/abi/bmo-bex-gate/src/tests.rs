@@ -265,6 +265,11 @@ fn lo_basico_de_la_cabecera() {
     otro_abi.abi = (9, 0);
     assert_eq!(otro_abi.puerta(), Err(Falta::OtraVersionDelAbi));
 
+    // ** El 1.0 ya no entra (2026-09-19): solo sabia llamar a la tabla v1.
+    let mut abi_1_0 = Imagen::buena();
+    abi_1_0.abi = (1, 0);
+    assert_eq!(abi_1_0.puerta(), Err(Falta::OtraVersionDelAbi));
+
     let mut no_ejecutable = Imagen::buena();
     no_ejecutable.flags = 0;
     assert_eq!(no_ejecutable.puerta(), Err(Falta::NoEsEjecutable));

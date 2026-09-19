@@ -77,10 +77,12 @@ pub const VERSION_MAYOR: u16 = 1;
 pub const ABI_MAYOR: u8 = 2;
 /// Version MENOR mas alta que entiende del mayor en curso.
 pub const ABI_MENOR: u8 = 0;
-/// El mayor anterior, que se sigue admitiendo.
-pub const ABI_MAYOR_HEREDADO: u8 = 1;
-/// Y su menor mas alta.
-pub const ABI_MENOR_HEREDADO: u8 = 0;
+// ** Hasta el 2026-09-19 aqui habia un MAYOR HEREDADO (1.0) que tambien
+// entraba. Ningun productor escribe 1.0 desde el ABI 2, y lo que un 1.0 lleva
+// dentro son puertas de la tabla v1 (0x100..0x1FF) que el kernel contesta con
+// "no existe": el unico 1.0 del repo (`cobol/test/hola.bef`, del 03-08) salia
+// por 0x1F0 para `DISPLAY` y por 0x181 para `STOP RUN` -- ni escribia ni
+// terminaba. Admitirlo era cargar un programa que no puede hacer lo que dice.
 
 /// **Puede correr aqui un binario que pide `mayor.menor`?**
 ///
@@ -106,7 +108,7 @@ pub const ABI_MENOR_HEREDADO: u8 = 0;
 /// exacto de fallo que este arbol ya conoce: dos sitios que dicen lo mismo, uno
 /// se queda atras, y el dia que se separan no lo nota nadie.
 pub const fn abi_admisible(mayor: u8, menor: u8) -> bool {
-    admisible_con(mayor, menor, ABI_MAYOR, ABI_MENOR, ABI_MAYOR_HEREDADO, ABI_MENOR_HEREDADO)
+    admisible_con(mayor, menor, ABI_MAYOR, ABI_MENOR)
 }
 
 /// **La misma regla, separada de los numeros de hoy.**
@@ -132,11 +134,8 @@ pub const fn admisible_con(
     menor: u8,
     mayor_max: u8,
     menor_max: u8,
-    mayor_heredado: u8,
-    menor_heredado: u8,
 ) -> bool {
-    (mayor == mayor_max && menor <= menor_max)
-        || (mayor == mayor_heredado && menor <= menor_heredado)
+    mayor == mayor_max && menor <= menor_max
 }
 /// x86-64.
 pub const ARCH_X86_64: u8 = 0x01;

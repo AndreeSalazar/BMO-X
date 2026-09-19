@@ -89,10 +89,10 @@ fn syscall_contract_is_distinct_from_native_calls() {
 }
 
 #[test]
-fn abi_v2_keeps_v1_as_migration_input() {
+fn abi_v2_no_admite_el_1_0() {
     assert_eq!(bmo_abi::BMO_ABI_VERSION, (2, 0));
     assert!(bmo_abi::supports_abi((2, 0)));
-    assert!(bmo_abi::supports_abi((1, 0)));
+    assert!(!bmo_abi::supports_abi((1, 0)), "un 1.0 solo sabe llamar a la tabla v1");
     assert!(!bmo_abi::supports_abi((3, 0)));
 }
 

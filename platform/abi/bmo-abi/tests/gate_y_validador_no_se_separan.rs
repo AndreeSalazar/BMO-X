@@ -173,16 +173,15 @@ fn el_menor_es_aditivo_en_los_dos() {
 /// aditivo-- y una comprobacion de igualdad diria que no.
 #[test]
 fn el_menor_es_aditivo_de_verdad_y_no_solo_por_casualidad() {
-    // Un sistema hipotetico 2.2, con el 1.0 heredado.
-    let admite = |mayor, menor| bmo_bex_gate::admisible_con(mayor, menor, 2, 2, 1, 0);
+    // Un sistema hipotetico 2.2.
+    let admite = |mayor, menor| bmo_bex_gate::admisible_con(mayor, menor, 2, 2);
 
     assert!(admite(2, 0), "2.0 tiene que entrar en un sistema 2.2");
     assert!(admite(2, 1), "*** 2.1 tiene que entrar en un sistema 2.2: EL MENOR ES ADITIVO");
     assert!(admite(2, 2), "2.2 es el de casa");
     assert!(!admite(2, 3), "2.3 pide algo que este sistema no implementa");
     assert!(!admite(3, 0), "un mayor distinto es incompatible por definicion");
-    assert!(admite(1, 0), "el heredado sigue entrando");
-    assert!(!admite(1, 1), "pero solo hasta su propio menor");
+    assert!(!admite(1, 0), "el 1.0 ya no entra: solo sabia llamar a la tabla v1");
 }
 
 /// **La arquitectura: los dos jueces dicen que NO a lo que no es x86-64.**
