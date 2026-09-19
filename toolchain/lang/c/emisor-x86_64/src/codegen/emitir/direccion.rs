@@ -192,6 +192,19 @@ impl Codegen {
                 // La puerta SSE: si el elemento es flotante, se guarda por xmm0.
                 let lv = Expr::Subscript(name.clone(), index.clone());
                 if self.emit_guardar_flotante(&lv, val) { return; }
+                // ** SIN PILA (2026-09-18): si evaluar el valor no toca mas
+                // que rax y rcx (`sin_pila`), la direccion se calcula PRIMERO,
+                // se aparca en rdx, y el valor se escribe desde rax -- que es
+                // ademas el resultado de la asignacion. Diez instrucciones
+                // pasan a siete en `origen[i] = (unsigned char)(i & 0xFF)`.
+                if self.sin_pila(val) {
+                    self.emit_subscript_addr(name, index);              // rax = direccion
+                    self.code.extend_from_slice(&[0x48, 0x89, 0xC2]);   // mov rdx, rax
+                    self.emit_expr(val);                                // rax = valor
+                    let elem = self.elem_type_of(name);
+                    self.emit_store_elem_desde_rax(&elem);              // [rdx] = rax
+                    return;
+                }
                 self.emit_expr(val);          // rax = valor
                 self.code.push(0x50);         // push valor
                 self.emit_subscript_addr(name, index); // rax = direccion

@@ -35,6 +35,8 @@ mod linking;
 mod frame;
 /// Operar EN el registro de la matriz: `i = i + 1` es `add r12, 1`.
 mod en_sitio;
+/// El operando derecho sin pila: `x + y` es `cargar y en rcx ; add rax, rcx`.
+mod operando;
 /// `printf`, the only part that emits an INTERPRETER -- which is why it carries
 /// the formatter written twice, in Rust and in machine code.
 mod format;
@@ -1473,6 +1475,23 @@ impl Codegen {
             self.emit_alu_imm(ext, imm);
             return;
         }
+        // ** Y una VARIABLE a la derecha tampoco pasa por la pila (18-09,
+        // noche): se carga en rcx --o se opera con su registro de la matriz
+        // directamente-- sin tocar rax. Ver `operando.rs`.
+        if let Expr::Var(n) = b {
+            if let Some(&r) = self.var_regs.get(n) {
+                self.emit_expr(a);
+                self.emit_alu_rax_rn(ext, r);
+                return;
+            }
+            if self.sabe_cargar(n) {
+                self.emit_expr(a);
+                self.emit_cargar_en(n, operando::Destino::Rcx);
+                self.emit_alu_rax_rcx(ext);
+                return;
+            }
+            // un nombre que no existe: el camino largo lo dira con su error
+        }
         self.emit_binop(a, b, largo);
     }
 
@@ -1489,7 +1508,17 @@ impl Codegen {
                 self.code.extend_from_slice(&[0x48, 0x69, 0xC0]);
                 self.code.extend_from_slice(&l.to_le_bytes());
             }
-            None => self.emit_binop(a, b, &[0x48, 0x0F, 0xAF, 0xC2]),
+            None => {
+                if let Expr::Var(n) = b {
+                    if self.sabe_cargar(n) {
+                        self.emit_expr(a);
+                        self.emit_cargar_en(n, operando::Destino::Rcx);
+                        self.code.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC1]); // imul rax, rcx
+                        return;
+                    }
+                }
+                self.emit_binop(a, b, &[0x48, 0x0F, 0xAF, 0xC2])
+            }
         }
     }
 
@@ -1538,6 +1567,19 @@ impl Codegen {
             self.emit_expr(a);
             self.emit_alu_imm(7, imm); // cmp rax, imm
             return;
+        }
+        if let Expr::Var(n) = b {
+            if let Some(&r) = self.var_regs.get(n) {
+                self.emit_expr(a);
+                self.emit_alu_rax_rn(7, r); // cmp rax, rN
+                return;
+            }
+            if self.sabe_cargar(n) {
+                self.emit_expr(a);
+                self.emit_cargar_en(n, operando::Destino::Rcx);
+                self.emit_alu_rax_rcx(7); // cmp rax, rcx
+                return;
+            }
         }
         if decidir::plegado::solo_toca_rax(b) {
             self.emit_expr(a);

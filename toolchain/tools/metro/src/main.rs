@@ -25,6 +25,10 @@
 //!                    lenguaje (`emu::clases`). No es trinquete: es el dato
 //!                    que elige la primera optimizacion, en vez de elegirla
 //!                    quien mira
+//!   metro --caliente <programa del banco> [salida.bin]
+//!                    las direcciones que MAS se ejecutan, con su clase, y
+//!                    el codigo volcado a un fichero para desensamblarlo
+//!                    (llvm-objcopy -I binary -O elf64-x86-64 + llvm-objdump)
 //!
 //! [!] Lo que NO mide todavia, dicho: INTI (su cadena son seis pasos y sus
 //! programas de ejemplo tocan hardware), y los ciclos del Ryzen -- las
@@ -223,8 +227,45 @@ marco + pila = {} de {} ({:.1} %): lo que un reparto de registros quitaria como 
     );
 }
 
+/// `--caliente`: el perfil de UN programa, direccion por direccion.
+fn caliente(rel: &str, salida: Option<&str>) {
+    let Some((lenguaje, _)) = BANCO.iter().find(|(_, r)| *r == rel) else {
+        println!("`{rel}` no esta en el banco del metro");
+        exit(1);
+    };
+    let ruta = raiz().join(rel);
+    let fuente = std::fs::read_to_string(&ruta).expect("leer el fuente");
+    let bex = compilar(lenguaje, &ruta, &fuente).expect("compilar");
+    let maquina = bmo_lower::emu::cargar_bex(&bex).expect("cargar");
+    let codigo = maquina.code.clone();
+    let mut cuentas: BTreeMap<usize, u64> = BTreeMap::new();
+    let m = bmo_lower::emu::run_con(maquina, LIMITE, |rip| *cuentas.entry(rip).or_default() += 1);
+    if let Some(s) = salida {
+        std::fs::write(s, &codigo).expect("escribir el codigo");
+        println!("codigo volcado en {s} ({} B)", codigo.len());
+    }
+    // Las 40 direcciones mas calientes, en ORDEN DE DIRECCION: asi el bucle
+    // se lee de arriba abajo, con su clase al lado.
+    let mut top: Vec<(usize, u64)> = cuentas.iter().map(|(&a, &c)| (a, c)).collect();
+    top.sort_by(|a, b| b.1.cmp(&a.1));
+    top.truncate(40);
+    top.sort();
+    println!("{:>8}  {:>10}  {:<10}  bytes        ({} pasos en total)", "rip", "veces", "clase", m.pasos);
+    for (a, c) in top {
+        let clase = bmo_lower::emu::clases::clasificar(&codigo[a..]).nombre();
+        let bytes: Vec<String> = codigo[a..(a + 8).min(codigo.len())].iter().map(|b| format!("{b:02x}")).collect();
+        println!("{a:>8x}  {c:>10}  {clase:<10}  {}", bytes.join(" "));
+    }
+}
+
 fn main() {
     let modo = std::env::args().nth(1).unwrap_or_default();
+    if modo == "--caliente" {
+        let rel = std::env::args().nth(2).unwrap_or_default();
+        let salida = std::env::args().nth(3);
+        caliente(&rel, salida.as_deref());
+        return;
+    }
     let mut medidas = BTreeMap::new();
     let mut rotos = Vec::new();
     for (lenguaje, rel) in BANCO {

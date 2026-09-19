@@ -88,6 +88,7 @@ mod punteros_funcion;
 mod semantic;
 mod silencios;
 mod sombras;
+mod sin_pila;
 /// Las funciones SINTETIZADAS: emitidas una vez, alcanzadas con `call`. Aqui
 /// se cuenta **cuantas veces sale el cuerpo**, que es lo que un test de
 /// comportamiento no puede ver.

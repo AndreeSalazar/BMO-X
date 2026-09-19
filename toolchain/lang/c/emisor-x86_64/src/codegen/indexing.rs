@@ -223,6 +223,13 @@ impl Codegen {
         let scale = self.paso_de_elemento(name);
         self.emit_expr(index);
         self.emit_scale_index(scale);
+        // ** SIN PILA (2026-09-18): la base --el `lea` del array o la carga
+        // del puntero-- va a rdx directamente, sin tocar rax. Ver `operando.rs`.
+        if self.sabe_cargar(name) {
+            self.emit_cargar_en(name, super::operando::Destino::Rdx);
+            self.code.extend_from_slice(&[0x48, 0x01, 0xD0]); // add rax, rdx
+            return;
+        }
         self.code.push(0x50); // push indice escalado
         if self.var_is_array(name) {
             if let Some(&(off, _)) = self.var_offsets.get(name) {
@@ -285,6 +292,17 @@ impl Codegen {
 
     /// Guarda rdx -> [rax] con el tamano EXACTO del elemento.
     /// Antes un store de 8 bytes a int[i] pisaba el elemento siguiente.
+    /// `[rdx] = rax`, con el tamano exacto del elemento: la pareja de
+    /// `emit_store_elem` para cuando la DIRECCION esta en rdx y el valor en rax.
+    pub(super) fn emit_store_elem_desde_rax(&mut self, elem: &TypeSpec) {
+        match self.type_stack_size(elem) {
+            1 => self.code.extend_from_slice(&[0x88, 0x02]),        // mov [rdx], al
+            2 => self.code.extend_from_slice(&[0x66, 0x89, 0x02]),  // mov [rdx], ax
+            4 => self.code.extend_from_slice(&[0x89, 0x02]),        // mov [rdx], eax
+            _ => self.code.extend_from_slice(&[0x48, 0x89, 0x02]),  // mov [rdx], rax
+        }
+    }
+
     pub(super) fn emit_store_elem(&mut self, elem: &TypeSpec) {
         match self.type_stack_size(elem) {
             1 => self.code.extend_from_slice(&[0x88, 0x10]),        // mov [rax], dl

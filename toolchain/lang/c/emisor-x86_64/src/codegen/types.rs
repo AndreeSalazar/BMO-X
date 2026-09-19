@@ -69,6 +69,59 @@ impl Codegen {
 
     pub(super) fn is_float_ty(t: &TypeSpec) -> bool { matches!(t, TypeSpec::Float | TypeSpec::Double) }
 
+    /// **Emitir `e` toca solo `rax` y `rcx`?** (y `xmm0`, que aqui no cuenta).
+    ///
+    /// Es la lista de lo que `t[i] = v` puede evaluar DESPUES de aparcar la
+    /// direccion en rdx (`emitir/direccion.rs`). Cada brazo dice que camino
+    /// del emisor lo hace verdad; si un camino cambia, este brazo cambia:
+    ///
+    /// ```text
+    ///    literal, variable       `mov rax, imm` / `emit_load_var`: solo rax
+    ///    cast entero, - ~ !      sobre rax (`emit_unario`, `Cast`)
+    ///    a op inmediato          `emit_alu` / `emit_mul` / `C1 ib`: solo rax
+    ///    a op variable           `operando.rs`: la variable va a rcx
+    ///    p + n con p puntero     el inmediato escalado, si cabe
+    ///    lo demas                NO: `emit_binop` empuja, div/mod usan rdx,
+    ///                            las llamadas pisan todo
+    /// ```
+    pub(super) fn sin_pila(&self, e: &Expr) -> bool {
+        use super::decidir::inmediato::{cuenta_de_desplazamiento, inmediato_de};
+        let derecho = |s: &Self, b: &Expr| -> bool {
+            inmediato_de(b).is_some() || matches!(b, Expr::Var(n) if s.sabe_cargar(n))
+        };
+        match e {
+            Expr::Int(_) | Expr::CharLit(_) => true,
+            Expr::Var(n) => self.sabe_cargar(n),
+            Expr::Cast(t, x) => !Self::is_float_ty(t) && !self.expr_is_float(x) && self.sin_pila(x),
+            Expr::Neg(x) | Expr::BitNot(x) | Expr::Not(x) => !self.expr_is_float(x) && self.sin_pila(x),
+            Expr::Add(a, b) => {
+                if self.expr_is_float(a) || self.expr_is_float(b) { return false; }
+                if let Some(s) = self.pointer_scale(a) {
+                    let escalado = Expr::Mul(b.clone(), Box::new(Expr::Int(s as i64)));
+                    return inmediato_de(&escalado).is_some() && self.sin_pila(a);
+                }
+                if self.pointer_scale(b).is_some() { return false; }
+                self.sin_pila(a) && derecho(self, b)
+            }
+            Expr::Sub(a, b) => {
+                if self.expr_is_float(a) || self.expr_is_float(b) { return false; }
+                match (self.pointer_scale(a), self.pointer_scale(b)) {
+                    (Some(s), None) => {
+                        let escalado = Expr::Mul(b.clone(), Box::new(Expr::Int(s as i64)));
+                        inmediato_de(&escalado).is_some() && self.sin_pila(a)
+                    }
+                    (Some(_), Some(_)) => false,
+                    _ => self.sin_pila(a) && derecho(self, b),
+                }
+            }
+            Expr::Mul(a, b) | Expr::BitAnd(a, b) | Expr::BitOr(a, b) | Expr::BitXor(a, b) => {
+                !self.expr_is_float(a) && !self.expr_is_float(b) && self.sin_pila(a) && derecho(self, b)
+            }
+            Expr::Shl(a, b) | Expr::Shr(a, b) => self.sin_pila(a) && cuenta_de_desplazamiento(b).is_some(),
+            _ => super::decidir::plegado::constante_para_emitir(e).is_some(),
+        }
+    }
+
     /// Un tipo que sobrevive SIN SIGNO a las promociones enteras de C.
     ///
     /// [!] `unsigned char` y `unsigned short` **no estan**, y no es un olvido:

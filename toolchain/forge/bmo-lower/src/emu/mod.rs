@@ -1805,9 +1805,17 @@ enum Operand {
 /// Ejecuta hasta caer del final del codigo, hasta `EXIT`, o hasta agotar el
 /// presupuesto de pasos (un bucle que no termina es un bug, y colgar el test
 /// lo esconde en vez de reportarlo).
-pub fn run(mut m: Machine, max_steps: usize) -> Machine {
+pub fn run(m: Machine, max_steps: usize) -> Machine {
+    run_con(m, max_steps, |_| {})
+}
+
+/// Como [`run`], y ademas llama a `sonda` con el `rip` de cada instruccion
+/// ANTES de ejecutarla. Es lo que usa `metro --caliente` para saber que
+/// direcciones se ejecutan mas: un total dice cuanto, esto dice DONDE.
+pub fn run_con(mut m: Machine, max_steps: usize, mut sonda: impl FnMut(usize)) -> Machine {
     let mut steps = 0;
     while m.rip < m.code.len() && !m.exited {
+        sonda(m.rip);
         let clase = clases::clasificar(&m.code[m.rip..]);
         m.censo.apuntar(clase);
         m.step();
