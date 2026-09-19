@@ -141,7 +141,7 @@ fn maquina_de_bef(bef: &[u8]) -> Machine {
 /// so a change that breaks it is caught here and not in a photo of the Ryzen.
 #[test]
 fn el_ejemplo_cuentas_dice_lo_que_promete() {
-    let ruta = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/1-clases/cuentas.cpp");
+    let ruta = concat!(env!("CARGO_MANIFEST_DIR"), "/../examples/1-clases/cuentas.cpp");
     let fuente = std::fs::read_to_string(ruta).expect("the example must exist");
     assert_eq!(
         run_cpp(&fuente),

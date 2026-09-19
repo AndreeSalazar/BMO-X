@@ -1,4 +1,4 @@
-//! **El descenso**: AST de C++ -> `bmo_c_x86_64::ast::Program`.
+//! **El descenso**: AST de C++ -> `bmo_c_front::ast::Program`.
 //!
 //! === Que es este fichero y que NO es ===
 //!
@@ -41,7 +41,7 @@
 //! leeria la direccion donde debia leer el valor. Compilaria, y haria otra
 //! cosa. Se rechaza.
 
-use bmo_c_x86_64::ast as c;
+use bmo_c_front::ast as c;
 use crate::ast as cpp;
 use crate::CppError;
 use std::collections::HashMap;

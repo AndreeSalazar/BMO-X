@@ -92,10 +92,13 @@ here, not debt.
 
 The one agnostic layer is the **frontends**: each language is split into a
 frontend (lexer, analysis, tree) that names no machine and depends on nothing
-that emits, and its `emisor-x86_64/` -- the isolated element. INTI and Ada are
-split; COBOL, C and C++ still share a crate and are listed as pending by the
-guardian in every build. A copy to another CPU carries the frontends
-unchanged and rewrites only the emitters.
+that emits, and its `emisor-x86_64/` -- the isolated element. All five are
+split (2026-09-18): INTI, Ada, COBOL, C and C++. C++ lowers to C's tree and
+emits with C's emitter, so its own emitter is a thin crate. The one shared
+rule the frontends need from below -- how a `struct` is laid out -- lives in
+`toolchain/lang/disposicion`, with no dependencies, and `bmo-abi` re-exports
+it. A copy to another CPU carries the frontends unchanged and rewrites only
+the emitters.
 
 To build BMO-X for another architecture: copy the **whole repository**, and
 in the copy rewrite the two stages (`faggin/s1_cpu`, `faggin/s2_mem`), the

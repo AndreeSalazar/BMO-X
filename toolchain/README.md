@@ -6,10 +6,10 @@ El pipeline de BMO-X: lenguajes -> BEF -> verificacion -> BMO ABI. Organizado en
 ```
 toolchain/
 +-- lang/     <- FRONTENDS (la esencia, individual por lenguaje)
-|   +-- c/        bmo-c-front
+|   +-- c/        bmo-c-front       (+ emisor-x86_64/: bmo-c-x86-64)
 |   +-- cobol/    bmo-cobol-front   (todos los dialectos; NO nombra una maquina)
 |   |   +-- emisor-x86_64/  bmo-cobol-x86-64  (el unico sitio de COBOL que emite)
-|   +-- cpp/      bmo-cpp-front
+|   +-- cpp/      bmo-cpp-front     (+ emisor-x86_64/: bmo-cpp-x86-64, con el codegen de C)
 |   +-- ada/      bmo-ada-front     (+ emisor-x86_64/: bmo-ada-x86-64)
 |   +-- inti/     bmo-inti-front    (+ emisor-x86_64/: bmo-inti-x86-64)
 |   +-- base/     stdlib base (bmo/core, pci, lib/printf) -- datos, no crate

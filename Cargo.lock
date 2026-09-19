@@ -141,8 +141,17 @@ dependencies = [
 name = "bmo-cpp-front"
 version = "0.1.0"
 dependencies = [
+ "bmo-c-front",
+ "bmo-disposicion",
+]
+
+[[package]]
+name = "bmo-cpp-x86-64"
+version = "0.1.0"
+dependencies = [
  "bmo-abi",
  "bmo-c-x86-64",
+ "bmo-cpp-front",
  "bmo-lower",
  "bmo-verify",
 ]
@@ -180,7 +189,7 @@ version = "0.1.0"
 dependencies = [
  "bmo-abi",
  "bmo-c-x86-64",
- "bmo-cpp-front",
+ "bmo-cpp-x86-64",
  "bmo-lower",
  "bmo-verify",
 ]

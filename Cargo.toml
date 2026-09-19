@@ -209,6 +209,7 @@ members = [
     "toolchain/lang/cobol",
     "toolchain/lang/cobol/emisor-x86_64",
     "toolchain/lang/cpp",
+    "toolchain/lang/cpp/emisor-x86_64",
     "toolchain/lang/c",
     "toolchain/lang/c/emisor-x86_64",
     # -- LA LIBC, junto a los lenguajes que la consumen --------------

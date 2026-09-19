@@ -35,7 +35,7 @@ CABECERA = """# BRECHA — el alcance de BMO C++
 **No es el parser.** Medido:
 
 ```
-$ bmo-cpp-front vacio.cpp        # cero bytes de entrada
+$ cpp vacio.cpp                  # cero bytes de entrada
 thread 'main' has overflowed its stack
 ```
 

@@ -80,6 +80,7 @@ FRONTENDS = {
     "toolchain/lang/ada": "bmo-ada-front",
     "toolchain/lang/cobol": "bmo-cobol-front",
     "toolchain/lang/c": "bmo-c-front",
+    "toolchain/lang/cpp": "bmo-cpp-front",
 }
 # Lo unico de lo que un frontend puede depender: nada que emita ni que sea la Base.
 # Cada uno con su motivo; y el guardian exige que ELLOS tampoco lleven `asm!` ni
@@ -97,7 +98,6 @@ DEPS_DE_FRONTEND = {
 DEPS_DE_FRONTEND.update({c: "otro frontend" for c in FRONTENDS.values()})
 # Lenguajes cuyo frontend y emisor de x86-64 comparten crate todavia, con por que.
 POR_PARTIR = {
-    "bmo-cpp-front": "emite con el codegen de C (bmo-c-x86-64) y coloca con bmo-abi dentro del crate",
 }
 # Palabras que solo significan algo dentro de una maquina (la misma lista que
 # `inti/tests/agnostico.rs`), como palabra ENTERA: `conversion` no nombra `rsi`.
@@ -301,8 +301,9 @@ def comprobar():
         return 1
     print("clean: %d ruta(s) y %d fichero(s) de codigo y configuracion mirados; %d target(s), "
           "todos x86-64; ni un camino ni una carpeta para otra CPU; %d frontend(s) agnosticos "
-          "y %d por partir (%s)" % (len(lista), mirados, vistos, frentes, len(POR_PARTIR),
-                                    ", ".join(sorted(POR_PARTIR))))
+          "y %s" % (len(lista), mirados, vistos, frentes,
+                    ("%d por partir (%s)" % (len(POR_PARTIR), ", ".join(sorted(POR_PARTIR))))
+                    if POR_PARTIR else "ninguno por partir"))
     return 0
 
 

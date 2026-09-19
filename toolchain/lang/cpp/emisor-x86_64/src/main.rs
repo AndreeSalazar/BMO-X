@@ -14,7 +14,7 @@
 use std::path::PathBuf;
 use std::process;
 
-use bmo_cpp_front::{compile_source_to_bef, compile_source_to_object};
+use bmo_cpp_x86_64::{compile_source_to_bef, compile_source_to_object};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

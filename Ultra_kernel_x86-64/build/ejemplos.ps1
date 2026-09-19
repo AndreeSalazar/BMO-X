@@ -614,7 +614,7 @@ try {
     Compilar-Ejemplos $adaEjemplos 'bmo-ada-x86-64' 'ada' 'ok:|error|linea' $dataBase $repo
 
     Step 'Building C++ example programs...'
-    Compilar-Ejemplos $cppEjemplos 'bmo-cpp-front' 'cpp' 'ok:|error|linea' $dataBase $repo -PorObjeto
+    Compilar-Ejemplos $cppEjemplos 'bmo-cpp-x86-64' 'cpp' 'ok:|error|linea' $dataBase $repo -PorObjeto
 
     Step 'Building C example programs...'
     # Sin --base ni --asm-path: ese camino usa el PREPROCESADOR, que es lo que

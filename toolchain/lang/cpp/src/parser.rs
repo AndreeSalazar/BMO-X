@@ -524,7 +524,7 @@ impl Parser {
             || padre.as_ref().map_or(false, |p| !p.vtabla.is_empty());
 
         let mut layout = Vec::new();
-        let mut d = bmo_abi::types::Disposicion::nueva();
+        let mut d = bmo_disposicion::Disposicion::nueva();
 
         if let Some(p) = &padre {
             // * El derivado **empieza por la base entera**, campos incluidos y
@@ -779,15 +779,17 @@ impl Parser {
             let defecto = if self.come(&Token::Assign) {
                 return Err(self.pendiente("los argumentos por defecto", 4));
             } else { None };
-            // [!] Un parametro de coma flotante NO se puede pasar todavia: BMO C
-            // evalua floats por la ruta SSE pero **no los pasa como
-            // argumento** (falta la ABI de xmm), y lo peor es que los acepta
-            // en silencio -- `int g(double a)` compila y no hace lo que dice.
-            // Es deuda de C; mientras exista, C++ no la emite.
+            // [!] Un parametro de coma flotante NO se puede pasar todavia: el
+            // EMISOR de BMO C evalua floats pero **no los pasa como argumento**
+            // (le falta esa parte de la convencion de llamada), y lo peor es que
+            // los acepta en silencio -- `int g(double a)` compila y no hace lo
+            // que dice. Es deuda del emisor de C; mientras exista, C++ no la
+            // emite. (Sin nombrar registros desde el 2026-09-18: el frontend no
+            // habla de ninguna maquina, ver `toolchain/tools/isa`.)
             if matches!(tipo, TypeSpec::Float | TypeSpec::Double) {
                 return Err(self.err(format!(
                     "`{}` es un parametro de coma flotante, y BMO C todavia no los PASA \
-                     (evalua floats en xmm, pero la ABI de argumentos xmm esta pendiente). \
+                     (el emisor evalua floats, pero pasarlos como argumento esta pendiente). \
                      Se rechaza aqui a proposito: C lo acepta en silencio y no funciona",
                     if name.is_empty() { "<sin nombre>" } else { &name })));
             }

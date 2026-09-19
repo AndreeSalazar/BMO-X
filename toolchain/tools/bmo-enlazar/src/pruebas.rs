@@ -418,9 +418,9 @@ int main() {
     return 0;
 }
 "#;
-    let uno = bmo_cpp_front::compile_source_to_object(CLASE)
+    let uno = bmo_cpp_x86_64::compile_source_to_object(CLASE)
         .unwrap_or_else(|e| panic!("el C++ debe compilar a objeto: {}", e.message));
-    let dos = bmo_cpp_front::compile_source_to_object(PRINCIPAL_CPP)
+    let dos = bmo_cpp_x86_64::compile_source_to_object(PRINCIPAL_CPP)
         .unwrap_or_else(|e| panic!("el C++ debe compilar a objeto: {}", e.message));
     let bex = enlazar(&[("principal.bo".to_string(), dos), ("cuenta.bo".to_string(), uno)])
         .expect("tiene que enlazar");

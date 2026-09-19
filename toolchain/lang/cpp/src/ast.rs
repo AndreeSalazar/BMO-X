@@ -132,7 +132,7 @@ impl TypeSpec {
     pub fn alineado(&self) -> u32 {
         match self {
             TypeSpec::Array(t, _) => t.alineado(),
-            otro => bmo_abi::types::alineado_de(otro.size()),
+            otro => bmo_disposicion::alineado_de(otro.size()),
         }
     }
 }

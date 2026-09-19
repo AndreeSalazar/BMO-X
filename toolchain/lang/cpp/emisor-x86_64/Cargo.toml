@@ -1,0 +1,27 @@
+[package]
+name = "bmo-cpp-x86-64"
+version = "0.1.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "BMO C++ para x86-64: el arbol de C++, bajado a C, a bytes con el codegen de C."
+
+# El frontend de arriba analiza y baja a C; esto EMITE (2026-09-18).
+[dependencies]
+bmo-cpp-front = { path = ".." }
+# El codegen que se hereda: el de C para x86-64.
+bmo-c-x86-64 = { path = "../../c/emisor-x86_64" }
+bmo-abi = { path = "../../../../platform/abi/bmo-abi" }
+# forge: EL GATE. Ningun .bex se escribe sin pasar por aqui.
+bmo-verify = { path = "../../../forge/bmo-verify" }
+
+[lib]
+name = "bmo_cpp_x86_64"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cpp"
+path = "src/main.rs"
+
+[dev-dependencies]
+# El banco EJECUTA los bytes emitidos.
+bmo-lower = { path = "../../../forge/bmo-lower", features = ["emulator"] }
