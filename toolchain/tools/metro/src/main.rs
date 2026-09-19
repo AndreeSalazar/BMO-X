@@ -11,12 +11,15 @@
 //!
 //!   pasos    instrucciones que ejecuto hasta `EXIT`. Determinista: sale igual
 //!            en cualquier maquina que compile, sin el Ryzen.
+//!   accesos  de esas, las que TOCAN memoria (pila, marco, memoria). Desde el
+//!            19-09: el troquel por variable no bajo ni una instruccion y quito
+//!            el 60 % de los accesos al marco, y el metro no lo veia.
 //!   codigo   bytes de la seccion de codigo del `.bex` que se entrega.
 //!   salida   la huella de lo que imprimio.
 //!
-//! `LINEA_BASE.txt` es un TRINQUETE: `pasos` y `codigo` solo pueden bajar, y
-//! `salida` no puede cambiar NUNCA. Una optimizacion que cambia lo que imprime
-//! un programa no es una optimizacion.
+//! `LINEA_BASE.txt` es un TRINQUETE: `pasos`, `accesos` y `codigo` solo pueden
+//! bajar, y `salida` no puede cambiar NUNCA. Una optimizacion que cambia lo que
+//! imprime un programa no es una optimizacion.
 //!
 //!   metro            la tabla
 //!   metro --check    el juicio del build: 0 si nada sube ni cambia
@@ -79,6 +82,7 @@ const BANCO: &[(&str, &str)] = &[
 #[derive(Debug, Clone, PartialEq)]
 struct Medida {
     pasos: u64,
+    accesos: u64,
     codigo: u64,
     salida: String,
     /// A donde se fueron los `pasos`. No va a la linea base: es diagnostico.
@@ -140,7 +144,7 @@ fn medir(lenguaje: &str, rel: &str) -> Result<Medida, String> {
     if !m.exited {
         return Err("no termino por EXIT".into());
     }
-    Ok(Medida { pasos: m.pasos, codigo: bytes_de_codigo(&bex), salida: huella(&m.console), censo: m.censo })
+    Ok(Medida { pasos: m.pasos, accesos: m.censo.accesos(), codigo: bytes_de_codigo(&bex), salida: huella(&m.console), censo: m.censo })
 }
 
 fn linea_base() -> PathBuf {
@@ -154,9 +158,9 @@ fn leer_base() -> Result<BTreeMap<String, Medida>, String> {
         let l = l.trim();
         if l.is_empty() || l.starts_with('#') { continue; }
         let c: Vec<&str> = l.split_whitespace().collect();
-        if c.len() != 4 { return Err(format!("linea base mal formada: `{l}`")); }
+        if c.len() != 5 { return Err(format!("linea base mal formada (programa pasos accesos codigo salida): `{l}`")); }
         let n = |s: &str| s.parse::<u64>().map_err(|_| format!("numero mal formado: `{s}`"));
-        out.insert(c[0].to_string(), Medida { pasos: n(c[1])?, codigo: n(c[2])?, salida: c[3].to_string(), censo: Censo::default() });
+        out.insert(c[0].to_string(), Medida { pasos: n(c[1])?, accesos: n(c[2])?, codigo: n(c[3])?, salida: c[4].to_string(), censo: Censo::default() });
     }
     Ok(out)
 }
@@ -175,10 +179,13 @@ fn juzgar(medidas: &BTreeMap<String, Medida>, base: &BTreeMap<String, Medida>) -
                 if m.pasos > b.pasos {
                     quejas.push(format!("{p}: instrucciones SUBEN {} -> {}", b.pasos, m.pasos));
                 }
+                if m.accesos > b.accesos {
+                    quejas.push(format!("{p}: accesos a memoria SUBEN {} -> {}", b.accesos, m.accesos));
+                }
                 if m.codigo > b.codigo {
                     quejas.push(format!("{p}: codigo SUBE {} -> {} B", b.codigo, m.codigo));
                 }
-                if m.pasos < b.pasos || m.codigo < b.codigo { bajaron += 1; }
+                if m.pasos < b.pasos || m.accesos < b.accesos || m.codigo < b.codigo { bajaron += 1; }
             }
         }
     }
@@ -242,7 +249,12 @@ fn caliente(rel: &str, salida: Option<&str>) {
     let m = bmo_lower::emu::run_con(maquina, LIMITE, |rip| *cuentas.entry(rip).or_default() += 1);
     if let Some(s) = salida {
         std::fs::write(s, &codigo).expect("escribir el codigo");
-        println!("codigo volcado en {s} ({} B)", codigo.len());
+        // y TODAS las cuentas al lado, `direccion veces`, para sumar por
+        // patron con lo que sea: la tabla de abajo solo ensena 40
+        let cuentas_txt: String = cuentas.iter().map(|(a, c)| format!("{a:x} {c}
+")).collect();
+        std::fs::write(format!("{s}.cuentas"), cuentas_txt).expect("escribir las cuentas");
+        println!("codigo volcado en {s} ({} B) y las cuentas en {s}.cuentas", codigo.len());
     }
     // Las 40 direcciones mas calientes, en ORDEN DE DIRECCION: asi el bucle
     // se lee de arriba abajo, con su clase al lado.
@@ -279,20 +291,21 @@ fn main() {
         println!("metro: {} programa(s) del banco no se pudieron medir", rotos.len());
         exit(1);
     }
-    let (pasos, codigo): (u64, u64) = medidas.values().fold((0, 0), |a, m| (a.0 + m.pasos, a.1 + m.codigo));
+    let (pasos, accesos, codigo): (u64, u64, u64) =
+        medidas.values().fold((0, 0, 0), |a, m| (a.0 + m.pasos, a.1 + m.accesos, a.2 + m.codigo));
 
     match modo.as_str() {
         "--fijar" => {
             let mut t = String::from(
                 "# EL METRO DEL EMISOR -- linea base (toolchain/tools/metro).\n\
-                 # TRINQUETE: `pasos` y `codigo` solo bajan; `salida` no cambia nunca.\n\
+                 # TRINQUETE: `pasos`, `accesos` y `codigo` solo bajan; `salida` no cambia nunca.\n\
                  # Se reescribe con `cargo run --release -p bmo-metro -- --fijar`.\n\
-                 # programa  pasos  codigo  salida\n");
+                 # programa  pasos  accesos  codigo  salida\n");
             for (p, m) in &medidas {
-                t.push_str(&format!("{p} {} {} {}\n", m.pasos, m.codigo, m.salida));
+                t.push_str(&format!("{p} {} {} {} {}\n", m.pasos, m.accesos, m.codigo, m.salida));
             }
             std::fs::write(linea_base(), t).expect("escribir la linea base");
-            println!("metro: linea base fijada -- {} programas, {pasos} instrucciones, {codigo} B de codigo", medidas.len());
+            println!("metro: linea base fijada -- {} programas, {pasos} instrucciones, {accesos} accesos a memoria, {codigo} B de codigo", medidas.len());
         }
         "--desglose" => desglose(&medidas),
         "--check" => {
@@ -307,14 +320,14 @@ fn main() {
                 exit(1);
             }
             let aviso = if bajaron > 0 { format!("; {bajaron} bajaron: fija con --fijar") } else { String::new() };
-            println!("clean: metro del emisor -- {} programas (C, C++, COBOL, Ada), {pasos} instrucciones, {codigo} B de codigo, ninguna salida cambio{aviso}", medidas.len());
+            println!("clean: metro del emisor -- {} programas (C, C++, COBOL, Ada), {pasos} instrucciones, {accesos} accesos a memoria, {codigo} B de codigo, ninguna salida cambio{aviso}", medidas.len());
         }
         _ => {
-            println!("{:<58} {:>12} {:>9}  salida", "programa", "pasos", "codigo");
+            println!("{:<58} {:>12} {:>9} {:>9}  salida", "programa", "pasos", "accesos", "codigo");
             for (p, m) in &medidas {
-                println!("{p:<58} {:>12} {:>9}  {}", m.pasos, m.codigo, m.salida);
+                println!("{p:<58} {:>12} {:>9} {:>9}  {}", m.pasos, m.accesos, m.codigo, m.salida);
             }
-            println!("{:<58} {pasos:>12} {codigo:>9}", "TOTAL");
+            println!("{:<58} {pasos:>12} {accesos:>9} {codigo:>9}", "TOTAL");
         }
     }
 }
@@ -324,7 +337,11 @@ mod pruebas {
     use super::*;
 
     fn m(pasos: u64, codigo: u64, salida: &str) -> Medida {
-        Medida { pasos, codigo, salida: salida.into(), censo: Censo::default() }
+        Medida { pasos, accesos: pasos / 2, codigo, salida: salida.into(), censo: Censo::default() }
+    }
+    fn con_accesos(mut x: Medida, accesos: u64) -> Medida {
+        x.accesos = accesos;
+        x
     }
     fn uno(x: Medida) -> BTreeMap<String, Medida> {
         BTreeMap::from([("p".to_string(), x)])
@@ -343,6 +360,11 @@ mod pruebas {
     #[test]
     fn subir_instrucciones_se_caza() {
         assert_eq!(juzgar(&uno(m(11, 20, "a")), &uno(m(10, 20, "a"))).0.len(), 1);
+    }
+    #[test]
+    fn subir_accesos_se_caza_aunque_las_instrucciones_no_suban() {
+        assert_eq!(juzgar(&uno(con_accesos(m(10, 20, "a"), 9)), &uno(con_accesos(m(10, 20, "a"), 8))).0.len(), 1);
+        assert!(juzgar(&uno(con_accesos(m(10, 20, "a"), 7)), &uno(con_accesos(m(10, 20, "a"), 8))).0.is_empty());
     }
     #[test]
     fn subir_codigo_se_caza() {

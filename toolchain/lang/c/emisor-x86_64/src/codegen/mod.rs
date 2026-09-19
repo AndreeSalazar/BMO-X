@@ -1039,11 +1039,12 @@ impl Codegen {
             .sum();
         // prologue
         self.code.extend_from_slice(&[0x55, 0x48, 0x89, 0xE5]); // push rbp; mov rbp, rsp
-        // Copiar los parametros a su ranura local. Hoy es un no-op --
-        // `build_var_map` los deja donde ya estan-- y se conserva por si algun
-        // dia un parametro necesita hueco propio. El offset se recalcula igual
-        // que alli: por ranuras, no `i*8`.
-        let param_count = func.params.len();
+        // Copiar los parametros a su ranura local, SOLO si es otra. Hoy nunca
+        // lo es --`build_var_map` los deja donde ya estan--, y hasta el 19-09
+        // esto emitia igualmente un `mov rax, [rbp+off]` por parametro "por si
+        // algun dia": una carga muerta por parametro y por llamada, el 4,9 %
+        // de lo que ejecutaba el banco de C (el envoltorio de la puerta tiene
+        // cinco). El offset se recalcula igual que alli: por ranuras, no `i*8`.
         let mut src_off = 16i32;
         for p in func.params.iter() {
             let avance = agregados::ranuras(self.type_stack_size(&p.typ)) as i32 * 8;
@@ -1053,15 +1054,14 @@ impl Codegen {
                 src_off += avance;
                 continue;
             }
-            if src_off >= -128 && src_off <= 127 {
-                self.code.extend_from_slice(&[0x48, 0x8B, 0x45, src_off as u8]);
-            } else {
-                self.code.extend_from_slice(&[0x48, 0x8B, 0x85]);
-                self.code.extend_from_slice(&(src_off as i32).to_le_bytes());
-            }
-            // A su ranura local, si es otra.
             if let Some(&(local_off, _)) = self.var_offsets.get(&p.name) {
                 if local_off != src_off {
+                    if src_off >= -128 && src_off <= 127 {
+                        self.code.extend_from_slice(&[0x48, 0x8B, 0x45, src_off as u8]);
+                    } else {
+                        self.code.extend_from_slice(&[0x48, 0x8B, 0x85]);
+                        self.code.extend_from_slice(&(src_off as i32).to_le_bytes());
+                    }
                     if (-128..=127).contains(&local_off) {
                         self.code.extend_from_slice(&[0x48, 0x89, 0x45, local_off as u8]);
                     } else {
@@ -1074,7 +1074,6 @@ impl Codegen {
         }
         // allocate local var space -- tamano REAL calculado por build_var_map
         // (antes: var_count*8, y los arrays/structs pisaban a sus vecinos)
-        let _ = param_count;
         let stack_size = self.frame_size;
         if stack_size > 0 {
             if stack_size <= 127 {
@@ -1091,15 +1090,31 @@ impl Codegen {
         // empujar aqui los deja POR DEBAJO y no pisa ninguno. Al reves, los
         // cuatro registros aterrizarian encima de las primeras variables.
         //
-        // ** Y son los CUATRO o ninguno, aunque solo se use uno: cuatro es par,
-        // y un numero par de `push` no cambia la paridad de alineacion de la
-        // pila que el resto del emisor ya tiene. Ocho instrucciones por funcion
-        // que use la matriz, y se amortizan en la primera vuelta de un bucle.
-        if !self.var_regs.is_empty() {
-            self.code.extend_from_slice(&[0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57]);
+        // ** Y se guardan de DOS en DOS: el reparto da r12 primero, luego r13,
+        // r14, r15 (`repartir`), asi que una funcion con uno o dos huecos
+        // guarda r12 y r13, y con tres o cuatro, los cuatro. Par siempre,
+        // porque un numero par de `push` no cambia la paridad de alineacion
+        // de la pila que el resto del emisor ya tiene. Hasta el 19-09 eran
+        // los cuatro o ninguno: cuatro instrucciones de mas por llamada en la
+        // funcion tipica, que usa uno o dos.
+        match self.guardados_de_la_matriz() {
+            2 => self.code.extend_from_slice(&[0x41, 0x54, 0x41, 0x55]),
+            4 => self.code.extend_from_slice(&[0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57]),
+            _ => {}
         }
         for stmt in &func.body { self.emit_stmt(stmt); }
         self.emit_epilogue();
+    }
+
+    /// Cuantos registros de la matriz guarda esta funcion: 0, 2 o 4. Si el
+    /// reparto alguna vez diera r14 sin r12, esto guardaria los cuatro igual
+    /// (mira el registro mas alto, no la cuenta).
+    fn guardados_de_la_matriz(&self) -> usize {
+        match self.var_regs.values().max() {
+            None => 0,
+            Some(&r) if r <= 13 => 2,
+            Some(_) => 4,
+        }
     }
 
     fn emit_epilogue(&mut self) {
@@ -1107,8 +1122,10 @@ impl Codegen {
         // inverso. Aqui `rsp` apunta justo a los cuatro guardados porque toda
         // expresion deja la pila como la encontro -- `emit_binop` empuja y saca
         // en pareja-- y `Stmt::Return` llama a esto con la expresion ya acabada.
-        if !self.var_regs.is_empty() {
-            self.code.extend_from_slice(&[0x41, 0x5F, 0x41, 0x5E, 0x41, 0x5D, 0x41, 0x5C]);
+        match self.guardados_de_la_matriz() {
+            2 => self.code.extend_from_slice(&[0x41, 0x5D, 0x41, 0x5C]),
+            4 => self.code.extend_from_slice(&[0x41, 0x5F, 0x41, 0x5E, 0x41, 0x5D, 0x41, 0x5C]),
+            _ => {}
         }
         self.code.extend_from_slice(&[0x48, 0x89, 0xEC, 0x5D]); // mov rsp,rbp; pop rbp
         if self.is_entry_function {
@@ -1141,45 +1158,72 @@ impl Codegen {
                 if let Some(el) = e { self.emit_stmt(el); }
                 self.resolve_label(end_lbl);
             }
+            // ** EL BUCLE ROTADO (2026-09-19): la condicion va ABAJO. Antes cada
+            // vuelta pagaba la condicion arriba (`cmp` + `jcc`) Y un `jmp` de
+            // vuelta; el `jmp` era el 6 % de lo que ejecutaba el banco de C.
+            // Ahora se entra con un `jmp` a la condicion (una vez), el cuerpo
+            // corre, y la condicion al final salta al cuerpo si se cumple:
+            //
+            // ```text
+            //    antes    inicio: cond ; jcc fin ; cuerpo ; paso ; jmp inicio ; fin:
+            //    ahora    jmp cond ; cuerpo: cuerpo ; paso ; cond: cond ; jcc cuerpo ; fin:
+            // ```
+            //
+            // `continue` va a `paso` (el `for`) o a `cond` (el `while`), y
+            // `break` a `fin`, igual que antes. Los mismos bytes: el `jcc` de
+            // arriba y el `jmp` de abajo se cambian el sitio.
             Stmt::While(c, b) => {
-                let start = self.fresh_label();
-                let end = self.fresh_label();
-                self.continue_target.push(start);
-                self.break_target.push(end);
-                self.resolve_label(start);
-                self.emit_test_cond(c, end);
+                let cuerpo = self.fresh_label();
+                let cond = self.fresh_label();
+                let fin = self.fresh_label();
+                self.continue_target.push(cond);
+                self.break_target.push(fin);
+                self.emit_jmp_reloc(cond);
+                self.resolve_label(cuerpo);
                 self.emit_stmt(b);
-                self.emit_jmp_reloc(start);
-                self.resolve_label(end);
+                self.resolve_label(cond);
+                self.emit_test_cond_jnz(c, cuerpo);
+                self.resolve_label(fin);
                 self.continue_target.pop();
                 self.break_target.pop();
             }
+            // * `break` dentro de un `do` tiene su etiqueta DESPUES de la
+            // condicion (19-09). Antes `break` y `continue` compartian la de
+            // ANTES, asi que un `break` volvia a evaluar la condicion y, si se
+            // cumplia, seguia dando vueltas.
             Stmt::DoWhile(b, c) => {
                 let start = self.fresh_label();
-                let end = self.fresh_label();
-                self.continue_target.push(end);
-                self.break_target.push(end);
+                let cond = self.fresh_label();
+                let fin = self.fresh_label();
+                self.continue_target.push(cond);
+                self.break_target.push(fin);
                 self.resolve_label(start);
                 self.emit_stmt(b);
-                self.resolve_label(end);
+                self.resolve_label(cond);
                 self.emit_test_cond_jnz(c, start);
+                self.resolve_label(fin);
                 self.continue_target.pop();
                 self.break_target.pop();
             }
             Stmt::For(init, cond, inc, b) => {
                 if let Some(e) = init { if !self.emit_en_sitio(e) { self.emit_expr(e); } self.emit_drop(); }
-                let start = self.fresh_label();
-                let end = self.fresh_label();
+                let cuerpo = self.fresh_label();
+                let cond_lbl = self.fresh_label();
+                let fin = self.fresh_label();
                 let inc_lbl = self.fresh_label();
                 self.continue_target.push(inc_lbl);
-                self.break_target.push(end);
-                self.resolve_label(start);
-                if let Some(c) = cond { self.emit_test_cond(c, end); }
+                self.break_target.push(fin);
+                if cond.is_some() { self.emit_jmp_reloc(cond_lbl); }
+                self.resolve_label(cuerpo);
                 self.emit_stmt(b);
                 self.resolve_label(inc_lbl);
                 if let Some(e) = inc { if !self.emit_en_sitio(e) { self.emit_expr(e); } self.emit_drop(); }
-                self.emit_jmp_reloc(start);
-                self.resolve_label(end);
+                self.resolve_label(cond_lbl);
+                match cond {
+                    Some(c) => self.emit_test_cond_jnz(c, cuerpo),
+                    None => self.emit_jmp_reloc(cuerpo),
+                }
+                self.resolve_label(fin);
                 self.continue_target.pop();
                 self.break_target.pop();
             }
@@ -1254,8 +1298,12 @@ impl Codegen {
                     }
                     self.store_float_var(name);
                 } else {
-                    if let Some(e) = init { self.emit_expr(e); } else { self.emit_expr(&Expr::Int(0)); }
-                    self.emit_store_var(name);
+                    // `int x = 5;` e `int x;` (a cero) sin pasar por rax si se puede
+                    let inicial = init.clone().unwrap_or(Expr::Int(0));
+                    if !self.emit_constante_en_sitio(name, &inicial) {
+                        self.emit_expr(&inicial);
+                        self.emit_store_var(name);
+                    }
                 }
             }
             // `T x = { ... }` -- la lista ya viene APLANADA a escrituras por

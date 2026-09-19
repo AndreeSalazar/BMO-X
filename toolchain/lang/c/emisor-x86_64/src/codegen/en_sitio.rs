@@ -61,7 +61,9 @@ impl Codegen {
     /// que emitirla; `rax` queda con cualquier cosa.
     pub(super) fn emit_en_sitio(&mut self, e: &Expr) -> bool {
         match e {
-            Expr::Assign(name, val) => self.emit_asignacion_en_sitio(name, val),
+            Expr::Assign(name, val) => {
+                self.emit_constante_en_sitio(name, val) || self.emit_asignacion_en_sitio(name, val)
+            }
             Expr::PreInc(name) | Expr::PostInc(name) => self.emit_paso_en_sitio(name, false),
             Expr::PreDec(name) | Expr::PostDec(name) => self.emit_paso_en_sitio(name, true),
             _ => false,
@@ -80,6 +82,80 @@ impl Codegen {
             return false;
         }
         self.code.extend_from_slice(&[0x49, 0x8B, 0xC0 + (r - 8)]); // mov rax, rN
+        true
+    }
+
+    /// **`name = constante`, sin pasar por rax** (2026-09-19): `mov [x], 5` o
+    /// `mov r12, 5`. Era el 3 % de lo que ejecutaba el banco de C: cada `x =
+    /// 0`, cada `int x;` (BMO C pone las locales a cero) y cada contador que
+    /// arranca hacian `mov rax, imm` y despues el guardado.
+    ///
+    /// La constante se RECORTA aqui, al compilar, a la anchura del tipo: un
+    /// `char c = 200` guarda -56, igual que por la pila. Los `short` y los
+    /// globales siguen por el camino de siempre (el inmediato de 16 bits y el
+    /// `lea` del global no ganan nada limpio), y un `long` que no cabe en 32
+    /// bits con signo va a la matriz con `movabs` y al marco por la pila.
+    pub(super) fn emit_constante_en_sitio(&mut self, name: &str, val: &Expr) -> bool {
+        let v = match val {
+            Expr::Int(n) => *n,
+            Expr::CharLit(c) => *c as i64,
+            _ => match super::decidir::plegado::constante_para_emitir(val) {
+                Some(v) => v,
+                None => return false,
+            },
+        };
+        let Some(tipo) = self.var_type_of(name) else { return false };
+        if Self::is_float_ty(&tipo) || self.es_agregado(&tipo) || self.var_is_array(name) {
+            return false;
+        }
+        // la constante como la dejaria la pila al releerla
+        let v = match tipo {
+            TypeSpec::Char => v as i8 as i64,
+            TypeSpec::UnsignedChar => v as u8 as i64,
+            TypeSpec::Short | TypeSpec::UnsignedShort => return false,
+            TypeSpec::Int => v as i32 as i64,
+            TypeSpec::UnsignedInt => v as u32 as i64,
+            _ => v,
+        };
+        if let Some(&r) = self.var_regs.get(name) {
+            if matches!(tipo, TypeSpec::UnsignedInt) || (v > i32::MAX as i64 && v <= u32::MAX as i64) {
+                // mov rNd, imm32: pone a cero la mitad alta
+                self.code.extend_from_slice(&[0x41, 0xB8 + (r - 8)]);
+                self.code.extend_from_slice(&(v as u32).to_le_bytes());
+            } else if let Ok(i) = i32::try_from(v) {
+                self.code.extend_from_slice(&[0x49, 0xC7, 0xC0 | (r - 8)]); // mov rN, imm32 (con signo)
+                self.code.extend_from_slice(&i.to_le_bytes());
+            } else {
+                self.code.extend_from_slice(&[0x49, 0xB8 + (r - 8)]); // movabs rN, imm64
+                self.code.extend_from_slice(&v.to_le_bytes());
+            }
+            return true;
+        }
+        let Some(&(off, _)) = self.var_offsets.get(name) else { return false };
+        let corto = (-128..=127).contains(&off);
+        let modrm = if corto { 0x45 } else { 0x85 };
+        match self.type_stack_size(&tipo) {
+            1 => self.code.push(0xC6),
+            4 => self.code.push(0xC7),
+            8 => {
+                if i32::try_from(v).is_err() {
+                    return false;
+                }
+                self.code.extend_from_slice(&[0x48, 0xC7]);
+            }
+            _ => return false,
+        }
+        self.code.push(modrm);
+        if corto {
+            self.code.push(off as u8);
+        } else {
+            self.code.extend_from_slice(&off.to_le_bytes());
+        }
+        if self.type_stack_size(&tipo) == 1 {
+            self.code.push(v as u8);
+        } else {
+            self.code.extend_from_slice(&(v as i32).to_le_bytes());
+        }
         true
     }
 

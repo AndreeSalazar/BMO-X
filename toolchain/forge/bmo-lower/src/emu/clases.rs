@@ -79,6 +79,12 @@ impl Censo {
     pub fn total(&self) -> u64 {
         self.cuentas.iter().sum()
     }
+    /// Las que TOCAN memoria: pila, marco y memoria. Es el segundo metro
+    /// (19-09): dos programas con las mismas instrucciones no cuestan lo
+    /// mismo si uno va y vuelve al marco y el otro no.
+    pub fn accesos(&self) -> u64 {
+        self.de(Clase::Pila) + self.de(Clase::Marco) + self.de(Clase::Memoria)
+    }
     /// Suma otro censo encima (el metro agrega por lenguaje y en total).
     pub fn sumar(&mut self, otro: &Censo) {
         for i in 0..10 {
@@ -143,8 +149,12 @@ pub fn clasificar(code: &[u8]) -> Clase {
 
     match op {
         0x50..=0x5F | 0x68 | 0x6A | 0x8F => Clase::Pila,
-        // mov, lea, movsxd, mov imm a memoria: donde caiga el operando
-        0x88..=0x8B | 0x8D | 0x63 | 0x86 | 0x87 => por_operando(resto, rex_b, Clase::Registro),
+        // mov, movsxd, xchg: donde caiga el operando
+        0x88..=0x8B | 0x63 | 0x86 | 0x87 => por_operando(resto, rex_b, Clase::Registro),
+        // `lea` calcula una direccion y NO la toca: es una suma, no un acceso
+        // (19-09: contaba como memoria y el metro de accesos lo hubiera
+        // pagado como si lo fuera)
+        0x8D => Clase::Aritmetica,
         // mov imm: a registro es cargar una constante; a memoria, escribirla
         0xC6 | 0xC7 => por_operando(resto, rex_b, Clase::Inmediato),
         0xB0..=0xBF => Clase::Inmediato,
@@ -212,6 +222,8 @@ mod pruebas {
     #[test]
     fn memoria_que_no_es_marco() {
         assert_eq!(c(&[0x48, 0x8B, 0x05, 0x00, 0x00, 0x00, 0x00]), Clase::Memoria); // mov rax, [rip+0]
+        assert_eq!(c(&[0x48, 0x8D, 0x05, 0x00, 0x00, 0x00, 0x00]), Clase::Aritmetica); // lea rax, [rip+0]: no toca memoria
+        assert_eq!(c(&[0x4A, 0x8D, 0x14, 0x22]), Clase::Aritmetica); // lea rdx, [rdx + r12]
         assert_eq!(c(&[0x48, 0x8B, 0x00]), Clase::Memoria); // mov rax, [rax]
         assert_eq!(c(&[0x49, 0x8B, 0x45, 0x08]), Clase::Memoria); // mov rax, [r13+8]
         assert_eq!(c(&[0x49, 0x8B, 0x44, 0x24, 0x08]), Clase::Memoria); // mov rax, [r12+8]

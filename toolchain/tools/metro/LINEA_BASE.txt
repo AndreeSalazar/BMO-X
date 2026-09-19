@@ -1,29 +1,29 @@
 # EL METRO DEL EMISOR -- linea base (toolchain/tools/metro).
-# TRINQUETE: `pasos` y `codigo` solo bajan; `salida` no cambia nunca.
+# TRINQUETE: `pasos`, `accesos` y `codigo` solo bajan; `salida` no cambia nunca.
 # Se reescribe con `cargo run --release -p bmo-metro -- --fijar`.
-# programa  pasos  codigo  salida
-toolchain/lang/ada/examples/1-basico/cierre.adb 369 1560 ed567b986aa22dd2
-toolchain/lang/c/examples/blit_C.c 64193 3426 25042ff916c7a1d5
-toolchain/lang/c/examples/caja_C.c 437 6648 c7825b639babd44d
-toolchain/lang/c/examples/cubo_C.c 1055 17989 b62cc91f2d789574
-toolchain/lang/c/examples/guia_C.c 1042 13263 63a4af2b37e89e8f
-toolchain/lang/c/examples/hola_C.c 621 1378 5636dbeb8a18604e
-toolchain/lang/c/examples/imagen_C.c 1046 12802 93a255b1b277a3d2
-toolchain/lang/c/examples/leer_C.c 835 6154 c29f996c7ed78bd0
-toolchain/lang/c/examples/memoria_C.c 36433 3798 083f502191c643b9
-toolchain/lang/c/examples/musica_C.c 31430 5934 d496ad39602704b5
-toolchain/lang/c/examples/raycaster_C.c 1269 15993 90aed363b3605449
-toolchain/lang/c/examples/scroll_C.c 17929 3091 b077773f1a24534f
-toolchain/lang/c/examples/sonda_C.c 24983 5845 f04bf0e27dd47cff
-toolchain/lang/c/examples/sonido_C.c 1341 3676 85b9ef055c293701
-toolchain/lang/c/examples/vivaldi_C.c 32665 2611 d7e59bfde4882cd0
-toolchain/lang/cobol/examples/1-basico/hola.cob 39 289 7e9187edfd16728f
-toolchain/lang/cobol/examples/2-decimal/banco.cob 414 1456 1e680b789c31c2c8
-toolchain/lang/cobol/examples/2-decimal/hola_COBOL.cob 210 1017 ef9264027f2e824e
-toolchain/lang/cobol/examples/3-presentacion/extracto.cob 729 2518 7841c298ab73046e
-toolchain/lang/cobol/examples/5-tablas/conceptos.cob 1226 2494 3aedd177137f59bd
-toolchain/lang/cobol/examples/6-condiciones/cartera.cob 141 2316 1b33a8ff43750afa
-toolchain/lang/cobol/examples/7-empaquetado/cuentas.cob 1418 5569 52118ba4ce5d6df4
-toolchain/lang/cobol/examples/8-parrafos/cierre.cob 694 4308 e3a5047d373bbbde
-toolchain/lang/cobol/examples/9-decision/comision.cob 3978 9224 b74edb36d777ee06
-toolchain/lang/cpp/examples/1-clases/cuentas.cpp 627 1304 ee45374b921d5109
+# programa  pasos  accesos  codigo  salida
+toolchain/lang/ada/examples/1-basico/cierre.adb 369 69 1560 ed567b986aa22dd2
+toolchain/lang/c/examples/blit_C.c 57775 6483 3324 25042ff916c7a1d5
+toolchain/lang/c/examples/caja_C.c 396 163 6286 c7825b639babd44d
+toolchain/lang/c/examples/cubo_C.c 957 432 16961 b62cc91f2d789574
+toolchain/lang/c/examples/guia_C.c 949 425 12435 63a4af2b37e89e8f
+toolchain/lang/c/examples/hola_C.c 604 70 1353 5636dbeb8a18604e
+toolchain/lang/c/examples/imagen_C.c 953 427 11909 93a255b1b277a3d2
+toolchain/lang/c/examples/leer_C.c 760 252 5839 c29f996c7ed78bd0
+toolchain/lang/c/examples/memoria_C.c 34343 6329 3756 083f502191c643b9
+toolchain/lang/c/examples/musica_C.c 28658 9393 5675 d496ad39602704b5
+toolchain/lang/c/examples/raycaster_C.c 1119 543 15132 90aed363b3605449
+toolchain/lang/c/examples/scroll_C.c 16418 2920 2839 b077773f1a24534f
+toolchain/lang/c/examples/sonda_C.c 22471 10828 5750 f04bf0e27dd47cff
+toolchain/lang/c/examples/sonido_C.c 1233 484 3587 85b9ef055c293701
+toolchain/lang/c/examples/vivaldi_C.c 29087 8924 2394 d7e59bfde4882cd0
+toolchain/lang/cobol/examples/1-basico/hola.cob 39 1 289 7e9187edfd16728f
+toolchain/lang/cobol/examples/2-decimal/banco.cob 414 79 1456 1e680b789c31c2c8
+toolchain/lang/cobol/examples/2-decimal/hola_COBOL.cob 210 66 1017 ef9264027f2e824e
+toolchain/lang/cobol/examples/3-presentacion/extracto.cob 729 132 2518 7841c298ab73046e
+toolchain/lang/cobol/examples/5-tablas/conceptos.cob 1226 247 2494 3aedd177137f59bd
+toolchain/lang/cobol/examples/6-condiciones/cartera.cob 141 22 2316 1b33a8ff43750afa
+toolchain/lang/cobol/examples/7-empaquetado/cuentas.cob 1418 170 5569 52118ba4ce5d6df4
+toolchain/lang/cobol/examples/8-parrafos/cierre.cob 694 93 4308 e3a5047d373bbbde
+toolchain/lang/cobol/examples/9-decision/comision.cob 3978 538 9224 b74edb36d777ee06
+toolchain/lang/cpp/examples/1-clases/cuentas.cpp 611 147 1261 ee45374b921d5109
