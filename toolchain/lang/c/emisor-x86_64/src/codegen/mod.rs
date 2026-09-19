@@ -37,6 +37,10 @@ mod frame;
 mod en_sitio;
 /// El operando derecho sin pila: `x + y` es `cargar y en rcx ; add rax, rcx`.
 mod operando;
+/// Los argumentos de una llamada, a donde `decidir/llamada` dice.
+mod argumentos;
+/// Una funcion que solo reexpide sus parametros: mover registros y saltar.
+mod reenvio;
 /// `printf`, the only part that emits an INTERPRETER -- which is why it carries
 /// the formatter written twice, in Rust and in machine code.
 mod format;
@@ -203,6 +207,12 @@ struct Codegen {
     frame_size: i32,
     /// La funcion que se esta emitiendo declara `...`?
     es_variadica: bool,
+    /// Las funciones que reciben TODO por la pila (`...`), definidas aqui o
+    /// declaradas por prototipo. Ver `decidir/llamada.rs`.
+    variadicas: std::collections::HashSet<String>,
+    /// Los parametros de la funcion actual que llegan en registro: `(nombre,
+    /// registro)`. El prologo los vuelca a su hueco o a la matriz.
+    param_regs: Vec<(String, u8)>,
     /// Un aviso de un solo uso para [`Self::emit_expr`]: **no metas el guarda
     /// SSE en esta expresion**. Lo pone `emit_fexpr` cuando quiere emitir una
     /// LLAMADA que devuelve un double -- si no, el guarda la mandaria otra vez
@@ -327,6 +337,8 @@ impl Codegen {
             var_regs: HashMap::new(),
             frame_size: 0,
             es_variadica: false,
+            variadicas: std::collections::HashSet::new(),
+            param_regs: Vec::new(),
             sin_guarda_float: false,
             ranuras_con_nombre: 0,
             struct_layouts: HashMap::new(), struct_sizes: HashMap::new(),
@@ -669,8 +681,12 @@ impl Codegen {
         }
         // registrar todos los nombres de funcion ANTES de emitir: una llamada
         // puede referir a una funcion definida mas abajo (forward reference).
+        self.variadicas.extend(program.enlace.variadicas.iter().cloned());
         for func in &program.functions {
             self.known_functions.insert(func.name.clone());
+            if func.variadica {
+                self.variadicas.insert(func.name.clone());
+            }
             self.firmas.insert(
                 func.name.clone(),
                 (
@@ -1028,6 +1044,12 @@ impl Codegen {
             ..func.clone()
         };
         let func = &renombrada;
+        // ** EL REENVIO (2026-09-19): `return destino(params...)` no necesita
+        // marco. Mueve los registros y salta. Ver `decidir/reenvio.rs`.
+        if let Some(r) = self.detectar_reenvio(func) {
+            self.emit_reenvio(&r);
+            return;
+        }
         self.build_var_map(&func.params, &func.var_names, func);
         // Lo que `__va_arg` necesita saber, y solo se sabe aqui: si esta
         // funcion admite variadicos y donde acaban los que tienen nombre.
@@ -1039,39 +1061,12 @@ impl Codegen {
             .sum();
         // prologue
         self.code.extend_from_slice(&[0x55, 0x48, 0x89, 0xE5]); // push rbp; mov rbp, rsp
-        // Copiar los parametros a su ranura local, SOLO si es otra. Hoy nunca
-        // lo es --`build_var_map` los deja donde ya estan--, y hasta el 19-09
-        // esto emitia igualmente un `mov rax, [rbp+off]` por parametro "por si
-        // algun dia": una carga muerta por parametro y por llamada, el 4,9 %
-        // de lo que ejecutaba el banco de C (el envoltorio de la puerta tiene
-        // cinco). El offset se recalcula igual que alli: por ranuras, no `i*8`.
-        let mut src_off = 16i32;
-        for p in func.params.iter() {
-            let avance = agregados::ranuras(self.type_stack_size(&p.typ)) as i32 * 8;
-            // Un agregado no se copia con un `mov` de 8 bytes: ya esta en su
-            // sitio, y "copiarlo" asi se llevaria solo su primera palabra.
-            if self.es_agregado(&p.typ) {
-                src_off += avance;
-                continue;
-            }
-            if let Some(&(local_off, _)) = self.var_offsets.get(&p.name) {
-                if local_off != src_off {
-                    if src_off >= -128 && src_off <= 127 {
-                        self.code.extend_from_slice(&[0x48, 0x8B, 0x45, src_off as u8]);
-                    } else {
-                        self.code.extend_from_slice(&[0x48, 0x8B, 0x85]);
-                        self.code.extend_from_slice(&(src_off as i32).to_le_bytes());
-                    }
-                    if (-128..=127).contains(&local_off) {
-                        self.code.extend_from_slice(&[0x48, 0x89, 0x45, local_off as u8]);
-                    } else {
-                        self.code.extend_from_slice(&[0x48, 0x89, 0x85]);
-                        self.code.extend_from_slice(&local_off.to_le_bytes());
-                    }
-                }
-            }
-            src_off += avance;
-        }
+        // ** Los parametros ya estan donde `build_var_map` dijo: los de la pila
+        // en `[rbp+16..]` (los puso el llamante) y los de registro en su
+        // registro, que `emit_recibir_parametros` vuelca mas abajo. Hasta el
+        // 19-09 aqui habia una copia "a su ranura local, si es otra" que nunca
+        // hacia nada; con la convencion hibrida SI hacia algo, y era pisar el
+        // primer argumento de la pila con basura del marco del llamante.
         // allocate local var space -- tamano REAL calculado por build_var_map
         // (antes: var_count*8, y los arrays/structs pisaban a sus vecinos)
         let stack_size = self.frame_size;
@@ -1102,6 +1097,12 @@ impl Codegen {
             4 => self.code.extend_from_slice(&[0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57]),
             _ => {}
         }
+        // ** Los parametros que llegan en REGISTRO (2026-09-19) se vuelcan
+        // aqui: a su registro de la matriz si el troquel se lo dio --y entonces
+        // un parametro vive por fin en un registro--, o a su hueco del marco.
+        // DESPUES de guardar la matriz, porque `mov r12, rdi` pisaria lo que
+        // hay que devolver. Ver `decidir/llamada.rs`.
+        self.emit_recibir_parametros(&func.body);
         for stmt in &func.body { self.emit_stmt(stmt); }
         self.emit_epilogue();
     }
@@ -1110,7 +1111,9 @@ impl Codegen {
     /// reparto alguna vez diera r14 sin r12, esto guardaria los cuatro igual
     /// (mira el registro mas alto, no la cuenta).
     fn guardados_de_la_matriz(&self) -> usize {
-        match self.var_regs.values().max() {
+        // solo los PRESERVADOS (r12..r15) se guardan; un parametro que se
+        // queda en rdi o rsi (19-09) no le debe nada a nadie
+        match self.var_regs.values().filter(|&&r| r >= 12).max() {
             None => 0,
             Some(&r) if r <= 13 => 2,
             Some(_) => 4,

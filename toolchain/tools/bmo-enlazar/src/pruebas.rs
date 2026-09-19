@@ -129,6 +129,43 @@ int main() {
     assert_eq!(correr(&bex), "BMO 42");
 }
 
+/// *** LA CONVENCION CRUZA LA UNIDAD (2026-09-19). Desde la convencion hibrida
+/// una funcion normal recibe en registros y una VARIADICA recibe TODO por la
+/// pila. La que llama solo sabe cual es por el prototipo: si el `...` de
+/// `suma(int n, ...)` no se respetara al enlazar, `main` pondria el 10 y el 20
+/// en rsi y rdx, y `va_arg` leeria basura de la pila. Y la que define, en su
+/// unidad, tiene que volcar sus registros al reves tambien. Las dos mitades
+/// se compilan por separado y se prueban juntas.
+#[test]
+fn una_variadica_de_otra_unidad_recibe_por_la_pila() {
+    let variadica = r#"
+#include <stdarg.h>
+int suma(int n, ...) {
+    va_list ap; int i; int s = 0;
+    va_start(ap, n);
+    for (i = 0; i < n; i = i + 1) { s = s + va_arg(ap, int); }
+    va_end(ap);
+    return s;
+}
+int seis(int a, int b, int c, int d, int e, int f) { return a + b*10 + c*100 + d*1000 + e*10000 + f*100000; }
+"#;
+    let principal = r#"
+int suma(int n, ...);
+int seis(int a, int b, int c, int d, int e, int f);
+int main() {
+    int x = 7;
+    printf("%d %d %d", suma(2, 10, 20), suma(7, 1, 2, 3, 4, 5, 6, x), seis(1, 2, 3, 4, 5, 6));
+    return 0;
+}
+"#;
+    let bex = enlazar(&[
+        objeto_con("principal.bo", principal, bmo_c_x86_64::Libc::Copia),
+        objeto_con("variadica.bo", variadica, bmo_c_x86_64::Libc::Copia),
+    ])
+    .unwrap();
+    assert_eq!(correr(&bex), "30 28 654321");
+}
+
 /// Un `static` de cada unidad es SUYO: dos ficheros con el mismo nombre privado
 /// no se pisan ni chocan.
 #[test]

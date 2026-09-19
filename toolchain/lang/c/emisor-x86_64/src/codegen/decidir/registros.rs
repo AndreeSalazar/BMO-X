@@ -321,7 +321,17 @@ fn cuenta_stmt(s: &Stmt, n: &str) -> usize {
         Stmt::DeclAssign(_, d, init) => {
             (d == n) as usize + init.as_ref().map_or(0, |e| cuenta_expr(e, n))
         }
-        _ => 0,
+        // `switch (x)` USA `x`, y una lista de inicializacion usa lo que
+        // escribe (19-09: estaban en un comodin a cero, y con los parametros
+        // en registro un `switch (x)` sobre un parametro no lo volcaba)
+        Stmt::Switch(e, casos) => {
+            cuenta_expr(e, n) + casos.iter().flat_map(|c| c.stmts.iter()).map(|s| cuenta_stmt(s, n)).sum::<usize>()
+        }
+        Stmt::DeclInit(_, d, escrituras) => {
+            (d == n) as usize + escrituras.iter().map(|e| cuenta_expr(&e.valor, n)).sum::<usize>()
+        }
+        Stmt::Break | Stmt::Continue | Stmt::Goto(_) | Stmt::Label(_) => 0,
+        Stmt::Printf(_) | Stmt::PrintfLn(_) | Stmt::Return(None) => 0,
     }
 }
 
@@ -330,7 +340,9 @@ fn cuenta_expr(e: &Expr, n: &str) -> usize {
         Expr::Var(v) | Expr::PreInc(v) | Expr::PreDec(v) | Expr::PostInc(v)
         | Expr::PostDec(v) => (v == n) as usize,
         Expr::Assign(v, x) => (v == n) as usize + cuenta_expr(x, n),
-        Expr::Neg(a) | Expr::Not(a) | Expr::BitNot(a) | Expr::Deref(a) => cuenta_expr(a, n),
+        // `&x` USA `x` (19-09: faltaba, y `return &v[i]` dejaba a `i` con
+        // cero usos -- con los parametros en registro, sin volcar)
+        Expr::Neg(a) | Expr::Not(a) | Expr::BitNot(a) | Expr::Deref(a) | Expr::AddrOf(a) => cuenta_expr(a, n),
         Expr::Add(a, b)
         | Expr::Sub(a, b)
         | Expr::Mul(a, b)
@@ -350,9 +362,11 @@ fn cuenta_expr(e: &Expr, n: &str) -> usize {
         | Expr::Shl(a, b)
         | Expr::Shr(a, b) => cuenta_expr(a, n) + cuenta_expr(b, n),
         Expr::Comma(v) => v.iter().map(|x| cuenta_expr(x, n)).sum(),
-        Expr::Cast(_, a) | Expr::Subscript(_, a) | Expr::Field(a, _) | Expr::Arrow(a, _) => {
-            cuenta_expr(a, n)
-        }
+        // `t[i]` USA `t` (19-09: no se contaba, y con los parametros en
+        // registro un `s` que solo se leia como `s[i]` salia con cero usos y
+        // el prologo no lo volcaba)
+        Expr::Subscript(v, a) => (v == n) as usize + cuenta_expr(a, n),
+        Expr::Cast(_, a) | Expr::Field(a, _) | Expr::Arrow(a, _) => cuenta_expr(a, n),
         Expr::AssignDeref(a, b) | Expr::IndexPtr(a, b) => cuenta_expr(a, n) + cuenta_expr(b, n),
         Expr::AssignSubscript(v, a, b) => {
             (v == n) as usize + cuenta_expr(a, n) + cuenta_expr(b, n)
@@ -363,13 +377,17 @@ fn cuenta_expr(e: &Expr, n: &str) -> usize {
         Expr::AssignIndexPtr(a, b, c) | Expr::Conditional(a, b, c) => {
             cuenta_expr(a, n) + cuenta_expr(b, n) + cuenta_expr(c, n)
         }
-        Expr::Call(_, v) | Expr::Intrinsic(_, v) | Expr::Syscall(_, v) => {
+        // `f(x)` USA `f` cuando `f` es un puntero a funcion local (19-09)
+        Expr::Call(f, v) => (f == n) as usize + v.iter().map(|x| cuenta_expr(x, n)).sum::<usize>(),
+        Expr::Intrinsic(_, v) | Expr::Syscall(_, v) => {
             v.iter().map(|x| cuenta_expr(x, n)).sum()
         }
         Expr::CallPtr(f, v) => {
             cuenta_expr(f, n) + v.iter().map(|x| cuenta_expr(x, n)).sum::<usize>()
         }
-        _ => 0,
+        // hojas sin nombre. SIN comodin desde el 19-09: una forma nueva del
+        // arbol no compila hasta que alguien diga aqui si usa un nombre
+        Expr::Int(_) | Expr::FloatLit(_) | Expr::StringLit(_) | Expr::CharLit(_) => 0,
     }
 }
 
@@ -382,6 +400,75 @@ fn cuenta_expr(e: &Expr, n: &str) -> usize {
 /// Seis se ELIGIO midiendo (3, 4, 6 y 8 contra el metro: 324.056, 323.664,
 /// 322.960 y 325.504 instrucciones); no es un numero redondo, es el que gano.
 pub(in crate::codegen) const UMBRAL_DE_USOS: usize = 6;
+
+/// **Puede este cuerpo pisar `rdi` o `rsi`?** (19-09)
+///
+/// Es la pregunta de la RESIDENCIA: un parametro que llega en `rdi` o `rsi`
+/// puede quedarse ahi toda la funcion --sin hueco, sin volcarlo-- si nada del
+/// cuerpo escribe esos dos registros. El emisor solo los toca en tres sitios,
+/// y los tres se ven en el arbol:
+///
+/// ```text
+///    una LLAMADA           Call, CallPtr, Intrinsic, Syscall, y los printf
+///                          de sentencia: pisan todos los de argumento
+///    una copia de STRUCT   `rep movsb` con rdi/rsi (`emit_asigna_agregado`):
+///                          cualquier asignacion cuyo destino sea un agregado
+///    poner a cero          `DeclInit` (`rep stosb`)
+/// ```
+///
+/// `es_agregado(lvalue)` lo contesta el emisor, que sabe los tipos; en la
+/// duda contesta que si, y entonces no hay residencia: correcto y lento.
+pub(in crate::codegen) fn pisa_argumentos(cuerpo: &[Stmt], es_agregado: &impl Fn(&Expr) -> bool) -> bool {
+    cuerpo.iter().any(|s| stmt_pisa(s, es_agregado))
+}
+
+fn stmt_pisa(s: &Stmt, ag: &impl Fn(&Expr) -> bool) -> bool {
+    match s {
+        Stmt::Break | Stmt::Continue | Stmt::Goto(_) | Stmt::Label(_) | Stmt::Return(None) => false,
+        Stmt::Printf(_) | Stmt::PrintfLn(_) | Stmt::DeclInit(..) => true,
+        Stmt::Return(Some(e)) | Stmt::Expr(e) => expr_pisa(e, ag),
+        Stmt::Block(v) => v.iter().any(|x| stmt_pisa(x, ag)),
+        Stmt::If(c, a, b) => {
+            expr_pisa(c, ag) || stmt_pisa(a, ag) || b.as_ref().is_some_and(|x| stmt_pisa(x, ag))
+        }
+        Stmt::While(c, a) => expr_pisa(c, ag) || stmt_pisa(a, ag),
+        Stmt::DoWhile(a, c) => stmt_pisa(a, ag) || expr_pisa(c, ag),
+        Stmt::For(i, c, p, a) => {
+            [i, c, p].iter().any(|o| o.as_ref().is_some_and(|e| expr_pisa(e, ag))) || stmt_pisa(a, ag)
+        }
+        Stmt::Switch(e, casos) => {
+            expr_pisa(e, ag) || casos.iter().flat_map(|c| c.stmts.iter()).any(|x| stmt_pisa(x, ag))
+        }
+        // declarar un agregado con valor es copiarlo
+        Stmt::DeclAssign(_, d, init) => {
+            (init.is_some() && ag(&Expr::Var(d.clone()))) || init.as_ref().is_some_and(|e| expr_pisa(e, ag))
+        }
+    }
+}
+
+fn expr_pisa(e: &Expr, ag: &impl Fn(&Expr) -> bool) -> bool {
+    match e {
+        Expr::Call(..) | Expr::CallPtr(..) | Expr::Intrinsic(..) | Expr::Syscall(..) => true,
+        Expr::Int(_) | Expr::FloatLit(_) | Expr::StringLit(_) | Expr::CharLit(_) | Expr::Var(_)
+        | Expr::PreInc(_) | Expr::PreDec(_) | Expr::PostInc(_) | Expr::PostDec(_) => false,
+        Expr::Neg(a) | Expr::Not(a) | Expr::BitNot(a) | Expr::Deref(a) | Expr::AddrOf(a) | Expr::Cast(_, a) => expr_pisa(a, ag),
+        Expr::Add(a, b) | Expr::Sub(a, b) | Expr::Mul(a, b) | Expr::Div(a, b) | Expr::Mod(a, b)
+        | Expr::Eq(a, b) | Expr::Neq(a, b) | Expr::Lt(a, b) | Expr::Gt(a, b) | Expr::Le(a, b) | Expr::Ge(a, b)
+        | Expr::BitAnd(a, b) | Expr::BitXor(a, b) | Expr::BitOr(a, b) | Expr::LAnd(a, b) | Expr::LOr(a, b)
+        | Expr::Shl(a, b) | Expr::Shr(a, b) | Expr::IndexPtr(a, b) => expr_pisa(a, ag) || expr_pisa(b, ag),
+        Expr::Conditional(a, b, c) => expr_pisa(a, ag) || expr_pisa(b, ag) || expr_pisa(c, ag),
+        Expr::Comma(v) => v.iter().any(|x| expr_pisa(x, ag)),
+        Expr::Subscript(_, a) | Expr::Field(a, _) | Expr::Arrow(a, _) => expr_pisa(a, ag),
+        // las asignaciones: pisan si el DESTINO es un agregado (copia con rep)
+        Expr::Assign(n, v) => ag(&Expr::Var(n.clone())) || expr_pisa(v, ag),
+        Expr::AssignSubscript(n, i, v) => ag(&Expr::Subscript(n.clone(), i.clone())) || expr_pisa(i, ag) || expr_pisa(v, ag),
+        Expr::AssignIndexPtr(a, i, v) => ag(&Expr::IndexPtr(a.clone(), i.clone())) || expr_pisa(a, ag) || expr_pisa(i, ag) || expr_pisa(v, ag),
+        Expr::AssignField(a, c, v) => ag(&Expr::Field(a.clone(), c.clone())) || expr_pisa(a, ag) || expr_pisa(v, ag),
+        Expr::AssignArrow(a, c, v) => ag(&Expr::Arrow(a.clone(), c.clone())) || expr_pisa(a, ag) || expr_pisa(v, ag),
+        Expr::AssignDeref(a, v) => ag(&Expr::Deref(a.clone())) || expr_pisa(a, ag) || expr_pisa(v, ag),
+        Expr::AssignOp(a, _, v) => ag(a) || expr_pisa(a, ag) || expr_pisa(v, ag),
+    }
+}
 
 /// **El reparto**: que nombres se llevan hueco, y cual.
 ///

@@ -60,16 +60,39 @@ impl Codegen {
         // Era `16 + i*8` fijo. Mientras todo cupo en un registro daba lo mismo;
         // el dia que entro un struct por valor, el segundo parametro empezaba a
         // leerse desde la mitad del primero.
+        //
+        // ** Desde el 19-09 solo los que llegan POR LA PILA (agregados,
+        // flotantes, el septimo en adelante, y todos si la funcion es
+        // variadica). Los que llegan en registro reciben un hueco LOCAL --por
+        // debajo de rbp, como una variable-- y el prologo los vuelca ahi
+        // (`emit_recibir_parametros`), salvo que el troquel les de un registro
+        // de la matriz: entonces el hueco queda sin usar, igual que el de
+        // cualquier local con registro. Ver `decidir/llamada.rs`.
+        let de_registro: Vec<bool> = params
+            .iter()
+            .map(|p| !self.es_agregado(&p.typ) && !Self::is_float_ty(&p.typ))
+            .collect();
+        let pasos = super::decidir::llamada::clasificar(&de_registro, func.variadica);
+        self.param_regs.clear();
         let mut off = 16i32;
-        for p in params.iter() {
-            self.var_offsets.insert(p.name.clone(), (off, p.typ.clone()));
-            let bytes = self.type_stack_size(&p.typ);
-            off += agregados::ranuras(bytes) as i32 * 8;
+        let mut cur: i32 = 0;
+        for (p, paso) in params.iter().zip(pasos.iter()) {
+            match paso {
+                super::decidir::llamada::Paso::Pila => {
+                    self.var_offsets.insert(p.name.clone(), (off, p.typ.clone()));
+                    let bytes = self.type_stack_size(&p.typ);
+                    off += agregados::ranuras(bytes) as i32 * 8;
+                }
+                super::decidir::llamada::Paso::Registro(reg) => {
+                    cur -= 8;
+                    self.var_offsets.insert(p.name.clone(), (cur, p.typ.clone()));
+                    self.param_regs.push((p.name.clone(), *reg));
+                }
+            }
         }
         // locales: tamano REAL del tipo (arrays y structs incluidos), alineado a 8
         let mut decls = Vec::new();
         for stmt in &func.body { Self::collect_decls_stmt(stmt, &mut decls); }
-        let mut cur: i32 = 0;
         for (name, typ) in &decls {
             // Desde el 18-09 las sombras llegan ya renombradas (`decidir/ambitos`);
             // esto solo protege del parser registrando dos veces el mismo nombre.
@@ -124,6 +147,24 @@ impl Codegen {
         for (n, r) in super::decidir::registros::repartir(cand) {
             self.var_regs.insert(n, r);
         }
+        // === *** LA RESIDENCIA (2026-09-19): rdi y rsi se quedan ==========
+        //
+        // Un parametro que llego en rdi o rsi no necesita hueco ni volcado si
+        // el cuerpo no puede pisarlos: ni llamadas, ni copias de struct, ni
+        // poner a cero. Entonces vive en su registro de llegada, gratis --
+        // ni siquiera cuesta el push/pop de la matriz, porque rdi y rsi no se
+        // le deben a nadie. Es lo que hace que un metodo `this->c = c` o un
+        // `FixedMul(a, b)` no paguen la convencion. Ver `pisa_argumentos`.
+        let es_agregado = |e: &Expr| crate::tipos::tipo_de(self, e).map_or(true, |t| self.es_agregado(&t));
+        if !super::decidir::registros::pisa_argumentos(&func.body, &es_agregado) {
+            for (n, reg) in self.param_regs.clone() {
+                if reg == 6 || reg == 7 {
+                    if !tomadas.incluye(&n) {
+                        self.var_regs.insert(n, reg);
+                    }
+                }
+            }
+        }
     }
 
     /// `mov rax, rN` -- sacar un valor de la matriz.
@@ -133,7 +174,7 @@ impl Codegen {
     /// lectura es UNA instruccion y no mira el tipo: si mirara, serian dos
     /// sitios decidiendo lo mismo -- el `[riesgo] ESPEJO` de la casa.
     fn emit_leer_de_registro(&mut self, r: u8) {
-        self.code.extend_from_slice(&[0x49, 0x8B, 0xC0 + (r - 8)]);
+        self.code.extend_from_slice(&[0x48 | (r >> 3), 0x8B, 0xC0 | (r & 7)]);
     }
 
     /// `rax -> rN`, con la anchura y el signo que pide el tipo.
@@ -146,6 +187,50 @@ impl Codegen {
     /// [!] El ancho de un ensanchamiento es la clase de fallo que este mes se
     /// pago CINCO veces (ver `bmo-c-compilador-culpable`). Por eso cada tipo
     /// tiene su linea y no hay ningun caso agrupado por comodidad.
+    /// **Los parametros que llegaron en registro, a su sitio.** Un `mov` por
+    /// parametro: al registro de la matriz (directo si son ocho bytes; por rax
+    /// y con su recorte si no, para que el registro guarde EXACTAMENTE lo que
+    /// guardaria la pila) o a su hueco del marco.
+    pub(super) fn emit_recibir_parametros(&mut self, cuerpo: &[Stmt]) {
+        for (name, reg) in self.param_regs.clone() {
+            // Un parametro que el cuerpo no nombra no se vuelca: el hueco se
+            // queda con lo que hubiera, y nadie lo lee.
+            if super::decidir::registros::contar(cuerpo, &name) == 0 {
+                continue;
+            }
+            // Y uno RESIDENTE ya esta donde vive -- pero con la anchura de su
+            // tipo: `f(a - b)` con `a`, `b` unsigned y `int x` de parametro
+            // llega como 4294967196 y tiene que leerse como -100, igual que
+            // leia la pila con `movsxd`. El recorte se hace UNA vez, aqui.
+            if self.var_regs.get(&name) == Some(&reg) {
+                let tipo = self.var_type_of(&name).expect("un parametro tiene tipo");
+                self.emit_recorte_en_registro(reg, &tipo);
+                continue;
+            }
+            if let Some(&r) = self.var_regs.get(&name) {
+                let tipo = self.var_type_of(&name).expect("un parametro tiene tipo");
+                if self.type_stack_size(&tipo) == 8 {
+                    // mov rN, reg: REX.W + REX.R(rN) + REX.B(reg)
+                    self.code.extend_from_slice(&[0x48 | ((r >> 3) << 2) | (reg >> 3), 0x8B, 0xC0 | ((r & 7) << 3) | (reg & 7)]);
+                } else {
+                    self.code.extend_from_slice(&[0x48 | (reg >> 3), 0x8B, 0xC0 | (reg & 7)]); // mov rax, reg
+                    self.emit_guardar_en_registro(r, &tipo);
+                }
+                continue;
+            }
+            let Some(&(off, _)) = self.var_offsets.get(&name) else { continue };
+            // mov [rbp+off], reg (ocho bytes: el hueco mide ocho y se relee
+            // con la anchura del tipo)
+            self.code.extend_from_slice(&[0x48 | ((reg >> 3) << 2), 0x89]);
+            if (-128..=127).contains(&off) {
+                self.code.extend_from_slice(&[0x40 | ((reg & 7) << 3) | 5, off as u8]);
+            } else {
+                self.code.push(0x80 | ((reg & 7) << 3) | 5);
+                self.code.extend_from_slice(&off.to_le_bytes());
+            }
+        }
+    }
+
     fn emit_guardar_en_registro(&mut self, r: u8, tipo: &TypeSpec) {
         // modrm con `reg` = rN y `rm` = rax: mod(11) | (rN&7)<<3 | 000.
         //
@@ -159,22 +244,27 @@ impl Codegen {
         // llevaba dentro el `<<3` de `r12`, y sumarselo otra vez era contarlo
         // dos veces. El desbordamiento de un `u8` fue el sintoma; el error era
         // haber escrito la constante de un caso concreto como si fuera la base.
-        let reg = 0xC0 + ((r - 8) << 3);
+        // Desde el 19-09 la matriz admite registros BAJOS (un parametro que se
+        // queda en rdi o rsi), asi que el REX se compone del numero: REX.R
+        // cuando rN va en el campo reg, REX.B cuando va en r/m.
+        let reg = 0xC0 | ((r & 7) << 3);
+        let w_r = 0x48 | ((r >> 3) << 2);
         match tipo {
             // `movsx rN, al` / `movzx rN, al`
-            TypeSpec::Char => self.code.extend_from_slice(&[0x4C, 0x0F, 0xBE, reg]),
-            TypeSpec::UnsignedChar => self.code.extend_from_slice(&[0x4C, 0x0F, 0xB6, reg]),
+            TypeSpec::Char => self.code.extend_from_slice(&[w_r, 0x0F, 0xBE, reg]),
+            TypeSpec::UnsignedChar => self.code.extend_from_slice(&[w_r, 0x0F, 0xB6, reg]),
             // `movsx rN, ax` / `movzx rN, ax`
-            TypeSpec::Short => self.code.extend_from_slice(&[0x4C, 0x0F, 0xBF, reg]),
-            TypeSpec::UnsignedShort => self.code.extend_from_slice(&[0x4C, 0x0F, 0xB7, reg]),
+            TypeSpec::Short => self.code.extend_from_slice(&[w_r, 0x0F, 0xBF, reg]),
+            TypeSpec::UnsignedShort => self.code.extend_from_slice(&[w_r, 0x0F, 0xB7, reg]),
             // `movsxd rN, eax`: extiende el SIGNO, que es lo que hace la pila.
-            TypeSpec::Int => self.code.extend_from_slice(&[0x4C, 0x63, reg]),
+            TypeSpec::Int => self.code.extend_from_slice(&[w_r, 0x63, reg]),
             // `mov rNd, eax`: escribir 32 bits pone a CERO la mitad de arriba.
             TypeSpec::UnsignedInt => {
-                self.code.extend_from_slice(&[0x41, 0x89, 0xC0 + (r - 8)])
+                if r >= 8 { self.code.push(0x41); }
+                self.code.extend_from_slice(&[0x89, 0xC0 | (r & 7)])
             }
             // Ocho bytes: no hay nada que ensanchar. `mov rN, rax`.
-            _ => self.code.extend_from_slice(&[0x49, 0x89, 0xC0 + (r - 8)]),
+            _ => self.code.extend_from_slice(&[0x48 | (r >> 3), 0x89, 0xC0 | (r & 7)]),
         }
     }
 
@@ -265,15 +355,16 @@ impl Codegen {
                 }
             }
         } else if let Some(&(_, ref typ)) = self.global_offsets.get(name) {
-            // rax already has value; lea rdi, [rip+0]; mov [rdi], reg
-            self.code.extend_from_slice(&[0x48, 0x8D, 0x3D, 0, 0, 0, 0]);
+            // rax ya tiene el valor; lea rdx, [rip+g]; mov [rdx], reg.
+            //
+            // ** rdx y no rdi (19-09): rdi puede ser un parametro RESIDENTE
+            // (`build_var_map`), y esta era la unica escritura de rdi que no
+            // es una llamada. Salio con `R_StoreWallRange(start, stop)`: la
+            // primera global que guardaba pisaba a `start`.
+            let typ = typ.clone();
+            self.code.extend_from_slice(&[0x48, 0x8D, 0x15, 0, 0, 0, 0]);
             self.global_fixups.push((self.code.len() - 4, name.to_string()));
-            match typ {
-                TypeSpec::Char | TypeSpec::UnsignedChar => self.code.extend_from_slice(&[0x88, 0x07]),
-                TypeSpec::Short | TypeSpec::UnsignedShort => self.code.extend_from_slice(&[0x66, 0x89, 0x07]),
-                TypeSpec::Int | TypeSpec::UnsignedInt => self.code.extend_from_slice(&[0x89, 0x07]),
-                _ => self.code.extend_from_slice(&[0x48, 0x89, 0x07]),
-            }
+            self.emit_store_elem_desde_rax_en_rdx(&typ, 0);
         }
     }
 

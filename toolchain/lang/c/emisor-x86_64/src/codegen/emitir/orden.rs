@@ -27,7 +27,7 @@
 
 use crate::ast::*;
 
-use super::super::{agregados, CallReloc, Codegen, TargetProfile};
+use super::super::{CallReloc, Codegen, TargetProfile};
 
 impl Codegen {
     /// Los brazos de este carril. El despacho vive en `emitir/mod.rs`
@@ -83,29 +83,18 @@ impl Codegen {
                     .get(name)
                     .map(|(p, _)| p.clone())
                     .unwrap_or_default();
-                let mut ranuras_total = 0u32;
-                for (i, arg) in args.iter().enumerate().rev() {
-                    match tipos_param.get(i) {
-                        Some(t) if self.es_agregado(t) => {
-                            let bytes = self.type_stack_size(t);
-                            ranuras_total += agregados::ranuras(bytes);
-                            self.emit_empuja_agregado(arg, bytes);
-                        }
-                        // Un parametro de coma flotante viaja como sus BITS.
-                        // Sin esto, `emit_expr` truncaria a entero y `fabs(-2.5)`
-                        // recibiria `-2`.
-                        Some(t) if Self::is_float_ty(t) => {
-                            ranuras_total += 1;
-                            let estrecho = matches!(t, TypeSpec::Float);
-                            self.emit_empuja_flotante(arg, estrecho);
-                        }
-                        _ => {
-                            ranuras_total += 1;
-                            self.emit_expr(arg);
-                            self.code.push(0x50); // push rax
-                        }
-                    }
-                }
+                // ** LA CONVENCION HIBRIDA (2026-09-19): escalares en registro,
+                // agregados y flotantes por la pila, y TODO por la pila si la
+                // funcion es variadica. Ver `decidir/llamada.rs` y `argumentos.rs`.
+                let de_registro: Vec<bool> = (0..args.len())
+                    .map(|i| match tipos_param.get(i) {
+                        Some(t) => !self.es_agregado(t) && !Self::is_float_ty(t),
+                        None => true,
+                    })
+                    .collect();
+                let pasos = super::super::decidir::llamada::clasificar(&de_registro, self.variadicas.contains(name));
+                let ranuras_total = self.emit_argumentos_pila(args, &tipos_param, &pasos);
+                self.emit_argumentos_registro(args, &pasos);
                 // Devolver un agregado es un tercer mecanismo (puntero oculto)
                 // y todavia no esta. Se dice: devolver ocho bytes de un struct
                 // de doce seria la clase de mentira que este compilador no
@@ -191,14 +180,27 @@ impl Codegen {
                 while let Expr::Deref(dentro) = destino {
                     destino = dentro;
                 }
-                // (*fp)(args): args a la pila, callee da la direccion, call rax
-                for arg in args.iter().rev() {
-                    self.emit_expr(arg);
-                    self.code.push(0x50);
+                // A traves de un puntero no hay firma: todos escalares, y NO
+                // variadica (tomar la direccion de una variadica es un error
+                // de compilacion, ver `decidir/llamada.rs`).
+                let pasos = super::super::decidir::llamada::clasificar(&vec![true; args.len()], false);
+                let ranuras = self.emit_argumentos_pila(args, &[], &pasos);
+                // El destino: una variable se carga DESPUES de los registros
+                // (solo toca rax); cualquier otra expresion podria pisarlos y
+                // se aparca en la pila.
+                let destino_simple = matches!(destino, Expr::Var(_));
+                if !destino_simple {
+                    self.emit_expr(destino);
+                    self.code.push(0x50); // push direccion
                 }
-                self.emit_expr(destino);                    // rax = direccion de la funcion
+                self.emit_argumentos_registro(args, &pasos);
+                if destino_simple {
+                    self.emit_expr(destino);                // rax = direccion de la funcion
+                } else {
+                    self.code.push(0x58);                   // pop rax
+                }
                 self.code.extend_from_slice(&[0xFF, 0xD0]); // call rax
-                let n = args.len() as u32 * 8;
+                let n = ranuras * 8;
                 if n > 0 {
                     if n <= 127 { self.code.extend_from_slice(&[0x48, 0x83, 0xC4, n as u8]); }
                     else { self.code.extend_from_slice(&[0x48, 0x81, 0xC4]); self.code.extend_from_slice(&n.to_le_bytes()); }

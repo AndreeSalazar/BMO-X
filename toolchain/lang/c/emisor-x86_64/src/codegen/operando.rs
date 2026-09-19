@@ -70,7 +70,7 @@ use super::decidir::inmediato::{inmediato_de, Inmediato};
 use super::Codegen;
 
 /// Los registros por su numero, para no escribir `7` donde va `rdi`.
-pub(super) const RAX: u8 = 0;
+
 pub(super) const RCX: u8 = 1;
 pub(super) const RDX: u8 = 2;
 
@@ -128,6 +128,7 @@ impl Codegen {
             && !self.var_offsets.contains_key(name)
             && !self.global_offsets.contains_key(name)
         {
+            self.exigir_no_variadica(name);
             self.code.extend_from_slice(&[0x48 | r_alto, 0x8D, rip, 0, 0, 0, 0]); // lea dst, [rip+f]
             self.func_addr_fixups.push((self.code.len() - 4, name.to_string()));
             return true;
@@ -195,6 +196,23 @@ impl Codegen {
             self.code.extend_from_slice(&[rex, 0xB8 + (dst & 7)]);
             self.code.extend_from_slice(&v.to_le_bytes());
         }
+    }
+
+    /// Se puede cargar `arg` en un registro sin evaluar nada (una constante o
+    /// una variable)? Es la pregunta que decide si un argumento va DIRECTO a
+    /// su registro o pasa por rax y la pila.
+    pub(super) fn argumento_simple(&self, arg: &Expr) -> bool {
+        matches!(arg, Expr::Int(_) | Expr::CharLit(_))
+            || super::decidir::plegado::constante_para_emitir(arg).is_some()
+            || matches!(arg, Expr::Var(n) if self.sabe_cargar(n) && !self.expr_is_float(arg))
+    }
+
+    /// `pop reg` para cualquier registro.
+    pub(super) fn emit_pop_reg(&mut self, reg: u8) {
+        if reg >= 8 {
+            self.code.push(0x41);
+        }
+        self.code.push(0x58 + (reg & 7));
     }
 
     /// **Un argumento a su registro sin pasar por rax ni por la pila**: una
@@ -287,11 +305,12 @@ impl Codegen {
 
     /// `imul rax, rN, imm` -- el producto de tres operandos.
     pub(super) fn emit_imul_rax_rn_imm(&mut self, r: u8, imm: Inmediato) {
-        let modrm = 0xC0 | (r - 8);
+        let modrm = 0xC0 | (r & 7);
+        let rex = 0x48 | (r >> 3);
         match imm {
-            Inmediato::Corto(c) => self.code.extend_from_slice(&[0x49, 0x6B, modrm, c as u8]),
+            Inmediato::Corto(c) => self.code.extend_from_slice(&[rex, 0x6B, modrm, c as u8]),
             Inmediato::Largo(l) => {
-                self.code.extend_from_slice(&[0x49, 0x69, modrm]);
+                self.code.extend_from_slice(&[rex, 0x69, modrm]);
                 self.code.extend_from_slice(&l.to_le_bytes());
             }
         }
@@ -299,11 +318,12 @@ impl Codegen {
 
     /// `cmp rN, imm` -- sin pasar por rax: una comparacion no deja resultado.
     pub(super) fn emit_cmp_rn_imm(&mut self, r: u8, imm: Inmediato) {
-        let modrm = 0xF8 | (r - 8);
+        let modrm = 0xF8 | (r & 7);
+        let rex = 0x48 | (r >> 3);
         match imm {
-            Inmediato::Corto(c) => self.code.extend_from_slice(&[0x49, 0x83, modrm, c as u8]),
+            Inmediato::Corto(c) => self.code.extend_from_slice(&[rex, 0x83, modrm, c as u8]),
             Inmediato::Largo(l) => {
-                self.code.extend_from_slice(&[0x49, 0x81, modrm]);
+                self.code.extend_from_slice(&[rex, 0x81, modrm]);
                 self.code.extend_from_slice(&l.to_le_bytes());
             }
         }
@@ -311,8 +331,8 @@ impl Codegen {
 
     /// `cmp rN, reg` con `reg` por su numero (1 = rcx, 12..15 = la matriz).
     pub(super) fn emit_cmp_rn_reg(&mut self, r: u8, reg: u8) {
-        let rex = 0x49 | ((reg >> 3) << 2);
-        self.code.extend_from_slice(&[rex, 0x39, 0xC0 | ((reg & 7) << 3) | (r - 8)]);
+        let rex = 0x48 | ((reg >> 3) << 2) | (r >> 3);
+        self.code.extend_from_slice(&[rex, 0x39, 0xC0 | ((reg & 7) << 3) | (r & 7)]);
     }
 
     /// `mov rcx, imm32` (extendido con signo).
@@ -357,6 +377,6 @@ impl Codegen {
             7 => 0x39,
             otro => unreachable!("grupo 1 /{otro} no tiene forma con registro aqui"),
         };
-        self.code.extend_from_slice(&[0x4C, op, 0xC0 | ((r - 8) << 3)]);
+        self.code.extend_from_slice(&[0x48 | ((r >> 3) << 2), op, 0xC0 | ((r & 7) << 3)]);
     }
 }

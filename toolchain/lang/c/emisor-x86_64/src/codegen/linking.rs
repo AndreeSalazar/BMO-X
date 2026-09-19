@@ -351,8 +351,23 @@ impl Codegen {
         }
     }
 
+    /// **La direccion de una funcion variadica NO se puede tomar** (19-09): a
+    /// traves de un puntero el llamante no sabe que tiene que pasar todo por
+    /// la pila, y pasaria los seis primeros en registros que el `va_list`
+    /// nunca mira. Compilaria y no haria lo que dice; asi que no compila.
+    pub(super) fn exigir_no_variadica(&mut self, name: &str) {
+        if self.variadicas.contains(name) {
+            self.errors.push(format!(
+                "'{name}' es variadica (`...`) y no se puede tomar su direccion: a traves de un \
+                 puntero el llamante no sabria que sus argumentos van TODOS por la pila. \
+                 Envuelvela en una funcion con parametros fijos"
+            ));
+        }
+    }
+
     /// `lea rax, [rip+func]` -- deja en rax la direccion de una funcion.
     pub(super) fn emit_func_addr(&mut self, name: &str) {
+        self.exigir_no_variadica(name);
         self.code.extend_from_slice(&[0x48, 0x8D, 0x05, 0, 0, 0, 0]);
         self.func_addr_fixups.push((self.code.len() - 4, name.to_string()));
     }

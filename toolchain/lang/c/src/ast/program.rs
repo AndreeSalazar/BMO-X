@@ -95,6 +95,12 @@ pub struct Enlace {
     /// it a call to a function of another unit would not know that an argument
     /// is a `double` or a `struct`, and would pass it wrong without a word.
     pub prototipos: Vec<(String, Vec<TypeSpec>, TypeSpec)>,
+    /// Las funciones declaradas con `...` (definidas aqui o solo con
+    /// prototipo). Desde el 19-09 el llamante NECESITA saberlo: una variadica
+    /// recibe todo por la pila y las demas los seis primeros en registros.
+    /// Sin esto, `I_Error("...", x)` desde otra unidad pasaria `x` en un
+    /// registro que el `va_list` nunca mira.
+    pub variadicas: std::collections::BTreeSet<String>,
     /// Functions and globals declared `static` at file scope: internal
     /// linkage, invisible to the other units.
     pub estaticos: std::collections::BTreeSet<String>,

@@ -187,6 +187,9 @@ impl Parser {
                 params.iter().map(|p| p.typ.clone()).collect(),
                 ret_type.clone(),
             ));
+            if variadica {
+                self.enlace.variadicas.insert(name.clone());
+            }
             self.var_types.insert(name.clone(), ret_type);
             return Ok(Tope::Prototipo);
         }

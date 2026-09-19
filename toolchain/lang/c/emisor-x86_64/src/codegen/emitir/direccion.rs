@@ -229,13 +229,8 @@ impl Codegen {
                 // La puerta SSE: si el elemento es flotante, se guarda por xmm0.
                 let lv = Expr::IndexPtr(base.clone(), index.clone());
                 if self.emit_guardar_flotante(&lv, val) { return; }
-                let elem = &self.exige_tipo(self.pointee_type(base), "a que apunta este puntero", "Declara el tipo del puntero, o pon un cast: `*(int*)p`.");
-                self.emit_expr(val);          // rax = valor
-                self.code.push(0x50);         // push valor
-                self.emit_index_ptr_addr(base, index, elem); // rax = direccion
-                self.code.push(0x5A);         // pop rdx = valor
-                self.emit_store_elem(&elem.clone());
-                self.code.extend_from_slice(&[0x48, 0x89, 0xD0]);
+                let elem = self.exige_tipo(self.pointee_type(base), "a que apunta este puntero", "Declara el tipo del puntero, o pon un cast: `*(int*)p`.");
+                self.emit_guardar_en_direccion(|s| s.emit_index_ptr_addr(base, index, &elem), 0, &elem, val);
             }
             Expr::Field(base, campo) => self.emit_leer_campo(base, campo, Por::Valor),
             Expr::Arrow(ptr, campo) => self.emit_leer_campo(ptr, campo, Por::Puntero),

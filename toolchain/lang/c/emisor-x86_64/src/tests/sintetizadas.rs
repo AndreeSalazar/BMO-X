@@ -35,8 +35,11 @@ fn cuantas_veces(pajar: &[u8], aguja: &[u8]) -> usize {
 /// seguidos que no salen por casualidad"*-- no aguanta con tres: cualquier
 /// desplazamiento o inmediato del programa podria contenerlos y el contador
 /// diria 2 sin que nadie hubiera duplicado nada. Con la carga del tercer
-/// argumento delante son siete bytes y vuelve a ser una firma.
-const BUCLE_COPIAR: &[u8] = &[0x48, 0x8B, 0x4D, 0x20, 0xFC, 0xF3, 0xA4];
+/// argumento delante son seis bytes y vuelve a ser una firma.
+///
+/// Desde el 19-09 el tercer argumento llega en `rdx` (la convencion hibrida,
+/// `decidir/llamada.rs`), asi que la carga es `mov rcx, rdx` (48 8B CA).
+const BUCLE_COPIAR: &[u8] = &[0x48, 0x8B, 0xCA, 0xFC, 0xF3, 0xA4];
 
 /// * LA PRUEBA DE LA PIEZA: veinte llamadas, UN cuerpo.
 #[test]
@@ -55,10 +58,10 @@ fn veinte_memcpy_emiten_un_solo_cuerpo() {
 }
 
 /// Y sigue haciendo lo que dice: mover los bytes. Que se emita una vez no
-/// vale nada si la llamada llega mal -- el prologo traduce la ABI de PILA de
-/// BMO C (`[rbp+16]`, `[rbp+24]`, `[rbp+32]`) a los registros que `copiar`
-/// espera, y confundir eso con SysV daria un binario que compila y copia
-/// desde donde nadie escribio.
+/// vale nada si la llamada llega mal -- desde el 19-09 los tres argumentos
+/// llegan en `rdi`, `rsi`, `rdx`, que es casi lo que `copiar` espera (`rcx`
+/// para la cuenta); un cuerpo que leyera `[rbp+16]` copiaria desde la pila
+/// del llamante, donde ya no hay nada suyo.
 #[test]
 fn memcpy_sintetizado_mueve_los_bytes_en_llamadas_seguidas() {
     let fuente = "int main() { char a[8]; char b[8]; char c[8]; \

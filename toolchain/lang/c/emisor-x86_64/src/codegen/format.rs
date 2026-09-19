@@ -520,23 +520,21 @@ impl Codegen {
             self.emit_expr(a);
             self.code.push(0x50); // push rax
         }
-        // rax = rsp -> el va_list. Se captura ANTES de empujar los argumentos
-        // de la llamada, que es lo unico que hay que no equivocar aqui.
-        self.code.extend_from_slice(&[0x48, 0x89, 0xE0]); // mov rax, rsp
-        self.code.push(0x50); // push rax        -> ap    (4o parametro)
+        // `bmo_formatear(dst, lim, fmt, ap)`: cuatro escalares, o sea rdi,
+        // rsi, rdx, rcx (la convencion del 19-09). `ap` es la pila tal cual
+        // queda tras empujar los argumentos: el `va_list` de BMO C.
         self.emit_expr(fmt);
-        self.code.push(0x50); // push fmt        -> (3o)
-        self.emit_asm(|a| { a.mov_imm64(bmo_sem_asm::x86_64::Reg::Rax, 0).unwrap(); });
-        self.code.push(0x50); // push 0          -> lim   (2o)
-        self.code.push(0x50); // push 0          -> dst   (1o), y 0 = a la consola
+        self.code.extend_from_slice(&[0x48, 0x89, 0xC2]); // mov rdx, rax   -> fmt
+        self.code.extend_from_slice(&[0x48, 0x89, 0xE1]); // mov rcx, rsp   -> ap
+        self.code.extend_from_slice(&[0x31, 0xFF]);       // xor edi, edi   -> dst = 0 (la consola)
+        self.code.extend_from_slice(&[0x31, 0xF6]);       // xor esi, esi   -> lim = 0
         self.code.extend_from_slice(&[0xE8]);
         self.call_relocs.push(CallReloc {
             offset: self.code.len(),
             target: "bmo_formatear".to_string(),
         });
         self.code.extend_from_slice(&[0, 0, 0, 0]);
-        // Los cuatro de la llamada mas los variadicos que quedan debajo.
-        self.emit_soltar_pila(4 + n);
+        self.emit_soltar_pila(n);
     }
 
     /// Empuja un argumento de coma flotante como el PATRON DE BITS que el

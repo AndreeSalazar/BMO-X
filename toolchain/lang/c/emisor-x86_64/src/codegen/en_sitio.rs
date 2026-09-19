@@ -93,12 +93,18 @@ impl Codegen {
         if !self.emit_subscript_addr_en(name, index, 2) {
             return false;
         }
-        // mov [rdx], rN con la anchura: REX.R por rN
-        let modrm = 0x02 | ((r - 8) << 3);
+        // mov [rdx], rN con la anchura. El REX se compone del numero de rN:
+        // REX.R si es alto, y en el byte SIEMPRE (sin REX, `sil`/`dil` son
+        // `dh`/`bh`).
+        let modrm = 0x02 | ((r & 7) << 3);
+        let rex_r = (r >> 3) << 2;
         match ancho {
-            1 => self.code.extend_from_slice(&[0x44, 0x88, modrm]),
-            4 => self.code.extend_from_slice(&[0x44, 0x89, modrm]),
-            _ => self.code.extend_from_slice(&[0x4C, 0x89, modrm]),
+            1 => self.code.extend_from_slice(&[0x40 | rex_r, 0x88, modrm]),
+            4 => {
+                if rex_r != 0 { self.code.push(0x40 | rex_r); }
+                self.code.extend_from_slice(&[0x89, modrm]);
+            }
+            _ => self.code.extend_from_slice(&[0x48 | rex_r, 0x89, modrm]),
         }
         true
     }
@@ -114,7 +120,7 @@ impl Codegen {
         if !self.emit_en_sitio(e) {
             return false;
         }
-        self.code.extend_from_slice(&[0x49, 0x8B, 0xC0 + (r - 8)]); // mov rax, rN
+        self.code.extend_from_slice(&[0x48 | (r >> 3), 0x8B, 0xC0 | (r & 7)]); // mov rax, rN
         true
     }
 
@@ -153,13 +159,14 @@ impl Codegen {
         if let Some(&r) = self.var_regs.get(name) {
             if matches!(tipo, TypeSpec::UnsignedInt) || (v > i32::MAX as i64 && v <= u32::MAX as i64) {
                 // mov rNd, imm32: pone a cero la mitad alta
-                self.code.extend_from_slice(&[0x41, 0xB8 + (r - 8)]);
+                if r >= 8 { self.code.push(0x41); }
+                self.code.push(0xB8 + (r & 7));
                 self.code.extend_from_slice(&(v as u32).to_le_bytes());
             } else if let Ok(i) = i32::try_from(v) {
-                self.code.extend_from_slice(&[0x49, 0xC7, 0xC0 | (r - 8)]); // mov rN, imm32 (con signo)
+                self.code.extend_from_slice(&[0x48 | (r >> 3), 0xC7, 0xC0 | (r & 7)]); // mov rN, imm32 (con signo)
                 self.code.extend_from_slice(&i.to_le_bytes());
             } else {
-                self.code.extend_from_slice(&[0x49, 0xB8 + (r - 8)]); // movabs rN, imm64
+                self.code.extend_from_slice(&[0x48 | (r >> 3), 0xB8 + (r & 7)]); // movabs rN, imm64
                 self.code.extend_from_slice(&v.to_le_bytes());
             }
             return true;
@@ -251,11 +258,12 @@ impl Codegen {
 
     /// `op rN, imm` -- el grupo 1 sobre un registro extendido: REX.W + REX.B.
     fn emit_alu_en_registro(&mut self, r: u8, ext: u8, imm: Inmediato) {
-        let modrm = 0xC0 | (ext << 3) | (r - 8);
+        let modrm = 0xC0 | (ext << 3) | (r & 7);
+        let rex = 0x48 | (r >> 3);
         match imm {
-            Inmediato::Corto(c) => self.code.extend_from_slice(&[0x49, 0x83, modrm, c as u8]),
+            Inmediato::Corto(c) => self.code.extend_from_slice(&[rex, 0x83, modrm, c as u8]),
             Inmediato::Largo(l) => {
-                self.code.extend_from_slice(&[0x49, 0x81, modrm]);
+                self.code.extend_from_slice(&[rex, 0x81, modrm]);
                 self.code.extend_from_slice(&l.to_le_bytes());
             }
         }
@@ -264,15 +272,21 @@ impl Codegen {
     /// El recorte de `emit_guardar_en_registro`, hecho de `rN` a `rN`.
     ///
     /// `reg` = rN y `rm` = rN: REX.R y REX.B a la vez (`4D` con W, `45` sin).
-    fn emit_recorte_en_registro(&mut self, r: u8, tipo: &TypeSpec) {
-        let modrm = 0xC0 | ((r - 8) << 3) | (r - 8);
+    pub(super) fn emit_recorte_en_registro(&mut self, r: u8, tipo: &TypeSpec) {
+        let modrm = 0xC0 | ((r & 7) << 3) | (r & 7);
+        // REX.R y REX.B a la vez (el mismo registro en los dos campos); con W
+        // en las formas de 64 bits, y siempre presente en la de byte
+        let rb = ((r >> 3) << 2) | (r >> 3);
         match tipo {
-            TypeSpec::Char => self.code.extend_from_slice(&[0x4D, 0x0F, 0xBE, modrm]),
-            TypeSpec::UnsignedChar => self.code.extend_from_slice(&[0x4D, 0x0F, 0xB6, modrm]),
-            TypeSpec::Short => self.code.extend_from_slice(&[0x4D, 0x0F, 0xBF, modrm]),
-            TypeSpec::UnsignedShort => self.code.extend_from_slice(&[0x4D, 0x0F, 0xB7, modrm]),
-            TypeSpec::Int => self.code.extend_from_slice(&[0x4D, 0x63, modrm]),
-            TypeSpec::UnsignedInt => self.code.extend_from_slice(&[0x45, 0x89, modrm]),
+            TypeSpec::Char => self.code.extend_from_slice(&[0x48 | rb, 0x0F, 0xBE, modrm]),
+            TypeSpec::UnsignedChar => self.code.extend_from_slice(&[0x48 | rb, 0x0F, 0xB6, modrm]),
+            TypeSpec::Short => self.code.extend_from_slice(&[0x48 | rb, 0x0F, 0xBF, modrm]),
+            TypeSpec::UnsignedShort => self.code.extend_from_slice(&[0x48 | rb, 0x0F, 0xB7, modrm]),
+            TypeSpec::Int => self.code.extend_from_slice(&[0x48 | rb, 0x63, modrm]),
+            TypeSpec::UnsignedInt => {
+                if rb != 0 { self.code.push(0x40 | rb); }
+                self.code.extend_from_slice(&[0x89, modrm]);
+            }
             // Ocho bytes: no hay nada que ensanchar.
             _ => {}
         }

@@ -156,11 +156,7 @@ impl Codegen {
         // asi que el orden da igual; una expresion cualquiera SI los pisa, y
         // entonces se sigue por la pila para todos.
         let destinos: Option<Vec<u8>> = arg_regs.iter().map(|r| super::operando::registro_por_nombre(r)).collect();
-        let simples = args.iter().all(|a| {
-            matches!(a, Expr::Int(_) | Expr::CharLit(_))
-                || super::decidir::plegado::constante_para_emitir(a).is_some()
-                || matches!(a, Expr::Var(n) if self.sabe_cargar(n) && !self.expr_is_float(a))
-        });
+        let simples = args.iter().all(|a| self.argumento_simple(a));
         match destinos {
             Some(regs) if simples => {
                 for (a, &dst) in args.iter().zip(regs.iter()) {

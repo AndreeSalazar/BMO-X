@@ -76,6 +76,8 @@
 pub(super) mod ambitos;
 pub(super) mod imagen;
 pub(super) mod inmediato;
+pub(super) mod llamada;
+pub(super) mod reenvio;
 pub(super) mod plegado;
 
 /// EL TROQUEL: que valores caben en la matriz de registros.

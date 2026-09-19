@@ -78,11 +78,16 @@ type Sintetizador = fn(&mut Vec<u8>);
 ///
 /// # La ABI que un cuerpo de aqui tiene que respetar
 ///
-/// La de BMO C, que **no es SysV**: los argumentos van por la PILA, empujados
-/// de derecha a izquierda (ver el `.rev()` del sitio de llamada), asi que tras
-/// `push rbp; mov rbp, rsp` quedan en `[rbp+16]`, `[rbp+24]`, `[rbp+32]`..., y
-/// el retorno en `rax`. Confundir esto con SysV daria una funcion que compila
-/// y lee los argumentos de registros que nadie relleno.
+/// La de BMO C desde el 19-09 (`decidir/llamada.rs`): los escalares llegan en
+/// **rdi, rsi, rdx, rcx, r8, r9** y el retorno en `rax`. Las de esta tabla
+/// tienen tres argumentos como mucho, asi que `carga_arg(reg, n)` es un
+/// `mov` de registro a registro, y a menudo sobra: `bmo-lower` ya espera
+/// `rdi`/`rsi`/`rdx`. Lo que un cuerpo tiene que cuidar es el ORDEN --leer
+/// `rdx` antes de escribir `rcx` con el, por ejemplo-- y que un `rep` avanza
+/// `rdi`: quien devuelve `dst` lo guarda antes en `r8`.
+///
+/// [!] Hasta el 19-09 era por la pila (`[rbp+16]`, `[rbp+24]`...). Un cuerpo
+/// que lea de ahi hoy lee la pila del llamante, que no tiene nada suyo.
 const SINTETIZABLES: &[(&str, Sintetizador)] = &[
     // La puerta de syscalls: `syscall; ret`. Tres bytes, y el caso que
     // demuestra que la tabla subsume lo que ya corria cableado.
@@ -144,11 +149,13 @@ const SINTETIZABLES: &[(&str, Sintetizador)] = &[
 
 /// El ModRM de `mov <r64>, [rbp+disp8]` para los registros que usan los
 /// emisores de L1. El byte es `0b01_reg_101`: modo disp8, base `rbp`.
-const A_RAX: u8 = 0x45;
-const A_RCX: u8 = 0x4D;
-const A_RDX: u8 = 0x55;
-const A_RSI: u8 = 0x75;
-const A_RDI: u8 = 0x7D;
+const A_RAX: u8 = 0;
+const A_RCX: u8 = 1;
+const A_RDX: u8 = 2;
+const A_RSI: u8 = 6;
+const A_RDI: u8 = 7;
+const A_R8: u8 = 8;
+const A_R9: u8 = 9;
 
 /// `push rbp; mov rbp, rsp` -- lo que hace que `[rbp+16]` sea el argumento 0.
 fn prologo(code: &mut Vec<u8>) {
@@ -165,8 +172,18 @@ fn epilogo(code: &mut Vec<u8>) {
 /// El 16 es la direccion de retorno mas el `rbp` empujado; el resto sale del
 /// orden de empuje del sitio de llamada, que es de DERECHA A IZQUIERDA (el
 /// `.rev()`), asi que el argumento 0 es el que queda mas cerca.
+/// `mov reg, <registro del argumento n>`; nada si ya es el mismo.
 fn carga_arg(code: &mut Vec<u8>, reg: u8, n: u8) {
-    code.extend_from_slice(&[0x48, 0x8B, reg, 16 + 8 * n]);
+    let src = super::decidir::llamada::REGISTROS[n as usize];
+    if src == reg {
+        return;
+    }
+    code.extend_from_slice(&[0x48 | ((reg >> 3) << 2) | (src >> 3), 0x8B, 0xC0 | ((reg & 7) << 3) | (src & 7)]);
+}
+
+/// `mov dst, src` entre registros de 64 bits.
+fn mov_reg(code: &mut Vec<u8>, dst: u8, src: u8) {
+    code.extend_from_slice(&[0x48 | ((dst >> 3) << 2) | (src >> 3), 0x8B, 0xC0 | ((dst & 7) << 3) | (src & 7)]);
 }
 
 /// `syscall; ret` -- el cuerpo que estaba cableado en `emit_program`.
@@ -253,11 +270,11 @@ fn sintetiza_strlen(code: &mut Vec<u8>) {
 /// `memset(dst, val, n)` -> dst.
 fn sintetiza_memset(code: &mut Vec<u8>) {
     prologo(code);
-    carga_arg(code, A_RDI, 0);
+    mov_reg(code, A_R8, A_RDI); // dst, a salvo del `rep`
     carga_arg(code, A_RAX, 1);
     carga_arg(code, A_RCX, 2);
     bmo_lower::memoria::rellenar(code);
-    carga_arg(code, A_RAX, 0); // devuelve dst
+    mov_reg(code, A_RAX, A_R8); // devuelve dst
     epilogo(code);
 }
 
@@ -313,14 +330,16 @@ fn sintetiza_comparar_n(code: &mut Vec<u8>, parar_en_cero: bool) {
 /// sin cerrar y el siguiente `strlen` leeria memoria ajena.
 fn sintetiza_strcpy(code: &mut Vec<u8>) {
     prologo(code);
-    carga_arg(code, A_RDI, 1); // src
+    mov_reg(code, A_R8, A_RDI); // dst
+    mov_reg(code, A_R9, A_RSI); // src
+    carga_arg(code, A_RDI, 1); // rdi = src
     bmo_lower::memoria::largo(code); // rax = largo(src)
     code.extend_from_slice(&[0x48, 0xFF, 0xC0]); // inc rax  (el terminador)
     code.extend_from_slice(&[0x48, 0x89, 0xC1]); // mov rcx, rax
-    carga_arg(code, A_RDI, 0); // dst
-    carga_arg(code, A_RSI, 1); // src
+    mov_reg(code, A_RDI, A_R8); // dst
+    mov_reg(code, A_RSI, A_R9); // src
     bmo_lower::memoria::copiar(code);
-    carga_arg(code, A_RAX, 0); // devuelve dst
+    mov_reg(code, A_RAX, A_R8); // devuelve dst
     epilogo(code);
 }
 
@@ -338,15 +357,10 @@ fn sintetiza_strcpy(code: &mut Vec<u8>) {
 /// `rsi`/`rdi`/`rcx`/`al`, no toca `rbp`, no desequilibra la pila y sus saltos
 /// son relativos internos -- o sea que reubicarlo no lo rompe.
 fn sintetiza_memcpy(code: &mut Vec<u8>) {
-    code.extend_from_slice(&[0x55]);                   // push rbp
-    code.extend_from_slice(&[0x48, 0x89, 0xE5]);       // mov rbp, rsp
-    code.extend_from_slice(&[0x48, 0x8B, 0x7D, 0x10]); // mov rdi, [rbp+16]  dst
-    code.extend_from_slice(&[0x48, 0x8B, 0x75, 0x18]); // mov rsi, [rbp+24]  src
-    code.extend_from_slice(&[0x48, 0x8B, 0x4D, 0x20]); // mov rcx, [rbp+32]  n
-    bmo_lower::memoria::copiar(code);
-    code.extend_from_slice(&[0x48, 0x8B, 0x45, 0x10]); // mov rax, [rbp+16]  -> dst
-    code.extend_from_slice(&[0x5D]);                   // pop rbp
-    code.extend_from_slice(&[0xC3]);                   // ret
+    mov_reg(code, A_RAX, A_RDI); // dst, que es lo que se devuelve y `rep` no toca rax
+    carga_arg(code, A_RCX, 2);   // n
+    bmo_lower::memoria::copiar(code); // rdi = dst, rsi = src: ya estan
+    code.extend_from_slice(&[0xC3]);  // ret
 }
 
 /// `bmo_escribir(bytes, n)` -- saca a la consola un buffer de EJECUCION.
@@ -369,8 +383,8 @@ fn sintetiza_memcpy(code: &mut Vec<u8>) {
 /// que llevan REX.R por ser registros altos.
 fn sintetiza_escribir(code: &mut Vec<u8>) {
     prologo(code);
-    code.extend_from_slice(&[0x4C, 0x8B, 0x45, 0x10]); // mov r8, [rbp+16]  bytes
-    code.extend_from_slice(&[0x4C, 0x8B, 0x4D, 0x18]); // mov r9, [rbp+24]  n
+    carga_arg(code, A_R8, 0); // bytes
+    carga_arg(code, A_R9, 1); // n
     bmo_lower::console::write_buffer(code);
     epilogo(code);
 }

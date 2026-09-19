@@ -2,25 +2,25 @@
 # REPORTERO, no trinquete: ver toolchain/tools/tamano/tamano.py
 # Se regenera con:  py toolchain/tools/tamano/tamano.py --fijar
 ada/cierre.bex 2352
-apps/doom.bex 763672
+apps/doom.bex 742168
 apps/navegar.ibx 47152
-c/blit.bex 5360
-c/caja.bex 8940
+c/blit.bex 4848
+c/caja.bex 8428
 c/ciclos.bex 10705
-c/coste.bex 13669
-c/cubo.bex 24600
-c/guia.bex 22978
+c/coste.bex 13157
+c/cubo.bex 23576
+c/guia.bex 22466
 c/holac.bex 2791
-c/imagen.bex 18656
-c/leer.bex 8344
+c/imagen.bex 18144
+c/leer.bex 7832
 c/memc.bex 5872
-c/musica.bex 9206
+c/musica.bex 8694
 c/pregc.bex 3114
-c/ray.bex 19193
+c/ray.bex 18169
 c/scrollc.bex 4861
-c/sonda.bex 8911
+c/sonda.bex 8399
 c/sonido.bex 5730
-c/texto.bex 22224
+c/texto.bex 21200
 c/vivaldi.bex 5885
 cobol/1/hola.bex 1088
 cobol/10/maestro.bex 8664

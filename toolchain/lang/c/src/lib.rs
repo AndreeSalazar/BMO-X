@@ -123,6 +123,9 @@ pub fn politica_libc(program: &mut Program, rangos: &[(usize, usize)], libc: Lib
                     f.params.iter().map(|p| p.typ.clone()).collect(),
                     f.ret_type.clone(),
                 ));
+                if f.variadica {
+                    program.enlace.variadicas.insert(f.name.clone());
+                }
             }
         }
         Libc::Soy => {}

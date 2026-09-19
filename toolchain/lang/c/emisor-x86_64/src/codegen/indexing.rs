@@ -124,12 +124,7 @@ impl Codegen {
                 self.emit_asigna_agregado_por_puntero(addr, val, bytes);
                 return;
             }
-            self.emit_expr(val); // rax = valor
-            self.code.push(0x50); // push valor
-            self.emit_expr(addr); // rax = direccion
-            self.code.push(0x5A); // pop rdx = valor
-            self.emit_store_elem(&apuntado); // <- el ancho EXACTO
-            self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // rax = valor
+            self.emit_guardar_en_direccion(|s| s.emit_expr(addr), 0, &apuntado, val);
         }
 
     /// **LEER `a.x` o `p->x`**: direccion + offset, y carga con el ancho y el
@@ -152,13 +147,62 @@ impl Codegen {
     /// da un error -- da otro numero.
     pub(super) fn emit_guardar_campo(&mut self, base: &Expr, campo: &str, por: Por, val: &Expr) {
         let (offset, ftyp) = self.campo(base, campo, por);
-        self.emit_expr(val);
-        self.code.push(0x50); // push valor
-        self.base_de_campo(base, por);
-        self.emit_add_offset(offset);
-        self.code.push(0x5A); // pop rdx = valor
-        self.emit_store_elem(&ftyp);
-        self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // rax = valor
+        // ** `p->campo = v` con `p` una variable (19-09): la base va a rdx
+        // directa, y el campo se escribe con su desplazamiento dentro del
+        // `mov`. Siete instrucciones pasan a tres en `this->centimos = c`.
+        if let (Por::Puntero, Expr::Var(n)) = (por, base) {
+            if self.sabe_cargar(n) && self.sin_pila(val) {
+                self.emit_cargar_en(n, super::operando::RDX);
+                self.emit_expr(val);
+                self.emit_store_elem_desde_rax_en_rdx(&ftyp, offset);
+                return;
+            }
+        }
+        self.emit_guardar_en_direccion(|s| s.base_de_campo(base, por), offset, &ftyp, val);
+    }
+
+    /// **`[direccion + offset] = val`**, con la direccion en rax al volver de
+    /// `direccion(self)`. Desde el 19-09 la direccion va PRIMERO y se aparca
+    /// en rdx (o en la pila si evaluar `val` la pisaria); el valor acaba en
+    /// rax, que es el resultado de la asignacion, y sobra el `mov rax, rdx`.
+    /// Es el mismo patron de `t[i] = v` (`emitir/direccion.rs`) para `*p = v`,
+    /// `v.c = x` y `p->c = x`.
+    pub(super) fn emit_guardar_en_direccion(
+        &mut self,
+        direccion: impl FnOnce(&mut Self),
+        offset: u32,
+        tipo: &TypeSpec,
+        val: &Expr,
+    ) {
+        direccion(self); // rax = base
+        if self.sin_pila(val) {
+            self.code.extend_from_slice(&[0x48, 0x89, 0xC2]); // mov rdx, rax
+            self.emit_expr(val);
+        } else {
+            self.code.push(0x50); // push base
+            self.emit_expr(val);
+            self.code.push(0x5A); // pop rdx = base
+        }
+        self.emit_store_elem_desde_rax_en_rdx(tipo, offset);
+    }
+
+    /// `[rdx + disp] = rax`, con el tamano exacto del elemento.
+    pub(super) fn emit_store_elem_desde_rax_en_rdx(&mut self, elem: &TypeSpec, disp: u32) {
+        let op: &[u8] = match self.type_stack_size(elem) {
+            1 => &[0x88],
+            2 => &[0x66, 0x89],
+            4 => &[0x89],
+            _ => &[0x48, 0x89],
+        };
+        self.code.extend_from_slice(op);
+        if disp == 0 {
+            self.code.push(0x02);
+        } else if disp <= 127 {
+            self.code.extend_from_slice(&[0x42, disp as u8]);
+        } else {
+            self.code.push(0x82);
+            self.code.extend_from_slice(&disp.to_le_bytes());
+        }
     }
 
     /// `name` es un array (su memoria vive en el slot) o un puntero (el slot
