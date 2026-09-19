@@ -1538,7 +1538,7 @@ impl Codegen {
                 }
                 if let Expr::Var(n) = b {
                     if self.sabe_cargar(n) {
-                        self.emit_cargar_en(n, operando::Destino::Rcx);
+                        self.emit_cargar_en(n, operando::RCX);
                         self.emit_lea(0, r, Some(1), 1, 0);
                         return;
                     }
@@ -1561,7 +1561,7 @@ impl Codegen {
             }
             if self.sabe_cargar(n) {
                 self.emit_expr(a);
-                self.emit_cargar_en(n, operando::Destino::Rcx);
+                self.emit_cargar_en(n, operando::RCX);
                 self.emit_alu_rax_rcx(ext);
                 return;
             }
@@ -1599,7 +1599,7 @@ impl Codegen {
                 if let Expr::Var(n) = b {
                     if self.sabe_cargar(n) {
                         self.emit_expr(a);
-                        self.emit_cargar_en(n, operando::Destino::Rcx);
+                        self.emit_cargar_en(n, operando::RCX);
                         self.code.extend_from_slice(&[0x48, 0x0F, 0xAF, 0xC1]); // imul rax, rcx
                         return;
                     }
@@ -1659,7 +1659,7 @@ impl Codegen {
             }
             if let Expr::Var(n) = b {
                 if self.sabe_cargar(n) {
-                    self.emit_cargar_en(n, operando::Destino::Rcx);
+                    self.emit_cargar_en(n, operando::RCX);
                     self.emit_cmp_rn_reg(r, 1);
                     return;
                 }
@@ -1682,7 +1682,7 @@ impl Codegen {
             }
             if self.sabe_cargar(n) {
                 self.emit_expr(a);
-                self.emit_cargar_en(n, operando::Destino::Rcx);
+                self.emit_cargar_en(n, operando::RCX);
                 self.emit_alu_rax_rcx(7); // cmp rax, rcx
                 return;
             }

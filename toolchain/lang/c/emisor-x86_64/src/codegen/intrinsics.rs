@@ -149,16 +149,38 @@ impl Codegen {
             return;
         }
 
-        // 1) evaluar cada argumento a rax y apilarlo (orden de aparicion)
-        for a in args {
-            self.emit_expr(a);
-            self.code.push(0x50); // push rax
-        }
-        // 2) volcar a los registros destino, en REVERSA (el tope es el ultimo
-        //    arg). Cada destino es un registro DISTINTO (rax/rcx/rdx) -> pop
-        //    directo sin pisarse.
-        for reg in arg_regs.iter().rev() {
-            self.emit_pop_to_reg(reg);
+        // ** DIRECTO A SU REGISTRO cuando todos los argumentos son variables o
+        // constantes (2026-09-19): `__syscall(nr, cap, op, a0, a1, a2)` desde
+        // el envoltorio de la puerta hacia 6 cargas, 6 `push` y 6 `pop`; ahora
+        // son 6 `mov`. Cargar una variable en un registro no toca ningun otro,
+        // asi que el orden da igual; una expresion cualquiera SI los pisa, y
+        // entonces se sigue por la pila para todos.
+        let destinos: Option<Vec<u8>> = arg_regs.iter().map(|r| super::operando::registro_por_nombre(r)).collect();
+        let simples = args.iter().all(|a| {
+            matches!(a, Expr::Int(_) | Expr::CharLit(_))
+                || super::decidir::plegado::constante_para_emitir(a).is_some()
+                || matches!(a, Expr::Var(n) if self.sabe_cargar(n) && !self.expr_is_float(a))
+        });
+        match destinos {
+            Some(regs) if simples => {
+                for (a, &dst) in args.iter().zip(regs.iter()) {
+                    let hecho = self.emit_argumento_en(a, dst);
+                    debug_assert!(hecho, "un argumento simple que no se pudo cargar");
+                }
+            }
+            _ => {
+                // 1) evaluar cada argumento a rax y apilarlo (orden de aparicion)
+                for a in args {
+                    self.emit_expr(a);
+                    self.code.push(0x50); // push rax
+                }
+                // 2) volcar a los registros destino, en REVERSA (el tope es el
+                //    ultimo arg). Cada destino es un registro DISTINTO -> pop
+                //    directo sin pisarse.
+                for reg in arg_regs.iter().rev() {
+                    self.emit_pop_to_reg(reg);
+                }
+            }
         }
         // 3) los bytes exactos de la instruccion
         self.code.extend_from_slice(&bytes);

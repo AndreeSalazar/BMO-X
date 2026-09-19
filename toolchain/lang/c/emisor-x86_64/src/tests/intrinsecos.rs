@@ -45,10 +45,12 @@ fn intrinsic_outb_marshals_args_to_registers() {
     // __outb(0x3F8, 65): puerto->dx, valor->al, luego out dx,al (0xEE).
     let src = "int main() { __outb(1016, 65); return 0; }";
     let bef = compile_source_to_bef(src).unwrap();
-    // pop rdx (0x5A) para el puerto, pop rax (0x58) para el valor, out (0xEE)
+    // Desde el 19-09 los argumentos simples van DIRECTOS: `mov rdx, 1016`
+    // (48 C7 C2) y `mov rax, 65` (48 C7 C0), y luego out dx,al (0xEE).
     assert!(bef.contains(&0xEE), "falta out dx,al (0xEE)");
-    assert!(bef.windows(2).any(|w| w == [0x5A, 0xEE]) || bef.contains(&0x5A),
-        "el puerto debe volcarse a dx (pop rdx 0x5A)");
+    let puerto = [0x48, 0xC7, 0xC2, 0xF8, 0x03, 0x00, 0x00];
+    assert!(bef.windows(puerto.len()).any(|w| w == puerto), "el puerto debe ir directo a rdx (mov rdx, 1016)");
+    assert!(!bef.windows(2).any(|w| w == [0x5A, 0xEE]), "con argumentos simples no hay pop rdx antes del out");
 }
 
 #[test]

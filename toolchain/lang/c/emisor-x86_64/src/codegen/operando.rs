@@ -69,32 +69,57 @@ use crate::ast::{Expr, TypeSpec};
 use super::decidir::inmediato::{inmediato_de, Inmediato};
 use super::Codegen;
 
-/// Los dos registros en los que esto sabe cargar. El numero es el campo
-/// `reg` del ModRM (rcx = 1, rdx = 2).
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Destino {
-    Rcx = 1,
-    Rdx = 2,
+/// Los registros por su numero, para no escribir `7` donde va `rdi`.
+pub(super) const RAX: u8 = 0;
+pub(super) const RCX: u8 = 1;
+pub(super) const RDX: u8 = 2;
+
+/// El numero de un registro por su nombre (el de `intrinsics.toml`). Solo
+/// los que un intrinseco puede pedir como argumento; `None` para lo demas.
+pub(super) fn registro_por_nombre(nombre: &str) -> Option<u8> {
+    Some(match nombre {
+        // los alias estrechos (`eax`, `dx`, `al`) son el mismo registro: el
+        // intrinseco lee los bits bajos, igual que leia tras el `pop`
+        "rax" | "eax" | "ax" | "al" => 0,
+        "rcx" | "ecx" | "cx" | "cl" => 1,
+        "rdx" | "edx" | "dx" => 2,
+        "rbx" => 3,
+        "rsi" | "esi" | "si" => 6,
+        "rdi" | "edi" | "di" => 7,
+        "r8" => 8,
+        "r9" => 9,
+        "r10" => 10,
+        "r11" => 11,
+        _ => return None,
+    })
 }
 
 impl Codegen {
-    /// Carga la variable `name` en `dst` con la anchura y el signo de su tipo,
-    /// SIN tocar `rax`. `false` si no es una variable que esto sepa cargar
-    /// (entonces el llamante sigue por el camino de siempre).
-    pub(super) fn emit_cargar_en(&mut self, name: &str, dst: Destino) -> bool {
-        let d = dst as u8;
-        // reg = d, rm = [rbp + disp]: mod 01 (disp8) o 10 (disp32)
-        let modrm8 = 0x40 | (d << 3) | 5;
-        let modrm32 = 0x80 | (d << 3) | 5;
-        let rip = (d << 3) | 5; // mod 00, rm 101 = [rip + disp32]
+    /// Carga la variable `name` en el registro `dst` (0..15) con la anchura y
+    /// el signo de su tipo, SIN tocar ningun otro registro. `false` si no es
+    /// una variable que esto sepa cargar (entonces el llamante sigue por el
+    /// camino de siempre).
+    ///
+    /// El REX se compone de los bits altos de `dst` (REX.R) y de la base
+    /// (REX.B), y el ModRM indirecto `[dst]` de la carga de un global respeta
+    /// las dos manias: `rsp`/`r12` piden SIB y `rbp`/`r13` piden `disp8 = 0`.
+    pub(super) fn emit_cargar_en(&mut self, name: &str, dst: u8) -> bool {
+        let r_alto = (dst >> 3) << 2; // REX.R
+        let d = dst & 7;
+        let modrm8 = 0x40 | (d << 3) | 5; // [rbp + disp8]
+        let modrm32 = 0x80 | (d << 3) | 5; // [rbp + disp32]
+        let rip = (d << 3) | 5; // [rip + disp32]
 
-        // El troquel: `mov rdx, rN` = 49 8B (11 d rN)
+        // El troquel: `mov dst, rN`
         if let Some(&r) = self.var_regs.get(name) {
-            self.code.extend_from_slice(&[0x49, 0x8B, 0xC0 | (d << 3) | (r - 8)]);
+            self.code.extend_from_slice(&[0x48 | r_alto | (r >> 3), 0x8B, 0xC0 | (d << 3) | (r & 7)]);
             return true;
         }
         if let Some(&val) = self.enum_values.get(name) {
-            // mov ecx/edx, imm32 = B9/BA id
+            // mov dst32, imm32 (pone a cero la mitad alta, como `mov eax, imm`)
+            if dst >= 8 {
+                self.code.push(0x41);
+            }
             self.code.push(0xB8 + d);
             self.code.extend_from_slice(&(val as i32).to_le_bytes());
             return true;
@@ -103,53 +128,92 @@ impl Codegen {
             && !self.var_offsets.contains_key(name)
             && !self.global_offsets.contains_key(name)
         {
-            self.code.extend_from_slice(&[0x48, 0x8D, rip, 0, 0, 0, 0]); // lea dst, [rip+f]
+            self.code.extend_from_slice(&[0x48 | r_alto, 0x8D, rip, 0, 0, 0, 0]); // lea dst, [rip+f]
             self.func_addr_fixups.push((self.code.len() - 4, name.to_string()));
             return true;
         }
         if self.var_is_array(name) {
             if let Some(&(off, _)) = self.var_offsets.get(name) {
-                self.code.extend_from_slice(&[0x48, 0x8D]); // lea dst, [rbp+off]
+                self.code.extend_from_slice(&[0x48 | r_alto, 0x8D]); // lea dst, [rbp+off]
                 self.emit_modrm_rbp(modrm8, modrm32, off);
             } else {
-                self.code.extend_from_slice(&[0x48, 0x8D, rip, 0, 0, 0, 0]); // lea dst, [rip+g]
+                self.code.extend_from_slice(&[0x48 | r_alto, 0x8D, rip, 0, 0, 0, 0]); // lea dst, [rip+g]
                 self.global_fixups.push((self.code.len() - 4, name.to_string()));
             }
             return true;
         }
         if let Some((off, typ)) = self.var_offsets.get(name).map(|(o, t)| (*o, t.clone())) {
-            let op: &[u8] = match typ {
-                TypeSpec::Char => &[0x48, 0x0F, 0xBE],
-                TypeSpec::UnsignedChar => &[0x48, 0x0F, 0xB6],
-                TypeSpec::Short => &[0x48, 0x0F, 0xBF],
-                TypeSpec::UnsignedShort => &[0x48, 0x0F, 0xB7],
-                TypeSpec::Int => &[0x48, 0x63],
-                TypeSpec::UnsignedInt => &[0x8B],
-                _ => &[0x48, 0x8B],
-            };
-            self.code.extend_from_slice(op);
+            self.emit_opcode_de_carga(&typ, r_alto);
             self.emit_modrm_rbp(modrm8, modrm32, off);
             return true;
         }
         if let Some(typ) = self.global_offsets.get(name).map(|(_, t)| t.clone()) {
             // lea dst, [rip+g] ; luego la carga desde [dst]
-            self.code.extend_from_slice(&[0x48, 0x8D, rip, 0, 0, 0, 0]);
+            self.code.extend_from_slice(&[0x48 | r_alto, 0x8D, rip, 0, 0, 0, 0]);
             self.global_fixups.push((self.code.len() - 4, name.to_string()));
-            let desde = (d << 3) | d; // mod 00, reg dst, rm dst = [dst]
-            let op: &[u8] = match typ {
-                TypeSpec::Char => &[0x48, 0x0F, 0xBE],
-                TypeSpec::UnsignedChar => &[0x48, 0x0F, 0xB6],
-                TypeSpec::Short => &[0x48, 0x0F, 0xBF],
-                TypeSpec::UnsignedShort => &[0x48, 0x0F, 0xB7],
-                TypeSpec::Int => &[0x48, 0x63],
-                TypeSpec::UnsignedInt => &[0x8B],
-                _ => &[0x48, 0x8B],
-            };
-            self.code.extend_from_slice(op);
-            self.code.push(desde);
+            // la carga lleva REX.R por el destino y REX.B por la base (el mismo)
+            self.emit_opcode_de_carga(&typ, r_alto | (dst >> 3));
+            match d {
+                4 => self.code.extend_from_slice(&[(d << 3) | 4, 0x24]), // [rsp/r12]: SIB
+                5 => self.code.extend_from_slice(&[0x40 | (d << 3) | 5, 0]), // [rbp/r13 + 0]
+                _ => self.code.push((d << 3) | d),
+            }
             return true;
         }
         false
+    }
+
+    /// El opcode de leer una variable de `typ` (sin el ModRM): la misma
+    /// tabla de anchuras y signos que `frame.rs::emit_load_var`. `rex_extra`
+    /// son los bits R/X/B que el llamante necesita.
+    fn emit_opcode_de_carga(&mut self, typ: &TypeSpec, rex_extra: u8) {
+        match typ {
+            TypeSpec::Char => self.code.extend_from_slice(&[0x48 | rex_extra, 0x0F, 0xBE]),
+            TypeSpec::UnsignedChar => self.code.extend_from_slice(&[0x48 | rex_extra, 0x0F, 0xB6]),
+            TypeSpec::Short => self.code.extend_from_slice(&[0x48 | rex_extra, 0x0F, 0xBF]),
+            TypeSpec::UnsignedShort => self.code.extend_from_slice(&[0x48 | rex_extra, 0x0F, 0xB7]),
+            TypeSpec::Int => self.code.extend_from_slice(&[0x48 | rex_extra, 0x63]),
+            // `mov r32, r/m32`: sin REX.W, y el REX solo si hace falta
+            TypeSpec::UnsignedInt => {
+                if rex_extra != 0 {
+                    self.code.push(0x40 | rex_extra);
+                }
+                self.code.push(0x8B);
+            }
+            _ => self.code.extend_from_slice(&[0x48 | rex_extra, 0x8B]),
+        }
+    }
+
+    /// `mov dst, imm` para cualquier registro: `imm32` con signo si cabe,
+    /// `movabs` si no.
+    pub(super) fn emit_mov_reg_imm(&mut self, dst: u8, v: i64) {
+        let rex = 0x48 | (dst >> 3);
+        if let Ok(i) = i32::try_from(v) {
+            self.code.extend_from_slice(&[rex, 0xC7, 0xC0 | (dst & 7)]);
+            self.code.extend_from_slice(&i.to_le_bytes());
+        } else {
+            self.code.extend_from_slice(&[rex, 0xB8 + (dst & 7)]);
+            self.code.extend_from_slice(&v.to_le_bytes());
+        }
+    }
+
+    /// **Un argumento a su registro sin pasar por rax ni por la pila**: una
+    /// variable se carga, una constante se mueve. `false` si el argumento es
+    /// otra cosa (entonces hay que evaluarlo, y eso pisa registros).
+    pub(super) fn emit_argumento_en(&mut self, arg: &Expr, dst: u8) -> bool {
+        let v = match arg {
+            Expr::Int(n) => Some(*n),
+            Expr::CharLit(c) => Some(*c as i64),
+            _ => super::decidir::plegado::constante_para_emitir(arg),
+        };
+        if let Some(v) = v {
+            self.emit_mov_reg_imm(dst, v);
+            return true;
+        }
+        match arg {
+            Expr::Var(n) if self.sabe_cargar(n) && !self.expr_is_float(arg) => self.emit_cargar_en(n, dst),
+            _ => false,
+        }
     }
 
     /// Sabe `emit_cargar_en` cargar este nombre? Se pregunta ANTES de emitir
@@ -272,7 +336,7 @@ impl Codegen {
         }
         if let Expr::Var(n) = b {
             if self.sabe_cargar(n) {
-                self.emit_cargar_en(n, Destino::Rcx);
+                self.emit_cargar_en(n, RCX);
                 return;
             }
         }

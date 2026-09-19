@@ -66,8 +66,41 @@ impl Codegen {
             }
             Expr::PreInc(name) | Expr::PostInc(name) => self.emit_paso_en_sitio(name, false),
             Expr::PreDec(name) | Expr::PostDec(name) => self.emit_paso_en_sitio(name, true),
+            // `t[i] = v` con `v` en la matriz: `mov [rdx], r12d` sin pasar por rax
+            Expr::AssignSubscript(name, index, val) => self.emit_tabla_desde_matriz(name, index, val),
             _ => false,
         }
+    }
+
+    /// `name[index] = v` con `v` en la matriz (19-09): la direccion a rdx y
+    /// el registro se escribe con la anchura del elemento. Su valor ya esta
+    /// recortado a su tipo, asi que guardar sus bytes bajos es lo mismo que
+    /// pasarlo por rax. Solo elementos enteros de 1, 4 u 8 bytes.
+    fn emit_tabla_desde_matriz(&mut self, name: &str, index: &Expr, val: &Expr) -> bool {
+        let Expr::Var(v) = val else { return false };
+        let Some(&r) = self.var_regs.get(v) else { return false };
+        let elem = match self.var_type_of(name) {
+            Some(TypeSpec::Array(e, _)) | Some(TypeSpec::Ptr(e)) => *e,
+            _ => return false,
+        };
+        if Self::is_float_ty(&elem) || self.es_agregado(&elem) {
+            return false;
+        }
+        let ancho = self.type_stack_size(&elem);
+        if !matches!(ancho, 1 | 4 | 8) {
+            return false;
+        }
+        if !self.emit_subscript_addr_en(name, index, 2) {
+            return false;
+        }
+        // mov [rdx], rN con la anchura: REX.R por rN
+        let modrm = 0x02 | ((r - 8) << 3);
+        match ancho {
+            1 => self.code.extend_from_slice(&[0x44, 0x88, modrm]),
+            4 => self.code.extend_from_slice(&[0x44, 0x89, modrm]),
+            _ => self.code.extend_from_slice(&[0x4C, 0x89, modrm]),
+        }
+        true
     }
 
     /// **En contexto de VALOR.** Como la de arriba, pero deja el valor NUEVO

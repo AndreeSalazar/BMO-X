@@ -229,7 +229,7 @@ impl Codegen {
         // Una escala que no cabe en el `lea` (un struct de 12 bytes): la base
         // a rdx igualmente, sin pila.
         if self.sabe_cargar(name) {
-            self.emit_cargar_en(name, super::operando::Destino::Rdx);
+            self.emit_cargar_en(name, super::operando::RDX);
             self.code.extend_from_slice(&[0x48, 0x01, 0xD0]); // add rax, rdx
             return;
         }
@@ -270,6 +270,24 @@ impl Codegen {
     pub(super) fn emit_index_ptr_addr(&mut self, base: &Expr, index: &Expr, elem: &TypeSpec) {
         let size = self.type_stack_size(elem).max(1) as u32;
         self.emit_expr(base);          // rax = puntero base
+        // ** SIN PILA (19-09): con el indice en la matriz, `lea rax, [rax +
+        // r12*s]` y nada mas; con un indice sin pila y escala en el lea, la
+        // base se aparca en rdx. La escala 1 con indice general sigue por la
+        // pila (el `mov rdx, rax` cuesta un byte mas que el push/pop).
+        if matches!(size, 1 | 2 | 4 | 8) {
+            if let Expr::Var(n) = index {
+                if let Some(&r) = self.var_regs.get(n) {
+                    self.emit_lea(0, 0, Some(r), size, 0);
+                    return;
+                }
+            }
+            if size > 1 && self.sin_pila(index) {
+                self.code.extend_from_slice(&[0x48, 0x89, 0xC2]); // mov rdx, rax (base)
+                self.emit_expr(index);
+                self.emit_lea(0, 2, Some(0), size, 0);
+                return;
+            }
+        }
         self.code.push(0x50);          // push base
         self.emit_expr(index);         // rax = indice
         self.emit_scale_index(size);   // rax = indice * size
@@ -318,12 +336,12 @@ impl Codegen {
         };
         match en_matriz {
             Some(r) => {
-                self.emit_cargar_en(name, super::operando::Destino::Rdx);
+                self.emit_cargar_en(name, super::operando::RDX);
                 self.emit_lea(dst, 2, Some(r), scale, 0);
             }
             None => {
                 self.emit_expr(index);
-                self.emit_cargar_en(name, super::operando::Destino::Rdx);
+                self.emit_cargar_en(name, super::operando::RDX);
                 self.emit_lea(dst, 2, Some(0), scale, 0);
             }
         }
