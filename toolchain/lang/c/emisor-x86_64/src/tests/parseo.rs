@@ -277,14 +277,6 @@ int main() { return 0; }
 }
 
 #[test]
-fn parses_use_directive() {
-    let src = r#"use "bmo/core"; int main() { return 0; }"#;
-    // tokenize and check
-    let tokens = crate::Parser::tokenize_for_test(src);
-    assert!(tokens.contains(&Token::Use), "should contain Use token");
-}
-
-#[test]
 fn handles_var_names_in_function() {
     let src = r#"
 int sum(int a, int b, int c) {
@@ -341,8 +333,8 @@ free(p);
 return 0;
 }
 "#;
-    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../base");
-    let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../forge/sem-asm/tables");
+    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../base");
+    let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../forge/sem-asm/tables");
     // Need both base and Semantic_ASM as module search paths so stdlib/heap can be found
     let bef = compile_source_to_bef_with_all(src, vec![base, asm.clone()], vec![asm]).unwrap();
     assert_eq!(u32::from_le_bytes(bef[..4].try_into().unwrap()), bmo_abi::bef::BEF_MAGIC);

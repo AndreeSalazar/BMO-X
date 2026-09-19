@@ -294,7 +294,7 @@ int main() {
 #[test]
 fn el_ritornello_de_vivaldi_suena_lo_que_la_partitura_dice() {
     let bef = compile_with_preprocessor(
-        include_str!("../../examples/vivaldi_C.c"),
+        include_str!("../../../examples/vivaldi_C.c"),
         std::path::Path::new("vivaldi.c"),
         CStandard::C11,
     )

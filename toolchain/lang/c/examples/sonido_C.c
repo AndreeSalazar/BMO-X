@@ -47,7 +47,7 @@
  *   c/sonido.bex     desde la caja Ejecutar del escritorio.
  *
  * Compilar:
- *   cargo run -p bmo-c-front -- toolchain/lang/c/examples/sonido_C.c \
+ *   cargo run -p bmo-c-x86-64 -- toolchain/lang/c/examples/sonido_C.c \
  *       -o sonido.bex
  */
 #include <bmo/sonido.h>

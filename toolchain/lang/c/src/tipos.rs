@@ -81,7 +81,7 @@ use crate::ast::{Expr, TypeSpec};
 /// el codegen con `var_offsets` + `global_offsets`; todo lo demas --campos,
 /// elementos, literales-- sale del propio arbol y por eso los dos obtienen la
 /// MISMA respuesta sin compartir tablas.
-pub(crate) trait Ambito {
+pub trait Ambito {
     fn tipo_de_variable(&self, nombre: &str) -> Option<TypeSpec>;
     /// El tipo del campo `campo` dentro del agregado `agregado`.
     ///
@@ -123,7 +123,7 @@ fn es_direccion(t: &Option<TypeSpec>) -> bool {
 
 /// **Tipo estatico de una expresion**, hasta donde se puede saber sin
 /// inventar. `None` significa *no lo se*, nunca *es un entero*.
-pub(crate) fn tipo_de<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<TypeSpec> {
+pub fn tipo_de<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<TypeSpec> {
     match e {
         // -- nombres -------------------------------------------------------
         Expr::Var(n) => amb.tipo_de_variable(n),
@@ -284,7 +284,7 @@ pub(crate) fn tipo_de<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<TypeSpec>
 /// Es `tipo_de` mas un paso, y por eso las dos preguntas no pueden volver a
 /// divergir: quien pregunta por el PASO y quien pregunta por el OFFSET leen la
 /// misma respuesta.
-pub(crate) fn apunta_a<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<TypeSpec> {
+pub fn apunta_a<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<TypeSpec> {
     match tipo_de(amb, e)? {
         TypeSpec::Ptr(base) | TypeSpec::Array(base, _) => Some(*base),
         _ => None,
@@ -292,7 +292,7 @@ pub(crate) fn apunta_a<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<TypeSpec
 }
 
 /// Nombre del struct/union del que una expresion ES valor directo (`base.campo`).
-pub(crate) fn agregado_de<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<String> {
+pub fn agregado_de<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<String> {
     match tipo_de(amb, e)? {
         TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => Some(s),
         _ => None,
@@ -304,7 +304,7 @@ pub(crate) fn agregado_de<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<Strin
 /// [!] Pasa por `apunta_a`, o sea que hereda la decadencia de arrays y la
 /// aritmetica de punteros. **Ese es exactamente el arreglo del 02-09**:
 /// `(tope - 1)->next` no resolvia porque esta pregunta no se hacia aqui.
-pub(crate) fn agregado_apuntado<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<String> {
+pub fn agregado_apuntado<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<String> {
     match apunta_a(amb, e)? {
         TypeSpec::StructRef(s) | TypeSpec::UnionRef(s) => Some(s),
         _ => None,
@@ -376,7 +376,7 @@ fn es_sin_signo(t: &TypeSpec) -> bool {
 ///
 /// Es lo unico que el codegen necesita saber para decidir si recorta, y con
 /// que: con ceros o con el bit de signo.
-pub(crate) fn recorte_de<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<bool> {
+pub fn recorte_de<A: Ambito + ?Sized>(amb: &A, e: &Expr) -> Option<bool> {
     let t = tipo_de(amb, e)?;
     if ancho(&t) == 4 {
         Some(es_sin_signo(&t))

@@ -11,7 +11,7 @@
 # El numero va solo en la primera linea util. Lo de abajo es el inventario, y es
 # comentario: esta para leerlo, no para juzgarlo.
 
-114
+119
 # NADA      Ultra_kernel_x86-64/kernel/src/ring0/cabina/caida.rs
 # NADA      Ultra_kernel_x86-64/kernel/src/ring0/core/autopsy.rs
 # NADA      Ultra_kernel_x86-64/kernel/src/ring0/core/desmontaje.rs
@@ -45,10 +45,12 @@
 # MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/plat/smp/atril.rs
 # MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/plat/smp/dormir.rs
 # NADA      Ultra_kernel_x86-64/kernel/src/ring0/plat/smp/ficha.rs
+# MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/plat/smp/tss.rs
 # MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/task/admitir.rs
 # MAQUINA   Ultra_kernel_x86-64/kernel/src/ring0/task/scheduler/roja.rs
 # NADA      Ultra_kernel_x86-64/kernel/src/ring0/task/scheduler/verde.rs
 # DATO      Ultra_userspace/services/director/src/commands/reports.rs
+# DATO      Ultra_userspace/services/director/src/commands/save_cabina.rs
 # NADA      Ultra_userspace/services/director/src/commands/tabla.rs
 # NADA      Ultra_userspace/services/director/src/desktop/tick/amarilla.rs
 # TAREA     Ultra_userspace/services/director/src/desktop/tick/mod.rs
@@ -86,12 +88,14 @@
 # NADA      platform/drivers/gpu/rdna4/src/psp.rs
 # APARATO   platform/drivers/net/src/anillo.rs
 # APARATO   platform/drivers/net/src/lib.rs
+# APARATO   platform/drivers/net/src/recibir.rs
 # APARATO   platform/drivers/net/src/tx.rs
 # APARATO   platform/drivers/storage/ahci/src/arranque.rs
 # DATO      platform/drivers/storage/ahci/src/comando.rs
 # APARATO   platform/drivers/storage/ahci/src/controller.rs
 # NADA      platform/drivers/storage/ahci/src/lib.rs
 # NADA      platform/drivers/storage/ahci/src/storage_hal.rs
+# TAREA     platform/drivers/usb/uhid/src/racha.rs
 # TAREA     platform/drivers/usb/xhci/src/avisos.rs
 # APARATO   platform/drivers/usb/xhci/src/enumerar.rs
 # APARATO   platform/drivers/usb/xhci/src/lib.rs
@@ -100,6 +104,7 @@
 # DATO      platform/shared/bmo-antena/src/cuarentena.rs
 # DATO      platform/shared/bmo-antena/src/lamina.rs
 # DATO      platform/shared/bmo-antena/src/lib.rs
+# DATO      platform/shared/bmo-cola/src/lib.rs
 # TAREA     platform/shared/bmo-dma-forma/src/lib.rs
 # MAQUINA   platform/shared/bmo-dma-juicio/src/lib.rs
 # MAQUINA   platform/shared/bmo-fisica-juicio/src/lib.rs
@@ -114,14 +119,14 @@
 # NADA      platform/shared/bmo-usbred/src/clase.rs
 # NADA      platform/shared/bmo-usbred/src/politica.rs
 # DATO      platform/shared/bmo-usbred/src/rndis.rs
-# DATO      toolchain/lang/c/src/codegen/bex.rs
-# TAREA     toolchain/lang/c/src/codegen/decidir/imagen.rs
-# DATO      toolchain/lang/c/src/codegen/decidir/plegado.rs
-# DATO      toolchain/lang/c/src/codegen/disposicion.rs
-# DATO      toolchain/lang/c/src/codegen/emitir/direccion.rs
-# TAREA     toolchain/lang/c/src/codegen/emitir/mod.rs
-# TAREA     toolchain/lang/c/src/codegen/emitir/orden.rs
-# DATO      toolchain/lang/c/src/codegen/emitir/valor.rs
+# DATO      toolchain/lang/c/emisor-x86_64/src/codegen/bex.rs
+# TAREA     toolchain/lang/c/emisor-x86_64/src/codegen/decidir/imagen.rs
+# DATO      toolchain/lang/c/emisor-x86_64/src/codegen/decidir/plegado.rs
+# DATO      toolchain/lang/c/emisor-x86_64/src/codegen/disposicion.rs
+# DATO      toolchain/lang/c/emisor-x86_64/src/codegen/emitir/direccion.rs
+# TAREA     toolchain/lang/c/emisor-x86_64/src/codegen/emitir/mod.rs
+# TAREA     toolchain/lang/c/emisor-x86_64/src/codegen/emitir/orden.rs
+# DATO      toolchain/lang/c/emisor-x86_64/src/codegen/emitir/valor.rs
 # DATO      toolchain/lang/c/src/tipos.rs
 # NADA      toolchain/tools/bmo-firmar/src/bex.rs
 # NADA      toolchain/tools/bmo-firmar/src/llave.rs

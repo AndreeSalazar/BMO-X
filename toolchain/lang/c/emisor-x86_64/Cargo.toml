@@ -1,0 +1,39 @@
+[package]
+name = "bmo-c-x86-64"
+version = "0.1.0"
+edition = "2021"
+authors = ["BMO Project"]
+description = "BMO C para x86-64: del arbol a bytes. El unico sitio de C que nombra una maquina."
+
+# El frontend de arriba analiza; esto EMITE (2026-09-18, igual que INTI, Ada y COBOL).
+[dependencies]
+bmo-c-front = { path = ".." }
+bmo-abi = { path = "../../../../platform/abi/bmo-abi" }
+# forge: encoder compartido (elegido, no embudo).
+bmo-sem-asm = { path = "../../../forge/sem-asm" }
+# forge: L1, la puerta al ABI (INVOKE/subsyscalls). Elegida, no embudo.
+bmo-lower = { path = "../../../forge/bmo-lower" }
+bmo-mods = { path = "../../../forge/bmo-mods" }
+# forge: EL GATE. Ningun `.bex` se escribe sin pasar por aqui. Es el "unico
+# checkpoint comun" de la filosofia -- el papel de seguridad que tendria un IR
+# central, pero como CONTRATO: cada lenguaje emite lo suyo y esto lo revisa.
+bmo-verify = { path = "../../../forge/bmo-verify" }
+
+[lib]
+name = "bmo_c_x86_64"
+path = "src/lib.rs"
+
+[[bin]]
+name = "c"
+path = "src/main.rs"
+
+[dev-dependencies]
+# Banco de pruebas: ejecuta el codigo emitido (ver forge/bmo-lower).
+bmo-lower = { path = "../../../forge/bmo-lower", features = ["emulator"] }
+# ** LOS GEMELOS (2026-09-16, N0c de docs/plan/PLAN_NAVEGAR.md): C es el
+# ORACULO de la superficie en INTI. `tests/gemelos_inti.rs` compila el mismo
+# dibujo con los dos frontends, lo corre en el emulador y exige los mismos
+# bytes en el bloque. Son dependencias del BANCO, no del compilador: `capas.py`
+# solo juzga `[dependencies]`, y aqui no entra nada del otro lado.
+bmo-inti-front = { path = "../../inti" }
+bmo-inti-x86-64 = { path = "../../inti/emisor-x86_64" }

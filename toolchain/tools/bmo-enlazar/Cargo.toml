@@ -17,7 +17,7 @@ bmo-verify = { path = "../../forge/bmo-verify" }
 # Las pruebas compilan C de verdad y EJECUTAN lo enlazado: un enlazador que
 # solo se prueba contra objetos escritos a mano prueba su propia idea del
 # formato.
-bmo-c-front = { path = "../../lang/c" }
+bmo-c-x86-64 = { path = "../../lang/c/emisor-x86_64" }
 # Y C++, que baja al MISMO arbol: si el contrato es de formato, un .bo de
 # C++ y uno de C tienen que caber en el mismo .bex sin que ninguno lo sepa.
 bmo-cpp-front = { path = "../../lang/cpp" }

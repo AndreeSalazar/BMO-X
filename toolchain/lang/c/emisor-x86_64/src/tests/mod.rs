@@ -102,7 +102,7 @@ mod escalado_de_doom;
 mod varargs_de_doom;
 // == THE CENSUS FAMILY ==============================================
 //
-// Ten axes, 143 cells, half a second: `cargo test -p bmo-c-front probe_`.
+// Ten axes, 143 cells, half a second: `cargo test -p bmo-c-x86-64 probe_`.
 // This is the answer to "what does BMO C support", and it CANNOT go stale --
 // each probe compares its whole report against a written constant, so fixing a
 // BROKEN or breaking a GOOD fails the test until the census is updated.

@@ -9,7 +9,7 @@ use super::*;
 /// un operador, este test lo dice antes de que haga falta flashear nada.
 #[test]
 fn hola_example_produces_its_documented_output() {
-    let out = run_c(include_str!("../../examples/hola.c"));
+    let out = run_c(include_str!("../../../examples/hola.c"));
     assert_eq!(
         out,
         "BMO-X: hola mundo desde C\n\
@@ -97,10 +97,10 @@ fn c_feature_matrix_runs_correctly() {
 /// el .bex antes de flashear -- si no, el kernel llevaria un binario
 /// que ya no corresponde a su fuente.
 ///
-///   cargo run -p bmo-c-front -- toolchain/lang/c/examples/hola_C.c     ///       -o Ultra_kernel_x86-64/kernel/src/ring0/hola_C.bex
+///   cargo run -p bmo-c-x86-64 -- toolchain/lang/c/examples/hola_C.c     ///       -o Ultra_kernel_x86-64/kernel/src/ring0/hola_C.bex
 #[test]
 fn hola_c_payload_output_is_what_the_kernel_will_show() {
-    let out = run_c(include_str!("../../examples/hola_C.c"));
+    let out = run_c(include_str!("../../../examples/hola_C.c"));
     let esperado = [
         "hola desde C en el Ryzen",
         "suma 1..10 = 55",

@@ -115,6 +115,11 @@ pub(crate) struct Parser {
     /// una -- ver `parse_block`.
     funcion_actual: String,
     syscalls: HashMap<String, SyscallDef>,
+    /// El catalogo de SYSCALL de la MAQUINA, que se carga cuando el programa
+    /// dice `use`. ** Lo pone quien emite (2026-09-18): antes se leia aqui de
+    /// `bmo-abi`, y eso ataba el frontend de C al ABI de x86-64. Vacio = un
+    /// `use` no trae ninguna syscall.
+    pub(crate) catalogo_syscalls: Vec<SyscallDef>,
     /// Lo que el LEXER no pudo leer. Se comprueba antes de parsear: seguir
     /// con un token inventado produce un programa que compila y no dice lo
     /// que esta escrito.
@@ -145,6 +150,7 @@ impl Parser {
             anon_aggregates: 0,
             funcion_actual: String::new(),
             syscalls: HashMap::new(),
+            catalogo_syscalls: Vec::new(),
             features: StandardFeatures::default(),
         }
     }
@@ -667,8 +673,8 @@ impl Parser {
 
             // Load syscall definitions from embedded registry
             if self.syscalls.is_empty() {
-                for d in bmo_abi::asm::defs::syscalls() {
-                    self.syscalls.entry(d.name.clone()).or_insert(SyscallDef { name: d.name, nr: d.nr, arg_count: d.arg_count });
+                for d in self.catalogo_syscalls.clone() {
+                    self.syscalls.entry(d.name.clone()).or_insert(d);
                 }
             }
         }

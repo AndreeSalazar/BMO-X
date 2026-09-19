@@ -149,7 +149,7 @@ para recorrer cualquier tabla.
 `src/tests/sonda_resta_de_punteros.rs`, 441 lineas. Se corren con:
 
 ```
-   cargo test -p bmo-c-front sonda_resta_de_punteros -- --ignored
+   cargo test -p bmo-c-x86-64 sonda_resta_de_punteros -- --ignored
 ```
 
 ### CAUSA A -- el parser no sabe el tipo de una expresion aritmetica

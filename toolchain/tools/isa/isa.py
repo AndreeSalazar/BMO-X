@@ -79,6 +79,7 @@ FRONTENDS = {
     "toolchain/lang/inti": "bmo-inti-front",
     "toolchain/lang/ada": "bmo-ada-front",
     "toolchain/lang/cobol": "bmo-cobol-front",
+    "toolchain/lang/c": "bmo-c-front",
 }
 # Lo unico de lo que un frontend puede depender: nada que emita ni que sea la Base.
 # Cada uno con su motivo; y el guardian exige que ELLOS tampoco lleven `asm!` ni
@@ -96,8 +97,7 @@ DEPS_DE_FRONTEND = {
 DEPS_DE_FRONTEND.update({c: "otro frontend" for c in FRONTENDS.values()})
 # Lenguajes cuyo frontend y emisor de x86-64 comparten crate todavia, con por que.
 POR_PARTIR = {
-    "bmo-c-front": "codegen/ (unas 7.700 lineas) emite x86-64 dentro del crate",
-    "bmo-cpp-front": "desciende al arbol de C y emite con el codegen de C: se parte con C",
+    "bmo-cpp-front": "emite con el codegen de C (bmo-c-x86-64) y coloca con bmo-abi dentro del crate",
 }
 # Palabras que solo significan algo dentro de una maquina (la misma lista que
 # `inti/tests/agnostico.rs`), como palabra ENTERA: `conversion` no nombra `rsi`.

@@ -11,7 +11,7 @@
 # El numero va solo en la primera linea util. Lo de abajo es el inventario, y es
 # comentario: esta para leerlo, no para juzgarlo.
 
-106
+111
 # AJENO              Ultra_kernel_x86-64/kernel/src/ring0/cabina/caida.rs
 # SILENCIO           Ultra_kernel_x86-64/kernel/src/ring0/core/autopsy.rs
 # ESPEJO SILENCIO    Ultra_kernel_x86-64/kernel/src/ring0/core/desmontaje.rs
@@ -42,10 +42,12 @@
 # ESPEJO SILENCIO    Ultra_kernel_x86-64/kernel/src/ring0/plat/smp/atril.rs
 # SILENCIO           Ultra_kernel_x86-64/kernel/src/ring0/plat/smp/dormir.rs
 # SILENCIO ESPEJO    Ultra_kernel_x86-64/kernel/src/ring0/plat/smp/ficha.rs
+# UNICO              Ultra_kernel_x86-64/kernel/src/ring0/plat/smp/tss.rs
 # AJENO              Ultra_kernel_x86-64/kernel/src/ring0/task/admitir.rs
 # AJENO              Ultra_kernel_x86-64/kernel/src/ring0/task/scheduler/roja.rs
 #                    Ultra_kernel_x86-64/kernel/src/ring0/task/scheduler/verde.rs
 # AJENO SILENCIO     Ultra_userspace/services/director/src/commands/reports.rs
+# ESPEJO             Ultra_userspace/services/director/src/commands/save_cabina.rs
 # ESPEJO             Ultra_userspace/services/director/src/commands/tabla.rs
 # RELOJ SILENCIO     Ultra_userspace/services/director/src/desktop/tick/amarilla.rs
 # RELOJ SILENCIO     Ultra_userspace/services/director/src/desktop/tick/mod.rs
@@ -83,10 +85,12 @@
 # AJENO              platform/drivers/gpu/rdna4/src/psp.rs
 # SILENCIO           platform/drivers/net/src/anillo.rs
 # SILENCIO           platform/drivers/net/src/lib.rs
+# SILENCIO           platform/drivers/net/src/recibir.rs
 # SILENCIO           platform/drivers/net/src/tx.rs
 # SILENCIO           platform/drivers/storage/ahci/src/arranque.rs
 # SILENCIO           platform/drivers/storage/ahci/src/comando.rs
 # SILENCIO           platform/drivers/storage/ahci/src/controller.rs
+# RELOJ              platform/drivers/usb/uhid/src/racha.rs
 # SILENCIO           platform/drivers/usb/xhci/src/enumerar.rs
 # SILENCIO           platform/drivers/usb/xhci/src/lib.rs
 # ESPEJO             platform/drivers/usb/xhci/src/paginas.rs
@@ -94,6 +98,7 @@
 # AJENO              platform/shared/bmo-antena/src/cuarentena.rs
 # AJENO              platform/shared/bmo-antena/src/lamina.rs
 # AJENO              platform/shared/bmo-antena/src/lib.rs
+# SILENCIO           platform/shared/bmo-cola/src/lib.rs
 # AJENO              platform/shared/bmo-dma-forma/src/lib.rs
 # SILENCIO           platform/shared/bmo-dma-juicio/src/lib.rs
 # ESPEJO             platform/shared/bmo-fisica-juicio/src/lib.rs
@@ -106,14 +111,14 @@
 # SILENCIO           platform/shared/bmo-usbred/src/clase.rs
 # UNICO              platform/shared/bmo-usbred/src/politica.rs
 # AJENO              platform/shared/bmo-usbred/src/rndis.rs
-# AJENO              toolchain/lang/c/src/codegen/bex.rs
-# ESPEJO             toolchain/lang/c/src/codegen/decidir/imagen.rs
-# SILENCIO ESPEJO    toolchain/lang/c/src/codegen/decidir/plegado.rs
-# ESPEJO             toolchain/lang/c/src/codegen/disposicion.rs
-# ESPEJO SILENCIO    toolchain/lang/c/src/codegen/emitir/direccion.rs
-# ESPEJO             toolchain/lang/c/src/codegen/emitir/mod.rs
-# AJENO              toolchain/lang/c/src/codegen/emitir/orden.rs
-# SILENCIO           toolchain/lang/c/src/codegen/emitir/valor.rs
+# AJENO              toolchain/lang/c/emisor-x86_64/src/codegen/bex.rs
+# ESPEJO             toolchain/lang/c/emisor-x86_64/src/codegen/decidir/imagen.rs
+# SILENCIO ESPEJO    toolchain/lang/c/emisor-x86_64/src/codegen/decidir/plegado.rs
+# ESPEJO             toolchain/lang/c/emisor-x86_64/src/codegen/disposicion.rs
+# ESPEJO SILENCIO    toolchain/lang/c/emisor-x86_64/src/codegen/emitir/direccion.rs
+# ESPEJO             toolchain/lang/c/emisor-x86_64/src/codegen/emitir/mod.rs
+# AJENO              toolchain/lang/c/emisor-x86_64/src/codegen/emitir/orden.rs
+# SILENCIO           toolchain/lang/c/emisor-x86_64/src/codegen/emitir/valor.rs
 # ESPEJO SILENCIO    toolchain/lang/c/src/tipos.rs
 # ESPEJO             toolchain/tools/bmo-firmar/src/bex.rs
 # UNICO              toolchain/tools/bmo-firmar/src/llave.rs

@@ -3,9 +3,9 @@
 //! ```text
 //! fuente .cpp -> [lexer -> parser + tabla de simbolos] -> descenso
 //!                                                        |
-//!                     bmo_c_front::ast::Program  <--------+   (LA FRONTERA)
+//!                     bmo_c_x86_64::ast::Program  <--------+   (LA FRONTERA)
 //!                                 |
-//!                     bmo_c_front::codegen  ->  bytes del BEF
+//!                     bmo_c_x86_64::codegen  ->  bytes del BEF
 //! ```
 //!
 //! C++ hereda el **descenso** de BMO C, no su frontend. La frontera es un tipo
@@ -67,7 +67,7 @@ pub fn parse(source: &str) -> Result<Program, CppError> {
 pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CppError> {
     let programa = parse(source)?;
     let en_c = descenso::descender(&programa)?;
-    bmo_c_front::codegen::compile_to_bef_bytes(&en_c)
+    bmo_c_x86_64::codegen::compile_to_bef_bytes(&en_c)
         .map_err(|e| CppError::new(e.line, e.message))
 }
 
@@ -80,7 +80,7 @@ pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CppError> {
 pub fn compile_source_to_object(source: &str) -> Result<Vec<u8>, CppError> {
     let programa = parse(source)?;
     let en_c = descenso::descender_unidad(&programa, true)?;
-    bmo_c_front::codegen::compile_to_object(&en_c)
+    bmo_c_x86_64::codegen::compile_to_object(&en_c)
         .map_err(|e| CppError::new(e.line, e.message))
 }
 

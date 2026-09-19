@@ -19,7 +19,7 @@
  *   gira para siempre. Aqui se corta con el salto de linea, que es lo que hay.
  *
  * Compilar:
- *   cargo run -p bmo-c-front -- toolchain/lang/c/examples/pregunta_C.c \
+ *   cargo run -p bmo-c-x86-64 -- toolchain/lang/c/examples/pregunta_C.c \
  *       -o Ultra_kernel_x86-64/kernel/src/ring0/pregunta_C.bex
  */
 

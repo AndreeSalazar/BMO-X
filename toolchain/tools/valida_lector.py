@@ -57,7 +57,7 @@ def resolver(b, desp):
         return b[p:fin].decode('ascii', 'replace'), desp - addr
     return None
 
-EXE = os.path.abspath('target/release/bmo-c-front.exe')
+EXE = os.path.abspath('target/release/c.exe')
 EJ = 'toolchain/lang/c/examples'
 S = os.environ['S']
 

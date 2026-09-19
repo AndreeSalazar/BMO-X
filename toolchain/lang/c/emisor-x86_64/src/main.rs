@@ -15,7 +15,7 @@ fn main() {
     let program = &args[0];
     let mut base_paths: Vec<PathBuf> = Vec::new();
     let mut asm_paths: Vec<PathBuf> = Vec::new();
-    let mut standard = bmo_c_front::CStandard::DefaultC;
+    let mut standard = bmo_c_x86_64::CStandard::DefaultC;
     let mut file_path = None;
     let mut out_override: Option<PathBuf> = None;
     let mut quiere_mapa = false;
@@ -23,8 +23,8 @@ fn main() {
     // unidad y no enlaza. La salida es un objeto (`.bo`), no un programa.
     let mut solo_objeto = false;
     // Que hace la unidad con los cuerpos de las cabeceras del sistema. Ver
-    // `bmo_c_front::Libc`: por defecto, cada unidad se queda su copia (E2b).
-    let mut libc = bmo_c_front::Libc::Copia;
+    // `bmo_c_x86_64::Libc`: por defecto, cada unidad se queda su copia (E2b).
+    let mut libc = bmo_c_x86_64::Libc::Copia;
     // `--libc`: compila LA libc, o sea los cuerpos de las cabeceras una vez.
     let mut soy_la_libc = false;
     let mut solo_preprocesar = false;
@@ -63,7 +63,7 @@ fn main() {
                 solo_objeto = true;
             }
             "--libc-aparte" => {
-                libc = bmo_c_front::Libc::Aparte;
+                libc = bmo_c_x86_64::Libc::Aparte;
             }
             "--libc" => {
                 soy_la_libc = true;
@@ -81,7 +81,7 @@ fn main() {
             "--std" => {
                 i += 1;
                 if i < args.len() {
-                    match bmo_c_front::CStandard::from_name(&args[i]) {
+                    match bmo_c_x86_64::CStandard::from_name(&args[i]) {
                         Some(s) => standard = s,
                         None => {
                             eprintln!("error: unknown standard '{}'. Use c89/c99/c11/c17/c23", args[i]);
@@ -107,10 +107,10 @@ fn main() {
     }
 
     // `--libc` no compila un fichero de nadie: compila las cabeceras del
-    // sistema, que son una lista escrita en `bmo_c_front::FUENTE_LIBC`.
+    // sistema, que son una lista escrita en `bmo_c_x86_64::FUENTE_LIBC`.
     if soy_la_libc && file_path.is_none() {
         let destino = out_override.unwrap_or_else(|| PathBuf::from("libc.bo"));
-        match bmo_c_front::compile_libc_object(standard) {
+        match bmo_c_x86_64::compile_libc_object(standard) {
             Ok(bytes) => {
                 if let bmo_verify::Verdict::Rejected(razones) = bmo_verify::verify_object(&bytes) {
                     eprintln!("error: la libc no pasa el gate del objeto:");
@@ -151,7 +151,7 @@ fn main() {
     };
 
     if solo_preprocesar {
-        match bmo_c_front::preprocess_only(&source, Path::new(path), standard) {
+        match bmo_c_x86_64::preprocess_only(&source, Path::new(path), standard) {
             Ok(texto) => {
                 println!("{texto}");
                 return;
@@ -169,14 +169,14 @@ fn main() {
     // autopsia, no construyendo: obligarle a generar el binario otra vez seria
     // pedirle que ensucie el disco para leer una tabla.
     if quiere_mapa {
-        let programa = match bmo_c_front::parse_with_preprocessor(&source, Path::new(path), standard) {
+        let programa = match bmo_c_x86_64::parse_with_preprocessor(&source, Path::new(path), standard) {
             Ok(p) => p,
             Err(e) => {
                 eprintln!("error: {}: {}", path, e.message);
                 process::exit(1);
             }
         };
-        match bmo_c_front::codegen::function_map(&programa) {
+        match bmo_c_x86_64::codegen::function_map(&programa) {
             Ok(mapa) => {
                 println!("# mapa de {}  --  offset dentro de la seccion de codigo", path);
                 println!("# un `.bex` de Ring 3 se carga en 0x40000000: rip - base = offset");
@@ -193,20 +193,20 @@ fn main() {
     }
 
     let result = if soy_la_libc {
-        bmo_c_front::compile_libc_object(standard)
+        bmo_c_x86_64::compile_libc_object(standard)
     } else if solo_objeto {
         if !base_paths.is_empty() || !asm_paths.is_empty() {
             eprintln!("error: -c no se combina con --base ni --asm-path todavia (esos son el camino de modulos)");
             process::exit(2);
         }
-        bmo_c_front::compile_object_with_preprocessor(&source, Path::new(path), standard, libc)
+        bmo_c_x86_64::compile_object_with_preprocessor(&source, Path::new(path), standard, libc)
     } else {
         match (base_paths.is_empty(), asm_paths.is_empty()) {
             (true, true) => {
                 let file = Path::new(path);
-                bmo_c_front::compile_with_preprocessor(&source, file, standard)
+                bmo_c_x86_64::compile_with_preprocessor(&source, file, standard)
             }
-            _ => bmo_c_front::compile_source_to_bef_with_all(&source, base_paths, asm_paths),
+            _ => bmo_c_x86_64::compile_source_to_bef_with_all(&source, base_paths, asm_paths),
         }
     };
 

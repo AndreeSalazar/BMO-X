@@ -75,6 +75,10 @@ import sys
 
 RAIZ = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 ARBOL = os.path.join(RAIZ, "toolchain", "lang", "c", "src")
+# ** BMO C son DOS arboles desde el 2026-09-18: el frontend (arriba) y su
+# emisor de x86-64 (`emisor-x86_64/src`, con el codegen). Mirar solo el primero
+# hizo que la cuenta bajara de 41 a 18 sin que se borrara una sola etiqueta.
+ARBOLES = (ARBOL, os.path.join(RAIZ, "toolchain", "lang", "c", "emisor-x86_64", "src"))
 BASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "LINEA_BASE.txt")
 
 # En que mitad del camino vive la pieza. Cerrado, por el mismo motivo que
@@ -120,11 +124,12 @@ def ficheros():
     que falla aparece siempre en el mismo sitio: en el banco.
     """
     fuera = []
-    for dp, dn, fn in os.walk(ARBOL):
-        dn[:] = [d for d in dn if d not in ("tests", "target")]
-        for n in sorted(fn):
-            if n.endswith(".rs"):
-                fuera.append(os.path.join(dp, n))
+    for arbol in ARBOLES:
+        for dp, dn, fn in os.walk(arbol):
+            dn[:] = [d for d in dn if d not in ("tests", "target")]
+            for n in sorted(fn):
+                if n.endswith(".rs"):
+                    fuera.append(os.path.join(dp, n))
     return fuera
 
 
@@ -144,7 +149,7 @@ def main():
     ap.add_argument("--check", action="store_true")
     args = ap.parse_args()
 
-    if not os.path.isdir(ARBOL):
+    if not all(os.path.isdir(a) for a in ARBOLES):
         # Un guardian que no encuentra lo que mira tiene que PARAR, no aprobar.
         # Es la leccion de `perfil.py` y del `Guardian` con la ruta mal escrita.
         print("el arbol de BMO C no esta donde dice: %s" % ARBOL)

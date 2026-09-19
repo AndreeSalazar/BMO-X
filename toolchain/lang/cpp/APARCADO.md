@@ -160,7 +160,7 @@ una lectura: seguia describiendo el fallo exacto.
 
 | # | condicion | 2026-09-17 |
 |---|---|---|
-| 1 | SSE ejecutado en el emulador | ✅ **YA SE CUMPLIA, y nadie lo habia dicho**: `toolchain/lang/c/src/tests/flotante.rs` EJECUTA dobles con salida exacta (`un_double_como_parametro_llega_entero` da `25 25`, y cuatro mas) |
+| 1 | SSE ejecutado en el emulador | ✅ **YA SE CUMPLIA, y nadie lo habia dicho**: `toolchain/lang/c/emisor-x86_64/src/tests/flotante.rs` EJECUTA dobles con salida exacta (`un_double_como_parametro_llega_entero` da `25 25`, y cuatro mas) |
 | 2 | Compilacion separada | ◐ **HECHA en el anfitrion el 2026-09-17**: E2 y E3 del plan del enlazador -- dos `.c` producen un `.bex` que corre, sin pegarlos a mano. Falta el metal (E4), y falta que C++ emita objetos: hoy los emite BMO C |
 
 O sea: **C++ sale del aparcamiento con TECHO**. Un programa de un fichero

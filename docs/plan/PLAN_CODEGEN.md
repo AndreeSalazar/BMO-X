@@ -162,7 +162,7 @@ sin compilar un programa entero y contarlas a mano.
        a un global, una a un array, una por puntero, un `+=`-- y su cuenta de
        instrucciones emitidas, como FILA de prueba. Igual que el banco de
        correccion, pero contando en vez de comparando
-       -- `toolchain/lang/c/src/tests/`
+       -- `toolchain/lang/c/emisor-x86_64/src/tests/`
 ```
 
 ★ Con eso, "28 instrucciones por escritura util" deja de ser una frase de un

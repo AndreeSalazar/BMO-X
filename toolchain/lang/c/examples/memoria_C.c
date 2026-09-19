@@ -45,7 +45,7 @@
  *   lado: la que da el kernel, no la que da el programa.
  *
  * Compilar:
- *   cargo run -p bmo-c-front -- toolchain/lang/c/examples/memoria_C.c \
+ *   cargo run -p bmo-c-x86-64 -- toolchain/lang/c/examples/memoria_C.c \
  *       -o memc.bex
  */
 

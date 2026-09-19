@@ -1,7 +1,7 @@
 //! Motor de codificacion semantica (`sem-asm`) -- la 3a libreria del pipeline.
 //!
 //! Lee las tablas TOML de `tables/` y encodea mnemonicos -> bytes. Reemplaza
-//! el hardcodeo de bytes DUPLICADO en `lang/c/src/codegen.rs` y
+//! el hardcodeo de bytes DUPLICADO en `lang/c/emisor-x86_64/src/codegen/` y
 //! `lang/cobol/emisor-x86_64/src/codegen.rs` (ambos escriben 0x48/0xB8... a mano).
 //!
 //! Libreria que el frontend ELIGE enlazar, no un embudo.

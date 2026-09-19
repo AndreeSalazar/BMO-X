@@ -1,11 +1,11 @@
-//! **El descenso**: AST de C++ -> `bmo_c_front::ast::Program`.
+//! **El descenso**: AST de C++ -> `bmo_c_x86_64::ast::Program`.
 //!
 //! === Que es este fichero y que NO es ===
 //!
 //! Es **la frontera entera** entre BMO C++ y BMO C, y es a proposito lo mas
 //! tonto que se puede escribir: una traduccion nodo a nodo, sin decisiones.
 //! Lo que sale de aqui es un `Program` de C --un **formato**-- y quien lo recibe
-//! (`bmo_c_front::codegen`) no sabe ni sabra que existe una clase.
+//! (`bmo_c_x86_64::codegen`) no sabe ni sabra que existe una clase.
 //!
 //! Lo que **no** es: no es un puente para que C aprenda C++. La flecha apunta
 //! en un solo sentido y `lang/c` no se entera de que este crate existe. Las
@@ -41,7 +41,7 @@
 //! leeria la direccion donde debia leer el valor. Compilaria, y haria otra
 //! cosa. Se rechaza.
 
-use bmo_c_front::ast as c;
+use bmo_c_x86_64::ast as c;
 use crate::ast as cpp;
 use crate::CppError;
 use std::collections::HashMap;

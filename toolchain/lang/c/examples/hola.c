@@ -10,7 +10,7 @@
  * instrucciones; cada %d convierte el numero ahi mismo.
  *
  * Compilar:
- *     cargo run -p bmo-c-front -- toolchain/lang/c/examples/hola.c
+ *     cargo run -p bmo-c-x86-64 -- toolchain/lang/c/examples/hola.c
  */
 enum Estado { ARRANCANDO, LISTO, APAGANDO };
 

@@ -1,3 +1,11 @@
+//! **BMO C -- el FRONTEND**: preprocesador, lexer, parser, arbol, el juez de
+//! tipos y la politica de libc.
+//!
+//! [isa] NINGUNA. No nombra una maquina y no depende de nada que emita: lo que
+//! emite x86-64 vive en `emisor-x86_64/` (crate `bmo-c-x86-64`), igual que
+//! INTI, Ada y COBOL. Partido el 2026-09-18 -- en BMO-X todo es x86-64 MENOS
+//! los frontends, que son lo unico agnostico. Ver `toolchain/tools/isa`.
+//!
 //! [fase]     ARBOL
 //!
 //! [aparece]  AQUI -- la fachada de la crate
@@ -5,14 +13,14 @@
 //! [carril]   VERDE    -- si se rompe, ALGUIEN TE LO DICE antes de que salga de aqui
 //!            * y sale de su `[aparece]`, no de una opinion: ver toolchain/tools/fases/
 
-pub mod codegen;
 pub mod ast;
 pub mod module;
 pub mod parser;
 pub mod standard;
 mod lexer;
 /// EL JUEZ UNICO de "que tipo es esta expresion". Ver su cabecera.
-mod tipos;
+/// `pub` desde el 2026-09-18: el codegen, que lo consulta, vive en otro crate.
+pub mod tipos;
 
 use parser::Parser;
 
@@ -22,29 +30,12 @@ use lexer::Token;
 
 use std::path::{Path, PathBuf};
 use ast::*;
-use bmo_abi::profile::BmoLanguageProfile;
-
-pub fn profile() -> BmoLanguageProfile {
-    BmoLanguageProfile::C
-}
-
 pub fn parse(source: &str) -> Result<Program, CError> {
     let mut p = Parser::new(source);
     p.parse_program()
 }
 
-pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CError> {
-    let program = parse(source)?;
-    codegen::compile_to_bef_bytes(&program)
-}
 
-/// **Compile ONE unit to an object (`.bo`)**, to be joined by `bmo-enlazar`.
-/// E2 of `docs/plan/PLAN_EL_ENLAZADOR.md`; the contract is
-/// `bmo_abi::bef::objeto`.
-pub fn compile_source_to_object(source: &str) -> Result<Vec<u8>, CError> {
-    let program = parse(source)?;
-    codegen::compile_to_object(&program)
-}
 
 /// **Que hace la unidad con los cuerpos que traen las cabeceras del sistema.**
 ///
@@ -66,20 +57,22 @@ pub enum Libc {
     Soy,
 }
 
-/// The same, through the preprocessor -- the path a real `.c` file takes.
-pub fn compile_object_with_preprocessor(
+/// **Una unidad lista para emitir**: preprocesada, analizada y con la politica
+/// de libc aplicada. La politica es de ENLACE, no de maquina, y por eso se
+/// queda en el frontend (2026-09-18); el emisor solo le anade el `codegen`.
+pub fn parse_unidad_con_preprocesador(
     source: &str,
     file_path: &Path,
     std: CStandard,
     libc: Libc,
-) -> Result<Vec<u8>, CError> {
+) -> Result<Program, CError> {
     let features = StandardFeatures::load_standard(std);
     let include_paths = module::discover_include_paths();
     let mut pp = parser::preprocessor::Preprocessor::new(&features, include_paths);
     let expanded = pp.preprocess(source, file_path)?;
     let mut program = parse_with_features(&expanded, &features)?;
     politica_libc(&mut program, &pp.rangos_sistema, libc);
-    codegen::compile_to_object(&program)
+    Ok(program)
 }
 
 /// **El fuente de `libc.bo`**: una unidad que no hace mas que incluir las
@@ -95,10 +88,6 @@ pub const FUENTE_LIBC: &str = "#include <stdio.h>\n\
                                #include <ctype.h>\n\
                                #include <math.h>\n";
 
-/// Compila `libc.bo`: los cuerpos de las cabeceras del sistema, una vez.
-pub fn compile_libc_object(std: CStandard) -> Result<Vec<u8>, CError> {
-    compile_object_with_preprocessor(FUENTE_LIBC, Path::new("libc.c"), std, Libc::Soy)
-}
 
 /// Aplica la politica a las funciones que vinieron de una cabecera del sistema.
 ///
@@ -137,13 +126,6 @@ fn politica_libc(program: &mut Program, rangos: &[(usize, usize)], libc: Libc) {
     }
 }
 
-/// Compile with a specific C standard (C89/C99/C11/C17/C23).
-/// Loads the standard TOML manifest and applies feature gating during parsing.
-pub fn compile_with_standard(source: &str, std: CStandard) -> Result<Vec<u8>, CError> {
-    let features = StandardFeatures::load_standard(std);
-    let program = parse_with_features(source, &features)?;
-    codegen::compile_to_bef_bytes(&program)
-}
 
 /// * Run ONLY the preprocessor and hand back the text it produced.
 ///
@@ -164,24 +146,6 @@ pub fn preprocess_only(source: &str, file_path: &Path, std: CStandard) -> Result
     pp.preprocess(source, file_path)
 }
 
-/// Compile with full preprocessor pass (macros, includes, conditionals).
-/// This is the recommended entry point for real C files.
-pub fn compile_with_preprocessor(
-    source: &str,
-    file_path: &Path,
-    std: CStandard,
-) -> Result<Vec<u8>, CError> {
-    let features = StandardFeatures::load_standard(std);
-
-    // Run preprocessor: expand #include, #define, #ifdef, etc.
-    let include_paths = module::discover_include_paths();
-    let mut pp = parser::preprocessor::Preprocessor::new(&features, include_paths);
-    let expanded = pp.preprocess(source, file_path)?;
-
-    // Parse + compile the expanded source
-    let program = parse_with_features(&expanded, &features)?;
-    codegen::compile_to_bef_bytes(&program)
-}
 
 /// **Preprocesar y parsear, sin emitir.** Lo que necesita `--map`.
 ///
@@ -209,23 +173,23 @@ pub fn parse_with_features(source: &str, features: &StandardFeatures) -> Result<
     p.parse_program()
 }
 
-pub fn compile_source_to_bef_with_modules(source: &str, base_paths: Vec<PathBuf>) -> Result<Vec<u8>, CError> {
-    let mut resolver = module::ModuleResolver::new(base_paths).with_semantic_asm();
-    let program = Parser::new(source).parse_program_with_modules(&mut resolver, None)?;
-    let used = module::find_used_functions(&program, &program.exported);
-    codegen::compile_to_bef_bytes_filtered(&program, &used)
-}
-
-pub fn compile_source_to_bef_with_all(
+/// **Analizar con modulos** (`use "..."`): resuelve los manifiestos y, si el
+/// programa usa algo, le presta el catalogo de SYSCALL de la maquina.
+///
+/// ** `syscalls` lo pone quien emite (2026-09-18): el frontend no conoce los
+/// numeros de la puerta de ninguna maquina.
+pub fn parse_with_modules(
     source: &str,
     base_paths: Vec<PathBuf>,
-    asm_paths: Vec<PathBuf>,
-) -> Result<Vec<u8>, CError> {
+    asm_paths: Option<Vec<PathBuf>>,
+    syscalls: Vec<SyscallDef>,
+) -> Result<Program, CError> {
     let mut resolver = module::ModuleResolver::new(base_paths).with_semantic_asm();
-    let program = Parser::new(source).parse_program_with_modules(&mut resolver, Some(asm_paths))?;
-    let used = module::find_used_functions(&program, &program.exported);
-    codegen::compile_to_bef_bytes_filtered(&program, &used)
+    let mut p = Parser::new(source);
+    p.catalogo_syscalls = syscalls;
+    p.parse_program_with_modules(&mut resolver, asm_paths)
 }
+
 
 #[derive(Debug, Clone)]
 pub struct CError {
@@ -243,4 +207,16 @@ impl CError {
 
 
 #[cfg(test)]
-mod tests;
+mod tests {
+    use super::*;
+
+    /// La unica prueba del banco de C que mira DENTRO del lexer. Las demas
+    /// compilan y ejecutan, y viven con el emisor (`emisor-x86_64/src/tests`).
+    #[test]
+    fn parses_use_directive() {
+        let src = r#"use "bmo/core"; int main() { return 0; }"#;
+        // tokenize and check
+        let tokens = crate::Parser::tokenize_for_test(src);
+        assert!(tokens.contains(&Token::Use), "should contain Use token");
+    }
+}

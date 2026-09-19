@@ -127,7 +127,7 @@ fn free_no_cruza_la_puerta() {
 /// lo desplegado no corresponde a esta fuente.
 #[test]
 fn el_ejemplo_de_memoria_pasa_sus_cuatro_pruebas() {
-    let m = run_c_maquina(include_str!("../../examples/memoria_C.c"));
+    let m = run_c_maquina(include_str!("../../../examples/memoria_C.c"));
     let esperado = [
         "KIND_MEMORIA - la primera vez que un programa PIDE",
         "malloc(1024) = 0xe0000000",

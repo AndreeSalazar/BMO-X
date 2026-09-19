@@ -774,7 +774,7 @@ were seen on the real machine and the things marked 🟡 say so.
   USB stick is a separate command, `.\desplegar.ps1`, on purpose.
 - `.\limpiar.ps1` says what the build trees weigh before you delete them.
 - `cargo test --workspace --exclude bmo-kernel` -- **2.433 tests, 0 failures**.
-- `cargo test -p bmo-c-front probe_` -- **15 axes in 0,61 s**: the census of what
+- `cargo test -p bmo-c-x86-64 probe_` -- **15 axes in 0,61 s**: the census of what
   the C compiler actually supports, including the rows that are still broken. A
   census that hides its red rows is worth nothing.
 

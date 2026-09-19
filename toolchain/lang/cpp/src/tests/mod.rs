@@ -59,7 +59,7 @@ fn ejecutar_bef(bef: &[u8]) -> String {
 /// ```
 ///
 /// The two red rows were the harness running a program the kernel would never
-/// run. Still a deliberate COPY of `toolchain/lang/c/src/tests/mod.rs`
+/// run. Still a deliberate COPY of `toolchain/lang/c/emisor-x86_64/src/tests/mod.rs`
 /// (`maquina_de_bef_con`), per `HERENCIA.md` rule 4: each language owns its
 /// bench.
 fn maquina_de_bef(bef: &[u8]) -> Machine {
@@ -195,7 +195,7 @@ fn el_programa_minimo_corre_desde_la_fuente() {
 fn los_bytes_son_identicos_a_los_de_bmo_c() {
     for fuente in ["int main() { return 42; }", "int main() { return 0; }"] {
         let de_cpp = compile_source_to_bef(fuente).expect("C++ debe compilarlo");
-        let de_c = bmo_c_front::compile_source_to_bef(fuente).expect("C debe compilarlo");
+        let de_c = bmo_c_x86_64::compile_source_to_bef(fuente).expect("C debe compilarlo");
         assert_eq!(
             de_cpp, de_c,
             "el BEF de C++ y el de C tienen que ser identicos para {fuente:?}",

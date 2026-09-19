@@ -577,7 +577,7 @@ int main() {
      * quedan escritas porque el error es mas util que el acierto:
      *
      *   1. "Es un fallo de codegen al anidar llamadas en un argumento." NO.
-     *      Tres sondas en `lang/c/src/tests/puerta.rs` lo reproducen exacto y
+     *      Tres sondas en `lang/c/emisor-x86_64/src/tests/puerta.rs` lo reproducen exacto y
      *      las tres pasan. Se acuso al compilador razonando desde un comentario.
      *   2. "1116 > 895 es imposible, una parte no excede al todo." TAMPOCO:
      *      `dispatch` es una MEDIA y el total un MINIMO. Una media inflada por

@@ -78,7 +78,16 @@ version = "0.1.0"
 name = "bmo-c-front"
 version = "0.1.0"
 dependencies = [
+ "bmo-disposicion",
+ "bmo-mods",
+]
+
+[[package]]
+name = "bmo-c-x86-64"
+version = "0.1.0"
+dependencies = [
  "bmo-abi",
+ "bmo-c-front",
  "bmo-inti-front",
  "bmo-inti-x86-64",
  "bmo-lower",
@@ -133,7 +142,7 @@ name = "bmo-cpp-front"
 version = "0.1.0"
 dependencies = [
  "bmo-abi",
- "bmo-c-front",
+ "bmo-c-x86-64",
  "bmo-lower",
  "bmo-verify",
 ]
@@ -170,7 +179,7 @@ name = "bmo-enlazar"
 version = "0.1.0"
 dependencies = [
  "bmo-abi",
- "bmo-c-front",
+ "bmo-c-x86-64",
  "bmo-cpp-front",
  "bmo-lower",
  "bmo-verify",

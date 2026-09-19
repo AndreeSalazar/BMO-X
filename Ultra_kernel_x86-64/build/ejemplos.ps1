@@ -620,7 +620,7 @@ try {
     # Sin --base ni --asm-path: ese camino usa el PREPROCESADOR, que es lo que
     # resuelve `#include <bmo/...>`. Con ellos se toma el de modulos, que no lo
     # llama.
-    Compilar-Ejemplos $cEjemplos 'bmo-c-front' 'c' 'ok:|error' $dataBase $repo -PorObjeto
+    Compilar-Ejemplos $cEjemplos 'bmo-c-x86-64' 'c' 'ok:|error' $dataBase $repo -PorObjeto
 
     Step 'Building INTI probes...'
     # ** `run inti/cpu.ibx`. Por el MISMO helper que los otros tres: si INTI
@@ -777,7 +777,7 @@ try {
             $modsPrevio = $env:BMO_MODS
             $env:BMO_MODS = $doomInc
             try {
-                $out = cargo run -p bmo-c-front --quiet -- $doomFte -o $doomDst 2>&1
+                $out = cargo run -p bmo-c-x86-64 --quiet -- $doomFte -o $doomDst 2>&1
                 $out | ForEach-Object {
                     if ($_ -match 'ok:|error') { Write-Host ('    [doom] ' + $_) -ForegroundColor DarkGray }
                 }

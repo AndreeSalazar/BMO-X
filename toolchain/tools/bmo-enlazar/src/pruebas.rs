@@ -10,7 +10,7 @@ use super::*;
 use bmo_abi::bef::sections::SectionEntry;
 
 fn objeto(nombre: &str, fuente: &str) -> (String, Vec<u8>) {
-    let bytes = bmo_c_front::compile_source_to_object(fuente)
+    let bytes = bmo_c_x86_64::compile_source_to_object(fuente)
         .unwrap_or_else(|e| panic!("{nombre} debe compilar: {}", e.message));
     (nombre.to_string(), bytes)
 }
@@ -183,7 +183,7 @@ fn dice_que_no_con_nombre_y_unidad() {
     assert!(matches!(no_es, Fallo::NoEsObjeto { .. }), "{no_es:?}");
 
     // Y una IMAGEN no es un objeto: pasarle un `.bex` dice por que.
-    let imagen = bmo_c_front::compile_source_to_bef("int main(){return 0;}").unwrap();
+    let imagen = bmo_c_x86_64::compile_source_to_bef("int main(){return 0;}").unwrap();
     let es_imagen = enlazar(&[("programa.bex".to_string(), imagen)]).unwrap_err();
     assert!(matches!(es_imagen, Fallo::NoEsObjeto { .. }), "{es_imagen:?}");
 }
@@ -208,11 +208,11 @@ fn lo_enlazado_pasa_el_gate_del_kernel() {
 
 // -- E5: la libc, una vez -------------------------------------------------
 
-fn objeto_con(nombre: &str, fuente: &str, libc: bmo_c_front::Libc) -> (String, Vec<u8>) {
-    let bytes = bmo_c_front::compile_object_with_preprocessor(
+fn objeto_con(nombre: &str, fuente: &str, libc: bmo_c_x86_64::Libc) -> (String, Vec<u8>) {
+    let bytes = bmo_c_x86_64::compile_object_with_preprocessor(
         fuente,
         std::path::Path::new("prueba.c"),
-        bmo_c_front::CStandard::C11,
+        bmo_c_x86_64::CStandard::C11,
         libc,
     )
     .unwrap_or_else(|e| panic!("{nombre} debe compilar: {}", e.message));
@@ -236,15 +236,15 @@ int main() {
 /// ejecucion y no al compilar.
 #[test]
 fn la_libc_aparte_hace_lo_mismo_que_la_copiada() {
-    let copia = enlazar(&[objeto_con("solo.bo", USA_LIBC, bmo_c_front::Libc::Copia)]).unwrap();
+    let copia = enlazar(&[objeto_con("solo.bo", USA_LIBC, bmo_c_x86_64::Libc::Copia)]).unwrap();
     assert_eq!(correr(&copia), "BMO-X");
 
     let libc = (
         "libc.bo".to_string(),
-        bmo_c_front::compile_libc_object(bmo_c_front::CStandard::C11).expect("la libc debe compilar"),
+        bmo_c_x86_64::compile_libc_object(bmo_c_x86_64::CStandard::C11).expect("la libc debe compilar"),
     );
     let aparte = enlazar(&[
-        objeto_con("principal.bo", USA_LIBC, bmo_c_front::Libc::Aparte),
+        objeto_con("principal.bo", USA_LIBC, bmo_c_x86_64::Libc::Aparte),
         libc,
     ])
     .unwrap();
@@ -268,13 +268,13 @@ fn la_libc_aparte_hace_lo_mismo_que_la_copiada() {
 /// su `rodata`, que no se poda (ver `tirar.rs`).
 #[test]
 fn enlazar_contra_la_libc_entera_ya_no_cuesta_mas() {
-    let copia = enlazar(&[objeto_con("solo.bo", USA_LIBC, bmo_c_front::Libc::Copia)]).unwrap();
+    let copia = enlazar(&[objeto_con("solo.bo", USA_LIBC, bmo_c_x86_64::Libc::Copia)]).unwrap();
     let libc = (
         "libc.bo".to_string(),
-        bmo_c_front::compile_libc_object(bmo_c_front::CStandard::C11).unwrap(),
+        bmo_c_x86_64::compile_libc_object(bmo_c_x86_64::CStandard::C11).unwrap(),
     );
     let aparte = enlazar(&[
-        objeto_con("principal.bo", USA_LIBC, bmo_c_front::Libc::Aparte),
+        objeto_con("principal.bo", USA_LIBC, bmo_c_x86_64::Libc::Aparte),
         libc,
     ])
     .unwrap();
@@ -311,9 +311,9 @@ int main() {
 }
 "#;
     let bex = enlazar(&[
-        objeto_con("principal.bo", principal, bmo_c_front::Libc::Copia),
-        objeto_con("una.bo", una, bmo_c_front::Libc::Copia),
-        objeto_con("dos.bo", dos, bmo_c_front::Libc::Copia),
+        objeto_con("principal.bo", principal, bmo_c_x86_64::Libc::Copia),
+        objeto_con("una.bo", una, bmo_c_x86_64::Libc::Copia),
+        objeto_con("dos.bo", dos, bmo_c_x86_64::Libc::Copia),
     ])
     .unwrap();
     assert_eq!(correr(&bex), "uno dos 3");
@@ -330,15 +330,15 @@ int main() {
 fn la_poda_tira_lo_que_nadie_llama_y_deja_lo_que_si() {
     let libc = || (
         "libc.bo".to_string(),
-        bmo_c_front::compile_libc_object(bmo_c_front::CStandard::C11).unwrap(),
+        bmo_c_x86_64::compile_libc_object(bmo_c_x86_64::CStandard::C11).unwrap(),
     );
     let con = enlazar_informado(
-        &[objeto_con("principal.bo", USA_LIBC, bmo_c_front::Libc::Aparte), libc()],
+        &[objeto_con("principal.bo", USA_LIBC, bmo_c_x86_64::Libc::Aparte), libc()],
         true,
     )
     .unwrap();
     let sin = enlazar_informado(
-        &[objeto_con("principal.bo", USA_LIBC, bmo_c_front::Libc::Aparte), libc()],
+        &[objeto_con("principal.bo", USA_LIBC, bmo_c_x86_64::Libc::Aparte), libc()],
         false,
     )
     .unwrap();
@@ -461,13 +461,13 @@ fn los_ejemplos_del_arbol_dicen_lo_mismo_enlazados() {
         ("sonda_C.c", include_str!("../../../lang/c/examples/sonda_C.c")),
     ];
     for (nombre, fuente) in ejemplos {
-        let imagen = bmo_c_front::compile_with_preprocessor(
+        let imagen = bmo_c_x86_64::compile_with_preprocessor(
             fuente,
             std::path::Path::new(nombre),
-            bmo_c_front::CStandard::C11,
+            bmo_c_x86_64::CStandard::C11,
         )
         .unwrap_or_else(|e| panic!("{nombre} a imagen: {}", e.message));
-        let enlazado = enlazar(&[objeto_con(nombre, fuente, bmo_c_front::Libc::Copia)])
+        let enlazado = enlazar(&[objeto_con(nombre, fuente, bmo_c_x86_64::Libc::Copia)])
             .unwrap_or_else(|e| panic!("{nombre} enlazado: {e}"));
         assert_eq!(correr(&imagen), correr(&enlazado), "{nombre} no dice lo mismo");
         // Y no puede salir mas grande: si sale, la poda no se aplico.

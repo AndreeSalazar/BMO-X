@@ -32,7 +32,7 @@
  *   lanzalo desde el shell de Ring 0.
  *
  * Compilar:
- *   cargo run -p bmo-c-front -- toolchain/lang/c/examples/scroll_C.c \
+ *   cargo run -p bmo-c-x86-64 -- toolchain/lang/c/examples/scroll_C.c \
  *       -o Ultra_kernel_x86-64/kernel/src/ring0/scroll_C.bex
  */
 #include <bmo/scroll.h>

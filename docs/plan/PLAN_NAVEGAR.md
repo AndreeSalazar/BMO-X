@@ -365,7 +365,7 @@ que cooperen"*. Se miro el codigo, no el recuerdo. Lo que hay:
 ## 8.2 Lo que NO comparten, y por que no se pueden enlazar
 
 ```text
-   el IR                     C baja de su AST a x86 en `lang/c/src/codegen/`;
+   el IR                     C baja de su AST a x86 en `lang/c/emisor-x86_64/src/codegen/`;
                              INTI baja de su IR propio en `emisor-x86_64/`. No
                              hay un IR comun por el que pasar un cuerpo de C a
                              un programa de INTI
@@ -598,7 +598,7 @@ Lo que INTI no tiene y el port tuvo que respetar, dicho:
                      cada modulo entra una vez
 ```
 
-** N0c, los gemelos: `toolchain/lang/c/src/tests/gemelos_inti.rs` compila el
+** N0c, los gemelos: `toolchain/lang/c/emisor-x86_64/src/tests/gemelos_inti.rs` compila el
 MISMO dibujo (64x32, ocho ranuras, fondo, un rectangulo, "Hola") con los dos
 frontends, lo corre en el emulador con un DIRECTOR de mentira (`padre = 7`,
 `emu/director.rs`: contesta MI_PADRE, acepta la oferta y reparte eventos al
@@ -609,7 +609,7 @@ equivocado, 312. Y sin padre, ninguno de los dos ofrece nada y los dos se
 van con codigo 1.
 
 - [x] **N0c -- los gemelos.** HECHO el 2026-09-16:
-      `toolchain/lang/c/src/tests/gemelos_inti.rs` corre la misma secuencia
+      `toolchain/lang/c/emisor-x86_64/src/tests/gemelos_inti.rs` corre la misma secuencia
       (limpia, rectangulo, texto) en C y en INTI y compara el bloque de la
       superficie byte a byte. **Como se sabe:** la prueba pasa, y mover el
       rectangulo un pixel o cambiar un glifo la pone en rojo con la

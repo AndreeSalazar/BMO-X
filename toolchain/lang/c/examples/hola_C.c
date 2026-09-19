@@ -14,7 +14,7 @@
  * igual que un Intel, que es justo lo que se quiere de la esencia de C.
  *
  * Compilar:
- *   cargo run -p bmo-c-front -- toolchain/lang/c/examples/hola_C.c \
+ *   cargo run -p bmo-c-x86-64 -- toolchain/lang/c/examples/hola_C.c \
  *       -o Ultra_kernel_x86-64/kernel/src/ring0/hola_C.bex
  */
 enum Fase { ARRANQUE, CALCULO, FIN };

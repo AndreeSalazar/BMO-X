@@ -410,12 +410,12 @@ lo que no sabe traducir. Las otras dos fueron el `char *mapa` del raycaster
 
 ## La reproduccion, en el emulador y sin encender la maquina
 
-`toolchain/lang/c/src/tests/tabla_de_config.rs`. Seis tests verdes que
+`toolchain/lang/c/emisor-x86_64/src/tests/tabla_de_config.rs`. Seis tests verdes que
 **descartan** la tabla, la cuenta, el operador `#`, la escala de 200 punteros y
 `strcmp`; y cuatro `#[ignore]` que reproducen el defecto:
 
 ```powershell
-cargo test -p bmo-c-front tabla_de_config -- --ignored
+cargo test -p bmo-c-x86-64 tabla_de_config -- --ignored
 ```
 
 El reparto entre ellos ES el diagnostico:
@@ -614,7 +614,7 @@ inventa: 8 bytes.
 
 ### Como se llego, en cinco casillas y una vuelta
 
-`toolchain/lang/c/src/tests/sonda_resta_de_punteros.rs`:
+`toolchain/lang/c/emisor-x86_64/src/tests/sonda_resta_de_punteros.rs`:
 
 ```text
    `tope - 1` calcula la direccion            VERDE   560 = 7 x 80

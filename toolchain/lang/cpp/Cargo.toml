@@ -21,7 +21,7 @@ bmo-abi = { path = "../../../platform/abi/bmo-abi" }
 # workspace. El contrato completo, con las cuatro reglas de "no se
 # combinan" y cuando tocaria mudar el descenso a `forge/`, esta en
 # `toolchain/lang/cpp/HERENCIA.md`.
-bmo-c-front = { path = "../c" }
+bmo-c-x86-64 = { path = "../c/emisor-x86_64" }
 
 [lib]
 name = "bmo_cpp_front"

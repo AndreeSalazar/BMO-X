@@ -66,7 +66,7 @@ hay maduren por completo"**, es exactamente este plan.
       bef/relocations.rs   198   Abs64, Rel32, SeccionAbs64 con `symbol_idx`
       bef/imports.rs        91
       bef/exports.rs       115
-   BMO C ya EMITE la seccion Symbols   `toolchain/lang/c/src/tests/simbolos.rs`
+   BMO C ya EMITE la seccion Symbols   `toolchain/lang/c/emisor-x86_64/src/tests/simbolos.rs`
    el cargador ya APLICA relocaciones  C5 de PLAN_SEGURIDAD, 25-08
    bmo-verify                          lo llaman los frontends antes de escribir
 ```
@@ -123,7 +123,7 @@ sigue siendo del dueno: este plan escribe los escalones para cuando la tome.
       **Como se sabe**: `bmo-verify` rechaza un `.bo` como ejecutable, con motivo.
 
 - [x] **E2 -- BMO C escribe un objeto. HECHO el 2026-09-17.** `-c` emite un
-      `.bo`; el modo objeto vive en `toolchain/lang/c/src/codegen/objeto.rs` y su
+      `.bo`; el modo objeto vive en `toolchain/lang/c/emisor-x86_64/src/codegen/objeto.rs` y su
       banco en `src/tests/objeto.rs` (7 filas). El parser guarda lo que tiraba
       --prototipos, `static` de fichero y `extern`-- en `ast::Enlace`, y **los 41
       ejecutables del arbol salen byte a byte iguales**: el modo imagen no

@@ -331,7 +331,7 @@ fn la_primera_fila_visible_sigue_a_la_vista() {
 /// depurar el USB sin motivo.
 #[test]
 fn scroll_sin_entrada_lo_dice_y_se_va() {
-    let out = run_c_con_pp(include_str!("../../examples/scroll_C.c"));
+    let out = run_c_con_pp(include_str!("../../../examples/scroll_C.c"));
     assert_eq!(out, "la entrada es de otro proceso: no hay scroll que hacer.
 ");
 }
@@ -343,7 +343,7 @@ fn scroll_sin_entrada_lo_dice_y_se_va() {
 /// que esa mitad se puede cerrar aqui.
 #[test]
 fn scroll_recorre_el_historial_con_la_rueda_y_con_las_teclas() {
-    let out = run_c_sembrado(include_str!("../../examples/scroll_C.c"), |m| {
+    let out = run_c_sembrado(include_str!("../../../examples/scroll_C.c"), |m| {
         m.ceder_entrada();
         m.poner_rueda(2);
         m.poner_teclas_por_fotograma(&[&[0x87], &[0x85], &[27]]);
@@ -379,7 +379,7 @@ fn scroll_recorre_el_historial_con_la_rueda_y_con_las_teclas() {
 /// solo se ve dando varias vueltas al bucle.
 #[test]
 fn el_scroll_no_sigue_moviendose_solo_tras_soltar_la_rueda() {
-    let out = run_c_sembrado(include_str!("../../examples/scroll_C.c"), |m| {
+    let out = run_c_sembrado(include_str!("../../../examples/scroll_C.c"), |m| {
         m.ceder_entrada();
         m.poner_rueda(1);
         // Teclas que no mueven nada, una por fotograma: obligan al bucle a

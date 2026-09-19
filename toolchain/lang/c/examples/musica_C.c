@@ -31,7 +31,7 @@
  *   c/musica.bex     desde la caja Ejecutar del escritorio.
  *
  * Compilar:
- *   cargo run -p bmo-c-front -- toolchain/lang/c/examples/musica_C.c \
+ *   cargo run -p bmo-c-x86-64 -- toolchain/lang/c/examples/musica_C.c \
  *       -o musica.bex
  */
 #include <bmo/musica.h>

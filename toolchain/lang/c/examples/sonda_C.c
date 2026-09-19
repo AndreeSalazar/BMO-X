@@ -44,7 +44,7 @@
  * instrumento de METAL -- se lanza en el Ryzen y se lee ahi, o no se lee.
  *
  * Compilar:
- *   cargo run -p bmo-c-front -- toolchain/lang/c/examples/sonda_C.c -o sonda.bex
+ *   cargo run -p bmo-c-x86-64 -- toolchain/lang/c/examples/sonda_C.c -o sonda.bex
  *
  * Lanzar:  c/sonda.bex   desde la caja Ejecutar del escritorio.
  */

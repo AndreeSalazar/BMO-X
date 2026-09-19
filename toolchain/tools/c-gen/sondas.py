@@ -33,16 +33,16 @@ class Compilador:
         """Compila el frontend UNA vez. Sin esto, cada sonda pagaria el build."""
         print("  compilando BMO C (una sola vez)...")
         r = subprocess.run(
-            ["cargo", "build", "--quiet", "--release", "-p", "bmo-c-front"],
+            ["cargo", "build", "--quiet", "--release", "-p", "bmo-c-x86-64"],
             cwd=str(CRATE), capture_output=True, text=True,
         )
         if r.returncode != 0:
-            print("  !! no se pudo compilar bmo-c-front:")
+            print("  !! no se pudo compilar bmo-c-x86-64:")
             print(r.stderr[-800:])
             return False
-        exe = RAIZ / "target" / "release" / "bmo-c-front.exe"
+        exe = RAIZ / "target" / "release" / "c.exe"
         if not exe.exists():
-            exe = RAIZ / "target" / "release" / "bmo-c-front"
+            exe = RAIZ / "target" / "release" / "c"
         if not exe.exists():
             print(f"  !! no encuentro el binario en {exe}")
             return False

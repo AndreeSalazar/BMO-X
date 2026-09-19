@@ -74,13 +74,13 @@ impl Parser {
     }
 
     /// La regla de disposicion **ya no esta aqui**: vive una sola vez en
-    /// `bmo_abi::types::disposicion`. Estaba copiada a mano en tres sitios
+    /// `bmo-disposicion` (hasta el 2026-09-18, `bmo_abi::types::disposicion`). Estaba copiada a mano en tres sitios
     /// --este, `codegen::build_struct_layout` y el parser de C++-- y una
     /// divergencia entre ellas no da un error: da un programa que escribe en
     /// el campo de al lado.
     pub(super) fn compute_struct_layout(&mut self, name: &str, members: &[StructMember]) {
         let mut layout = Vec::new();
-        let mut d = bmo_abi::types::Disposicion::nueva();
+        let mut d = bmo_disposicion::Disposicion::nueva();
         for m in members {
             let sz = self.type_size(&m.typ);
             layout.push((m.name.clone(), d.coloca(sz, self.type_align(&m.typ)), sz));
@@ -93,7 +93,7 @@ impl Parser {
 
     pub(super) fn compute_union_layout(&mut self, name: &str, members: &[StructMember]) {
         let mut layout = Vec::new();
-        let mut d = bmo_abi::types::DisposicionUnion::nueva();
+        let mut d = bmo_disposicion::DisposicionUnion::nueva();
         for m in members {
             let sz = self.type_size(&m.typ);
             layout.push((m.name.clone(), d.coloca(sz, self.type_align(&m.typ)), sz));
@@ -137,7 +137,7 @@ impl Parser {
                 self.struct_aligns.get(n.as_str()).copied().unwrap_or(8)
             }
             TypeSpec::Ptr(_) => 8,
-            otro => bmo_abi::types::alineado_de(self.type_size(otro)),
+            otro => bmo_disposicion::alineado_de(self.type_size(otro)),
         }
     }
 }

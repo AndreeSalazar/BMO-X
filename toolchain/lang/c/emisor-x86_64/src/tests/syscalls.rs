@@ -18,8 +18,8 @@ fn parses_syscall_direct() {
 fn parses_syscall_with_asm_defs() {
     use std::path::PathBuf;
     let src = r#"use "bmo/proc"; int main() { bmo_exit(42); }"#;
-    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../base");
-    let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../forge/sem-asm/tables");
+    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../base");
+    let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../forge/sem-asm/tables");
     let bef = compile_source_to_bef_with_all(src, vec![base], vec![asm]).unwrap();
     assert!(bef.len() > 48);
 }
@@ -29,8 +29,8 @@ fn syscall_arg_count_validation() {
     use std::path::PathBuf;
     // bmo_exit expects 1 arg -> passing 0 should fail
     let src = r#"use "bmo/proc"; int main() { bmo_exit(); }"#;
-    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../base");
-    let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../forge/sem-asm/tables");
+    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../base");
+    let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../forge/sem-asm/tables");
     let result = compile_source_to_bef_with_all(src, vec![base], vec![asm]);
     assert!(result.is_err(), "should reject wrong arg count");
     if let Err(e) = result {
@@ -42,8 +42,8 @@ fn syscall_arg_count_validation() {
 fn syscall_multiple_categories() {
     use std::path::PathBuf;
     let src = r#"use "bmo/proc"; use "bmo/diag"; int main() { bmo_exit(0); bmo_debug_print("test", 4); }"#;
-    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../base");
-    let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../forge/sem-asm/tables");
+    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../base");
+    let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../forge/sem-asm/tables");
     let bef = compile_source_to_bef_with_all(src, vec![base], vec![asm]).unwrap();
     assert!(bef.len() > 48);
 }
@@ -68,8 +68,8 @@ use "bmo/ipc";
 use "bmo/surface";
 int main() { bmo_exit(0); }
 "#;
-    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../base");
-    let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../forge/sem-asm/tables");
+    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../base");
+    let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../forge/sem-asm/tables");
     let bef = compile_source_to_bef_with_all(src, vec![base], vec![asm]).unwrap();
     assert!(bef.len() > 48);
 }
@@ -78,8 +78,8 @@ int main() { bmo_exit(0); }
 fn syscall_emits_correct_code() {
     use std::path::PathBuf;
     let src = r#"use "bmo/proc"; int main() { bmo_exit(42); }"#;
-    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../base");
-    let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../forge/sem-asm/tables");
+    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../base");
+    let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../forge/sem-asm/tables");
     let bef = compile_source_to_bef_with_all(src, vec![base], vec![asm]).unwrap();
     // BEF validation: magic, correct header, code section present
     assert_eq!(u32::from_le_bytes(bef[..4].try_into().unwrap()), bmo_abi::bef::BEF_MAGIC);
