@@ -7,7 +7,7 @@
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   295 casillas ABIERTAS en 35 planes
+   300 casillas ABIERTAS en 35 planes
    209 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
@@ -51,6 +51,15 @@
 - [ ] **P2.2 -- RESCHEDULE FORZADO: una tarea que se duerme suelta el CPU en el
 - [ ] P2.3 -- el kernel publica el TIEMPO DE CPU de una tarea. Hoy
 - [ ] P2.4 -- envejecimiento en choose_next, y SOLO si P2.1+P2.2 no bastan.
+- ... y 11 mas
+
+## [`PLAN_EL_TROQUEL.md`](PLAN_EL_TROQUEL.md) -- 14 abiertas, 0 hechas
+
+*PLAN EL TROQUEL -- la geometria de los registros, estampada de un golpe*
+
+- [ ] S1 -- EL CONTRATO, EN PAPEL Y ANTES QUE EL CODIGO. Que entra y que
+- [ ] S2 -- LA TABLA DE REGISTROS COMO DATO, no como codigo. x86-64 nombra
+- [ ] S3 -- EL PRIMER CLIENTE: INTI. Porque puede declarar el alias. Y
 - ... y 11 mas
 
 ## [`PLAN_EL_ASISTENTE.md`](PLAN_EL_ASISTENTE.md) -- 13 abiertas, 2 hechas
@@ -114,15 +123,6 @@
 - [ ] C1 -- PLEGAR CONSTANTES. 1 * 8 es 8. Un operador binario con los
 - [ ] C2 -- LITERALES PEQUENOS SIN movabsq. movabsq $0x1,%rax son diez
 - [ ] C3 -- NO PASAR POR LA PILA CUANDO EL OTRO OPERANDO ES CONSTANTE.
-- ... y 6 mas
-
-## [`PLAN_EL_TROQUEL.md`](PLAN_EL_TROQUEL.md) -- 9 abiertas, 0 hechas
-
-*PLAN EL TROQUEL -- la geometria de los registros, estampada de un golpe*
-
-- [ ] S1 -- EL CONTRATO, EN PAPEL Y ANTES QUE EL CODIGO. Que entra y que
-- [ ] S2 -- LA TABLA DE REGISTROS COMO DATO, no como codigo. x86-64 nombra
-- [ ] S3 -- EL PRIMER CLIENTE: INTI. Porque puede declarar el alias. Y
 - ... y 6 mas
 
 ## [`PLAN_VATIOS.md`](PLAN_VATIOS.md) -- 8 abiertas, 4 hechas

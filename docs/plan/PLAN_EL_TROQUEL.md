@@ -352,3 +352,55 @@ un REPORTERO, no un trinquete: los programas pueden crecer con razon.
 > usa el 7% de ellos. **El problema no es que falte una capa: es que las que hay
 > no se usan.** Este plan solo vale si la nueva nace con clientes, y por eso el
 > primer escalon es un contrato y no un `cargo new`.
+
+---
+
+# 10. LO QUE DIJO EL METRO EL 18-09, Y LO QUE QUEDA
+
+El metro del emisor (`toolchain/tools/metro`: 25 programas, trinquete en el
+build, `--desglose` por clase y `--caliente` por direccion) hizo en un dia lo
+que la seccion 8 pedia y mas: la linea base de tamanos existe (`tamano.py`,
+41 ejecutables) y ADEMAS la de instrucciones. Con el se eligieron seis pasos,
+cada uno por el desensamblado del bucle caliente y no por corazonada, y C paso
+de 451.306 a 225.124 instrucciones (**-50 %**) con las 25 salidas identicas:
+inmediato, comparacion fundida en el salto, troquel POR VARIABLE + operar en
+sitio, sombras renombradas (un fallo), operando derecho sin pila, y tres
+operandos (`lea`, `imul`, `cmp rN`). El bucle de `blit`: 29 -> 10 por vuelta.
+
+** Y el reparto quedo PLANO: aritmetica 25 %, memoria 16 %, registro 16 %,
+salto 14 %, pila 11 %. Ya no hay un cuello: hay un emisor de acumulador. Lo
+que queda son ganancias de un digito, y por la ley de optimizacion solo se
+tocan si el metro las pide:
+
+- [ ] **T1 -- el recorte del `int` en registro.** `i = i + 1` con `i` en r12
+      es `add r12, 1 ; movsxd r12, r12d`: dos instrucciones donde una
+      bastaria si el registro guardara el `int` de OTRA forma. Cambiar la
+      invariante de `emit_guardar_en_registro` (hoy: "lo mismo que la pila")
+      es tocar el sitio peligroso del troquel; el ahorro es una instruccion
+      por vuelta de cada bucle con contador `int`
+- [ ] **T2 -- leer la matriz sin `mov rax, rN`** cuando el resultado no
+      necesita ir a rax: `t[i]` con `i` en la matriz ya lo hace (`lea rdx,
+      [rdx + r12*8]`); faltan `and`/`or`/`xor` con el izquierdo en la
+      matriz (no hay forma de tres operandos: es `mov` + `op` igual) y el
+      valor de `t[i] = i` (hoy `mov rax, r12 ; mov [rdx], eax`, podria ser
+      `mov [rdx], r12d`)
+- [ ] **T3 -- `IndexPtr` (`p->arr[i]`, `(p+1)[i]`) sin pila.** Es el unico
+      camino de indexacion que sigue con `push`/`pop`: `push` base, indice,
+      `pop`. Quitarlo cuesta un byte por sitio (`mov rdx, rax` son 3 B contra
+      2 del `push`/`pop`) y el trinquete de bytes lo para: hay que decidir
+      si el trinquete admite +1 B por -1 instruccion, o compensarlo en el
+      mismo commit
+- [ ] **T4 -- el metro no ve la memoria.** Cuenta instrucciones: `mov rax,
+      r12` y `movsxd rax, [rbp-8]` valen lo mismo para el. El troquel por
+      variable no bajo ni una instruccion y quito el 60 % de los accesos al
+      marco. Un segundo numero --accesos a memoria, o ciclos del Ryzen con
+      `c/ciclos.bex`-- es lo que falta para que el metro juzgue eso
+- [ ] **T5 -- DOOM pasa por el metro.** Hoy esta fuera del arbol y del banco;
+      encogio un 10,7 % en el dia y NADIE lo ha visto correr. Hoja del metal
+      del 18-09, seccion 3b
+
+[!] Lo que la seccion 3 llamaba S1-S5 sigue en pie como forma (la libreria de
+codificacion con contrato). Lo del 18-09 se hizo SIN ella, en `decidir/` +
+`operando.rs` + `en_sitio.rs`, y funciono porque cada decision es pura y el
+banco la juzga. `emit_lea` es el primer codificador general que nace con
+clientes: es el embrion de S2.
