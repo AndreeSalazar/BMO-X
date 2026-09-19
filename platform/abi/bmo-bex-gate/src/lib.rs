@@ -167,6 +167,15 @@ pub fn se_carga(kind: u8) -> bool {
     matches!(kind, CODE | RODATA | DATA | BSS)
 }
 
+/// ** Los tipos que piden ENLAZADO DINAMICO o TLS: `Imports` 0x05, `Exports`
+/// 0x06, `Tls` 0x0C (2026-09-19).
+///
+/// Un tipo desconocido se salta -- es data para otro. Estos NO: dicen "alguien
+/// resolvera mis llamadas al cargar", y en BMO-X no hay nadie (enlaza estatico
+/// desde el 17-09 y no tiene TLS). Saltarlos era cargar un programa con
+/// llamadas a ninguna parte.
+pub const PIDEN_ENLAZADO_DINAMICO: [u8; 3] = [0x05, 0x06, 0x0C];
+
 /// El cargador la LEE aunque no la mapee.
 pub fn se_lee(kind: u8) -> bool {
     se_carga(kind) || matches!(kind, RELOCS | SIGNATURE | REQUISITOS)
@@ -181,6 +190,10 @@ pub const FLAG_OBJETO: u32 = 1 << 11;
 pub const FLAG_COMPRIMIDO: u32 = 1 << 4;
 pub const FLAG_FIRMADO: u32 = 1 << 5;
 pub const FLAG_RECARGABLE: u32 = 1 << 7;
+/// Pide TLS: BMO-X no tiene (2026-09-19).
+pub const FLAG_TLS: u32 = 1 << 6;
+/// Pide shaders: no existe la seccion ni quien la lea (2026-09-19).
+pub const FLAG_SHADERS: u32 = 1 << 3;
 
 /// Banderas que **cambian lo que significan las secciones** y que no implementa
 /// nadie en este sistema.
@@ -194,7 +207,7 @@ pub const FLAG_RECARGABLE: u32 = 1 << 7;
 ///
 /// Saltarse una seccion es tolerancia. Saltarse una bandera es leer mal a
 /// proposito.
-pub const FLAGS_NO_IMPLEMENTADAS: u32 = FLAG_COMPRIMIDO | FLAG_RECARGABLE;
+pub const FLAGS_NO_IMPLEMENTADAS: u32 = FLAG_COMPRIMIDO | FLAG_RECARGABLE | FLAG_TLS | FLAG_SHADERS;
 
 pub const SECCION_FLAG_EXEC: u32 = 1 << 2;
 
@@ -219,6 +232,9 @@ pub enum Falta {
     EsUnObjetoSinEnlazar,
     /// Ver [`FLAGS_NO_IMPLEMENTADAS`].
     PideAlgoQueNadieImplementa,
+    /// Trae una seccion de imports, exports o TLS: pide que alguien la
+    /// enlace al cargar, y BMO-X enlaza estatico. Ver [`PIDEN_ENLAZADO_DINAMICO`].
+    EnlazadoDinamico,
     /// Dice `FIRMADO` y no trae seccion de firma.
     CabeceraQueSeDesmiente,
     DemasiadasSecciones,
@@ -254,6 +270,7 @@ impl Falta {
             Falta::NoEsEjecutable => "no esta marcado como ejecutable",
             Falta::EsUnObjetoSinEnlazar => "es un OBJETO sin enlazar (.bo): pasalo por bmo-enlazar",
             Falta::PideAlgoQueNadieImplementa => "la cabecera pide algo que este sistema no hace",
+            Falta::EnlazadoDinamico => "pide enlazado dinamico o TLS: BMO-X enlaza estatico (pasalo por bmo-enlazar)",
             Falta::CabeceraQueSeDesmiente => "dice venir firmado y no trae firma",
             Falta::DemasiadasSecciones => "demasiadas secciones",
             Falta::TablaFueraDeLoLeido => "la tabla de secciones no cabe en lo leido",
@@ -450,6 +467,9 @@ pub fn revisar(prologo: &[u8], tam_fichero: usize) -> Result<Revisada<'_>, Falta
     let mut tam_codigo = 0u64;
     let mut hay_firma = false;
     for s in rev.secciones() {
+        if PIDEN_ENLAZADO_DINAMICO.contains(&s.kind) {
+            return Err(Falta::EnlazadoDinamico);
+        }
         if s.kind == 0 || s.file_size > s.mem_size {
             return Err(Falta::SeccionInvalida);
         }

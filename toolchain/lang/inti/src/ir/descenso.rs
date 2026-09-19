@@ -244,8 +244,8 @@ impl<'t> Descenso<'t> {
     ///
     /// ** El ancho sale del TIPO y no de la lista: `lista de entero64` mide
     /// ocho y `lista de natural8` mide uno, y el objeto en el monton no lo
-    /// guarda. La tabla de tipos --`SectionKind::TypeMap = 0x10`-- sigue siendo
-    /// el quinto hueco declarado y vacio del formato, asi que mientras tanto la
+    /// guarda. La tabla de tipos no existe todavia -- su numero de seccion, 0x10,
+    /// esta RESERVADO para ella (19-09) --, asi que mientras tanto la
     /// dependencia se lleva VISIBLE: por la firma de `sitio_de`.
     pub(super) fn ancho_de_lista(&self, e: &Expr) -> Option<u32> {
         match self.plano.tipo_de(e, &self.tipos)? {

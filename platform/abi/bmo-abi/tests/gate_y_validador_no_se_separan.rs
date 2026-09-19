@@ -184,6 +184,47 @@ fn el_menor_es_aditivo_de_verdad_y_no_solo_por_casualidad() {
     assert!(!admite(1, 0), "el 1.0 ya no entra: solo sabia llamar a la tabla v1");
 }
 
+/// ** EL ENLAZADO DINAMICO: los dos jueces dicen que NO (2026-09-19).
+///
+/// Hasta hoy la puerta SALTABA una seccion de imports, exports o TLS como
+/// "data para otro", y el validador la validaba. BMO-X enlaza estatico y no
+/// tiene TLS: un binario que las trae cuenta con que alguien resuelva sus
+/// llamadas al cargar, y no hay nadie. Y las dos BANDERAS que las anunciaban
+/// (HAS_TLS, HAS_SHADERS) tambien se rechazan en los dos sitios.
+#[test]
+fn los_dos_rechazan_el_enlazado_dinamico() {
+    assert_eq!(bmo_bex_gate::PIDEN_ENLAZADO_DINAMICO, bmo_abi::bef::validator::PIDEN_ENLAZADO_DINAMICO);
+    let mut b = bmo_abi::bef::BefBuilder::new();
+    b.add_section(bmo_abi::bef::BefSection::code(vec![0xC3; 16]));
+    b.add_section(bmo_abi::bef::BefSection::rodata(vec![1; 16]));
+    let buena = b.build().unwrap();
+    assert!(bmo_abi::bef::validate(&buena).is_valid);
+    assert!(bmo_bex_gate::revisar(&buena, buena.len()).is_ok());
+
+    // La segunda entrada de la tabla (rodata) pasa a ser 0x05, 0x06, 0x0C.
+    // Cabecera: `section_table_offset` en 32..40, `section_count` en 40..44.
+    let tabla = u64::from_le_bytes(buena[32..40].try_into().unwrap()) as usize;
+    let cuantas = u32::from_le_bytes(buena[40..44].try_into().unwrap()) as usize;
+    for kind in bmo_bex_gate::PIDEN_ENLAZADO_DINAMICO {
+        let mut img = buena.clone();
+        let i = (0..cuantas).find(|&i| img[tabla + i * 48] == 0x02).expect("la rodata");
+        img[tabla + i * 48] = kind;
+        assert!(!bmo_abi::bef::validate(&img).is_valid, "el validador admite {kind:#04x}");
+        assert_eq!(
+            bmo_bex_gate::revisar(&img, img.len()).err(),
+            Some(bmo_bex_gate::Falta::EnlazadoDinamico),
+            "la puerta admite {kind:#04x}"
+        );
+    }
+    for bandera in [bmo_bex_gate::FLAG_TLS, bmo_bex_gate::FLAG_SHADERS] {
+        let mut img = buena.clone();
+        let f = u32::from_le_bytes(img[8..12].try_into().unwrap()) | bandera;
+        img[8..12].copy_from_slice(&f.to_le_bytes());
+        assert!(!bmo_abi::bef::validate(&img).is_valid, "el validador admite la bandera {bandera:#x}");
+        assert!(bmo_bex_gate::revisar(&img, img.len()).is_err(), "la puerta admite la bandera {bandera:#x}");
+    }
+}
+
 /// **La arquitectura: los dos jueces dicen que NO a lo que no es x86-64.**
 ///
 /// ** Hasta el 2026-09-18 no coincidian: la puerta rechazaba un `.bex` de ARM,

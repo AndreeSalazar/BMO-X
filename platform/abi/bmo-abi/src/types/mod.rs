@@ -1,27 +1,17 @@
-//! BMO ABI type system -- function signatures, field descriptors, calling conventions.
-//!
-//! Companion to `runtime::types` (TypeMeta/TypeRegistry). This module defines the
-//! **typed** metadata that TypeRegistry can optionally carry: field layouts,
-//! function parameter lists, and calling convention descriptors.
-//!
-//! # Relationship with runtime::types
+//! Los tipos que dos lenguajes (o un lenguaje y la maquina) tienen que
+//! acordar, y nada mas:
 //!
 //! ```text
-//! runtime::types::TypeMeta          <-  32-byte fixed header (BEF-compatible)
-//!   name_hash, size, align, kind, field_count
-//!
-//! types::TypeField                  <-  per-field descriptor (name + type + offset)
-//! types::FunctionSignature          <-  params + return type + calling convention
-//! types::CallingConvention          <-  register assignment, stack rules
-//! types::TypeKind                   <-  extends runtime type kind with signature info
+//!    convention    por donde viaja cada argumento: lo IMPORTAN los emisores
+//!                  de C e INTI
+//!    disposicion   donde cae cada miembro de un agregado: la comparten C,
+//!                  C++, COBOL e INTI
 //! ```
 //!
-//! Language frontends emit these into a BEF `.type_map` section (SectionKind::TypeMap).
-//! The kernel's TypeRegistry loads them at boot and uses them for:
-//! - Reflection (field access by name)
-//! - LangBridge marshaling (typed arg conversion)
-//! - VTable signature validation
-//! - Debug symbol resolution
+//! ** Hasta el 2026-09-19 esta cabecera describia `TypeField`,
+//! `FunctionSignature` y un `TypeRegistry` del kernel que cargaba una seccion
+//! `.type_map` "al arrancar". Los dos primeros no tenian usuario y se fueron;
+//! el tercero no existio nunca.
 
 pub mod convention;
 /// La regla de disposicion de agregados -- donde cae cada miembro y cuanto

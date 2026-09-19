@@ -35,9 +35,7 @@
 
 
 pub mod blake3;
-pub mod exports;
 pub mod header;
-pub mod imports;
 // ** `linker` -- BORRADO el 2026-09-17 por decision del dueno: *"estatico, borra
 // lo dinamico"*. Eran 308 lineas de enlazador DINAMICO (un registro global de
 // exports que resolvia imports al cargar, con `static mut SYMBOLS: Vec` y un
@@ -67,7 +65,7 @@ pub mod writer;
 
 // --- Re-exports del loader canonico ---------------------------------
 pub use header::{
-    BefArch, BefFlags, BefHeader, BefMagic, BEF_MAGIC, BEF_VERSION_MAJOR, BEF_VERSION_MINOR,
+    BefArch, BefFlags, BefHeader, BEF_MAGIC, BEF_VERSION_MAJOR, BEF_VERSION_MINOR,
 };
 
 /// Version del formato BEF como tupla `(major, minor)`.
@@ -77,8 +75,6 @@ pub const BEF_VERSION: (u16, u16) = (BEF_VERSION_MAJOR, BEF_VERSION_MINOR);
 pub use sections::{SectionEntry, SectionFlags, SectionKind, SectionTable};
 
 // --- Re-exports de manifest, signing, relocations, symbols, etc ----
-pub use exports::ExportEntry;
-pub use imports::ImportEntry;
 pub use paquete::{directorio, empaquetar, localizar_recursos};
 pub use recursos::{Directorio, Entrada as EntradaRecurso, RECURSOS_MAGIC};
 pub use relocations::Relocation;

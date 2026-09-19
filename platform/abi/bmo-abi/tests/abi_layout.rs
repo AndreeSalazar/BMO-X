@@ -82,8 +82,6 @@ fn static_assert_sizes() {
     assert_eq!(core::mem::size_of::<bmo_abi::bef::header::BefHeader>(), 48);
     assert_eq!(core::mem::size_of::<bmo_abi::bef::sections::SectionEntry>(), 48);
     assert_eq!(core::mem::size_of::<bmo_abi::bef::relocations::Relocation>(), 24);
-    assert_eq!(core::mem::size_of::<bmo_abi::bef::imports::ImportEntry>(), 24);
-    assert_eq!(core::mem::size_of::<bmo_abi::bef::exports::ExportEntry>(), 32);
     assert_eq!(core::mem::size_of::<bmo_abi::bef::signing::SectionHash>(), 40);
     assert_eq!(core::mem::size_of::<bmo_abi::bef::signing::SignatureHeader>(), 8);
     assert_eq!(core::mem::size_of::<bmo_abi::bef::symbols::Symbol>(), 32);

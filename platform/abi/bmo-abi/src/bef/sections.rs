@@ -1,8 +1,17 @@
 //! Tabla de secciones BEF.
 //!
-//! 10 tipos de seccion, cada una con proposito claro. Comparado con ELF
-//! (~20 tipos) y PE (~11 tipos) -- mas limitado pero mas limpio: cada
-//! seccion tiene una semantica unica y obligatoria, no es solo "datos".
+//! Los tipos de seccion que ALGUIEN escribe o lee hoy.
+//!
+//! ** 2026-09-19: fuera once que describian otro sistema. `Imports`,
+//! `Exports` y `Tls` (0x05, 0x06, 0x0C) eran enlazado dinamico y TLS, y BMO-X
+//! enlaza ESTATICO y no tiene TLS: la puerta del kernel y el validador los
+//! RECHAZAN con nombre (`Falta::EnlazadoDinamico`). `Shaders`, `Unwind`,
+//! `Debug`, `TypeMap`, `VTables`, `LangBridge`, `Reflect` y `Closures` (0x0A,
+//! 0x0D, 0x0E, 0x10..0x14) apuntaban a un `bmo_gpu::abi` que no existe y no
+//! los escribia nadie. Sus NUMEROS quedan reservados: no se reutilizan, para
+//! que un byte viejo no pase a significar otra cosa. `TypeMap` (0x10) es el
+//! hueco que espera la tabla de tipos de INTI: entrara con ese numero el dia
+//! que se construya, no antes.
 
 
 use crate::bmo_abi::primitives::{bx_u16, bx_u32, bx_u64, bx_u8};
@@ -18,40 +27,18 @@ pub enum SectionKind {
     Data = 0x03,
     /// Datos no inicializados (BSS). Reservado en RAM, no en archivo.
     Bss = 0x04,
-    /// Tabla de imports (lazy/eager binding via BMO).
-    Imports = 0x05,
-    /// Tabla de exports (simbolos visibles desde fuera).
-    Exports = 0x06,
     /// Tabla de relocations.
     Relocs = 0x07,
     /// Tabla de simbolos (debug + dynamic linking).
     Symbols = 0x08,
     /// Manifest TOML (capabilities, version, dependencies).
     Manifest = 0x09,
-    /// Shaders/IR pre-compilados.
-    Shaders = 0x0A,
     /// Recursos arbitrarios (texturas BC7, audio Opus, fonts, etc.).
     Resources = 0x0B,
-    /// Layout de TLS (Thread Local Storage).
-    Tls = 0x0C,
-    /// Stack unwind info para excepciones / backtraces.
-    Unwind = 0x0D,
-    /// Debug info (DWARF-lite especifico de BEF).
-    Debug = 0x0E,
     /// Hashes BLAKE3 + firma Ed25519 opcional.
     Signature = 0x0F,
 
     // --- Sesion 8: secciones de metadatos genericos multi-lenguaje ----
-    /// Tabla de `TypeDescriptor` (consumida por `bmo_gpu::abi::type_system::TypeRegistry`).
-    TypeMap = 0x10,
-    /// VTables `BmoVTable` empacadas (`bmo_gpu::abi::vtable`).
-    VTables = 0x11,
-    /// Bridges de lenguaje origen (`bmo_gpu::abi::lang_bridge::LangDescriptor`).
-    LangBridge = 0x12,
-    /// Datos de reflection (mirrors, nombres mangled extra).
-    Reflect = 0x13,
-    /// Tabla de cierres `BmoClosure` con `ClosureSig`.
-    Closures = 0x14,
 
     // --- 2026-08-10: lo que el programa REQUIERE, y el porque ---------
     /// **Requisitos declarados**: tabla binaria de lo que el programa necesita
@@ -81,22 +68,11 @@ impl SectionKind {
             0x02 => Some(Self::RoData),
             0x03 => Some(Self::Data),
             0x04 => Some(Self::Bss),
-            0x05 => Some(Self::Imports),
-            0x06 => Some(Self::Exports),
             0x07 => Some(Self::Relocs),
             0x08 => Some(Self::Symbols),
             0x09 => Some(Self::Manifest),
-            0x0A => Some(Self::Shaders),
             0x0B => Some(Self::Resources),
-            0x0C => Some(Self::Tls),
-            0x0D => Some(Self::Unwind),
-            0x0E => Some(Self::Debug),
             0x0F => Some(Self::Signature),
-            0x10 => Some(Self::TypeMap),
-            0x11 => Some(Self::VTables),
-            0x12 => Some(Self::LangBridge),
-            0x13 => Some(Self::Reflect),
-            0x14 => Some(Self::Closures),
             0x15 => Some(Self::Requisitos),
             0x16 => Some(Self::Katanas),
             _ => None,

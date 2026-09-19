@@ -5,15 +5,14 @@
 //! - Header (magic, version, arch, entry, total_size)
 //! - Section table (bounds, duplicados, overlap)
 //! - Code section (entry offset, alineacion)
-//! - Imports / Exports / Symbols (parseo, string bounds, binding targets)
+//! - Symbols (parseo, string bounds, binding targets) -- y que NO haya imports,
+//!   exports ni TLS: BMO-X enlaza estatico
 //! - Relocations (offset dentro de target, symbol_idx valido)
 //! - Signature (hashing structure)
 //! - Flags semanticos consistentes por tipo de seccion
 
 use crate::bmo_abi::bef::{
-    exports::ExportEntry,
     header::*,
-    imports::ImportEntry,
     relocations::{Relocation, RelocationKind},
     sections::*,
     signing::{SectionHash, SignatureHeader},
@@ -168,6 +167,20 @@ pub fn validate(bytes: &[u8]) -> ValidationResult {
     }
 
     for (i, entry) in entries.iter().enumerate() {
+        // ** Lo que pide ENLAZADO DINAMICO o TLS no es "un tipo desconocido que
+        // se salta": es un binario que cuenta con que alguien resuelva sus
+        // llamadas al cargar, y en BMO-X no hay nadie. La puerta del kernel
+        // dice lo mismo (`bmo_bex_gate::Falta::EnlazadoDinamico`).
+        if bmo_bex_gate_pide_enlazado_dinamico(entry.kind) {
+            r.error_at(
+                i,
+                format!(
+                    "section kind {:#04x} pide enlazado dinamico o TLS: BMO-X enlaza estatico",
+                    entry.kind
+                ),
+            );
+            continue;
+        }
         let kind = match entry.kind() {
             Some(k) => k,
             None => {
@@ -177,8 +190,6 @@ pub fn validate(bytes: &[u8]) -> ValidationResult {
         };
         match kind {
             SectionKind::Code => {}
-            SectionKind::Imports => validate_import_section(entry, bytes, i, &mut r),
-            SectionKind::Exports => validate_export_section(entry, bytes, i, &mut r),
             SectionKind::Symbols => validate_symbol_section(
                 entry,
                 bytes,
@@ -191,10 +202,6 @@ pub fn validate(bytes: &[u8]) -> ValidationResult {
             SectionKind::Bss => validate_bss_section(entry, i, &mut r),
             SectionKind::Signature => validate_signature(entry, bytes, &mut r),
             SectionKind::Manifest => validate_manifest_section(entry, bytes, i, &mut r),
-            SectionKind::Tls => validate_tls_section(entry, bytes, i, &mut r),
-            SectionKind::Unwind | SectionKind::Debug => {
-                validate_optional_section(entry, bytes, i, &mut r)
-            }
             _ => {}
         }
         validate_section_flags(entry, kind, i, &mut r);
@@ -257,8 +264,6 @@ fn validate_flag_coherence(
     // (bandera, seccion que la respalda, nombre para el mensaje)
     let pares = [
         (BefFlags::HAS_MANIFEST, SectionKind::Manifest, "manifest"),
-        (BefFlags::HAS_SHADERS, SectionKind::Shaders, "shaders"),
-        (BefFlags::HAS_TLS, SectionKind::Tls, "tls"),
         // ** `SIGNED` NO esta en esta lista, y desde el 2026-08-09 no puede
         // estarlo. Ver el bloque de abajo: **todos** los `.bex` traen ya seccion
         // `Signature`, asi que "trae la seccion" dejo de distinguir nada.
@@ -317,6 +322,15 @@ fn validate_flag_coherence(
             "COMPRESSED esta puesta y NADIE la implementa (cero consumidores): \
              la bandera esta reservada hasta que exista la descompresion",
         );
+    }
+    // ** Y las dos que perdieron su seccion el 2026-09-19: el binario que las
+    // pone pide TLS o shaders, y BMO-X no tiene ninguno. La puerta del kernel
+    // las rechaza igual (`FLAGS_NO_IMPLEMENTADAS`).
+    if flags.contains(BefFlags::HAS_TLS) {
+        r.error("HAS_TLS esta puesta: BMO-X no tiene TLS (nadie programa FS_BASE para Ring 3)");
+    }
+    if flags.contains(BefFlags::HAS_SHADERS) {
+        r.error("HAS_SHADERS esta puesta: no existe la seccion ni quien la lea");
     }
     if flags.contains(BefFlags::HOT_RELOADABLE) {
         r.error(
@@ -615,147 +629,6 @@ fn validate_code_section(entry: &SectionEntry, header: &BefHeader, r: &mut Valid
     }
 }
 
-fn validate_import_section(
-    entry: &SectionEntry,
-    bytes: &[u8],
-    idx: usize,
-    r: &mut ValidationResult,
-) {
-    let data = match get_section_data(entry, bytes) {
-        Some(d) => d,
-        None => {
-            r.error_at(idx, "Imports section data unavailable");
-            return;
-        }
-    };
-    let entry_sz = core::mem::size_of::<ImportEntry>();
-    if data.len() < entry_sz {
-        r.error_at(
-            idx,
-            format!(
-                "Imports section too small: {} bytes, need at least {}",
-                data.len(),
-                entry_sz
-            ),
-        );
-        return;
-    }
-    let raw = data.as_ptr() as *const ImportEntry;
-    // ** LA CABECERA MANDA. Antes esto era `data.len() / entry_sz`, que da por
-    // hecho que TODO el dato son entradas -- y entonces las cadenas empiezan
-    // donde acaba la seccion y miden cero. Ver `TablaCadenas`.
-    let Some((count, string_start)) = TablaCadenas::leer(data, entry_sz) else {
-        r.error_at(idx, "la cabecera de la seccion declara mas entradas de las que caben");
-        return;
-    };
-    let strings = &data[string_start..];
-
-    for (i, imp) in (0..count).map(|i| unsafe { &*raw.add(i) }).enumerate() {
-        let lib_off = imp.library_name_off as usize;
-        let sym_off = imp.symbol_name_off as usize;
-        if string_start + lib_off + 2 > data.len() {
-            r.error_at(
-                idx,
-                format!(
-                    "import[{}]: library_name_off {:#x} out of strings range",
-                    i, lib_off
-                ),
-            );
-        } else {
-            let slen =
-                u16::from_le_bytes(strings[lib_off..lib_off + 2].try_into().unwrap_or([0; 2]))
-                    as usize;
-            if string_start + lib_off + 2 + slen > data.len() {
-                r.error_at(
-                    idx,
-                    format!(
-                        "import[{}]: library name length {} exceeds strings",
-                        i, slen
-                    ),
-                );
-            }
-        }
-        if string_start + sym_off + 2 > data.len() {
-            r.error_at(
-                idx,
-                format!(
-                    "import[{}]: symbol_name_off {:#x} out of strings range",
-                    i, sym_off
-                ),
-            );
-        }
-        if imp.binding_offset > 0 && imp.binding_offset < u64::MAX {
-            // binding_offset should point to valid writable memory
-            // (code or data section). We can't fully validate without section
-            // addresses, but we can check it's not absurd.
-            if imp.binding_offset > bytes.len() as u64 {
-                r.warn_at(
-                    idx,
-                    format!(
-                        "import[{}]: binding_offset {:#x} is beyond file size",
-                        i, imp.binding_offset
-                    ),
-                );
-            }
-        }
-    }
-}
-
-fn validate_export_section(
-    entry: &SectionEntry,
-    bytes: &[u8],
-    idx: usize,
-    r: &mut ValidationResult,
-) {
-    let data = match get_section_data(entry, bytes) {
-        Some(d) => d,
-        None => {
-            r.error_at(idx, "Exports section data unavailable");
-            return;
-        }
-    };
-    let entry_sz = core::mem::size_of::<ExportEntry>();
-    if data.len() < entry_sz {
-        r.error_at(
-            idx,
-            format!("Exports section too small: {} bytes", data.len()),
-        );
-        return;
-    }
-    let raw = data.as_ptr() as *const ExportEntry;
-    // ** LA CABECERA MANDA. Antes esto era `data.len() / entry_sz`, que da por
-    // hecho que TODO el dato son entradas -- y entonces las cadenas empiezan
-    // donde acaba la seccion y miden cero. Ver `TablaCadenas`.
-    let Some((count, string_start)) = TablaCadenas::leer(data, entry_sz) else {
-        r.error_at(idx, "la cabecera de la seccion declara mas entradas de las que caben");
-        return;
-    };
-
-    for i in 0..count {
-        let e = unsafe { &*raw.add(i) };
-        let off = e.symbol_name_off as usize;
-        let abs_off = string_start + off;
-        if abs_off + 2 > data.len() {
-            r.error_at(
-                idx,
-                format!(
-                    "export[{}]: symbol_name_off {:#x} out of strings range",
-                    i, off
-                ),
-            );
-        } else {
-            let slen = u16::from_le_bytes(data[abs_off..abs_off + 2].try_into().unwrap_or([0; 2]))
-                as usize;
-            if abs_off + 2 + slen > data.len() {
-                r.error_at(
-                    idx,
-                    format!("export[{}]: symbol name length {} exceeds strings", i, slen),
-                );
-            }
-        }
-    }
-}
-
 fn validate_reloc_section(
     entry: &SectionEntry,
     bytes: &[u8],
@@ -853,16 +726,10 @@ fn validate_reloc_section(
         let syms = sections
             .iter()
             .find(|s| s.kind == SectionKind::Symbols as u8);
-        let imps = sections
-            .iter()
-            .find(|s| s.kind == SectionKind::Imports as u8);
         let has_syms = syms.map_or(false, |s| {
             s.file_size >= core::mem::size_of::<Symbol>() as u64
         });
-        let has_imps = imps.map_or(false, |s| {
-            s.file_size >= core::mem::size_of::<ImportEntry>() as u64
-        });
-        if rel.symbol_idx >= 1000 && !(has_syms || has_imps) {
+        if rel.symbol_idx >= 1000 && !has_syms {
             // Large symbol_idx with no Symbols/Imports section is suspicious
             r.warn_at(
                 idx,
@@ -946,40 +813,13 @@ fn validate_manifest_section(
     }
 }
 
-fn validate_tls_section(entry: &SectionEntry, bytes: &[u8], idx: usize, r: &mut ValidationResult) {
-    let data = match get_section_data(entry, bytes) {
-        Some(d) => d,
-        None => {
-            r.error_at(idx, "TLS section data unavailable");
-            return;
-        }
-    };
-    if data.len() < 16 {
-        r.warn_at(
-            idx,
-            format!(
-                "TLS section very small: {} bytes (template header is 16)",
-                data.len()
-            ),
-        );
-    }
-}
+/// Los tipos que piden enlazado dinamico o TLS: `Imports` 0x05, `Exports`
+/// 0x06, `Tls` 0x0C. La MISMA lista que `bmo_bex_gate::PIDEN_ENLAZADO_DINAMICO`
+/// (la prueba `gate_y_validador_no_se_separan` las ata).
+pub const PIDEN_ENLAZADO_DINAMICO: [u8; 3] = [0x05, 0x06, 0x0C];
 
-fn validate_optional_section(
-    entry: &SectionEntry,
-    bytes: &[u8],
-    idx: usize,
-    r: &mut ValidationResult,
-) {
-    let data = match get_section_data(entry, bytes) {
-        Some(d) => d,
-        None => {
-            return;
-        }
-    };
-    if data.is_empty() {
-        r.info_at(idx, "section is empty (optional debug section)");
-    }
+fn bmo_bex_gate_pide_enlazado_dinamico(kind: u8) -> bool {
+    PIDEN_ENLAZADO_DINAMICO.contains(&kind)
 }
 
 fn validate_section_flags(
@@ -1000,7 +840,7 @@ fn validate_section_flags(
                 r.warn_at(idx, "Data section should have WRITE flag");
             }
         }
-        SectionKind::Imports | SectionKind::Exports | SectionKind::Symbols => {
+        SectionKind::Symbols => {
             if !flags.contains(SectionFlags::READ) {
                 r.warn_at(idx, "metadata section should have READ flag");
             }
@@ -1039,13 +879,6 @@ impl ValidationIssue {
 }
 
 impl ValidationResult {
-    fn info_at(&mut self, section: usize, msg: impl Into<String>) {
-        self.issues.push(ValidationIssue {
-            severity: IssueSeverity::Info,
-            section: Some(section),
-            message: msg.into(),
-        });
-    }
 }
 
 // -- Tests --

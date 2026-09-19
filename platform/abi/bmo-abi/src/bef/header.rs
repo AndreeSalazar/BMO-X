@@ -13,33 +13,6 @@ pub const BEF_MAGIC: bx_u32 = u32::from_le_bytes(*b"BEF1");
 pub const BEF_VERSION_MAJOR: bx_u16 = 1;
 pub const BEF_VERSION_MINOR: bx_u16 = 0;
 
-/// Magic alternativo aceptado por el loader (para devour).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BefMagic {
-    /// `b"BEF1"` -- formato nativo.
-    BefNative,
-    /// `b"MZ"` -- PE/COFF de Windows (debe procesarse por `loader::pe`).
-    PeWindows,
-    /// `0x7F b"ELF"` -- ELF de Linux/Unix (procesar por `loader::elf`).
-    ElfUnix,
-    /// Formato desconocido.
-    Unknown,
-}
-
-impl BefMagic {
-    /// Detecta el formato a partir de los primeros bytes.
-    pub fn detect(bytes: &[u8]) -> Self {
-        if bytes.len() < 4 {
-            return Self::Unknown;
-        }
-        match &bytes[..4] {
-            b"BEF1" => Self::BefNative,
-            b"\x7FELF" => Self::ElfUnix,
-            _ if &bytes[..2] == b"MZ" => Self::PeWindows,
-            _ => Self::Unknown,
-        }
-    }
-}
 
 bitflags::bitflags! {
     /// Flags del header BEF.

@@ -1,7 +1,5 @@
 use crate::bmo_abi::bef::{
-    exports::ExportEntry,
     header::*,
-    imports::ImportEntry,
     relocations::Relocation,
     requisitos,
     sections::*,
@@ -140,24 +138,10 @@ impl BefSection {
     /// [`SectionKind::Imports`] = `[TablaCadenas][entrada; count][cadenas]`.
     /// La cabecera dice CUANTAS entradas hay; sin ella el lector no puede
     /// saber donde acaban y empieza el blob. Ver [`TablaCadenas`].
-    pub fn imports(entries: Vec<ImportEntry>, strings: Vec<u8>) -> Self {
-        let cab = TablaCadenas::de(entries.len() as u32);
-        let mut data = Vec::from(bytes_from_struct(&cab));
-        data.extend_from_slice(&bytes_from_slice(&entries));
-        data.extend_from_slice(&strings);
-        Self::new(SectionKind::Imports, data)
-    }
 
     /// [`SectionKind::Exports`] = `[TablaCadenas][entrada; count][cadenas]`.
     /// La cabecera dice CUANTAS entradas hay; sin ella el lector no puede
     /// saber donde acaban y empieza el blob. Ver [`TablaCadenas`].
-    pub fn exports(entries: Vec<ExportEntry>, strings: Vec<u8>) -> Self {
-        let cab = TablaCadenas::de(entries.len() as u32);
-        let mut data = Vec::from(bytes_from_struct(&cab));
-        data.extend_from_slice(&bytes_from_slice(&entries));
-        data.extend_from_slice(&strings);
-        Self::new(SectionKind::Exports, data)
-    }
 
     /// [`SectionKind::Symbols`] = `[TablaCadenas][entrada; count][cadenas]`.
     /// La cabecera dice CUANTAS entradas hay; sin ella el lector no puede
@@ -406,8 +390,6 @@ impl BefBuilder {
         // lo que el que llama decidio a proposito.
         for (bandera, clase) in [
             (BefFlags::HAS_MANIFEST, SectionKind::Manifest),
-            (BefFlags::HAS_SHADERS, SectionKind::Shaders),
-            (BefFlags::HAS_TLS, SectionKind::Tls),
         ] {
             if self.sections.iter().any(|s| s.kind == clase) {
                 self.header.flags |= bandera.bits();

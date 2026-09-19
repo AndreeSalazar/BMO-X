@@ -44,8 +44,8 @@
 //!
 //! ** Guardarlo aqui haria la lista autodescriptiva HOY --y la tabla de tipos
 //! todavia no existe-- a cambio de tener el mismo dato en dos sitios. Se
-//! prefiere la dependencia visible: **`SectionKind::TypeMap = 0x10` es el quinto
-//! hueco declarado y vacio**, y esa es la pieza que falta.
+//! prefiere la dependencia visible: **la tabla de tipos es la pieza que falta**
+//! (su numero de seccion, 0x10, esta reservado para ella desde el 19-09).
 //!
 //! ## La disposicion
 //!
