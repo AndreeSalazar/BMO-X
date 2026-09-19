@@ -98,25 +98,29 @@ impl Codegen {
         // todo lo que sabe leer un `[rbp+off]` supiera tambien quien ya no esta.
         // Se pagan ocho bytes de pila que nadie toca, y no se toca nada mas.
         self.var_regs.clear();
-        if !super::decidir::registros::hay_direcciones(&func.body) {
-            let nombres: Vec<(String, i32, TypeSpec)> = self
-                .var_offsets
-                .iter()
-                .map(|(n, (o, t))| (n.clone(), *o, t.clone()))
-                .collect();
-            let mut cand = Vec::new();
-            for (n, off, t) in nombres {
-                // Un offset positivo es un PARAMETRO: vive en la pila del
-                // llamante y moverlo es otra conversacion.
-                if off >= 0 || !super::decidir::registros::cabe(&t) || self.var_is_array(&n) {
-                    continue;
-                }
-                let usos = super::decidir::registros::contar(&func.body, &n);
-                cand.push((n, usos));
+        // ** POR VARIABLE, no por funcion (2026-09-18): un `&p` en una llamada
+        // deja a `p` en la pila y a nadie mas. Ver `direcciones_tomadas`.
+        let tomadas = super::decidir::registros::direcciones_tomadas(&func.body);
+        let nombres: Vec<(String, i32, TypeSpec)> = self
+            .var_offsets
+            .iter()
+            .map(|(n, (o, t))| (n.clone(), *o, t.clone()))
+            .collect();
+        let mut cand = Vec::new();
+        for (n, off, t) in nombres {
+            // Un offset positivo es un PARAMETRO: vive en la pila del
+            // llamante y moverlo es otra conversacion.
+            if off >= 0 || !super::decidir::registros::cabe(&t) || self.var_is_array(&n) {
+                continue;
             }
-            for (n, r) in super::decidir::registros::repartir(cand) {
-                self.var_regs.insert(n, r);
+            if tomadas.incluye(&n) {
+                continue;
             }
+            let usos = super::decidir::registros::contar(&func.body, &n);
+            cand.push((n, usos));
+        }
+        for (n, r) in super::decidir::registros::repartir(cand) {
+            self.var_regs.insert(n, r);
         }
     }
 

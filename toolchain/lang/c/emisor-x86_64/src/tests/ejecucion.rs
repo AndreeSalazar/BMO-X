@@ -116,6 +116,41 @@ fn la_comparacion_fundida_en_el_salto_decide_igual_que_el_0_o_1() {
     assert_eq!(out, "1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 10 10 7 1 1 6 1 0110");
 }
 
+/// ** OPERAR EN SITIO SOBRE LA MATRIZ (2026-09-18): `x = x + 1` con `x` en
+/// `r12` es `add r12, 1` + el recorte de su tipo, hecho sobre `r12`. Cada
+/// programa tiene cuatro variables --los cuatro huecos-- con mas de seis usos
+/// ponderados (el umbral del reparto), y ninguna con la direccion tomada, para
+/// que TODAS entren en la matriz. Lo que se comprueba es el recorte: el
+/// desborde de cada anchura tiene que dar lo mismo que por la pila.
+#[test]
+fn operar_en_sitio_recorta_igual_que_la_pila() {
+    for (cuerpo, expected) in [
+        // int, unsigned, char, unsigned char: la vuelta de cada uno
+        ("int i = 2147483640; unsigned u = 4294967290u; char c = 120; unsigned char uc = 250; int k; \
+          for (k = 0; k < 10; k = k + 1) { i = i + 1; u = u + 1; c = c + 1; uc = uc + 1; } \
+          printf(\"%d %u %d %d\", i, u, c, uc);", "-2147483646 4 -126 4"),
+        // short, unsigned short, long, puntero
+        ("short s = 32760; unsigned short us = 65530; long l = 4294967290; int t[8] = {1,2,3,4,5,6,7,8}; int *p = t; int k; \
+          for (k = 0; k < 10; k = k + 1) { s = s + 1; us = us + 1; l = l + 1; p = p + 1; p = p - 1; } \
+          p = p + 3; printf(\"%d %d %ld %d\", s, us, l, *p);", "-32766 4 4294967300 4"),
+        // ++ y --, con paso de puntero, en sentencia y en el for
+        ("int i = 0; int j = 100; int t[8] = {1,2,3,4,5,6,7,8}; int *p = t; int k; \
+          for (k = 0; k < 5; k++) { i++; ++i; j--; --j; p++; } \
+          p--; printf(\"%d %d %d %d\", i, j, *p, k);", "10 90 5 5"),
+        // restar, mascaras, y el valor en contexto de expresion
+        ("int a = 1000; int b = 0xFF; int c = 0; int d = 0; int k; \
+          for (k = 0; k < 4; k = k + 1) { a = a - 5; b = b & 0xF0; c = (a = a + 1); d = ++b; } \
+          printf(\"%d %d %d %d\", a, b, c, d);", "984 241 984 241"),
+        // el valor VIEJO de x++ en contexto de expresion sigue siendo el viejo
+        ("int i = 5; int v = 0; int w = 0; int k; \
+          for (k = 0; k < 3; k = k + 1) { v = i++; w = i--; i = i + 1; } \
+          printf(\"%d %d %d\", i, v, w);", "8 7 8"),
+    ] {
+        let out = run_c(&format!("int main() {{ {cuerpo} return 0; }}"));
+        assert_eq!(out.trim(), expected, "cuerpo: {cuerpo}");
+    }
+}
+
 /// La division entera es CON SIGNO. Antes dividia sin signo, asi que un
 /// negativo daba un numero astronomico.
 #[test]

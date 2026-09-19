@@ -33,6 +33,8 @@ mod agregados;
 mod linking;
 /// THE STACK FRAME: where each local falls and how it is read back by width.
 mod frame;
+/// Operar EN el registro de la matriz: `i = i + 1` es `add r12, 1`.
+mod en_sitio;
 /// `printf`, the only part that emits an INTERPRETER -- which is why it carries
 /// the formatter written twice, in Rust and in machine code.
 mod format;
@@ -1153,7 +1155,7 @@ impl Codegen {
                 self.break_target.pop();
             }
             Stmt::For(init, cond, inc, b) => {
-                if let Some(e) = init { self.emit_expr(e); self.emit_drop(); }
+                if let Some(e) = init { if !self.emit_en_sitio(e) { self.emit_expr(e); } self.emit_drop(); }
                 let start = self.fresh_label();
                 let end = self.fresh_label();
                 let inc_lbl = self.fresh_label();
@@ -1163,7 +1165,7 @@ impl Codegen {
                 if let Some(c) = cond { self.emit_test_cond(c, end); }
                 self.emit_stmt(b);
                 self.resolve_label(inc_lbl);
-                if let Some(e) = inc { self.emit_expr(e); self.emit_drop(); }
+                if let Some(e) = inc { if !self.emit_en_sitio(e) { self.emit_expr(e); } self.emit_drop(); }
                 self.emit_jmp_reloc(start);
                 self.resolve_label(end);
                 self.continue_target.pop();
@@ -1264,7 +1266,11 @@ impl Codegen {
                 }
             }
             Stmt::Expr(e) => {
-                self.emit_expr(e);
+                // ** Una sentencia no necesita el valor: `i = i + 1;` con `i`
+                // en la matriz es `add r12, 1` y nada mas (`en_sitio.rs`).
+                if !self.emit_en_sitio(e) {
+                    self.emit_expr(e);
+                }
                 self.emit_drop();
             }
             Stmt::Goto(label) => {

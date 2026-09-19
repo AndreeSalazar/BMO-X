@@ -63,17 +63,21 @@ impl Codegen {
                 if self.var_type_of(name).map_or(false, |t| Self::is_float_ty(&t)) {
                     self.emit_fexpr_operand(val);
                     self.store_float_var(name);
-                } else {
+                } else if !self.emit_en_sitio_con_valor(expr) {
                     self.emit_expr(val);
                     self.emit_store_var(name);
                 }
             }
             Expr::PreInc(name) => {
-                self.emit_inc_var(name);
-                // rax already has new value
+                if !self.emit_en_sitio_con_valor(expr) {
+                    self.emit_inc_var(name);
+                    // rax already has new value
+                }
             }
             Expr::PreDec(name) => {
-                self.emit_dec_var(name);
+                if !self.emit_en_sitio_con_valor(expr) {
+                    self.emit_dec_var(name);
+                }
             }
             Expr::PostInc(name) => {
                 self.emit_load_var(name);
