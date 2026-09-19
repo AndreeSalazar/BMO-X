@@ -220,11 +220,14 @@ impl Codegen {
     /// rax = direccion de name[idx]. Array -> base = lea del slot;
     /// puntero -> base = VALOR del slot. Local o global.
     pub(super) fn emit_subscript_addr(&mut self, name: &str, index: &Expr) {
+        if self.emit_subscript_addr_en(name, index, 0) {
+            return;
+        }
         let scale = self.paso_de_elemento(name);
         self.emit_expr(index);
         self.emit_scale_index(scale);
-        // ** SIN PILA (2026-09-18): la base --el `lea` del array o la carga
-        // del puntero-- va a rdx directamente, sin tocar rax. Ver `operando.rs`.
+        // Una escala que no cabe en el `lea` (un struct de 12 bytes): la base
+        // a rdx igualmente, sin pila.
         if self.sabe_cargar(name) {
             self.emit_cargar_en(name, super::operando::Destino::Rdx);
             self.code.extend_from_slice(&[0x48, 0x01, 0xD0]); // add rax, rdx
@@ -292,6 +295,41 @@ impl Codegen {
 
     /// Guarda rdx -> [rax] con el tamano EXACTO del elemento.
     /// Antes un store de 8 bytes a int[i] pisaba el elemento siguiente.
+    /// **La direccion de `name[index]` en `dst`** (0 = rax, 2 = rdx), sin
+    /// pila y con la escala dentro del `lea` (2026-09-18, noche):
+    ///
+    /// ```text
+    ///    indice en la matriz   cargar base en rdx ; lea dst, [rdx + rN*s]     2
+    ///    indice cualquiera     indice -> rax ; base -> rdx ; lea dst, [rdx + rax*s]
+    /// ```
+    ///
+    /// `false` si no se puede (escala que no es 1, 2, 4 u 8 -- un struct de
+    /// 12 bytes--, o un nombre que no se sabe cargar): el llamante sigue por
+    /// el camino largo. La base NUNCA se carga antes que el indice: evaluar el
+    /// indice puede ser cualquier cosa y pisaria rdx.
+    pub(super) fn emit_subscript_addr_en(&mut self, name: &str, index: &Expr, dst: u8) -> bool {
+        let scale = self.paso_de_elemento(name);
+        if !matches!(scale, 1 | 2 | 4 | 8) || !self.sabe_cargar(name) {
+            return false;
+        }
+        let en_matriz = match index {
+            Expr::Var(n) => self.var_regs.get(n).copied(),
+            _ => None,
+        };
+        match en_matriz {
+            Some(r) => {
+                self.emit_cargar_en(name, super::operando::Destino::Rdx);
+                self.emit_lea(dst, 2, Some(r), scale, 0);
+            }
+            None => {
+                self.emit_expr(index);
+                self.emit_cargar_en(name, super::operando::Destino::Rdx);
+                self.emit_lea(dst, 2, Some(0), scale, 0);
+            }
+        }
+        true
+    }
+
     /// `[rdx] = rax`, con el tamano exacto del elemento: la pareja de
     /// `emit_store_elem` para cuando la DIRECCION esta en rdx y el valor en rax.
     pub(super) fn emit_store_elem_desde_rax(&mut self, elem: &TypeSpec) {

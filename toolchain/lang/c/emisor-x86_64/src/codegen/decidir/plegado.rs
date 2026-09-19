@@ -219,6 +219,29 @@ fn seguro_sin_signo(e: &Expr) -> bool {
     }
 }
 
+/// **Sobra el cast?** `(unsigned char)(x & 0xFF)`: la mascara ya deja el
+/// valor dentro del tipo, y el `movzx` no cambiaria un bit.
+///
+/// Solo los destinos SIN signo, y solo con una mascara constante NO negativa
+/// que quepa en el tipo: una mascara negativa se extiende con signo a 64
+/// bits y no acota nada. `(char)` y `(int)` extienden con signo y su bit alto
+/// depende del valor: no se tocan.
+pub(in crate::codegen) fn cast_redundante(t: &TypeSpec, inner: &Expr) -> bool {
+    let tope: i64 = match t {
+        TypeSpec::UnsignedChar => 0xFF,
+        TypeSpec::UnsignedShort => 0xFFFF,
+        TypeSpec::UnsignedInt => 0xFFFF_FFFF,
+        _ => return false,
+    };
+    let Expr::BitAnd(a, b) = inner else { return false };
+    let mascara = |e: &Expr| match e {
+        Expr::Int(n) => Some(*n),
+        Expr::CharLit(c) => Some(*c as i64),
+        _ => constante_para_emitir(e),
+    };
+    [a, b].iter().any(|e| mascara(e).is_some_and(|m| (0..=tope).contains(&m)))
+}
+
 /// **Emitir esta expresion toca SOLO `rax`?**
 ///
 /// === *** LA PREGUNTA QUE QUITA LA PILA (2026-09-09) ====================

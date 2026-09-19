@@ -197,21 +197,27 @@ impl Codegen {
                 // se aparca en rdx, y el valor se escribe desde rax -- que es
                 // ademas el resultado de la asignacion. Diez instrucciones
                 // pasan a siete en `origen[i] = (unsigned char)(i & 0xFF)`.
+                let elem = self.elem_type_of(name);
                 if self.sin_pila(val) {
-                    self.emit_subscript_addr(name, index);              // rax = direccion
-                    self.code.extend_from_slice(&[0x48, 0x89, 0xC2]);   // mov rdx, rax
-                    self.emit_expr(val);                                // rax = valor
-                    let elem = self.elem_type_of(name);
-                    self.emit_store_elem_desde_rax(&elem);              // [rdx] = rax
+                    // la direccion DIRECTA en rdx cuando se puede
+                    if !self.emit_subscript_addr_en(name, index, 2) {
+                        self.emit_subscript_addr(name, index);            // rax = direccion
+                        self.code.extend_from_slice(&[0x48, 0x89, 0xC2]); // mov rdx, rax
+                    }
+                    self.emit_expr(val);                                  // rax = valor
+                    self.emit_store_elem_desde_rax(&elem);                // [rdx] = rax
                     return;
                 }
-                self.emit_expr(val);          // rax = valor
-                self.code.push(0x50);         // push valor
+                // ** Y con un valor que SI toca mas (una llamada, una division)
+                // se aparca la DIRECCION en la pila, no el valor: el valor acaba
+                // en rax, que es el resultado de la asignacion, y sobra el
+                // `mov rax, rdx` final. El orden de evaluacion (direccion antes
+                // que valor) no lo fija C.
                 self.emit_subscript_addr(name, index); // rax = direccion
-                self.code.push(0x5A);         // pop rdx = valor
-                let elem = self.elem_type_of(name);
-                self.emit_store_elem(&elem);  // [rax] = rdx (tamano exacto)
-                self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // rax = valor (resultado del assign)
+                self.code.push(0x50);                  // push direccion
+                self.emit_expr(val);                   // rax = valor
+                self.code.push(0x5A);                  // pop rdx = direccion
+                self.emit_store_elem_desde_rax(&elem); // [rdx] = rax
             }
             Expr::IndexPtr(base, index) => {
                 let elem = &self.exige_tipo(self.pointee_type(base), "a que apunta este puntero", "Declara el tipo del puntero, o pon un cast: `*(int*)p`.");

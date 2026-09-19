@@ -1470,6 +1470,33 @@ impl Codegen {
     /// **`a <op> b` del grupo 1**: con inmediato si `b` cabe; si no, `emit_binop`
     /// con la secuencia `largo` de siempre. Quien decide es `decidir/inmediato`.
     fn emit_alu(&mut self, a: &Expr, b: &Expr, ext: u8, largo: &[u8]) {
+        // ** El IZQUIERDO en la matriz (18-09, noche): `i + 5` es UN `lea`,
+        // `i + j` tambien, `i - 5` es `lea rax, [r12 - 5]`. Ver `operando.rs`.
+        if let Some(r) = self.en_matriz(a) {
+            if ext == 0 || ext == 5 {
+                if let Some(imm) = decidir::inmediato::inmediato_de(b) {
+                    let v = match imm { decidir::inmediato::Inmediato::Corto(c) => c as i32, decidir::inmediato::Inmediato::Largo(l) => l };
+                    let disp = if ext == 0 { Some(v) } else { v.checked_neg() };
+                    if let Some(disp) = disp {
+                        self.emit_lea(0, r, None, 1, disp);
+                        return;
+                    }
+                }
+            }
+            if ext == 0 {
+                if let Some(m) = self.en_matriz(b) {
+                    self.emit_lea(0, r, Some(m), 1, 0);
+                    return;
+                }
+                if let Expr::Var(n) = b {
+                    if self.sabe_cargar(n) {
+                        self.emit_cargar_en(n, operando::Destino::Rcx);
+                        self.emit_lea(0, r, Some(1), 1, 0);
+                        return;
+                    }
+                }
+            }
+        }
         if let Some(imm) = decidir::inmediato::inmediato_de(b) {
             self.emit_expr(a);
             self.emit_alu_imm(ext, imm);
@@ -1495,9 +1522,21 @@ impl Codegen {
         self.emit_binop(a, b, largo);
     }
 
+    /// El registro de la matriz de `e`, si `e` es una variable que vive ahi.
+    fn en_matriz(&self, e: &Expr) -> Option<u8> {
+        match e {
+            Expr::Var(n) => self.var_regs.get(n).copied(),
+            _ => None,
+        }
+    }
+
     /// **`a * b`**: `imul rax, rax, imm` (`6B` corto, `69` largo) si `b` cabe.
     fn emit_mul(&mut self, a: &Expr, b: &Expr) {
         use decidir::inmediato::Inmediato;
+        if let (Some(r), Some(imm)) = (self.en_matriz(a), decidir::inmediato::inmediato_de(b)) {
+            self.emit_imul_rax_rn_imm(r, imm); // imul rax, rN, imm
+            return;
+        }
         match decidir::inmediato::inmediato_de(b) {
             Some(Inmediato::Corto(c)) => {
                 self.emit_expr(a);
@@ -1559,6 +1598,25 @@ impl Codegen {
     /// **`a - b`, solo en las BANDERAS.** Lo que comparten `emit_cmp` (que
     /// despues hace el 0/1) y `emit_test_cond` (que despues salta).
     fn emit_cmp_banderas(&mut self, a: &Expr, b: &Expr) {
+        // ** El izquierdo en la matriz: `cmp r12, ...` sin pasar por rax, que
+        // es el caso de TODA condicion de bucle con su contador en registro.
+        if let Some(r) = self.en_matriz(a) {
+            if let Some(imm) = decidir::inmediato::inmediato_de(b) {
+                self.emit_cmp_rn_imm(r, imm);
+                return;
+            }
+            if let Some(m) = self.en_matriz(b) {
+                self.emit_cmp_rn_reg(r, m);
+                return;
+            }
+            if let Expr::Var(n) = b {
+                if self.sabe_cargar(n) {
+                    self.emit_cargar_en(n, operando::Destino::Rcx);
+                    self.emit_cmp_rn_reg(r, 1);
+                    return;
+                }
+            }
+        }
         // La misma regla que `emit_binop`: si el derecho es una constante, no
         // hace falta la pila. Y en una comparacion es todavia mas frecuente --
         // `x > 0`, `i < n`, `c == 'a'` son el bucle de cualquier programa.

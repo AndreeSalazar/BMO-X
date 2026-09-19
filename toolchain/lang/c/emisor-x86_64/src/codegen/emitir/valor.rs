@@ -29,6 +29,23 @@ use crate::ast::*;
 use super::super::Codegen;
 
 impl Codegen {
+    /// `a / b` (o `a % b` con `resto`): `a` a rax, `b` a rcx, y la division
+    /// con el signo que toca. `cqo` pisa rdx, asi que esto NO es `sin_pila`.
+    fn emit_division(&mut self, a: &Expr, b: &Expr, sin_signo: bool, resto: bool) {
+        self.emit_expr(a);
+        self.emit_derecho_en_rcx(b);
+        if sin_signo {
+            self.code.extend_from_slice(&[0x48, 0x31, 0xD2]); // xor rdx, rdx
+            self.code.extend_from_slice(&[0x48, 0xF7, 0xF1]); // div rcx
+        } else {
+            self.code.extend_from_slice(&[0x48, 0x99]); // cqo
+            self.code.extend_from_slice(&[0x48, 0xF7, 0xF9]); // idiv rcx
+        }
+        if resto {
+            self.code.extend_from_slice(&[0x48, 0x89, 0xD0]); // mov rax, rdx
+        }
+    }
+
     /// Los brazos de este carril. El despacho vive en `emitir/mod.rs`
     /// y es EXHAUSTIVO: si manana nace una forma nueva de expresion,
     /// el compilador para alli y no aqui.
@@ -152,42 +169,18 @@ impl Codegen {
             // `cqo` extiende el signo de `rax` a `rdx`, o sea que con el bit 63
             // puesto deja `rdx = -1` y la division de 128 bits se hace sobre un
             // dividendo negativo. Ver `expr_is_unsigned`.
+            // ** Desde el 18-09 (noche) el divisor va a rcx DIRECTO
+            // (`emit_derecho_en_rcx`): un inmediato es `mov rcx, imm`, una
+            // variable se carga ahi, y solo lo demas pasa por la pila. Antes
+            // `(i * 7) % 127` hacia CUATRO movs para poner el 127 en rcx.
             Expr::Div(a, b) => {
-                if self.expr_is_unsigned(a) || self.expr_is_unsigned(b) {
-                    self.emit_binop(a, b, &[
-                        0x48, 0x89, 0xC1, // mov rcx, rax   -> divisor = b
-                        0x48, 0x89, 0xD0, // mov rax, rdx   -> dividendo = a
-                        0x48, 0x31, 0xD2, // xor rdx, rdx   -> la mitad alta, a cero
-                        0x48, 0xF7, 0xF1, // div rcx
-                    ])
-                } else {
-                    self.emit_binop(a, b, &[
-                        0x48, 0x89, 0xC1, // mov rcx, rax
-                        0x48, 0x89, 0xD0, // mov rax, rdx
-                        0x48, 0x99,       // cqo            -> extiende el signo
-                        0x48, 0xF7, 0xF9, // idiv rcx
-                    ])
-                }
+                let sin_signo = self.expr_is_unsigned(a) || self.expr_is_unsigned(b);
+                self.emit_division(a, b, sin_signo, false);
             }
             // `a % b`: el resto queda en rdx.
             Expr::Mod(a, b) => {
-                if self.expr_is_unsigned(a) || self.expr_is_unsigned(b) {
-                    self.emit_binop(a, b, &[
-                        0x48, 0x89, 0xC1, // mov rcx, rax
-                        0x48, 0x89, 0xD0, // mov rax, rdx
-                        0x48, 0x31, 0xD2, // xor rdx, rdx
-                        0x48, 0xF7, 0xF1, // div rcx
-                        0x48, 0x89, 0xD0, // mov rax, rdx  -> el resto
-                    ])
-                } else {
-                    self.emit_binop(a, b, &[
-                        0x48, 0x89, 0xC1, // mov rcx, rax
-                        0x48, 0x89, 0xD0, // mov rax, rdx
-                        0x48, 0x99,       // cqo
-                        0x48, 0xF7, 0xF9, // idiv rcx
-                        0x48, 0x89, 0xD0, // mov rax, rdx  -> el resto
-                    ])
-                }
+                let sin_signo = self.expr_is_unsigned(a) || self.expr_is_unsigned(b);
+                self.emit_division(a, b, sin_signo, true);
             }
             // Comparaciones: si algun operando es float -> comisd (setcc unsigned);
             // si no, la comparacion entera de siempre.
@@ -235,6 +228,11 @@ impl Codegen {
                 // cast REAL: trunca/extiende rax al tamano del tipo destino.
                 // Antes era no-op: (char)300 quedaba como 300.
                 self.emit_expr(inner);
+                // ** Salvo cuando el de dentro ya cabe: `(unsigned char)(x &
+                // 0xFF)` no necesita el `movzx`. Lo decide `cast_redundante`.
+                if super::super::decidir::plegado::cast_redundante(t, inner) {
+                    return;
+                }
                 match t {
                     TypeSpec::Char => self.code.extend_from_slice(&[0x48, 0x0F, 0xBE, 0xC0]), // movsx rax, al
                     TypeSpec::UnsignedChar => self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]), // movzx

@@ -43,9 +43,30 @@
 //! DESPUES evalua `x + y`, que carga `y` en `rcx`. Con un solo registro el
 //! valor pisaria la direccion. `sin_pila` (types.rs) es la lista de lo que
 //! solo toca `rax` y `rcx`; lo que no esta en ella sigue por la pila.
+//!
+//! # Y el IZQUIERDO en la matriz (la segunda pasada, la misma noche)
+//!
+//! Con la pila en el 9 %, el 31 % era `mov` entre registros, y el primero de
+//! todos `mov rax, r12`: leer una variable de la matriz para operar con ella.
+//! Cuando el resultado tiene que ir a `rax` el `mov` sobra igual, porque
+//! x86-64 tiene instrucciones de TRES operandos para justo estos casos:
+//!
+//! ```text
+//!    i + 5      lea rax, [r12 + 5]        en vez de  mov rax, r12 ; add rax, 5
+//!    i + j      lea rax, [r12 + r13]
+//!    i * 7      imul rax, r12, 7
+//!    i < n      cmp r12, rcx ; jge        (no hay resultado que mover)
+//! ```
+//!
+//! `emit_lea` es el codificador general de `lea dst, [base + idx*escala +
+//! disp]`, y lo usa tambien la direccion de `t[i]`: `lea rax, [rdx + rax*8]`
+//! en vez de desplazar y sumar. Los registros van por su numero de 0 a 15,
+//! y el REX se compone de los bits altos: es la unica forma de que r12 y r13
+//! --los dos con reglas propias en el ModRM-- salgan bien sin una tabla.
 
-use crate::ast::TypeSpec;
+use crate::ast::{Expr, TypeSpec};
 
+use super::decidir::inmediato::{inmediato_de, Inmediato};
 use super::Codegen;
 
 /// Los dos registros en los que esto sabe cargar. El numero es el campo
@@ -165,6 +186,100 @@ impl Codegen {
             otro => unreachable!("grupo 1 /{otro} no tiene forma con registro aqui"),
         };
         self.code.extend_from_slice(&[0x48, op, 0xC8]);
+    }
+
+    /// **`lea dst, [base + idx*escala + disp]`**, con los registros por su
+    /// numero (0 = rax, 1 = rcx, 2 = rdx, 12..15 = la matriz). `escala` es 1,
+    /// 2, 4 u 8; `idx = None` es sin indice.
+    ///
+    /// Las dos manias del ModRM, resueltas aqui y en ningun otro sitio:
+    /// `rsp`/`r12` como base OBLIGAN a un SIB, y `rbp`/`r13` como base con
+    /// `mod = 00` significan "sin base" -- por eso con ellas se emite `disp8 = 0`.
+    pub(super) fn emit_lea(&mut self, dst: u8, base: u8, idx: Option<u8>, escala: u32, disp: i32) {
+        debug_assert!(matches!(escala, 1 | 2 | 4 | 8));
+        let rex = 0x48 | ((dst >> 3) << 2) | (idx.map_or(0, |i| (i >> 3) << 1)) | (base >> 3);
+        let b = base & 7;
+        let modo: u8 = if disp == 0 && b != 5 {
+            0
+        } else if (-128..=127).contains(&disp) {
+            1
+        } else {
+            2
+        };
+        let con_sib = idx.is_some() || b == 4;
+        let modrm = (modo << 6) | ((dst & 7) << 3) | if con_sib { 4 } else { b };
+        self.code.extend_from_slice(&[rex, 0x8D, modrm]);
+        if con_sib {
+            let ss = escala.trailing_zeros() as u8;
+            let i = idx.map_or(4, |i| i & 7);
+            self.code.push((ss << 6) | (i << 3) | b);
+        }
+        match modo {
+            1 => self.code.push(disp as u8),
+            2 => self.code.extend_from_slice(&disp.to_le_bytes()),
+            _ => {}
+        }
+    }
+
+    /// `imul rax, rN, imm` -- el producto de tres operandos.
+    pub(super) fn emit_imul_rax_rn_imm(&mut self, r: u8, imm: Inmediato) {
+        let modrm = 0xC0 | (r - 8);
+        match imm {
+            Inmediato::Corto(c) => self.code.extend_from_slice(&[0x49, 0x6B, modrm, c as u8]),
+            Inmediato::Largo(l) => {
+                self.code.extend_from_slice(&[0x49, 0x69, modrm]);
+                self.code.extend_from_slice(&l.to_le_bytes());
+            }
+        }
+    }
+
+    /// `cmp rN, imm` -- sin pasar por rax: una comparacion no deja resultado.
+    pub(super) fn emit_cmp_rn_imm(&mut self, r: u8, imm: Inmediato) {
+        let modrm = 0xF8 | (r - 8);
+        match imm {
+            Inmediato::Corto(c) => self.code.extend_from_slice(&[0x49, 0x83, modrm, c as u8]),
+            Inmediato::Largo(l) => {
+                self.code.extend_from_slice(&[0x49, 0x81, modrm]);
+                self.code.extend_from_slice(&l.to_le_bytes());
+            }
+        }
+    }
+
+    /// `cmp rN, reg` con `reg` por su numero (1 = rcx, 12..15 = la matriz).
+    pub(super) fn emit_cmp_rn_reg(&mut self, r: u8, reg: u8) {
+        let rex = 0x49 | ((reg >> 3) << 2);
+        self.code.extend_from_slice(&[rex, 0x39, 0xC0 | ((reg & 7) << 3) | (r - 8)]);
+    }
+
+    /// `mov rcx, imm32` (extendido con signo).
+    pub(super) fn emit_mov_rcx_imm(&mut self, imm: Inmediato) {
+        let v = match imm {
+            Inmediato::Corto(c) => c as i32,
+            Inmediato::Largo(l) => l,
+        };
+        self.code.extend_from_slice(&[0x48, 0xC7, 0xC1]);
+        self.code.extend_from_slice(&v.to_le_bytes());
+    }
+
+    /// **El operando derecho a rcx, como sea**: inmediato, variable, o -- si
+    /// es cualquier otra cosa -- por la pila, guardando `rax`. Lo usan la
+    /// division y el desplazamiento por variable, que necesitan el derecho
+    /// en `rcx` y el izquierdo en `rax`.
+    pub(super) fn emit_derecho_en_rcx(&mut self, b: &Expr) {
+        if let Some(imm) = inmediato_de(b) {
+            self.emit_mov_rcx_imm(imm);
+            return;
+        }
+        if let Expr::Var(n) = b {
+            if self.sabe_cargar(n) {
+                self.emit_cargar_en(n, Destino::Rcx);
+                return;
+            }
+        }
+        self.code.push(0x50); // push rax (izquierdo)
+        self.emit_expr(b);
+        self.code.extend_from_slice(&[0x48, 0x89, 0xC1]); // mov rcx, rax
+        self.code.push(0x58); // pop rax
     }
 
     /// `op rax, rN` con `rN` de la matriz: como la de arriba con REX.R.

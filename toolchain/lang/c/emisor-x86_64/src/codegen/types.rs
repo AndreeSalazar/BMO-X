@@ -343,11 +343,11 @@ impl Codegen {
             self.emit_expr(a);
             self.code.extend_from_slice(&[0x48, 0xC1, cola, cuenta]);
         } else {
-            self.emit_binop(a, b, &[
-                0x48, 0x89, 0xC1, // mov rcx, rax   -> cuenta = b
-                0x48, 0x89, 0xD0, // mov rax, rdx   -> valor  = a
-                0x48, 0xD3, cola,
-            ]);
+            // La cuenta a rcx directo (18-09, noche): una variable se carga
+            // ahi; lo demas, por la pila guardando rax. Ver `operando.rs`.
+            self.emit_expr(a);
+            self.emit_derecho_en_rcx(b);
+            self.code.extend_from_slice(&[0x48, 0xD3, cola]);
         }
         // Desplazar a la izquierda saca bits por arriba, y en un registro de 64
         // esos bits SOBREVIVEN. `1 << 31` en un `int` es negativo; sin recorte
