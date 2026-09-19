@@ -19,11 +19,6 @@ pub mod codegen;
 pub mod edicion_x86;
 mod redondeo;
 
-use bmo_abi::profile::BmoLanguageProfile;
-
-pub fn profile() -> BmoLanguageProfile {
-    BmoLanguageProfile::COBOL
-}
 
 pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CobolError> {
     compile_source_to_bex(source)

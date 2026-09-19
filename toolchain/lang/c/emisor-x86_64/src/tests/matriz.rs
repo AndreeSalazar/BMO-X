@@ -114,11 +114,6 @@ fn hola_c_payload_output_is_what_the_kernel_will_show() {
     assert_eq!(out, esperado);
 }
 
-#[test]
-fn profile_is_c() {
-    assert_eq!(profile().name, "C");
-}
-
 /// * **Sin `main` no hay programa.**
 ///
 /// Un fichero vacio producia un BEF de 8 240 bytes con `entry_offset = 0`, o

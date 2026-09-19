@@ -20,8 +20,6 @@
 //! |                      requisitos, recursos, objetos (.bo), writer y validator
 //! +-- bex.rs          -- el .bex es un BEF ejecutable
 //! +-- dynobj/         -- texto, lista, tabla: los objetos del runtime de INTI
-//! +-- profile/        -- el perfil de cada lenguaje
-//! +-- cpu_profiles/   -- (sale en el corte 5: LEY 24, el perfil se MIDE)
 //! ```
 //!
 //! ** Se fueron el 19-09, ~6.700 lineas sin un solo usuario vivo y tapadas por
@@ -30,6 +28,13 @@
 //! catorce `fundamentals/`, `types::{signature, field}` y
 //! `bef::{loader, tls, manifest}`. Los `allow` se fueron con ellos: lo que se
 //! muera a partir de ahora, lo dice el compilador.
+//!
+//! ** Y el mismo dia `cpu_profiles/` (un perfil de CPU que se ELEGIA con una
+//! feature de Cargo -- `cpu-epyc-zen3`, una maquina que nadie tiene -- y
+//! prometia que el cargador lo validaba con CPUID: nadie lo leia) y
+//! `profile/` (un `BmoLanguageProfile` por lenguaje, con Rust, Java y Python
+//! dentro, que solo leia una prueba). LEY 24: el perfil de la maquina se MIDE
+//! (`cpu_vendor/`) y se escribe en `PERFIL/`, no se elige al compilar.
 //!
 //! Ver `SPEC.md` para la especificacion completa.
 //!
@@ -56,8 +61,6 @@ pub mod types;
 pub mod bef;
 pub mod bex;
 pub mod syscalls;
-pub mod profile;
-pub mod cpu_profiles;
 
 // --- Re-exports planos para uso ergonomico -------------------------
 
@@ -83,11 +86,5 @@ pub const fn supports_abi(required: (u8, u8)) -> bool {
 
 /// Magic constant en headers BEF para identificar BMO ABI.
 pub const BMO_ABI_MAGIC: u32 = u32::from_le_bytes(*b"BMO1");
-
-/// The CPU contract selected when this ABI crate was compiled.
-///
-/// A BEF producer can record this contract in its manifest; the BMO loader
-/// must reject a binary whose required profile is not available at boot.
-pub const BMO_CPU_PROFILE: cpu_profiles::CpuProfile = cpu_profiles::ACTIVE;
 
 pub use crate as bmo_abi;

@@ -2,24 +2,10 @@
 //!
 //! [isa] x86-64. El frontend (`bmo-cpp-front`, la carpeta de arriba) baja C++
 //! al arbol de C; esto le pasa ese arbol al codegen de C para x86-64
-//! (`bmo-c-x86-64`) y pone el perfil. Partido el 2026-09-18
+//! (`bmo-c-x86-64`). Partido el 2026-09-18
 //! (`toolchain/tools/isa`). El frontend se re-exporta entero.
 
 pub use bmo_cpp_front::*;
-
-use bmo_abi::profile::BmoLanguageProfile;
-
-pub fn profile() -> BmoLanguageProfile {
-    BmoLanguageProfile {
-        name: "C++",
-        frontend: bmo_abi::profile::FrontendKind::Cpp,
-        backend: bmo_abi::profile::BackendKind::AotX86_64,
-        runtime: bmo_abi::profile::RuntimeKind::CppMin,
-        uses_bmo_abi: true,
-        ring0_capable: true,
-        standard_version: "cpp17",
-    }
-}
 
 /// **La unica salida que cuenta**: fuente de C++ -> bytes del BEF.
 ///

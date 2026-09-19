@@ -24,11 +24,6 @@ pub mod codegen;
 #[cfg(test)]
 use ast::*;
 use std::path::{Path, PathBuf};
-use bmo_abi::profile::BmoLanguageProfile;
-
-pub fn profile() -> BmoLanguageProfile {
-    BmoLanguageProfile::C
-}
 
 pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CError> {
     let program = parse(source)?;
