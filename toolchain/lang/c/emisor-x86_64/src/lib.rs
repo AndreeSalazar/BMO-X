@@ -89,17 +89,7 @@ pub fn compile_with_preprocessor(
 }
 
 pub fn compile_source_to_bef_with_modules(source: &str, base_paths: Vec<PathBuf>) -> Result<Vec<u8>, CError> {
-    let program = parse_with_modules(source, base_paths, None, syscalls_de_bmo())?;
-    let used = module::find_used_functions(&program, &program.exported);
-    codegen::compile_to_bef_bytes_filtered(&program, &used)
-}
-
-pub fn compile_source_to_bef_with_all(
-    source: &str,
-    base_paths: Vec<PathBuf>,
-    asm_paths: Vec<PathBuf>,
-) -> Result<Vec<u8>, CError> {
-    let program = parse_with_modules(source, base_paths, Some(asm_paths), syscalls_de_bmo())?;
+    let program = parse_with_modules(source, base_paths, syscalls_de_bmo())?;
     let used = module::find_used_functions(&program, &program.exported);
     codegen::compile_to_bef_bytes_filtered(&program, &used)
 }

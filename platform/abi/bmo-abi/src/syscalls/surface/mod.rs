@@ -56,7 +56,7 @@ pub use superficie::*;
 pub use tarea::*;
 
 
-use super::{syscall2, syscall3, syscall6, SyscallResult};
+use super::{syscall3, syscall6, SyscallResult};
 
 
 

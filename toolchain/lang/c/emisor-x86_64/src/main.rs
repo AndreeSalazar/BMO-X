@@ -14,7 +14,6 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let program = &args[0];
     let mut base_paths: Vec<PathBuf> = Vec::new();
-    let mut asm_paths: Vec<PathBuf> = Vec::new();
     let mut standard = bmo_c_x86_64::CStandard::DefaultC;
     let mut file_path = None;
     let mut out_override: Option<PathBuf> = None;
@@ -41,14 +40,13 @@ fn main() {
                     process::exit(2);
                 }
             }
+            // ** `--asm-path` se aceptaba y NO HACIA NADA: las rutas llegaban
+            // al parser y se tiraban. Quitado el 2026-09-18; decirlo es mejor
+            // que aceptarlo en silencio otra vez.
             "--asm-path" | "-a" => {
-                i += 1;
-                if i < args.len() {
-                    asm_paths.push(PathBuf::from(&args[i]));
-                } else {
-                    eprintln!("error: --asm-path requires a path");
-                    process::exit(2);
-                }
+                eprintln!("error: --asm-path ya no existe: nunca hizo nada (las rutas se tiraban). \
+                           Los modulos se buscan con --base");
+                process::exit(2);
             }
             // ** `--map`: que funcion vive en cada offset del codigo.
             //
@@ -138,7 +136,7 @@ fn main() {
     }
 
     let Some(path) = file_path else {
-        eprintln!("usage: {program} [--std c99] [--base <path>] [--asm-path <path>] <source.c>");
+        eprintln!("usage: {program} [--std c99] [--base <path>] <source.c>");
         process::exit(2);
     };
 
@@ -195,18 +193,16 @@ fn main() {
     let result = if soy_la_libc {
         bmo_c_x86_64::compile_libc_object(standard)
     } else if solo_objeto {
-        if !base_paths.is_empty() || !asm_paths.is_empty() {
-            eprintln!("error: -c no se combina con --base ni --asm-path todavia (esos son el camino de modulos)");
+        if !base_paths.is_empty() {
+            eprintln!("error: -c no se combina con --base todavia (esos son el camino de modulos)");
             process::exit(2);
         }
         bmo_c_x86_64::compile_object_with_preprocessor(&source, Path::new(path), standard, libc)
     } else {
-        match (base_paths.is_empty(), asm_paths.is_empty()) {
-            (true, true) => {
-                let file = Path::new(path);
-                bmo_c_x86_64::compile_with_preprocessor(&source, file, standard)
-            }
-            _ => bmo_c_x86_64::compile_source_to_bef_with_all(&source, base_paths, asm_paths),
+        if base_paths.is_empty() {
+            bmo_c_x86_64::compile_with_preprocessor(&source, Path::new(path), standard)
+        } else {
+            bmo_c_x86_64::compile_source_to_bef_with_modules(&source, base_paths)
         }
     };
 

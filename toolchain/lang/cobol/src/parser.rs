@@ -475,7 +475,6 @@ impl Parser {
         name: &str,
         line_no: usize,
     ) -> Result<Vec<crate::ast::Valor88>, CobolError> {
-        use crate::ast::Valor88;
 
         let arriba = rest.to_ascii_uppercase();
         let corte = ["VALUES", "VALUE"]

@@ -75,7 +75,6 @@ pub enum Sitio {
 
 #[derive(Debug, Clone)]
 pub struct Marco {
-    locales: u32,
     /// **Donde cae cada local**, ya en desplazamiento negativo desde `rbp`.
     ///
     /// *** Antes esto no existia y el sitio se calculaba: `-((l+1) * PALABRA)`.
@@ -94,10 +93,12 @@ pub struct Marco {
 }
 
 impl Marco {
-    /// El reparto con los registros de respaldo.
+    /// El reparto con los registros de respaldo. Solo lo usa el banco.
+    #[cfg(test)]
     pub fn de(f: &FuncionIr) -> Self {
         Self::con_registros(f, &RESPALDO, &[])
     }
+
 
     /// ** El reparto con los registros que diga la maquina.
     ///
@@ -138,7 +139,6 @@ impl Marco {
         let bytes_locales = cursor;
 
         let mut m = Self {
-            locales: f.locales,
             sitios_locales,
             bytes_locales,
             temporales: f.temporales,

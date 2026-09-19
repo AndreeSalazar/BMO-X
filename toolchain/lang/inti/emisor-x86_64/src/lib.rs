@@ -516,7 +516,7 @@ fn auditar(e: &Emitido) -> bmo_verify::Verdict {
 /// huecos. Contarlo aqui llenaria el informe de ruido y entrenaria a no mirarlo.
 fn nombres_sueltos(f: &FuncionIr) -> Vec<String> {
     let mut sueltos = Vec::new();
-    let mut mira = |v: &Valor, sueltos: &mut Vec<String>| {
+    let mira = |v: &Valor, sueltos: &mut Vec<String>| {
         if let Valor::Nombre(n) = v {
             sueltos.push(n.clone());
         }

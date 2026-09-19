@@ -247,12 +247,6 @@ impl Codegen {
     // rutea por xmm. Se computa todo en double; `float` (f32) se convierte en
     // los bordes (load/store). Registro de trabajo: xmm0; scratch: xmm1.
 
-    pub(super) fn emit_mov_eax_syscall(&mut self, nr: u32) {
-        self.code.extend_from_slice(&[0xB8]);
-        self.code.extend_from_slice(&nr.to_le_bytes());
-        self.emit_call_to_syscall_stub();
-    }
-
     /// La puerta del kernel desde el codigo emitido.
     ///
     /// === * Por que `Ring0Kernel` NO compila, y lo que emitia ===

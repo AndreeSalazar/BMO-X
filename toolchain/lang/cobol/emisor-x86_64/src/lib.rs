@@ -1,9 +1,13 @@
 //! **BMO COBOL para x86-64** -- del arbol de COBOL a un `.bex`.
 //!
 //! [isa] x86-64 -- el UNICO sitio de COBOL que nombra una maquina: el codegen,
-//! la edicion emitida, el catalogo de syscalls de BMO-X y la IR con la
-//! convencion de x86-64. El frontend (`bmo-cobol-front`, la carpeta de arriba)
-//! analiza y no sabe de CPU. Partido el 2026-09-18 (`toolchain/tools/isa`).
+//! la edicion emitida y el catalogo de syscalls de BMO-X. El frontend
+//! (`bmo-cobol-front`, la carpeta de arriba) analiza y no sabe de CPU. Partido
+//! el 2026-09-18 (`toolchain/tools/isa`).
+//!
+//! ** Aqui vivia tambien `ir_emit.rs` (COBOL -> la IR de `bmo-abi`). Borrado el
+//! 2026-09-18: nadie lo llamaba, y un `DISPLAY` literal salia SIN su cadena
+//! (`args: 0`). Cablear o borrar: el codegen de verdad es `codegen.rs`.
 //!
 //! Todo lo del frontend se re-exporta tal cual (`pub use bmo_cobol_front::*`),
 //! asi que `crate::ast`, `crate::registro` o `crate::edicion` siguen siendo los
@@ -13,7 +17,6 @@ pub use bmo_cobol_front::*;
 
 pub mod codegen;
 pub mod edicion_x86;
-pub mod ir_emit;
 mod redondeo;
 
 use std::path::PathBuf;
@@ -102,11 +105,6 @@ pub fn compile_source_to_bex(source: &str) -> Result<Vec<u8>, CobolError> {
     let program = parse(source)?;
     let bytes = codegen::compile_to_bef_bytes(&program)?;
     validate_generated_bex(bytes)
-}
-
-pub fn compile_to_ir(source: &str) -> Result<bmo_abi::ir::IrModule, CobolError> {
-    let program = parse(source)?;
-    Ok(ir_emit::compile_to_ir(&program))
 }
 
 pub fn compile_source_to_bef_with_asm(

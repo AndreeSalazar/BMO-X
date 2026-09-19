@@ -39,7 +39,6 @@ mod format;
 /// INDEXING AND POINTERS: the five ways of reaching an element are one sum, and
 /// the STRIDE is the number that has failed more often than any other here.
 mod indexing;
-use indexing::Por;
 /// INTRINSICS AND THE DOOR: the system surface as seen from C.
 mod intrinsics;
 /// THE QUESTIONS YOU ASK A TYPE: floating point and signedness, written as

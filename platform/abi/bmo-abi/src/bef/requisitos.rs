@@ -98,7 +98,7 @@
 
 #![allow(dead_code)]
 
-use crate::bmo_abi::primitives::{bx_u16, bx_u32, bx_u64};
+use crate::bmo_abi::primitives::{bx_u16, bx_u64};
 use alloc::vec::Vec;
 
 /// `"BREQ"` en little-endian. Va **dentro** de la seccion: el magic del fichero

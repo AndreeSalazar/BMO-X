@@ -1492,12 +1492,6 @@ impl Codegen {
         }
     }
 
-    fn load_imm64(&mut self, val: &str) {
-        let num: u64 = val.parse().unwrap_or(0);
-        // mov rax, imm64 -- antes [0x48,0xB8]+imm a mano; ahora el encoder.
-        self.emit_asm(|a| { a.mov_imm64(Reg::Rax, num).unwrap(); });
-    }
-
     /// `DISPLAY "literal"` -- la L2 de COBOL sobre la puerta generica (L1).
     ///
     /// Lo especifico de COBOL que se decide AQUI: que `DISPLAY` termina

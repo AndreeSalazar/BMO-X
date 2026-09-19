@@ -86,7 +86,6 @@ struct Ambito {
 /// Lo que el descenso necesita saber de una clase para insertar llamadas.
 #[derive(Default, Clone, Copy)]
 struct Info {
-    ctor: bool,
     dtor: bool,
     /// Los objetos de esta clase llevan `vptr`? Si si, hay que apuntarlo a su
     /// tabla al construir -- y **antes** de llamar al constructor, porque el
@@ -351,7 +350,6 @@ pub fn descender_unidad(p: &cpp::Program, objeto: bool) -> Result<c::Program, Cp
     let mut info: HashMap<String, Info> = HashMap::new();
     for cl in &p.classes {
         info.insert(cl.name.clone(), Info {
-            ctor: !cl.constructors.is_empty(),
             dtor: cl.destructor.is_some(),
             vtabla: !cl.vtabla.is_empty(),
         });

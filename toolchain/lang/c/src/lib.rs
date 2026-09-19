@@ -200,13 +200,12 @@ pub fn parse_with_features(source: &str, features: &StandardFeatures) -> Result<
 pub fn parse_with_modules(
     source: &str,
     base_paths: Vec<PathBuf>,
-    asm_paths: Option<Vec<PathBuf>>,
     syscalls: Vec<SyscallDef>,
 ) -> Result<Program, CError> {
     let mut resolver = module::ModuleResolver::new(base_paths).with_semantic_asm();
     let mut p = Parser::new(source);
     p.catalogo_syscalls = syscalls;
-    p.parse_program_with_modules(&mut resolver, asm_paths)
+    p.parse_program_with_modules(&mut resolver)
 }
 
 

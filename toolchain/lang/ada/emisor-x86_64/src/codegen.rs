@@ -210,6 +210,7 @@ impl Codegen {
     ///
     /// **Trunca** los decimales que sobran, que es lo que hace un tipo decimal
     /// cuando le das mas precision de la que declara.
+    #[cfg(test)]
     pub fn escalar(lit: &str, escala: u32) -> i64 {
         Self::escalar_comprobado(lit, escala).expect("literal fuera de 64 bits: usa escalar_comprobado")
     }

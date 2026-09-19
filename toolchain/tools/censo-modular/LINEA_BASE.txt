@@ -10,8 +10,8 @@
 # reparto baja un numero, y el commit ensena cuanto bajo.
 
 [TECHOS]
-  1869  toolchain/lang/cobol/emisor-x86_64/src/codegen.rs
-  1563  toolchain/lang/cobol/src/parser.rs
+  1865  toolchain/lang/cobol/emisor-x86_64/src/codegen.rs
+  1562  toolchain/lang/cobol/src/parser.rs
   1071  toolchain/lang/cpp/src/parser.rs
   1107  platform/abi/bmo-abi/src/bef/validator.rs
 

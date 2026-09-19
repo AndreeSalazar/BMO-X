@@ -272,11 +272,12 @@ fn expr_toma(e: &Expr) -> bool {
         Expr::Call(_, v) | Expr::Intrinsic(_, v) | Expr::Syscall(_, v) => v.iter().any(expr_toma),
         Expr::CallPtr(f, v) => expr_toma(f) || v.iter().any(expr_toma),
 
-        // ** Y aqui sigue el comodin que hace segura la funcion entera. Hoy no
-        // cubre ninguna forma que exista --las cincuenta estan arriba-- pero el
-        // dia que nazca una nueva, contestar que SI deja la funcion en la pila:
-        // correcta y lenta, que es el lado barato del error.
-        _ => true,
+        // ** SIN comodin desde el 2026-09-18. Aqui habia un `_ => true` --"una
+        // forma nueva contesta que SI: correcta y lenta"--, y ya no cubria
+        // ninguna: las cincuenta estan arriba. Desde que el arbol de C vive en
+        // otro crate (`bmo-c-front`), lo mas seguro no es un SI por defecto: es
+        // que una forma NUEVA haga que el emisor NO COMPILE hasta que alguien
+        // decida, aqui, si toma la direccion de algo.
     }
 }
 

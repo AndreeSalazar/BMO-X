@@ -336,7 +336,7 @@ return 0;
     let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../base");
     let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../forge/sem-asm/tables");
     // Need both base and Semantic_ASM as module search paths so stdlib/heap can be found
-    let bef = compile_source_to_bef_with_all(src, vec![base, asm.clone()], vec![asm]).unwrap();
+    let bef = compile_source_to_bef_with_modules(src, vec![base, asm]).unwrap();
     assert_eq!(u32::from_le_bytes(bef[..4].try_into().unwrap()), bmo_abi::bef::BEF_MAGIC);
     // Should contain bmo_mem_alloc syscall mov eax, 0x190
     let mov_alloc = &[0xB8u8, 0x90, 0x01, 0x00, 0x00];

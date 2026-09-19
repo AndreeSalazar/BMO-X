@@ -32,7 +32,6 @@ mod statements;
 mod expressions;
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 use crate::ast::*;
 use crate::lexer::Token;
 use crate::module;
@@ -621,11 +620,13 @@ impl Parser {
     }
 
     /// Parse with module resolution. Returns merged Program with all dependency sources.
-    /// If `asm_paths` is provided, also loads Semantic_ASM .toml files for each `use` directive.
+    ///
+    /// ** Hasta el 2026-09-18 recibia `asm_paths` y decia "tambien carga los
+    /// .toml de Semantic_ASM": no los usaba en ningun sitio. El catalogo de
+    /// SYSCALL lo pone quien emite (`catalogo_syscalls`), y nada mas.
     pub(crate) fn parse_program_with_modules(
         &mut self,
         resolver: &mut module::ModuleResolver,
-        asm_paths: Option<Vec<PathBuf>>,
     ) -> Result<Program, CError> {
         let mut program = self.parse_program()?;
         // Syscall defs and module manifests are loaded AFTER parse_program().
