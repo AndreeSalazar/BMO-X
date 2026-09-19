@@ -39,7 +39,7 @@
 //! +-- surface/        -- Formatos de pixel, surfaces CPU/GPU
 //! +-- error_code/     -- BmoErrorCode enum, BmoErrorSeverity, constants
 //! +-- bef/            -- Formato BEF (header, secciones, relocs)
-//! +-- syscalls/       -- Syscall numbers 0x100..0x1FF
+//! +-- syscalls/       -- Las DOS puertas (INVOKE 0x00, WAIT 0x02) y su superficie
 //! +-- profile/        -- BmoLanguageProfile + ALL_PROFILES
 //! ```
 //!
@@ -76,7 +76,6 @@ pub mod bex;
 pub mod syscalls;
 pub mod profile;
 pub mod cpu_profiles;
-pub mod asm;
 pub mod standards;
 
 // --- Re-exports planos para uso ergonomico -------------------------

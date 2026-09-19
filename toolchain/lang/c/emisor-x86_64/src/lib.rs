@@ -21,21 +21,13 @@ pub use bmo_c_front::*;
 
 pub mod codegen;
 
-use std::path::{Path, PathBuf};
+#[cfg(test)]
 use ast::*;
+use std::path::{Path, PathBuf};
 use bmo_abi::profile::BmoLanguageProfile;
 
 pub fn profile() -> BmoLanguageProfile {
     BmoLanguageProfile::C
-}
-
-/// El catalogo de SYSCALL de BMO-X: los numeros de ESTA maquina. El frontend
-/// no los conoce; se los pasa esto cuando un programa dice `use`.
-pub fn syscalls_de_bmo() -> Vec<SyscallDef> {
-    bmo_abi::asm::defs::syscalls()
-        .into_iter()
-        .map(|d| SyscallDef { name: d.name, nr: d.nr, arg_count: d.arg_count })
-        .collect()
 }
 
 pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CError> {
@@ -89,7 +81,7 @@ pub fn compile_with_preprocessor(
 }
 
 pub fn compile_source_to_bef_with_modules(source: &str, base_paths: Vec<PathBuf>) -> Result<Vec<u8>, CError> {
-    let program = parse_with_modules(source, base_paths, syscalls_de_bmo())?;
+    let program = parse_with_modules(source, base_paths)?;
     let used = module::find_used_functions(&program, &program.exported);
     codegen::compile_to_bef_bytes_filtered(&program, &used)
 }

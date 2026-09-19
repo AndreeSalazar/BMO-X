@@ -13,7 +13,7 @@
 //! [cuesta]   TAREA -- el programa se cae, y se cae donde esta el fallo
 //!
 //! [riesgo]   AJENO
-//!            AJENO -- `Syscall` e `Intrinsic` cruzan la puerta: lo que pasa
+//!            AJENO -- un `Intrinsic` cruza la puerta: lo que pasa
 //!                     al otro lado no lo decide este fichero, y un numero de
 //!                     operacion equivocado lo rechaza el KERNEL, no el
 //!                     compilador
@@ -131,25 +131,6 @@ impl Codegen {
                         self.code.extend_from_slice(&n.to_le_bytes());
                     }
                 }
-            }
-            Expr::Syscall(def, args) => {
-                // x86-64 SysV ABI syscall convention:
-                // args: rdi, rsi, rdx, r10, r8, r9  ->  result in rax.
-                // El `mov <reg>, rax` lo emite el encoder sem-asm (antes era
-                // la tabla reg_mov de bytes a mano -- misma dup que COBOL).
-                use bmo_sem_asm::x86_64::Reg;
-                const ARG_REGS: [Reg; 6] =
-                    [Reg::Rdi, Reg::Rsi, Reg::Rdx, Reg::R10, Reg::R8, Reg::R9];
-                for (i, arg) in args.iter().enumerate() {
-                    if i < 6 {
-                        self.emit_expr(arg);          // rax = expr value
-                        let dst = ARG_REGS[i];
-                        self.emit_asm(|a| { a.mov_reg(dst, Reg::Rax).unwrap(); });
-                    }
-                }
-                self.code.extend_from_slice(&[0xB8]);        // mov eax, imm32
-                self.code.extend_from_slice(&def.nr.to_le_bytes());
-                self.emit_call_to_syscall_stub();
             }
             Expr::CallPtr(callee, args) => {
                 // *** `(*f)(x)` ES `f(x)`. Desreferenciar un puntero a funcion

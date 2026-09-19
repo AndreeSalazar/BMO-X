@@ -114,7 +114,7 @@ bmo_abi/
 |   +-- validator/      validate() -- comprobacion estructural completa
 |   +-- loader/         load() -- runtime loader con callback de imports
 |
-+-- syscalls/           Tabla unica 0x100..0x1FF + syscall0..syscall6 wrappers
++-- syscalls/           Las dos puertas (INVOKE, WAIT) + syscall0..syscall6
 +-- profile/            BmoLanguageProfile + ALL_PROFILES
 ```
 
@@ -167,44 +167,21 @@ tamano en tiempo de compilacion. 34 aserciones activas:
 | Numero | Nombre | Responsabilidad |
 |--------|--------|-----------------|
 | 0x00 | `BMO_INVOKE` | Control sincrono sobre una capability |
-| 0x01 | `BMO_CHANNEL_KICK` | Notificar trabajo publicado en BMO Channel |
+| 0x01 | *reservado* | Era `CHANNEL_KICK`; hoy es `CHANNEL_OP_KICK` sobre el canal. Contesta `ERROR_UNSUPPORTED` y no se reutiliza |
 | 0x02 | `BMO_WAIT` | Bloquear hasta cambio de secuencia o deadline |
 
 Filesystem, red, audio, input, compositor y GPU son servicios accesibles por
 capabilities y BMO Channel. No agregan nuevas entradas privilegiadas.
 
-### ABI v1 legacy (0x100..=0x1FF)
+### La tabla v1 (0x100..=0x1FF) YA NO EXISTE (2026-09-19)
 
-Esta tabla se conserva solamente para ejecutar y migrar BEF/BEX ABI 1.0. Los
-productores nuevos deben emitir exclusivamente las tres primitivas v2.
+Eran 109 nombres (`bmo_mem_alloc` 0x190, `bmo_exit` 0x181...). El kernel no
+los despachaba -- nunca hubo el "adaptador temporal" que esta seccion
+prometia -- y cualquiera de ellos contestaba `rax = 10`. Como 10 no es cero,
+un `malloc` que los usaba escribia en la direccion `0xA`. Se quito la tabla y
+todo lo que la leia (frontends de C y COBOL, `bmo-rt`, `stdlib/heap`): un
+nombre v1 es ahora un error de compilacion.
 
-Estado de migracion:
-
-- `bmo-rt` emite identidad, yield y exit mediante `BMO_INVOKE`.
-- El backend COBOL convierte los nombres de tarea v1 a `BMO_INVOKE`; no
-  incorpora sus numeros legacy en BEF nuevos.
-- Ring 0 conserva un adaptador temporal para artefactos ABI 1.0, pero dirige
-  esas operaciones al mismo dispatcher v2 para evitar dos implementaciones.
-- El resto de la tabla permanece aislado hasta que cada servicio tenga una
-  capability y un protocolo BMO Channel definidos.
-
-| Rango | Familia |
-|-------|---------|
-| 0x100..0x10F | Window manager |
-| 0x110..0x119 | Drawing primitives |
-| 0x120..0x125 | Window painting |
-| 0x130..0x134 | Compositor |
-| 0x140..0x149 | Filesystem |
-| 0x150..0x153 | Time |
-| 0x160..0x162 | Input |
-| 0x170..0x173 | Audio |
-| 0x180..0x188 | Process / Thread |
-| 0x190..0x197 | Memory + BEFCore |
-| 0x1A0..0x1A3 | IPC |
-| 0x1C0..0x1C2 | Surface mapping |
-| 0x1F0..0x1F3 | Debug / diagnostics |
-
-Ver `syscalls/mod.rs` para la lista completa.
 
 ### Convencion de syscall (x86_64)
 
@@ -341,7 +318,7 @@ El loader de BEF salta a `_bmo_start` despues de:
 
 ## 9. Garantias
 
-1. **ABI v2 estable**: los tres numeros core no cambian dentro de v2.x.
+1. **ABI v2 estable**: las dos puertas (0x00, 0x02) no cambian dentro de v2.x.
 2. **Migracion gradual**: el kernel v2 acepta BEX ABI 1.0 temporalmente;
    nuevos productores escriben ABI 2.0.
 3. **Handles son procesos-locales**: un handle de un proceso no es valido

@@ -6,7 +6,6 @@ use std::process;
 fn main() {
     let args: Vec<String> = env::args().collect();
     let program = &args[0];
-    let mut asm_paths: Vec<PathBuf> = Vec::new();
     let mut file_path = None;
     let mut out_override: Option<PathBuf> = None;
     let mut solo_copybook = false;
@@ -52,15 +51,6 @@ fn main() {
                     process::exit(2);
                 }
             }
-            "--asm-path" | "-a" => {
-                i += 1;
-                if i < args.len() {
-                    asm_paths.push(PathBuf::from(&args[i]));
-                } else {
-                    eprintln!("error: --asm-path requires a path");
-                    process::exit(2);
-                }
-            }
             _ => {
                 file_path = Some(&args[i]);
             }
@@ -70,7 +60,7 @@ fn main() {
 
     let Some(path) = file_path else {
         eprintln!(
-            "usage: {program} [-o <salida.bex>] [--copybook] [--asm-path <path>] <source.cob>"
+            "usage: {program} [-o <salida.bex>] [--copybook] <source.cob>"
         );
         process::exit(2);
     };
@@ -124,11 +114,7 @@ fn main() {
         }
     }
 
-    let result = if asm_paths.is_empty() {
-        bmo_cobol_x86_64::compile_source_to_bex(&source)
-    } else {
-        bmo_cobol_x86_64::compile_source_to_bex_with_asm(&source, asm_paths)
-    };
+    let result = bmo_cobol_x86_64::compile_source_to_bex(&source);
 
     match result {
         Ok(bef_bytes) => {

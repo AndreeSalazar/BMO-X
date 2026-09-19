@@ -1,10 +1,6 @@
-use std::collections::HashMap;
-use std::path::PathBuf;
-
 use crate::ast::{
     DisplayArg,
     CobolCondition, CobolError, CobolProgram, CobolStatement, Condicion, DataItem, Redondeo,
-    SyscallMap,
 };
 
 /// Cabecera de un PERFORM ya analizada, antes de leer el cuerpo.
@@ -17,28 +13,15 @@ pub struct Parser {
     lines: Vec<(usize, String)>,
     pos: usize,
     in_procedure: bool,
-    syscalls: SyscallMap,
-    usings: Vec<String>,
 }
 
 impl Parser {
-    /// Un parser SIN catalogo de syscalls: un `SYSCALL` contesta "unknown".
-    ///
-    /// ** El catalogo es de la MAQUINA (los numeros de la puerta de BMO-X), y
-    /// desde el 2026-09-18 el frontend no nombra ninguna: se lo pasa quien
-    /// emite, con [`Parser::con_syscalls`]. Antes lo leia de `bmo-abi` aqui
-    /// mismo, y eso ataba el arbol de COBOL al ABI de x86-64.
     pub fn new(source: &str) -> Self {
-        Self::con_syscalls(source, HashMap::new())
-    }
-
-    /// Un parser que resuelve `SYSCALL <nombre>` contra `syscalls`.
-    pub fn con_syscalls(source: &str, syscalls: SyscallMap) -> Self {
         let lines: Vec<_> = source.lines()
             .enumerate()
             .map(|(i, l)| (i + 1, l.to_string()))
             .collect();
-        Self { lines, pos: 0, in_procedure: false, syscalls, usings: Vec::new() }
+        Self { lines, pos: 0, in_procedure: false }
     }
 
     pub fn parse_program(&mut self) -> Result<CobolProgram, CobolError> {
@@ -148,12 +131,14 @@ impl Parser {
                 continue;
             }
 
-            if upper.starts_with("USE") {
-                let path = normalized[3..].trim().trim_matches('"').to_string();
-                if !path.is_empty() {
-                    self.usings.push(path);
-                }
-                continue;
+            // ** `USE "<modulo>"` se leia y se GUARDABA en una lista que nadie
+            // leyo nunca: la linea compilaba y no cargaba nada. Su unico uso
+            // era prestar la tabla v1 al `SYSCALL`, y los dos se fueron el
+            // 2026-09-19. Ahora lo dice en vez de callarse.
+            if upper.starts_with("USE \"") || upper.starts_with("USE '") {
+                return Err(CobolError::new(line_no, format!(
+                    "`USE` no carga nada en BMO COBOL (ni modulos ni puertas): {normalized}"
+                )));
             }
 
             if !self.in_procedure { continue; }
@@ -179,10 +164,6 @@ impl Parser {
         }
 
         Ok(program)
-    }
-
-    pub fn parse_program_with_asm(&mut self, _asm_paths: Vec<PathBuf>) -> Result<CobolProgram, CobolError> {
-        self.parse_program()
     }
 
     fn current(&self) -> Option<&(usize, String)> {
@@ -866,25 +847,7 @@ impl Parser {
     fn parse_statement(&mut self, line: &str, line_no: usize) -> Result<CobolStatement, CobolError> {
         let upper = line.trim().to_ascii_uppercase();
 
-        if upper.starts_with("SYSCALL ") {
-            let rest = line[8..].trim().trim_end_matches('.');
-            let parts: Vec<&str> = rest.splitn(2, ' ').collect();
-            let name = parts[0].to_string();
-            let args = if parts.len() > 1 {
-                parts[1].split(',').map(|a| a.trim().trim_matches('"').trim_matches('\'').to_string()).collect()
-            } else { Vec::new() };
-            if let Some(def) = self.syscalls.get(&name).cloned() {
-                if args.len() != def.arg_count as usize {
-                    return Err(CobolError::new(line_no, format!(
-                        "syscall {}() expects {} arguments, got {}",
-                        def.name, def.arg_count, args.len()
-                    )));
-                }
-                Ok(CobolStatement::Syscall(def, args))
-            } else {
-                Err(CobolError::new(line_no, format!("unknown syscall: {name}")))
-            }
-        } else if upper.starts_with("DISPLAY ") {
+        if upper.starts_with("DISPLAY ") {
             // El parser por-lineas (el viejo) mira si venia entrecomillado:
             // `parse_operand` ya quita las comillas, asi que hay que
             // preguntarselo al texto CRUDO antes de que se pierda esa pista.

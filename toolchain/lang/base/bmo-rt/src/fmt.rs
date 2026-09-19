@@ -230,7 +230,7 @@ pub unsafe extern "C" fn bmo_printf(fmt: *const u8, num_args: u64, args_ptr: *co
         i += 1;
     }
     buf[pos] = 0;
-    crate::syscall::debug_print(buf.as_ptr(), pos as u64);
+    crate::syscall::consola_escribir(buf.as_ptr(), pos as u64);
     pos as i32
 }
 

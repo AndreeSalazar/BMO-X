@@ -195,13 +195,6 @@ pub enum Stmt {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct SyscallDef {
-    pub name: String,
-    pub nr: u32,
-    pub arg_count: u8,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Int(i64),
     FloatLit(f64),
@@ -273,7 +266,6 @@ pub enum Expr {
     PostDec(String),
     Conditional(Box<Expr>, Box<Expr>, Box<Expr>),
     TemplateCall(String, Vec<TypeSpec>, Vec<Expr>),
-    Syscall(SyscallDef, Vec<Expr>),
     This,
     NullPtr,
 }

@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use bmo_abi::bef::writer::{BefBuilder, BefSection};
-use bmo_abi::syscalls::surface;
 use bmo_sem_asm::Instructions;
 use bmo_sem_asm::x86_64::{Asm, Reg};
 use bmo_lower::x86;
@@ -9,12 +8,6 @@ use crate::ast::error::CobolError;
 use crate::{edicion::Plantilla, edicion_x86::EmitirPlantilla};
 
 type Result<T> = core::result::Result<T, CobolError>;
-
-// BMO x86-64 SYSCALL argument registers: RDI, RSI, RDX, R10, R8, R9.
-// RCX lo pisa el CPU con la direccion de retorno del usuario. Antes esto era
-// la tabla REG_MOV de bytes a mano; ahora el mov reg,rax lo emite el encoder
-// sem-asm (mismos bytes, leidos de la tabla TOML).
-const ARG_REGS: [Reg; 6] = [Reg::Rdi, Reg::Rsi, Reg::Rdx, Reg::R10, Reg::R8, Reg::R9];
 
 pub fn compile_to_bef_bytes(program: &CobolProgram) -> Result<Vec<u8>> {
     // * Sin PROCEDURE DIVISION no hay programa.
@@ -704,10 +697,6 @@ impl Codegen {
         // entre todos los accesos a la misma tabla.
         self.emit_bloques_fuera_de_rango();
 
-        // Syscall stub
-        let stub_off = self.code.len();
-        self.code.extend_from_slice(&[0x0F, 0x05, 0xC3]); // syscall; ret
-        self.function_offsets.insert("__bmo_syscall_stub".to_string(), stub_off);
         self.patch_jumps();
         self.patch_call_relocs();
         self.patch_string_fixups();
@@ -1957,19 +1946,6 @@ impl Codegen {
 
     fn emit_statement(&mut self, stmt: &CobolStatement) {
         match stmt {
-            CobolStatement::Syscall(def, args) => {
-                if let Some(operation) = surface::task_operation_for_legacy_syscall(def.nr) {
-                    self.emit_v2_task_invoke(operation, args);
-                } else {
-                    for (i, arg) in args.iter().enumerate() {
-                        if i < ARG_REGS.len() {
-                            let value: u64 = arg.parse().unwrap_or(0);
-                            self.emit_imm64_syscall_arg(i, value);
-                        }
-                    }
-                    self.emit_mov_eax_syscall(def.nr);
-                }
-            }
             CobolStatement::Display(arg) => match arg {
                 DisplayArg::Literal(s) => self.emit_display(s),
                 DisplayArg::Variable(v) => self.emit_display_var(v),
@@ -2447,7 +2423,6 @@ impl Codegen {
             CobolStatement::StopRun => {
                 bmo_lower::task::exit(&mut self.code);
             }
-            CobolStatement::Expr(_) => {}
         }
     }
 
@@ -2829,37 +2804,6 @@ impl Codegen {
         self.code.push(0x5A); // pop rdx (izquierdo)
         self.code.extend_from_slice(&[0x48, 0x39, 0xC2]); // cmp rdx, rax
         self.emit_jcc(if salta_si_cierta { cc_cierta } else { cc_falsa }, label);
-    }
-
-    fn emit_mov_eax_syscall(&mut self, nr: u32) {
-        self.code.extend_from_slice(&[0xB8]);
-        self.code.extend_from_slice(&nr.to_le_bytes());
-        self.emit_call_to_syscall_stub();
-    }
-
-    fn emit_v2_task_invoke(&mut self, operation: u64, args: &[String]) {
-        self.emit_imm64_syscall_arg(0, surface::CURRENT_TASK);
-        self.emit_imm64_syscall_arg(1, operation);
-        for index in 0..4 {
-            let value = args.get(index).and_then(|arg| arg.parse().ok()).unwrap_or(0);
-            self.emit_imm64_syscall_arg(index + 2, value);
-        }
-        self.emit_mov_eax_syscall(surface::NR_INVOKE);
-    }
-
-    fn emit_imm64_syscall_arg(&mut self, index: usize, value: u64) {
-        // mov rax, imm64 ; mov <arg_reg>, rax -- todo por el encoder sem-asm.
-        let dst = ARG_REGS[index];
-        self.emit_asm(|a| {
-            a.mov_imm64(Reg::Rax, value).unwrap();
-            a.mov_reg(dst, Reg::Rax).unwrap();
-        });
-    }
-
-    fn emit_call_to_syscall_stub(&mut self) {
-        self.code.extend_from_slice(&[0xE8]);
-        self.call_relocs.push(CallReloc { offset: self.code.len(), target: "__bmo_syscall_stub".to_string() });
-        self.code.extend_from_slice(&[0, 0, 0, 0]);
     }
 
     fn patch_string_fixups(&mut self) {

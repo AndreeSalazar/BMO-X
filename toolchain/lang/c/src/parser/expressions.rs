@@ -484,16 +484,7 @@ impl Parser {
                         if *self.peek() == Token::Comma { self.advance(); }
                     }
                     self.expect(&Token::CloseParen)?;
-                    // Check if this function name matches a known syscall definition
-                    if let Some(def) = self.syscalls.get(&name).cloned() {
-                        if args.len() != def.arg_count as usize {
-                            return Err(CError::new(self.line(),format!(
-                                "syscall {}() expects {} arguments, got {}",
-                                def.name, def.arg_count, args.len()
-                            )));
-                        }
-                        Ok(Expr::Syscall(def, args))
-                    } else if let Some(stripped) = name.strip_prefix("__") {
+                    if let Some(stripped) = name.strip_prefix("__") {
                         // FUSION sem-asm<->C: __hlt(), __outb(p,v), __rdtsc()... =
                         // instruccion de la tabla como funcion. El namespace __
                         // es reservado a la implementacion -- aqui ES la

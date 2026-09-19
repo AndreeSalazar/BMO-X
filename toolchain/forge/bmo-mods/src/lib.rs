@@ -744,18 +744,20 @@ mod tests {
         }
     }
 
-    /// Los ocho manifiestos que ya existen se leen con el formato nuevo. Si
+    /// Los manifiestos que ya existen se leen con el formato nuevo. Si
     /// alguno no, el formato esta mal -- no el manifiesto.
     #[test]
     fn los_manifiestos_que_ya_existen_siguen_valiendo() {
         let r = roots();
-        let (heap, dir) = Manifest::find(&r, "stdlib/heap").unwrap();
-        assert!(heap.export_names().contains(&"malloc"));
-        assert!(heap.export_names().contains(&"realloc"));
-        assert!(dir.ends_with("stdlib/heap") || dir.ends_with("stdlib\\heap"));
+        // (Era `stdlib/heap`, un `malloc` sobre la tabla v1 que escribia en
+        // `0xA`; se fue el 2026-09-19. El formato se prueba con `string`.)
+        let (string, dir) = Manifest::find(&r, "stdlib/string").unwrap();
+        assert!(string.export_names().contains(&"memcpy"));
+        assert!(string.export_names().contains(&"strlen"));
+        assert!(dir.ends_with("stdlib/string") || dir.ends_with("stdlib\\string"));
         // La firma se conserva tal cual: es documentacion con formato.
-        let malloc = heap.exports.iter().find(|e| e.name == "malloc").unwrap();
-        assert_eq!(malloc.signature.as_deref(), Some("size_t -> ptr"));
+        let memcpy = string.exports.iter().find(|e| e.name == "memcpy").unwrap();
+        assert_eq!(memcpy.signature.as_deref(), Some("ptr, ptr, size_t -> ptr"));
     }
 
     /// Las dos formas de `[exports]` que hay escritas en el repo dan lo mismo.

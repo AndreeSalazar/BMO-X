@@ -890,8 +890,6 @@ fn expr(e: &cpp::Expr) -> Result<c::Expr, CppError> {
         }
         E::TemplateCall(n, _, _) => return Err(pendiente(&format!("la plantilla `{n}`"), 6,
             "la monomorfización")),
-        E::Syscall(d, _) => return Err(pendiente(&format!("la puerta `{}`", d.name), 1,
-            "los intrínsecos, que en C son filas de `intrinsics.toml`")),
     })
 }
 

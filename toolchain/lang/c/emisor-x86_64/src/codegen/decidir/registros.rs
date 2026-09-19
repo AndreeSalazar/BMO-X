@@ -271,7 +271,7 @@ fn expr_toma(e: &Expr, t: &mut Tomadas) {
         }
         // Una llamada puede pasar `&x` como argumento, y por eso hay que bajar
         // a los argumentos: el `&` esta ahi y se ve.
-        Expr::Call(_, v) | Expr::Intrinsic(_, v) | Expr::Syscall(_, v) => {
+        Expr::Call(_, v) | Expr::Intrinsic(_, v) => {
             v.iter().for_each(|x| expr_toma(x, t))
         }
         Expr::CallPtr(f, v) => {
@@ -379,7 +379,7 @@ fn cuenta_expr(e: &Expr, n: &str) -> usize {
         }
         // `f(x)` USA `f` cuando `f` es un puntero a funcion local (19-09)
         Expr::Call(f, v) => (f == n) as usize + v.iter().map(|x| cuenta_expr(x, n)).sum::<usize>(),
-        Expr::Intrinsic(_, v) | Expr::Syscall(_, v) => {
+        Expr::Intrinsic(_, v) => {
             v.iter().map(|x| cuenta_expr(x, n)).sum()
         }
         Expr::CallPtr(f, v) => {
@@ -409,7 +409,7 @@ pub(in crate::codegen) const UMBRAL_DE_USOS: usize = 6;
 /// y los tres se ven en el arbol:
 ///
 /// ```text
-///    una LLAMADA           Call, CallPtr, Intrinsic, Syscall, y los printf
+///    una LLAMADA           Call, CallPtr, Intrinsic, y los printf
 ///                          de sentencia: pisan todos los de argumento
 ///    una copia de STRUCT   `rep movsb` con rdi/rsi (`emit_asigna_agregado`):
 ///                          cualquier asignacion cuyo destino sea un agregado
@@ -448,7 +448,7 @@ fn stmt_pisa(s: &Stmt, ag: &impl Fn(&Expr) -> bool) -> bool {
 
 fn expr_pisa(e: &Expr, ag: &impl Fn(&Expr) -> bool) -> bool {
     match e {
-        Expr::Call(..) | Expr::CallPtr(..) | Expr::Intrinsic(..) | Expr::Syscall(..) => true,
+        Expr::Call(..) | Expr::CallPtr(..) | Expr::Intrinsic(..) => true,
         Expr::Int(_) | Expr::FloatLit(_) | Expr::StringLit(_) | Expr::CharLit(_) | Expr::Var(_)
         | Expr::PreInc(_) | Expr::PreDec(_) | Expr::PostInc(_) | Expr::PostDec(_) => false,
         Expr::Neg(a) | Expr::Not(a) | Expr::BitNot(a) | Expr::Deref(a) | Expr::AddrOf(a) | Expr::Cast(_, a) => expr_pisa(a, ag),

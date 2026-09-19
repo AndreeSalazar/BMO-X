@@ -213,16 +213,27 @@ fn el_or_de_greater_than_or_equal_no_es_un_or() {
 }
 
 #[test]
-fn parses_cobol_use_and_syscall() {
-    let src = r#"
+fn use_y_syscall_ya_no_compilan() {
+    // ** Hasta el 2026-09-19 esto compilaba: `USE` se guardaba en una lista que
+    // nadie leia y `SYSCALL bmo_exit` salia por la tabla v1. Las dos lineas
+    // hacian otra cosa que lo que decian; ahora se paran con su nombre.
+    let con_use = r#"
 IDENTIFICATION DIVISION.
 PROGRAM-ID. TEST.
 USE "bmo/proc".
 PROCEDURE DIVISION.
+STOP RUN.
+"#;
+    let e = compile_source_to_bef(con_use).unwrap_err();
+    assert!(e.message.contains("USE"), "{e:?}");
+
+    let con_syscall = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. TEST.
+PROCEDURE DIVISION.
 SYSCALL bmo_exit 0.
 "#;
-    let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../forge/sem-asm/tables");
-    let p = compile_source_to_bef_with_asm(src, vec![asm]).unwrap();
-    assert!(p.len() > 48);
+    let e = compile_source_to_bef(con_syscall).unwrap_err();
+    assert!(e.message.contains("SYSCALL"), "{e:?}");
 }
 

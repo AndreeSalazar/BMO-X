@@ -1,12 +1,11 @@
 //! Backends for the freelist allocator.
 //!
-//! Currently provides `SyscallBackend` which uses `bmo_mem_alloc`/`bmo_mem_free`.
-//! Future: `DirectBackend` for Ring 0 (calls kernel heap directly).
+//! `SyscallBackend` pide los trozos a `KIND_MEMORIA` (`crate::syscall::memoria_pedir`).
 
 use super::freelist::MemBackend;
-use bmo_abi::syscalls::{self, syscall1, syscall2};
 
-/// A memory backend that requests chunks via `bmo_mem_alloc` / `bmo_mem_free`.
+/// Trozos de `KIND_MEMORIA`: se piden y NO se devuelven, porque el kernel no
+/// tiene forma de recibirlos. El asignador de encima es quien reparte.
 #[derive(Debug, Clone, Copy)]
 pub struct SyscallBackend;
 
@@ -18,20 +17,12 @@ impl SyscallBackend {
 
 impl MemBackend for SyscallBackend {
     unsafe fn alloc_chunk(&self, min_size: usize) -> *mut u8 {
-        let result = syscall1(syscalls::NR_MEM_ALLOC, min_size as u64);
-        // .code() = RAX (status), .value() = RDX (pointer).
-        // The kernel returns the allocated pointer in RDX.
-        let ptr = result.value() as *mut u8;
-        if ptr.is_null() || (ptr as usize) < 0x1000 {
-            core::ptr::null_mut()
-        } else {
-            ptr
-        }
+        crate::syscall::memoria_pedir(min_size as u64)
     }
 
-    unsafe fn free_chunk(&self, ptr: *mut u8, size: usize) {
-        let _ = syscall2(syscalls::NR_MEM_FREE, ptr as u64, size as u64);
-    }
+    /// Nada: un bloque de `KIND_MEMORIA` no se devuelve. Antes esto llamaba a
+    /// `bmo_mem_free` (0x191), que el kernel contestaba con "no existe".
+    unsafe fn free_chunk(&self, _ptr: *mut u8, _size: usize) {}
 }
 
 #[cfg(test)]

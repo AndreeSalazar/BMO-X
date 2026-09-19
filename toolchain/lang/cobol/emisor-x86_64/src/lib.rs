@@ -1,7 +1,7 @@
 //! **BMO COBOL para x86-64** -- del arbol de COBOL a un `.bex`.
 //!
-//! [isa] x86-64 -- el UNICO sitio de COBOL que nombra una maquina: el codegen,
-//! la edicion emitida y el catalogo de syscalls de BMO-X. El frontend
+//! [isa] x86-64 -- el UNICO sitio de COBOL que nombra una maquina: el codegen
+//! y la edicion emitida. El frontend
 //! (`bmo-cobol-front`, la carpeta de arriba) analiza y no sabe de CPU. Partido
 //! el 2026-09-18 (`toolchain/tools/isa`).
 //!
@@ -19,31 +19,10 @@ pub mod codegen;
 pub mod edicion_x86;
 mod redondeo;
 
-use std::path::PathBuf;
 use bmo_abi::profile::BmoLanguageProfile;
 
 pub fn profile() -> BmoLanguageProfile {
     BmoLanguageProfile::COBOL
-}
-
-/// El catalogo de `SYSCALL` de BMO-X: los numeros de ESTA maquina. El frontend
-/// no los conoce; se los pasa esto.
-pub fn syscalls_de_bmo() -> SyscallMap {
-    bmo_abi::asm::defs::syscalls()
-        .into_iter()
-        .map(|d| (d.name.clone(), ast::SyscallDef { name: d.name, nr: d.nr, arg_count: d.arg_count }))
-        .collect()
-}
-
-/// Analiza con el catalogo de syscalls de BMO-X: lo que el compilador usa.
-pub fn parse(source: &str) -> Result<CobolProgram, CobolError> {
-    parse_con_syscalls(source, syscalls_de_bmo())
-}
-
-/// Como [`parse`], bajo un dialecto explicito.
-pub fn parse_with_dialect(source: &str, dialect: DialectConfig) -> Result<CobolProgram, CobolError> {
-    let _ = dialect;
-    parse(source)
 }
 
 pub fn compile_source_to_bef(source: &str) -> Result<Vec<u8>, CobolError> {
@@ -103,24 +82,6 @@ pub fn copybook_de(source: &str) -> Result<String, CobolError> {
 /// BEX v1 uses the validated BEF1 wire format defined by `bmo-abi`.
 pub fn compile_source_to_bex(source: &str) -> Result<Vec<u8>, CobolError> {
     let program = parse(source)?;
-    let bytes = codegen::compile_to_bef_bytes(&program)?;
-    validate_generated_bex(bytes)
-}
-
-pub fn compile_source_to_bef_with_asm(
-    source: &str,
-    asm_paths: Vec<PathBuf>,
-) -> Result<Vec<u8>, CobolError> {
-    compile_source_to_bex_with_asm(source, asm_paths)
-}
-
-/// Compile COBOL source into BEX while using extra semantic-assembly paths.
-pub fn compile_source_to_bex_with_asm(
-    source: &str,
-    asm_paths: Vec<PathBuf>,
-) -> Result<Vec<u8>, CobolError> {
-    let mut p = parser::Parser::con_syscalls(source, syscalls_de_bmo());
-    let program = p.parse_program_with_asm(asm_paths)?;
     let bytes = codegen::compile_to_bef_bytes(&program)?;
     validate_generated_bex(bytes)
 }

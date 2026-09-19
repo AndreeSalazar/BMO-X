@@ -142,7 +142,6 @@ impl Codegen {
             | Expr::AssignArrow(..) => self.emitir_direccion(expr),
             // -- VERDE: EL ORDEN.
             Expr::Call(..)
-            | Expr::Syscall(..)
             | Expr::CallPtr(..)
             | Expr::LAnd(..)
             | Expr::LOr(..)

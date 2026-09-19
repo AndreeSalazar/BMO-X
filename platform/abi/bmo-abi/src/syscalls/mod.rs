@@ -1,37 +1,26 @@
-//! `bmo_abi::syscalls` -- Tabla unica de syscall numbers 0x100..0x1FF.
+//! `bmo_abi::syscalls` -- LAS DOS PUERTAS de BMO-X y la instruccion que las cruza.
 //!
-//! **Constants y `name()` generados automaticamente** desde
-//! `Semantic_ASM/bmo/*.toml` por `build.rs`.
+//! ```text
+//!    rax = 0x00   INVOKE(capability, operacion, a0, a1, a2, a3)
+//!    rax = 0x02   WAIT(esperable, secuencia_vista, plazo_ns)
+//!    rax = 0x01   RESERVADO -- contesta ERROR_UNSUPPORTED, no se reutiliza
+//! ```
 //!
-//! Este archivo conserva los wrappers arquitectura-especificos
-//! (`syscall0..6`, `SyscallResult`) y los helpers.
+//! Todo lo demas es una OPERACION sobre una capability (`surface::`), no un
+//! numero de syscall. Argumentos en `rdi, rsi, rdx, r10, r8, r9` (`rcx` y `r11`
+//! los destruye la propia instruccion) y el resultado en `rax:rdx` =
+//! `BmoStatus` (codigo | banderas << 32, valor).
 //!
-//! ## Layout
+//! # [!] 2026-09-19: la tabla v1 (0x100..0x1FF) ya no existe
 //!
-//! | Rango | Owner | Notas |
-//! |-------|-------|-------|
-//! | 0x100..0x10F | WM | Window create/destroy/show/hide/title/bounds/clip |
-//! | 0x110..0x119 | Draw | Clear/pixel/line/rect/circle/text/blit/gradient/round |
-//! | 0x120..0x125 | WinPaint | fill_rect/draw_text/draw_pixel/line/blit/circle |
-//! | 0x130..0x134 | Compositor | begin_frame/end_frame/present/set_target/flush |
-//! | 0x140..0x149 | FS | open/close/read/write/seek/stat/mkdir/readdir/delete/mount |
-//! | 0x150..0x153 | Time | now_ns/now_us/sleep_ns/sleep_ms |
-//! | 0x160..0x162 | Input | poll_key/poll_mouse/poll_event |
-//! | 0x170..0x173 | Audio | play/stop/beep/load_wave |
-//! | 0x180..0x188 | Process | spawn/exit/get_pid/get_tid/yield/thread_create/thread_exit/thread_join/thread_self |
-//! | 0x190..0x197 | Memory | alloc/free/map/unmap + BEFCore send/recv/poll |
-//! | 0x1A0..0x1A3 | IPC | port_create/port_send/port_recv/port_close |
-//! | 0x1C0..0x1C2 | Surface | map/unmap/present |
-//! | 0x1F0..0x1F3 | Diagnostics | print/trace/assert/panic |
+//! Eran 109 nombres (`bmo_mem_alloc` 0x190, `bmo_exit` 0x181...) que el kernel
+//! no despachaba desde que se congelaron las dos puertas: todos contestaban
+//! `rax = 10`. Y ese 10 **no es cero** -- el `malloc` de `stdlib/heap` lo
+//! tomaba por una direccion y escribia en `0xA`. La tabla alimentaba a los
+//! frontends de C y COBOL y a `bmo-rt`; se fue con todos sus usuarios en el
+//! mismo commit, y un nombre v1 es ahora un error de compilacion.
 
-// ===========================================================================
-//  Constants + name() -- EMBEDIDOS desde asm::defs
-// ===========================================================================
-mod generated;
-pub use generated::*;
-
-/// Minimal BMO ABI v2 kernel surface. The generated table above is retained
-/// only while v1 producers and runtimes are migrated.
+/// Las dos puertas y las operaciones de cada capability.
 pub mod surface;
 
 // ===========================================================================

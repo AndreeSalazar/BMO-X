@@ -195,19 +195,12 @@ pub fn parse_with_features(source: &str, features: &StandardFeatures) -> Result<
     p.parse_program()
 }
 
-/// **Analizar con modulos** (`use "..."`): resuelve los manifiestos y, si el
-/// programa usa algo, le presta el catalogo de SYSCALL de la maquina.
-///
-/// ** `syscalls` lo pone quien emite (2026-09-18): el frontend no conoce los
-/// numeros de la puerta de ninguna maquina.
-pub fn parse_with_modules(
-    source: &str,
-    base_paths: Vec<PathBuf>,
-    syscalls: Vec<SyscallDef>,
-) -> Result<Program, CError> {
+/// **Analizar con modulos** (`use "..."`): resuelve los manifiestos y mezcla
+/// sus fuentes. Las puertas del kernel NO llegan por aqui: son `INVOKE` y
+/// `WAIT`, y se escriben con `<bmo/bmo.h>` o con los intrinsecos.
+pub fn parse_with_modules(source: &str, base_paths: Vec<PathBuf>) -> Result<Program, CError> {
     let mut resolver = module::ModuleResolver::new(base_paths).with_semantic_asm();
     let mut p = Parser::new(source);
-    p.catalogo_syscalls = syscalls;
     p.parse_program_with_modules(&mut resolver)
 }
 

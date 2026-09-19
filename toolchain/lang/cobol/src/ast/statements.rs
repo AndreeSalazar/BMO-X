@@ -1,4 +1,4 @@
-use crate::ast::{SyscallDef, Valor88};
+use crate::ast::Valor88;
 
 /// Como se resuelve el ultimo digito de una operacion aritmetica.
 ///
@@ -218,8 +218,6 @@ pub enum CobolStatement {
     /// `WRITE <registro>`. Escribe el valor del registro como una linea.
     Write(String),
     StopRun,
-    Syscall(SyscallDef, Vec<String>),
-    Expr(String),
 }
 
 /// Una condicion COMPUESTA: comparaciones unidas con `AND` y `OR`.

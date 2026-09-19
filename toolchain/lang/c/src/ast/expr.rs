@@ -10,16 +10,6 @@
 
 use super::types::*;
 
-/// A named syscall definition loaded from sem-asm tables (.toml)
-/// Args follow x86-64 SysV ABI convention: rdi, rsi, rdx, r10, r8, r9
-/// Return value in rax
-#[derive(Debug, Clone, PartialEq)]
-pub struct SyscallDef {
-    pub name: String,
-    pub nr: u32,
-    pub arg_count: u8,
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Int(i64),
@@ -109,7 +99,6 @@ pub enum Expr {
     /// intrinsics.toml invocada como funcion. El nombre va SIN el prefijo __.
     /// Los argumentos van a los registros que dicta la tabla (dx, al, ecx...).
     Intrinsic(String, Vec<Expr>),
-    Syscall(SyscallDef, Vec<Expr>),
 }
 
 /// **Que operacion lleva un `op=`.**

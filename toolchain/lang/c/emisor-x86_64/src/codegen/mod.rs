@@ -886,7 +886,7 @@ impl Codegen {
             Expr::Call(name, args) => {
                 // * AQUI SE DEDUCE `WANTS_SCREEN`, y tiene que ser aqui.
                 //
-                // La tentacion es mirarlo en `Expr::Syscall`, donde esta el
+                // La tentacion es mirarlo en el intrinseco, donde esta el
                 // INVOKE. No sirve: `bmo_valor` es una FUNCION C de verdad
                 // --vive en `<bmo/bmo.h>`-- asi que dentro de ella la operacion es
                 // un PARAMETRO, no un literal. En el sitio de la llamada si se
@@ -907,7 +907,6 @@ impl Codegen {
                 }
                 for a in args { self.collect_expr_strings(a); }
             }
-            Expr::Syscall(_, args) => { for a in args { self.collect_expr_strings(a); } }
             Expr::Arrow(p,_) => self.collect_expr_strings(p),
             Expr::AssignArrow(p,_,v) => { self.collect_expr_strings(p); self.collect_expr_strings(v); }
             Expr::Assign(_, v) | Expr::AssignField(_,_,v) => self.collect_expr_strings(v),

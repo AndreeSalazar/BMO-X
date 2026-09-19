@@ -21,7 +21,6 @@ mod inicializador;
 mod types;
 /// THE SYSCALL PASS: validate then resolve, walking an already-built tree. Not
 /// grammar -- a check against the frozen kernel surface.
-mod syscalls;
 /// DECLARATIONS AND DECLARATORS: the hard half. A C type is built inside-out
 /// around its name, so every wrap needs its own method.
 mod declarations;
@@ -113,12 +112,6 @@ pub(crate) struct Parser {
     /// para su nombre global, y sin ella los bloques ANIDADOS no podian tener
     /// una -- ver `parse_block`.
     funcion_actual: String,
-    syscalls: HashMap<String, SyscallDef>,
-    /// El catalogo de SYSCALL de la MAQUINA, que se carga cuando el programa
-    /// dice `use`. ** Lo pone quien emite (2026-09-18): antes se leia aqui de
-    /// `bmo-abi`, y eso ataba el frontend de C al ABI de x86-64. Vacio = un
-    /// `use` no trae ninguna syscall.
-    pub(crate) catalogo_syscalls: Vec<SyscallDef>,
     /// Lo que el LEXER no pudo leer. Se comprueba antes de parsear: seguir
     /// con un token inventado produce un programa que compila y no dice lo
     /// que esta escrito.
@@ -148,8 +141,6 @@ impl Parser {
             extern_cuentas: HashMap::new(),
             anon_aggregates: 0,
             funcion_actual: String::new(),
-            syscalls: HashMap::new(),
-            catalogo_syscalls: Vec::new(),
             features: StandardFeatures::default(),
         }
     }
@@ -621,69 +612,54 @@ impl Parser {
 
     /// Parse with module resolution. Returns merged Program with all dependency sources.
     ///
-    /// ** Hasta el 2026-09-18 recibia `asm_paths` y decia "tambien carga los
-    /// .toml de Semantic_ASM": no los usaba en ningun sitio. El catalogo de
-    /// SYSCALL lo pone quien emite (`catalogo_syscalls`), y nada mas.
+    /// ** Un `use` que no encuentra su modulo es un ERROR (2026-09-19). Antes
+    /// se saltaba en silencio "porque podia ser un camino solo de syscalls"
+    /// (`use "bmo/proc"`): esos caminos traian la tabla v1, que el kernel no
+    /// despacha, y un `use` que no carga nada es una linea que no hace lo que
+    /// dice.
     pub(crate) fn parse_program_with_modules(
         &mut self,
         resolver: &mut module::ModuleResolver,
     ) -> Result<Program, CError> {
         let mut program = self.parse_program()?;
-        // Syscall defs and module manifests are loaded AFTER parse_program().
-        // We must post-process the AST to convert Expr::Call -> Expr::Syscall
-        // for any function names that match a loaded syscall definition.
         let usings = std::mem::take(&mut self.usings);
         for path in &usings {
-            // Load module sources (optional -- module may not exist for syscall-only paths)
-            if let Ok(manifest) = resolver.find_manifest(path) {
-                let mod_dir = resolver.find_base_dir(path);
-                for src_file in &manifest.source_files {
-                    let full_path = mod_dir.join(src_file);
-                    let source = std::fs::read_to_string(&full_path)
-                        .map_err(|e| CError::new(0, format!("cannot read module source {}: {e}", full_path.display())))?;
-                    let mut sub = Parser::new(&source);
-                    let sub_prog = sub.parse_program()?;
-                    for f in sub_prog.functions {
-                        if !program.functions.iter().any(|pf| pf.name == f.name) {
-                            program.functions.push(f);
-                        }
-                    }
-                    for g in sub_prog.globals {
-                        if !program.globals.iter().any(|pg| std::mem::discriminant(pg) == std::mem::discriminant(&g)) {
-                            program.globals.push(g);
-                        }
-                    }
-                    for (k, v) in sub.struct_fields {
-                        self.struct_fields.entry(k).or_insert(v);
-                    }
-                    for (k, v) in sub.struct_sizes {
-                        self.struct_sizes.entry(k).or_insert(v);
-                    }
-                    for (k, v) in sub.field_types {
-                        self.field_types.entry(k).or_insert(v);
-                    }
-                    for (k, v) in sub.var_types {
-                        self.var_types.entry(k).or_insert(v);
-                    }
-                    for (k, v) in sub.typedefs {
-                        self.typedefs.entry(k).or_insert(v);
+            let manifest = resolver.find_manifest(path)?;
+            let mod_dir = resolver.find_base_dir(path);
+            for src_file in &manifest.source_files {
+                let full_path = mod_dir.join(src_file);
+                let source = std::fs::read_to_string(&full_path)
+                    .map_err(|e| CError::new(0, format!("cannot read module source {}: {e}", full_path.display())))?;
+                let mut sub = Parser::new(&source);
+                let sub_prog = sub.parse_program()?;
+                for f in sub_prog.functions {
+                    if !program.functions.iter().any(|pf| pf.name == f.name) {
+                        program.functions.push(f);
                     }
                 }
-                program.exported.extend(manifest.exports);
-            }
-
-            // Load syscall definitions from embedded registry
-            if self.syscalls.is_empty() {
-                for d in self.catalogo_syscalls.clone() {
-                    self.syscalls.entry(d.name.clone()).or_insert(d);
+                for g in sub_prog.globals {
+                    if !program.globals.iter().any(|pg| std::mem::discriminant(pg) == std::mem::discriminant(&g)) {
+                        program.globals.push(g);
+                    }
+                }
+                for (k, v) in sub.struct_fields {
+                    self.struct_fields.entry(k).or_insert(v);
+                }
+                for (k, v) in sub.struct_sizes {
+                    self.struct_sizes.entry(k).or_insert(v);
+                }
+                for (k, v) in sub.field_types {
+                    self.field_types.entry(k).or_insert(v);
+                }
+                for (k, v) in sub.var_types {
+                    self.var_types.entry(k).or_insert(v);
+                }
+                for (k, v) in sub.typedefs {
+                    self.typedefs.entry(k).or_insert(v);
                 }
             }
+            program.exported.extend(manifest.exports);
         }
-        // Post-process: convert Expr::Call(name,args) -> Expr::Syscall(def,args)
-        // for any function calls whose name matches a loaded syscall definition.
-        self.resolve_syscalls_in_program(&mut program);
-        // Validate syscall argument counts
-        self.validate_syscall_args(&program)?;
         Ok(program)
     }
 

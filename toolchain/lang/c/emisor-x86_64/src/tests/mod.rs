@@ -97,7 +97,9 @@ mod convencion;
 /// se cuenta **cuantas veces sale el cuerpo**, que es lo que un test de
 /// comportamiento no puede ver.
 mod sintetizadas;
-mod syscalls;
+/// La tabla v1 (0x100..0x1FF) ya no existe: un nombre suyo no compila y un
+/// `use` sin modulo tampoco. Antes los dos compilaban hacia `rax = 10`.
+mod tabla_v1;
 /// La tabla de configuracion de DOOM en ocho lineas: la forma exacta con la
 /// que murio en el Ryzen el 2026-08-13.
 mod tabla_de_config;

@@ -232,7 +232,6 @@ impl Ambitos {
             Expr::AssignOp(a, op, v) => Expr::AssignOp(self.caja(a), *op, self.caja(v)),
             Expr::Cast(t, a) => Expr::Cast(t.clone(), self.caja(a)),
             Expr::Intrinsic(n, args) => Expr::Intrinsic(n.clone(), self.lista(args)),
-            Expr::Syscall(d, args) => Expr::Syscall(d.clone(), self.lista(args)),
         }
     }
 }

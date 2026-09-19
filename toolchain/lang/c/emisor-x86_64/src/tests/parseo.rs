@@ -320,33 +320,6 @@ fn parses_for_loop() {
 }
 
 #[test]
-fn compiles_heap_module() {
-    use std::path::PathBuf;
-    // Load the heap stdlib module and the bmo/mem syscalls
-    let src = r#"
-use "bmo/mem";
-use "stdlib/heap";
-int main() {
-void *p = malloc(64);
-if (p == 0) return 1;
-free(p);
-return 0;
-}
-"#;
-    let base = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../base");
-    let asm = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../forge/sem-asm/tables");
-    // Need both base and Semantic_ASM as module search paths so stdlib/heap can be found
-    let bef = compile_source_to_bef_with_modules(src, vec![base, asm]).unwrap();
-    assert_eq!(u32::from_le_bytes(bef[..4].try_into().unwrap()), bmo_abi::bef::BEF_MAGIC);
-    // Should contain bmo_mem_alloc syscall mov eax, 0x190
-    let mov_alloc = &[0xB8u8, 0x90, 0x01, 0x00, 0x00];
-    assert!(bef.windows(5).any(|w| w == mov_alloc), "BEF should contain bmo_mem_alloc syscall");
-    // Should contain bmo_mem_free syscall mov eax, 0x191
-    let mov_free = &[0xB8u8, 0x91, 0x01, 0x00, 0x00];
-    assert!(bef.windows(5).any(|w| w == mov_free), "BEF should contain bmo_mem_free syscall");
-}
-
-#[test]
 fn parses_assign_deref() {
     // Test that *ptr = val parsing and codegen works
     let src = r#"int main() {

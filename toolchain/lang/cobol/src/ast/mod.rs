@@ -5,13 +5,11 @@ pub mod statements;
 
 pub use data::{DataItem, Valor88};
 pub use error::CobolError;
-pub use program::SyscallDef;
 pub use statements::{
     Aritmetica, CobolCondition, CobolStatement, Condicion, ControlBucle, DisplayArg,
     Redondeo,
 };
 
-use std::collections::HashMap;
 
 /// Un fichero declarado en `FILE-CONTROL`.
 ///
@@ -103,5 +101,3 @@ impl CobolProgram {
         self.parrafos.push(Parrafo { name, statements: Vec::new() });
     }
 }
-
-pub type SyscallMap = HashMap<String, SyscallDef>;

@@ -89,13 +89,13 @@ mod generated_tests {
     }
 }
 
-pub use ast::{CobolCondition, CobolProgram, CobolStatement, DataItem, SyscallMap};
+pub use ast::{CobolCondition, CobolProgram, CobolStatement, DataItem};
 pub use ast::error::CobolError;
 
 pub use dialect::{Dialect, DialectConfig, SourceFormat};
 
-/// Analiza SIN catalogo de syscalls: un `SYSCALL` contesta "unknown". Quien
-/// emite para una maquina usa [`parse_con_syscalls`] con los de esa maquina.
+/// Analiza un programa COBOL. Las puertas del kernel no se escriben en COBOL:
+/// las emite el codegen (`DISPLAY`, `ACCEPT`, `STOP RUN`, ficheros).
 pub fn parse(source: &str) -> Result<CobolProgram, CobolError> {
     parse_with_dialect(source, DialectConfig::default())
 }
@@ -112,7 +112,3 @@ pub fn parse_with_dialect(
     p.parse_program()
 }
 
-/// Analiza resolviendo `SYSCALL <nombre>` contra el catalogo de la maquina.
-pub fn parse_con_syscalls(source: &str, syscalls: SyscallMap) -> Result<CobolProgram, CobolError> {
-    parser::Parser::con_syscalls(source, syscalls).parse_program()
-}
