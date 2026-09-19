@@ -80,9 +80,9 @@ pub const ABI_MENOR: u8 = 0;
 // ** Hasta el 2026-09-19 aqui habia un MAYOR HEREDADO (1.0) que tambien
 // entraba. Ningun productor escribe 1.0 desde el ABI 2, y lo que un 1.0 lleva
 // dentro son puertas de la tabla v1 (0x100..0x1FF) que el kernel contesta con
-// "no existe": el unico 1.0 del repo (`cobol/test/hola.bef`, del 03-08) salia
-// por 0x1F0 para `DISPLAY` y por 0x181 para `STOP RUN` -- ni escribia ni
-// terminaba. Admitirlo era cargar un programa que no puede hacer lo que dice.
+// "no existe": el ultimo 1.0 que hubo en el repo (un `hola.bef` de COBOL del
+// 03-08, borrado el 19-09) salia por 0x1F0 para `DISPLAY` y por 0x181 para
+// `STOP RUN` -- ni escribia ni terminaba. Admitirlo era cargar un programa que no puede hacer lo que dice.
 
 /// **Puede correr aqui un binario que pide `mayor.menor`?**
 ///
