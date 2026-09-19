@@ -1360,6 +1360,51 @@ impl Codegen {
         self.code.extend_from_slice(op);
     }
 
+    /// **`op rax, imm`** -- la forma con inmediato del grupo 1 (2026-09-18).
+    ///
+    /// `ext` es el operador: 0 add, 1 or, 4 and, 5 sub, 6 xor, 7 cmp. Corto es
+    /// `83 /ext ib` (4 bytes); largo, `81 /ext id` (7). Los dos extienden el
+    /// inmediato con signo, igual que `emit_mov_rax_imm` -- ver la cabecera de
+    /// `decidir/inmediato.rs`.
+    fn emit_alu_imm(&mut self, ext: u8, imm: decidir::inmediato::Inmediato) {
+        use decidir::inmediato::Inmediato;
+        match imm {
+            Inmediato::Corto(c) => self.code.extend_from_slice(&[0x48, 0x83, 0xC0 | (ext << 3), c as u8]),
+            Inmediato::Largo(l) => {
+                self.code.extend_from_slice(&[0x48, 0x81, 0xC0 | (ext << 3)]);
+                self.code.extend_from_slice(&l.to_le_bytes());
+            }
+        }
+    }
+
+    /// **`a <op> b` del grupo 1**: con inmediato si `b` cabe; si no, `emit_binop`
+    /// con la secuencia `largo` de siempre. Quien decide es `decidir/inmediato`.
+    fn emit_alu(&mut self, a: &Expr, b: &Expr, ext: u8, largo: &[u8]) {
+        if let Some(imm) = decidir::inmediato::inmediato_de(b) {
+            self.emit_expr(a);
+            self.emit_alu_imm(ext, imm);
+            return;
+        }
+        self.emit_binop(a, b, largo);
+    }
+
+    /// **`a * b`**: `imul rax, rax, imm` (`6B` corto, `69` largo) si `b` cabe.
+    fn emit_mul(&mut self, a: &Expr, b: &Expr) {
+        use decidir::inmediato::Inmediato;
+        match decidir::inmediato::inmediato_de(b) {
+            Some(Inmediato::Corto(c)) => {
+                self.emit_expr(a);
+                self.code.extend_from_slice(&[0x48, 0x6B, 0xC0, c as u8]);
+            }
+            Some(Inmediato::Largo(l)) => {
+                self.emit_expr(a);
+                self.code.extend_from_slice(&[0x48, 0x69, 0xC0]);
+                self.code.extend_from_slice(&l.to_le_bytes());
+            }
+            None => self.emit_binop(a, b, &[0x48, 0x0F, 0xAF, 0xC2]),
+        }
+    }
+
     /// **Carga una constante en `rax`.** `mov rax, imm32` cuando cabe.
     ///
     /// ** Siete bytes en vez de diez, y no es por el tamano: `48 C7 C0` EXTIENDE
@@ -1392,6 +1437,15 @@ impl Codegen {
         // La misma regla que `emit_binop`: si el derecho es una constante, no
         // hace falta la pila. Y en una comparacion es todavia mas frecuente --
         // `x > 0`, `i < n`, `c == 'a'` son el bucle de cualquier programa.
+        // ** Y si CABE en la instruccion, ni siquiera se carga: `cmp rax, imm`.
+        // `i < 1900` pasa de ocho instrucciones a tres.
+        if let Some(imm) = decidir::inmediato::inmediato_de(b) {
+            self.emit_expr(a);
+            self.emit_alu_imm(7, imm); // cmp rax, imm
+            self.code.extend_from_slice(&[0x0F, setcc, 0xC0]);
+            self.code.extend_from_slice(&[0x48, 0x0F, 0xB6, 0xC0]);
+            return;
+        }
         if decidir::plegado::solo_toca_rax(b) {
             self.emit_expr(a);
             self.code.extend_from_slice(&[0x48, 0x89, 0xC2]); // mov rdx, rax

@@ -283,11 +283,19 @@ impl Codegen {
         } else {
             0xF8
         };
-        self.emit_binop(a, b, &[
-            0x48, 0x89, 0xC1, // mov rcx, rax   -> cuenta = b
-            0x48, 0x89, 0xD0, // mov rax, rdx   -> valor  = a
-            0x48, 0xD3, cola,
-        ]);
+        // ** La cuenta constante va DENTRO: `shl rax, 3` es `48 C1 E0 03`, y el
+        // ModRM es el mismo byte que con `cl` (2026-09-18). Ver
+        // `decidir/inmediato.rs`: solo 0..=63, el resto por el camino largo.
+        if let Some(cuenta) = super::decidir::inmediato::cuenta_de_desplazamiento(b) {
+            self.emit_expr(a);
+            self.code.extend_from_slice(&[0x48, 0xC1, cola, cuenta]);
+        } else {
+            self.emit_binop(a, b, &[
+                0x48, 0x89, 0xC1, // mov rcx, rax   -> cuenta = b
+                0x48, 0x89, 0xD0, // mov rax, rdx   -> valor  = a
+                0x48, 0xD3, cola,
+            ]);
+        }
         // Desplazar a la izquierda saca bits por arriba, y en un registro de 64
         // esos bits SOBREVIVEN. `1 << 31` en un `int` es negativo; sin recorte
         // salia positivo y valia dos mil millones. A la derecha no hace falta

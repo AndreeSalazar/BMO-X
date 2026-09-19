@@ -26,6 +26,48 @@ fn non_commutative_operators_respect_operand_order() {
     }
 }
 
+/// ** EL INMEDIATO (2026-09-18): `x <op> constante` con una VARIABLE a la
+/// izquierda, para que nada se pliegue y el operador lleve el numero dentro
+/// (`83 /op ib`, `81 /op id`, `6B`/`69`, `C1`). Cada fila tiene su pareja
+/// corta (cabe en 8 bits) y larga (cabe en 32), y las dos que NO caben --
+/// `0xFFFFFFFF` y `1 << 40`-- siguen por la pila y tienen que dar lo mismo.
+#[test]
+fn el_operador_con_inmediato_da_lo_mismo_que_por_la_pila() {
+    for (cuerpo, expected) in [
+        ("int x = 41; printf(\"%d\", x + 1);", "42"),
+        ("int x = 41; printf(\"%d\", x + 1000);", "1041"),
+        ("int x = 41; printf(\"%d\", x - 5);", "36"),
+        ("int x = 41; printf(\"%d\", x - 300);", "-259"),
+        ("int x = 6; printf(\"%d\", x * 7);", "42"),
+        ("int x = 6; printf(\"%d\", x * 1000);", "6000"),
+        ("int x = 6; printf(\"%d\", x * -7);", "-42"),
+        ("int x = 0x1234; printf(\"%d\", x & 0xFF);", "52"),
+        ("int x = 0x1234; printf(\"%d\", x & 0xF);", "4"),
+        ("int x = 1; printf(\"%d\", x | 0x100);", "257"),
+        ("int x = 1; printf(\"%d\", x | 2);", "3"),
+        ("int x = 3; printf(\"%d\", x ^ 1);", "2"),
+        ("int x = 3; printf(\"%d\", x ^ 0x100);", "259"),
+        ("int x = 5; printf(\"%d\", x << 3);", "40"),
+        ("int x = -16; printf(\"%d\", x >> 2);", "-4"),
+        ("unsigned x = 0xFFFFFFF0u; printf(\"%u\", x >> 4);", "268435455"),
+        ("int x = 5; printf(\"%d %d %d\", x < 1900, x < 5, x < 3);", "1 0 0"),
+        ("int x = 5; printf(\"%d %d\", x == 5, x != 5);", "1 0"),
+        ("int x = -5; printf(\"%d %d\", x < 0, x > -100);", "1 1"),
+        ("long x = 5; printf(\"%ld\", x + 2147483647L);", "2147483652"),
+        // los que NO caben en 32 bits con signo: camino largo
+        ("long x = 0x123456789L; printf(\"%ld\", x & 0xFFFFFFFF);", "591751049"),
+        ("long x = 1; printf(\"%ld\", x + (1L << 40));", "1099511627777"),
+        // el recorte a 32 sigue despues del inmediato
+        ("int x = 2147483647; x = x + 1; printf(\"%d\", x);", "-2147483648"),
+        // aritmetica de punteros: `p + 1` llega como `p + (1*4)` plegado
+        ("int t[3] = {7, 8, 9}; int *p = t; printf(\"%d %d\", *(p + 1), *(p + 2 - 1));", "8 8"),
+        ("int t[3] = {7, 8, 9}; int *p = t + 2; printf(\"%d\", *(p - 1));", "8"),
+    ] {
+        let out = run_c(&format!("int main() {{ {cuerpo} return 0; }}"));
+        assert_eq!(out.trim(), expected, "cuerpo: {cuerpo}");
+    }
+}
+
 /// La division entera es CON SIGNO. Antes dividia sin signo, asi que un
 /// negativo daba un numero astronomico.
 #[test]

@@ -1016,6 +1016,14 @@ impl Machine {
                         self.flags_logic(r);
                         self.store(dst, r, ancho);
                     }
+                    // /1 or y /6 xor entraron el 2026-09-18, cuando BMO C
+                    // empezo a emitir el grupo 1 con inmediato (`x | 0x100`,
+                    // `x ^ 1`). Hasta entonces nadie los emitia.
+                    1 => {
+                        let r = a | imm;
+                        self.flags_logic(r);
+                        self.store(dst, r, ancho);
+                    }
                     4 => {
                         let r = a & imm;
                         self.flags_logic(r);
@@ -1024,6 +1032,11 @@ impl Machine {
                     5 => {
                         self.flags_sub(a, imm);
                         let r = a.wrapping_sub(imm);
+                        self.store(dst, r, ancho);
+                    }
+                    6 => {
+                        let r = a ^ imm;
+                        self.flags_logic(r);
                         self.store(dst, r, ancho);
                     }
                     7 => self.flags_sub(a, imm),
@@ -1071,6 +1084,14 @@ impl Machine {
                     // quedarse con el byte bajo del paquete. Faltaba, y esa
                     // ausencia es la prueba de que `read_line` nunca se habia
                     // EJECUTADO aqui -- solo emitido.
+                    // /1 or y /6 xor entraron el 2026-09-18, cuando BMO C
+                    // empezo a emitir el grupo 1 con inmediato (`x | 0x100`,
+                    // `x ^ 1`). Hasta entonces nadie los emitia.
+                    1 => {
+                        let r = a | imm;
+                        self.flags_logic(r);
+                        self.store(dst, r, ancho);
+                    }
                     4 => {
                         let r = a & imm;
                         self.flags_logic(r);
@@ -1079,6 +1100,11 @@ impl Machine {
                     5 => {
                         self.flags_sub(a, imm);
                         let r = a.wrapping_sub(imm);
+                        self.store(dst, r, ancho);
+                    }
+                    6 => {
+                        let r = a ^ imm;
+                        self.flags_logic(r);
                         self.store(dst, r, ancho);
                     }
                     7 => self.flags_sub(a, imm),

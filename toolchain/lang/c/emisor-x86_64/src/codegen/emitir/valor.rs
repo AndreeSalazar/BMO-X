@@ -86,14 +86,18 @@ impl Codegen {
             // sumaba bytes: con `int *p`, `*(p+1)` leia desde el byte 1 en
             // vez del 4, o sea a caballo entre dos enteros.
             Expr::Add(a, b) => {
+                // ** Con inmediato cuando el derecho cabe (2026-09-18): `i + 1`
+                // y `p + 1` (que llega como `p + (1*8)`, ya plegado) son
+                // `add rax, imm8`. Ver `decidir/inmediato.rs`.
+                const ADD: &[u8] = &[0x48, 0x01, 0xD0];
                 if let Some(scale) = self.pointer_scale(a) {
                     let scaled = Expr::Mul(b.clone(), Box::new(Expr::Int(scale as i64)));
-                    self.emit_binop(a, &scaled, &[0x48, 0x01, 0xD0]);
+                    self.emit_alu(a, &scaled, 0, ADD);
                 } else if let Some(scale) = self.pointer_scale(b) {
                     let scaled = Expr::Mul(a.clone(), Box::new(Expr::Int(scale as i64)));
-                    self.emit_binop(&scaled, b, &[0x48, 0x01, 0xD0]);
+                    self.emit_alu(&scaled, b, 0, ADD);
                 } else {
-                    self.emit_binop(a, b, &[0x48, 0x01, 0xD0]);
+                    self.emit_alu(a, b, 0, ADD);
                 }
                 self.recortar_a_32(expr);
             }
@@ -108,7 +112,7 @@ impl Codegen {
                 match (self.pointer_scale(a), self.pointer_scale(b)) {
                     (Some(scale), None) => {
                         let scaled = Expr::Mul(b.clone(), Box::new(Expr::Int(scale as i64)));
-                        self.emit_binop(a, &scaled, SUB);
+                        self.emit_alu(a, &scaled, 5, SUB);
                     }
                     // ** PUNTERO MENOS PUNTERO DA UN INDICE, NO UNOS BYTES.
                     //
@@ -132,12 +136,12 @@ impl Codegen {
                         self.code.extend_from_slice(&[0x48, 0x99]);
                         self.code.extend_from_slice(&[0x48, 0xF7, 0xF9]);
                     }
-                    _ => self.emit_binop(a, b, SUB),
+                    _ => self.emit_alu(a, b, 5, SUB),
                 }
                 self.recortar_a_32(expr);
             }
             Expr::Mul(a, b) => {
-                self.emit_binop(a, b, &[0x48, 0x0F, 0xAF, 0xC2]);
+                self.emit_mul(a, b);
                 self.recortar_a_32(expr);
             }
             // `a / b` CON SIGNO. Antes hacia dos `pop` habiendo empujado una
@@ -217,9 +221,9 @@ impl Codegen {
             Expr::Ge(a, b) => if self.expr_is_float(a) || self.expr_is_float(b) { self.emit_fcmp(a, b, 0x93) }
                 else if self.expr_is_unsigned(a) || self.expr_is_unsigned(b) { self.emit_cmp(a, b, 0x93) }
                 else { self.emit_cmp(a, b, 0x9D) },
-            Expr::BitAnd(a, b) => self.emit_binop(a, b, &[0x48, 0x21, 0xD0]),
-            Expr::BitXor(a, b) => self.emit_binop(a, b, &[0x48, 0x31, 0xD0]),
-            Expr::BitOr(a, b) => self.emit_binop(a, b, &[0x48, 0x09, 0xD0]),
+            Expr::BitAnd(a, b) => self.emit_alu(a, b, 4, &[0x48, 0x21, 0xD0]),
+            Expr::BitXor(a, b) => self.emit_alu(a, b, 6, &[0x48, 0x31, 0xD0]),
+            Expr::BitOr(a, b) => self.emit_alu(a, b, 1, &[0x48, 0x09, 0xD0]),
             // `a << b` / `a >> b`. Antes desplazaban el operando DERECHO por
             // el izquierdo: `1 << 3` intentaba `3 << 1`.
             //

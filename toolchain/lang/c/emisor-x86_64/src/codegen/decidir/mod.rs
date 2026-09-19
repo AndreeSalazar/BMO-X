@@ -74,6 +74,7 @@
 //! ```
 
 pub(super) mod imagen;
+pub(super) mod inmediato;
 pub(super) mod plegado;
 
 /// EL TROQUEL: que valores caben en la matriz de registros.
