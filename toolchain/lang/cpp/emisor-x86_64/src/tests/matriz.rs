@@ -400,6 +400,11 @@ fn matriz_cpp_ejecuta_correctamente() {
         // -- `extern "C"` (E10, 2026-09-18): el simbolo es el nombre --
         ("extern-c", "@FULL@extern \"C\" int doble(int x) { return x * 2; }\nint main() { printf(\"%d\", doble(21)); return 0; }", "42"),
         ("extern-c-bloque", "@FULL@extern \"C\" {\n int uno(int x) { return x + 1; }\n int dos(int x) { return x + 2; }\n}\nint main() { printf(\"%d\", uno(20) + dos(19)); return 0; }", "42"),
+        // -- La coma flotante como parametro (2026-09-18): el rechazo era
+        // obsoleto, el emisor de C ya la pasa. Los casos de su banco:
+        ("double-como-parametro", "@FULL@double doble(double a) { return a * 2.0; }\nint main() { printf(\"%d\", (int)doble(21.0)); return 0; }", "42"),
+        ("entero-a-parametro-double", "@FULL@double doble(double a) { return a + a; }\nint main() { printf(\"%d\", (int)doble(3)); return 0; }", "6"),
+        ("float-se-estrecha", "@FULL@float mitad(float v) { return v * 0.5; }\nint main() { printf(\"%d\", (int)(mitad(2.5) * 100.0)); return 0; }", "125"),
         ("pp-clase-y-cabecera", "@FULL@#include <string.h>\nclass P { public: int n; P(char *s) : n(strlen(s)) {} };\nint main() { P p(\"hola\"); printf(\"%d\", p.n); return 0; }", "4"),
     ];
 
@@ -498,10 +503,6 @@ fn matriz_cpp_explica_lo_que_esta_mal() {
         ("aridad-que-no-existe",
          "@FULL@int f(int a) { return a; } int main() { return f(1, 2); }",
          "argumento"),
-        // [!] Deuda de C: acepta `int g(double)` en silencio y no funciona.
-        ("float-como-parametro",
-         "@FULL@int f(double a) { return 1; } int main() { return 0; }",
-         "coma flotante"),
         ("sobrecargar-por-retorno",
          "@FULL@int f(int a); char f(int a); int main() { return 0; }",
          "tipo de retorno"),

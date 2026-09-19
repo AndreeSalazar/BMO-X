@@ -740,20 +740,12 @@ impl Parser {
             let defecto = if self.come(&Token::Assign) {
                 return Err(self.pendiente("los argumentos por defecto", 4));
             } else { None };
-            // [!] Un parametro de coma flotante NO se puede pasar todavia: el
-            // EMISOR de BMO C evalua floats pero **no los pasa como argumento**
-            // (le falta esa parte de la convencion de llamada), y lo peor es que
-            // los acepta en silencio -- `int g(double a)` compila y no hace lo
-            // que dice. Es deuda del emisor de C; mientras exista, C++ no la
-            // emite. (Sin nombrar registros desde el 2026-09-18: el frontend no
-            // habla de ninguna maquina, ver `toolchain/tools/isa`.)
-            if matches!(tipo, TypeSpec::Float | TypeSpec::Double) {
-                return Err(self.err(format!(
-                    "`{}` es un parametro de coma flotante, y BMO C todavia no los PASA \
-                     (el emisor evalua floats, pero pasarlos como argumento esta pendiente). \
-                     Se rechaza aqui a proposito: C lo acepta en silencio y no funciona",
-                    if name.is_empty() { "<sin nombre>" } else { &name })));
-            }
+            // ** Un parametro de coma flotante SI se pasa (2026-09-18). Aqui habia
+            // un rechazo "el emisor de C todavia no los pasa" -- y el emisor ya
+            // los pasaba: `lang/c/emisor-x86_64/src/tests/flotante.rs` lo
+            // EJECUTA (un `double` llega entero, un entero se convierte, un
+            // `float` se estrecha a cuatro bytes). El rechazo prohibia algo que
+            // ya funcionaba.
             out.push(Param { typ: tipo, name: name, default: defecto });
             if !self.come(&Token::Comma) { break; }
         }
