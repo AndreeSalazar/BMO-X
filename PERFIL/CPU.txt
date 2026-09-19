@@ -96,6 +96,35 @@ LAS EXTENSIONES -- que sabe hacer este silicio
   Es un paso de la hoja del metal del 18-09.
 
 
+LAS CACHES -- de la linea al L3 (2026-09-19)
+---------------------------------------------
+
+  ** La base para que un compilador entienda la maquina: sin el tamano de la
+  linea y quien comparte cada cache no se puede avisar de que dos hilos se
+  pisan los mismos 64 bytes, ni de que una tabla no cabe en L1.
+
+  Los numeros son lo ESPERADO (hoja de AMD, Zen 3 Vermeer), y los mismos que
+  `cpu_vendor/ryzen_5_5600x/cache.rs::esperado_5600x()`. La ultima columna es
+  lo VISTO: `?` sin foto, `si` si el Ryzen contesto lo mismo, `no` si contesto
+  otra cosa -- y entonces los numeros BUENOS son los de la foto, y se corrigen
+  aqui y en `esperado_5600x` a la vez.
+
+  [!] Hasta hoy el kernel NO media nada: `detect_5600x()` devolvia esta misma
+  tabla escrita a mano, y decia `hilos 1` en L1 y L2. El 5600X tiene SMT: los
+  dos hilos de un nucleo comparten su L1 y su L2. Ahora mide con CPUID
+  0x8000001D (`cache::medir`).
+
+  cache | KiB   | linea | vias | hilos | visto
+  L1d   | 32    | 64    | 8    | 2     | ?
+  L1i   | 32    | 64    | 8    | 2     | ?
+  L2    | 512   | 64    | 8    | 2     | ?
+  L3    | 32768 | 64    | 16   | 12    | ?
+
+  Para rellenar `visto`: en el escritorio, `cache`, foto, y copiar la ultima
+  columna. Guardian: `perfil-campos` exige las cuatro filas, que los numeros
+  sean los de `esperado_5600x`, y que un `no` no se quede sin corregir.
+
+
 LO QUE EL CONTRATO SUBE A RING 0, Y NADA MAS
 ---------------------------------------------
 

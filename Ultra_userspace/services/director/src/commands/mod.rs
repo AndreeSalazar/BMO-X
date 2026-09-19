@@ -139,6 +139,9 @@ pub(crate) enum Command<'a> {
     /// verdad se trabaja. Baja por `OP_INFO` como todo lo demas: dos mascaras
     /// y los nombres, sin una segunda lista en este lado.
     Ext,
+    /// **Las caches, MEDIDAS** (CPUID 0x8000001D): una fila por cache, en el
+    /// formato de la tabla de `PERFIL/CPU.txt`, para copiarla de la foto.
+    Cache,
     Memoria,
     /// **El consumo, en tabla.** `cpu` y `mem` explican la maquina cada uno por
     /// su lado; esto contesta "que esta gastando ahora mismo" en una sola
@@ -490,6 +493,7 @@ pub(crate) fn parse(line: &[u8]) -> Command<'_> {
         // Los mismos dos nombres que el shell de Ring 0, para que lo que se
         // aprende en un sitio valga en el otro.
         b"ext" | b"extensiones" => Command::Ext,
+        b"cache" | b"caches" => Command::Cache,
         b"consumo" | b"gasto" | b"w" => Command::Consumo,
         b"apps" | b"programas" => Command::Apps,
         // La otra mitad de la sonda de la ventana: lo que el DIRECTOR lee.

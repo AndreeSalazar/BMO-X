@@ -195,10 +195,14 @@ pub fn preparar() -> Result<(u64, u64), u32> {
     Ok((quiero, quiero / l3))
 }
 
-/// El L3 que declara el perfil, en bytes. `0` si no lo declara.
+/// El L3 en bytes: el MEDIDO si el arranque lo pudo preguntar, y si no el que
+/// declara el perfil. `0` si ninguno de los dos lo sabe.
 fn l3_bytes() -> u64 {
-    let c = crate::ring0::cpu_vendor::ryzen_5_5600x::cache::detect_5600x();
-    match c.l3 {
+    use crate::ring0::cpu_vendor::ryzen_5_5600x::{bmo_cpu, cache};
+    let l3 = bmo_cpu::cache()
+        .and_then(|c| c.l3)
+        .or(cache::esperado_5600x().l3);
+    match l3 {
         Some(i) => i.size_kb as u64 * 1024,
         None => 0,
     }

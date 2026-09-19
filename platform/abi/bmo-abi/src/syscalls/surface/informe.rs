@@ -386,6 +386,26 @@ pub const INFO_USB_FICHA_VEREDICTO: u64 = 0x71;
 /// huerfanas, `[32..64)` negadas desde el arranque.
 pub const INFO_PRESTAMOS: u64 = 0x72;
 
+/// ** LAS CACHES, MEDIDAS (2026-09-19): CPUID 0x8000001D en el arranque, una
+/// por campo. Hasta hoy el kernel solo tenia la tabla de la hoja de AMD y la
+/// imprimia como si la hubiera preguntado.
+///
+/// ```text
+///    bits  0..23   tamano en KiB
+///    bits 24..31   linea en bytes
+///    bits 32..39   vias (0 = totalmente asociativa)
+///    bits 40..47   hilos que la comparten
+///    bit  62       NO coincide con lo esperado (`PERFIL/CPU.txt`)
+///    bit  63       medida
+/// ```
+///
+/// `0` = no se pudo medir. NO se rellena con lo esperado: un hueco dicho es
+/// mejor que una suposicion que parece una medida (LEY 24).
+pub const INFO_CPU_CACHE_L1D: u64 = 0x73;
+pub const INFO_CPU_CACHE_L1I: u64 = 0x74;
+pub const INFO_CPU_CACHE_L2: u64 = 0x75;
+pub const INFO_CPU_CACHE_L3: u64 = 0x76;
+
 /// -- ** EL METRO DE LA PUERTA -------------------------------------------
 ///
 /// Cuantas puertas ha servido el kernel, y cuantos ciclos ha pasado DENTRO de

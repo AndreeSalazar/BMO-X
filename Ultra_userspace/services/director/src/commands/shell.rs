@@ -236,6 +236,7 @@ pub(crate) fn help(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     dsk.out.grid.text(b"    consumo       nucleos, hilos, MHz, W y RAM en TABLA\n");
     dsk.out.grid.text(b"    apps          que programa tiene RAM pedida\n");
     dsk.out.grid.text(b"    ext           que ofrece el silicio y que coge BMO\n");
+    dsk.out.grid.text(b"    cache         L1/L2/L3 MEDIDAS, como la tabla de PERFIL\n");
     dsk.out.grid.text(b"    fallo         la ultima autopsia de Ring 3\n");
     dsk.out.grid.text(b"    cabina        TODO lo que el kernel apunto  (todo | fallos | N)\n");
     dsk.out.grid.text(b"    cabina radar  el BARRIDO: cuenta lo que el anillo ya perdio\n");

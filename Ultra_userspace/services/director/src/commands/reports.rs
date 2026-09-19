@@ -1184,6 +1184,60 @@ fn ext_grupo(s: &mut Output, titulo: &[u8], tinta: u8, n: u64, mascara: u64, not
 
 /// `ext` -- que ofrece este silicio y que coge BMO.
 #[inline(never)]
+/// **`cache`: las caches que CONTESTA el silicio**, fila a fila en el formato
+/// de `PERFIL/CPU.txt` (`cache | KiB | linea | vias | hilos | visto`).
+///
+/// La ultima columna es la que se copia al perfil: `si` si la medida coincide
+/// con lo esperado, `no` si no -- y entonces los numeros de la fila son los
+/// buenos y lo que hay que corregir es `cache::esperado_5600x` y la tabla.
+pub(crate) fn report_cache(s: &mut Output) {
+    section(s, b"caches: lo que CONTESTA el silicio (CPUID 0x8000001D)");
+    s.text(b"    cache | KiB   | linea | vias | hilos | visto\n");
+    let filas: [(&[u8], u64); 4] = [
+        (b"L1d  ", bmo::INFO_CPU_CACHE_L1D),
+        (b"L1i  ", bmo::INFO_CPU_CACHE_L1I),
+        (b"L2   ", bmo::INFO_CPU_CACHE_L2),
+        (b"L3   ", bmo::INFO_CPU_CACHE_L3),
+    ];
+    for (nombre, campo) in filas {
+        let v = bmo::info(campo);
+        s.text(b"    ");
+        s.text(nombre);
+        s.text(b" | ");
+        if v >> 63 == 0 {
+            s.with_ink(INK_ERR);
+            s.text(b"no se pudo medir (kernel sin el campo, o sin TopologyExtensions)\n");
+            s.with_ink(INK_PLAIN);
+            continue;
+        }
+        let columnas = [v & 0xFF_FFFF, (v >> 24) & 0xFF, (v >> 32) & 0xFF, (v >> 40) & 0xFF];
+        for (i, x) in columnas.iter().enumerate() {
+            s.dec(*x);
+            // Ancho fijo como en la tabla: KiB 5, el resto 4.
+            let ancho = if i == 0 { 5 } else { 4 };
+            let mut escrito = 1;
+            let mut resto = *x / 10;
+            while resto > 0 {
+                escrito += 1;
+                resto /= 10;
+            }
+            while escrito < ancho {
+                s.byte(b' ');
+                escrito += 1;
+            }
+            s.text(b" | ");
+        }
+        if (v >> 62) & 1 == 0 {
+            s.with_ink(INK_GOOD);
+            s.text(b"si\n");
+        } else {
+            s.with_ink(INK_ERR);
+            s.text(b"no\n");
+        }
+        s.with_ink(INK_PLAIN);
+    }
+}
+
 pub(crate) fn report_ext(s: &mut Output) {
     let n = bmo::info(bmo::INFO_CPU_EXT_N);
     if n == 0 {

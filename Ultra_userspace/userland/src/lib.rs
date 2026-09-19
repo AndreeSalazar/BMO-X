@@ -365,6 +365,11 @@ pub const INFO_USB_FICHAS: u64 = 0x6F;
 pub const INFO_USB_FICHA: u64 = 0x70;
 pub const INFO_USB_FICHA_VEREDICTO: u64 = 0x71;
 pub const INFO_PRESTAMOS: u64 = 0x72;
+/// Las caches MEDIDAS (CPUID 0x8000001D). Formato en `bmo-abi`, `informe.rs`.
+pub const INFO_CPU_CACHE_L1D: u64 = 0x73;
+pub const INFO_CPU_CACHE_L1I: u64 = 0x74;
+pub const INFO_CPU_CACHE_L2: u64 = 0x75;
+pub const INFO_CPU_CACHE_L3: u64 = 0x76;
 
 /// El metro de la puerta: puertas servidas y ciclos dentro de `dispatch`.
 /// **Se leen como DELTA** -- antes y despues del bucle que se quiera medir.

@@ -167,6 +167,68 @@ def comprobar_extensiones(texto, quejas):
     return len(filas), sin_foto
 
 
+# -- CPU: la tabla de caches contra `cache.rs::esperado_5600x` -------------
+CACHE_RS = os.path.join(K, "cpu_vendor", "ryzen_5_5600x", "cache.rs")
+CACHES = ("L1d", "L1i", "L2", "L3")
+
+
+def caches_del_perfil(texto):
+    """`{nombre: (kib, linea, vias, hilos, visto)}` de la tabla de CPU.txt."""
+    filas = {}
+    patron = r"^\s*(L1d|L1i|L2|L3)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(si|no|\?)\s*$"
+    for m in re.finditer(patron, texto, re.M):
+        filas[m.group(1)] = (int(m.group(2)), int(m.group(3)), int(m.group(4)), int(m.group(5)), m.group(6))
+    return filas
+
+
+def caches_del_kernel():
+    """`{nombre: (kib, linea, vias, hilos)}` de `esperado_5600x()`. La linea es
+    64 en todas (`fila()` la fija) y el tamano puede venir como `32 * 1024`."""
+    with open(CACHE_RS, "r", encoding="utf-8", errors="replace") as fh:
+        texto = fh.read()
+    cuerpo = texto[texto.index("pub const fn esperado_5600x()"):]
+    linea = int(re.search(r"line_size_bytes:\s*(\d+)", texto).group(1))
+    filas = {}
+    for campo_rs, nombre in (("l1d", "L1d"), ("l1i", "L1i"), ("l2", "L2"), ("l3", "L3")):
+        m = re.search(r"%s:\s*Some\(fila\(\d+,\s*([\d\s\*]+?),\s*(\d+),\s*(\d+)," % campo_rs, cuerpo)
+        if m:
+            kib = 1
+            for trozo in m.group(1).split("*"):
+                kib *= int(trozo.strip())
+            filas[nombre] = (kib, linea, int(m.group(2)), int(m.group(3)))
+    return filas
+
+
+def comprobar_caches(texto, quejas):
+    """Devuelve `(filas comparadas, filas sin foto)`."""
+    if not os.path.exists(CACHE_RS):
+        quejas.append("CPU: no existe cpu_vendor/ryzen_5_5600x/cache.rs -- la tabla de caches no tiene con que compararse")
+        return 0, 0
+    perfil = caches_del_perfil(texto)
+    kernel = caches_del_kernel()
+    comparadas, sin_foto = 0, 0
+    for nombre in CACHES:
+        if nombre not in perfil:
+            quejas.append("CPU: la tabla de caches no tiene la fila %s" % nombre)
+            continue
+        if nombre not in kernel:
+            quejas.append("CPU: `esperado_5600x` ya no declara %s -- o se renombro, o se quito" % nombre)
+            continue
+        kib, linea, vias, hilos, visto = perfil[nombre]
+        if (kib, linea, vias, hilos) != kernel[nombre]:
+            quejas.append("CPU: la cache %s dice %s en el perfil y %s en `esperado_5600x`"
+                          % (nombre, (kib, linea, vias, hilos), kernel[nombre]))
+            continue
+        if visto == "no":
+            quejas.append("CPU: el Ryzen contesto OTRA cosa para %s (`visto: no`) y lo esperado "
+                          "sigue igual -- corrige la fila y `esperado_5600x` con los numeros de la foto" % nombre)
+            continue
+        if visto == "?":
+            sin_foto += 1
+        comparadas += 1
+    return comparadas, sin_foto
+
+
 def campo(texto, nombre):
     # Los campos van indentados en los perfiles: `  fabricante: AMD`.
     m = re.search(r"^\s*%s:\s*(.+?)\s*$" % re.escape(nombre), texto, re.M)
@@ -186,6 +248,7 @@ def main():
     comparados = 0
     sin_comparar = 0
     extensiones_sin_foto = 0
+    caches_sin_foto = 0
 
     for dirpath, _, files in os.walk(PERFIL):
         for f in sorted(files):
@@ -213,6 +276,9 @@ def main():
                 n, sin_foto = comprobar_extensiones(texto, quejas)
                 comparados += n
                 extensiones_sin_foto = sin_foto
+                n, sin_foto = comprobar_caches(texto, quejas)
+                comparados += n
+                caches_sin_foto = sin_foto
 
             for nombre, fichero, patron, modo in reglas:
                 dice = campo(texto, nombre)
@@ -289,6 +355,9 @@ def main():
     if extensiones_sin_foto:
         print("  [i] CPU: %d extension(es) sin foto del Ryzen (`visto: ?`) -- "
               "se rellenan con la orden `ext`" % extensiones_sin_foto)
+    if caches_sin_foto:
+        print("  [i] CPU: %d cache(s) sin foto del Ryzen (`visto: ?`) -- "
+              "se rellenan con la orden `cache`" % caches_sin_foto)
     return 0
 
 

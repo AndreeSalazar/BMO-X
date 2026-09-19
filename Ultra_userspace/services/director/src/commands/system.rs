@@ -369,6 +369,13 @@ pub(crate) fn ext(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     After::Settle
 }
 
+pub(crate) fn cache(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
+    super::reports::report_cache(&mut dsk.out.grid);
+    paint_status(&p, &dsk.run_box, "caches", INK_DIM);
+    dsk.field.n = 0;
+    After::Settle
+}
+
 pub(crate) fn apps(dsk: &mut Desktop, p: &bmo::Pantalla) -> After {
     super::reports::report_apps(&mut dsk.out.grid);
     paint_status(&p, &dsk.run_box, "apps", INK_DIM);

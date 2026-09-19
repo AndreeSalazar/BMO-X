@@ -206,6 +206,11 @@ const INFO_USB_FICHAS: u64 = 0x6F;
 const INFO_USB_FICHA: u64 = 0x70;
 const INFO_USB_FICHA_VEREDICTO: u64 = 0x71;
 const INFO_PRESTAMOS: u64 = 0x72;
+// ** Las caches MEDIDAS, una por campo. El formato esta en el ABI.
+const INFO_CPU_CACHE_L1D: u64 = 0x73;
+const INFO_CPU_CACHE_L1I: u64 = 0x74;
+const INFO_CPU_CACHE_L2: u64 = 0x75;
+const INFO_CPU_CACHE_L3: u64 = 0x76;
 
 // El metro de la puerta: cuantas y cuantos ciclos dentro de `dispatch`. Se
 // leen como delta. Ver `ring0/syscall/meter.rs`.
@@ -514,6 +519,18 @@ pub fn campo(n: u64) -> Option<u64> {
             crate::ring0::dev::usb::portero::veredicto_de((c >> 8) as usize)
         }
         INFO_PRESTAMOS => crate::ring0::obj::loan::resumen(),
+        INFO_CPU_CACHE_L1D | INFO_CPU_CACHE_L1I | INFO_CPU_CACHE_L2 | INFO_CPU_CACHE_L3 => {
+            use crate::ring0::cpu_vendor::ryzen_5_5600x::{bmo_cpu, cache};
+            let esperada = cache::esperado_5600x();
+            let medida = bmo_cpu::cache().copied();
+            let (m, e) = match n {
+                INFO_CPU_CACHE_L1D => (medida.and_then(|c| c.l1d), esperada.l1d),
+                INFO_CPU_CACHE_L1I => (medida.and_then(|c| c.l1i), esperada.l1i),
+                INFO_CPU_CACHE_L2 => (medida.and_then(|c| c.l2), esperada.l2),
+                _ => (medida.and_then(|c| c.l3), esperada.l3),
+            };
+            cache::empaquetar(m, e)
+        }
         INFO_NET_RX_BYTES => crate::ring0::red::rx_consumo().1,
         // ** El unico contador de red que NO lleva BMO-X. Un contador propio
         // solo puede contar lo que se cogio -- lo que se perdio por no haber

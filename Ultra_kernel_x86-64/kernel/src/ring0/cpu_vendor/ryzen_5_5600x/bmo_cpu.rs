@@ -20,7 +20,7 @@
 use core::sync::atomic::{AtomicBool, Ordering};
 use super::cpuid::{self, CpuIdentity};
 use super::topology::Topology;
-use super::cache::{CacheTopology, detect_5600x};
+use super::cache::{self, CacheTopology};
 use super::tsc::{self, TscSource};
 use super::errata;
 
@@ -62,10 +62,33 @@ pub fn init_bmo_cpu() {
     crate::ring0::dev::console::serial_write(" cores / 1 CCX / 1 CCD\n");
     unsafe { CPU_TOPOLOGY = Some(topo); }
 
-    // 3. Cache
-    let c = detect_5600x();
-    crate::ring0::dev::console::serial_write("[bmo-cpu] cache: L1d 32K L1i 32K L2 512K L3 32M\n");
-    unsafe { CPU_CACHE = Some(c); }
+    // 3. Cache -- MEDIDA (CPUID 0x8000001D). Hasta el 2026-09-19 esta linea
+    // imprimia la tabla escrita a mano como si se hubiera preguntado. Sin la
+    // hoja, `CPU_CACHE` se queda en `None` y se dice; lo esperado vive aparte
+    // (`cache::esperado_5600x`) y no se hace pasar por medida.
+    let medida = cache::medir();
+    crate::ring0::dev::console::serial_write("[bmo-cpu] cache medida:");
+    match medida {
+        Some(c) => {
+            for (nombre, i) in [("L1d", c.l1d), ("L1i", c.l1i), ("L2", c.l2), ("L3", c.l3)] {
+                crate::ring0::dev::console::serial_write(" ");
+                crate::ring0::dev::console::serial_write(nombre);
+                crate::ring0::dev::console::serial_write(" ");
+                match i {
+                    Some(i) => {
+                        crate::ring0::dev::console::serial_write_u64_dec(i.size_kb as u64);
+                        crate::ring0::dev::console::serial_write("K/");
+                        crate::ring0::dev::console::serial_write_u64_dec(i.shared_threads as u64);
+                        crate::ring0::dev::console::serial_write("h");
+                    }
+                    None => crate::ring0::dev::console::serial_write("?"),
+                }
+            }
+            crate::ring0::dev::console::serial_write("\n");
+        }
+        None => crate::ring0::dev::console::serial_write(" CPUID 0x8000001D no contesta\n"),
+    }
+    unsafe { CPU_CACHE = medida; }
 
     // 4. TSC
     let (hz, src) = tsc::calibrate();
