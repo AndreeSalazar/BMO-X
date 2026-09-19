@@ -375,3 +375,15 @@ fn los_recursos_no_ocupan_memoria_del_proceso() {
         "y la memoria del proceso NO"
     );
 }
+
+// -- Las constantes son de SOLO LECTURA (2026-09-19) --------------------
+//
+// El kernel mapeaba `RoData` escribible: decidia `writable = !EXEC`, y solo
+// sabia hacer RX o RW+NX. Un programa que pisara una cadena literal seguia
+// corriendo con otra cadena. Ahora las constantes son R+NX, y el arnes las
+// protege igual: esta fila es la que dice que la proteccion MUERDE.
+#[test]
+#[should_panic(expected = "SOLO LECTURA")]
+fn escribir_en_una_cadena_literal_es_un_fallo_de_pagina() {
+    run_c("int main() { char *s = \"hola\"; s[0] = 'x'; return 0; }");
+}

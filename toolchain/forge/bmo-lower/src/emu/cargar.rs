@@ -31,6 +31,9 @@ pub fn cargar_bex(bex: &[u8]) -> Result<Machine, String> {
 
     let mut imagen = Vec::new();
     let mut base = [usize::MAX; 3];
+    // ** Codigo y constantes: SOLO LECTURA, como los mapea el kernel (RX y
+    // R+NX). Se apunta aqui y se entrega al final, con la imagen ya parcheada.
+    let mut solo_lectura = Vec::new();
     for (kind, cod) in [
         (SectionKind::Code, 0usize),
         (SectionKind::RoData, 2usize),
@@ -51,8 +54,13 @@ pub fn cargar_bex(bex: &[u8]) -> Result<Machine, String> {
             if cod != usize::MAX {
                 base[cod] = imagen.len();
             }
+            let desde = imagen.len();
             imagen.extend_from_slice(bex.get(off..off + size).ok_or("una seccion se sale del .bex")?);
             imagen.resize(imagen.len() + mem.saturating_sub(size), 0);
+            if matches!(kind, SectionKind::Code | SectionKind::RoData) {
+                let hasta = (imagen.len() + PAGE - 1) / PAGE * PAGE;
+                solo_lectura.push((desde as u64, hasta as u64));
+            }
         }
     }
     for i in 0..cuantas {
@@ -83,5 +91,6 @@ pub fn cargar_bex(bex: &[u8]) -> Result<Machine, String> {
     }
     let mut m = Machine::new(imagen);
     m.rip = entrada;
+    m.solo_lectura = solo_lectura;
     Ok(m)
 }

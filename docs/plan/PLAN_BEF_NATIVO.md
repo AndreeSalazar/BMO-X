@@ -3,8 +3,12 @@
 > Pedido por Eddi el 2026-09-19: *"investigar BEF: no quiero que sea ELF como
 > tipico, empieza por completo BEF"*.
 >
-> Estado: **INVESTIGADO, SIN DECIDIR.** Nada de esto esta hecho salvo el corte 0
-> (seccion 3). Las decisiones que faltan estan en la seccion 5 y son de Eddi.
+> Estado: **DECIDIDO por Eddi el 2026-09-19** -- *"BEF reemplaza el ELF
+> maestro, DALE"*: el formato se sigue llamando **BEF** y es PROPIO, se cambia
+> de golpe (un formato, no dos), y la regla congelada se reescribe. El magic
+> nuevo es `BEF2` (donde abajo pone "BEX2", leer `BEF2`). Hechos: corte 0
+> (seccion 3) y B1, las paginas de solo lectura. Queda por medir la decision 2
+> (paginas alineadas o compacto).
 
 ---
 
@@ -12,7 +16,7 @@
 
 BEF1 es la idea central de ELF: **una cabecera y una tabla de secciones
 tipadas**, y la regla de oro de ELF escrita tal cual en
-`bef/BEF_EXTENSIONES.md` (*"una seccion desconocida se salta: es lo que ha
+`platform/abi/bmo-abi/src/bef/BEF_EXTENSIONES.md` (*"una seccion desconocida se salta: es lo que ha
 mantenido vivo a ELF treinta anios"*).
 
 ### La cabecera (48 B) -- que lee de verdad alguien
@@ -160,13 +164,24 @@ Lo que cambia, y por que es BMO y no ELF:
    hoy sin esperar a BEX2: tres estados de pagina (RX, R+NX, RW+NX) decididos
    por el TIPO de seccion. Es Ring 0 y pide metal.
 
-## 6. El orden propuesto
+## 6. La escalera
 
-```text
-   B1   paginas de solo lectura en BEF1 (kernel + prueba)        -- metal
-   B2   BEX2 en bmo-abi: cabecera, writer, validador + pruebas
-   B3   la puerta (bmo-bex-gate) y el cargador del kernel leen BEX2
-   B4   bmo-enlazar, bmo-pack, bmo-firmar, bmo-verify
-   B5   los emisores (escriben por `writer`: casi nada)
-   B6   regenerar payloads, DOOM y apps; borrar BEF1
-```
+- [x] **B0 -- lo que no era de BMO-X, fuera de BEF1. HECHO el 2026-09-19**
+  (`31602e7f`): `bmo-bex-gate` y `bef/validator.rs` rechazan imports, exports
+  y TLS (`Falta::EnlazadoDinamico`); prueba
+  `gate_y_validador_no_se_separan::los_dos_rechazan_el_enlazado_dinamico`.
+- [x] **B1 -- PAGINAS DE SOLO LECTURA. HECHO el 2026-09-19** en
+  `vmm/amarilla.rs` (`PermisoImagen`: Codigo RX, Constantes R+NX, Datos RW+NX,
+  por el TIPO de seccion) y `task/admitir.rs`. El emulador de `bmo-lower`
+  (`emu/paginas.rs`) protege codigo y rodata igual, y
+  `cargador.rs::escribir_en_una_cadena_literal_es_un_fallo_de_pagina` dice que
+  muerde; el banco de C (609) y el metro (30 programas) pasan con la
+  proteccion puesta. **Falta el metal**: DOOM no corre en el emulador.
+- [ ] **B2 -- BEF2 en `bmo-abi`**: cabecera, `writer`, `validator` y sus
+  pruebas, con el magic `BEF2`.
+- [ ] **B3 -- `bmo-bex-gate` y el cargador del kernel (`task/bex.rs`,
+  `task/admitir.rs`) leen BEF2.**
+- [ ] **B4 -- `bmo-enlazar`, `bmo-pack`, `bmo-firma`, `bmo-verify` en BEF2.**
+- [ ] **B5 -- los emisores**: escriben por `bef/writer.rs`, asi que casi nada.
+- [ ] **B6 -- regenerar los `.bex` de `task/payloads/`, DOOM y las apps, y
+  borrar BEF1** (y reescribir `platform/abi/bmo-abi/src/bef/BEF_EXTENSIONES.md` secciones 3 y 4).

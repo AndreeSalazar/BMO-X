@@ -260,6 +260,10 @@ fn maquina_de_bef_con(
     // DE LAS RELOCS (`0` = code, `1` = data, `2` = rodata), que **no es** el de
     // `SectionKind` -- ver la nota en `bef::relocations`.
     let mut base = [usize::MAX; 3];
+    // ** Codigo y constantes, SOLO LECTURA: el kernel los mapea RX y R+NX
+    // (2026-09-19), asi que un programa que escriba en una cadena literal
+    // tiene que reventar AQUI y no en el Ryzen.
+    let mut solo_lectura = Vec::new();
     for (kind, cod_reloc) in [
         (SectionKind::Code, 0usize),
         (SectionKind::RoData, 2usize),
@@ -286,9 +290,14 @@ fn maquina_de_bef_con(
                 if cod_reloc != usize::MAX {
                     base[cod_reloc] = code.len();
                 }
+                let desde = code.len();
                 code.extend_from_slice(&bef[off..off + size]);
                 for _ in size..mem {
                     code.push(0);
+                }
+                if matches!(kind, SectionKind::Code | SectionKind::RoData) {
+                    let hasta = (code.len() + PAGE - 1) / PAGE * PAGE;
+                    solo_lectura.push((desde as u64, hasta as u64));
                 }
             }
         }
@@ -342,6 +351,7 @@ fn maquina_de_bef_con(
     }
 
     let mut machine = Machine::new(code);
+    machine.solo_lectura = solo_lectura;
     machine.rip = entry; // `main` no tiene por que estar al principio
     sembrar(&mut machine);
     let machine = run(machine, 500_000);

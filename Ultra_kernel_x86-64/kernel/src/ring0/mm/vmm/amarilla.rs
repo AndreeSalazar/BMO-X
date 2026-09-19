@@ -94,14 +94,16 @@ pub const PTE_PAT_4K: u64 = 1 << 7;
 /// (`admitir.rs` usa `phys_to_virt`), asi que mapear la seccion de codigo sin
 /// permiso de escritura no estorba a cargarla. Esa decision ya estaba tomada.
 ///
-/// # [!!] LA TRAMPA PARA EL QUE VENGA A CERRAR `rodata`
+/// # [!!] LA TRAMPA QUE HABIA AL CERRAR `rodata` -- CERRADA el 2026-09-19
 ///
-/// Hoy hay DOS estados y por eso basta un `bool`: escribible-y-no-ejecutable, o
-/// ejecutable-y-no-escribible. `rodata` cae en el primero -- **se mapea
-/// escribible**, que no es correcto pero como mucho deja que un programa
-/// corrompa sus propias constantes; no cruza ninguna frontera.
+/// Hasta ese dia habia DOS estados y bastaba un `bool`: escribible-y-no-
+/// ejecutable, o ejecutable-y-no-escribible. `rodata` caia en el primero --
+/// **se mapeaba escribible**.
 ///
-/// *** Y quien vaya a arreglarlo tiene que saber esto ANTES de tocarlo:
+/// Ahora son TRES ([`PermisoImagen`]) y se piden con [`map_page_imagen`]: el
+/// parametro `ejecutable` de `map_page_tipo` es explicito y los tres envoltorios
+/// de siempre conservan su regla (NX si y solo si escribible). Lo de abajo queda
+/// escrito porque es la trampa en la que cae el arreglo obvio:
 ///
 /// ```text
 ///    "rodata no deberia ser escribible"   ->  writable = false
@@ -116,9 +118,38 @@ pub const PTE_PAT_4K: u64 = 1 << 7;
 /// sus cuatro llamantes. No es dificil; es que no se puede hacer a medias.
 pub const PTE_NX: u64 = 1 << 63;
 
+/// **Los tres estados de una pagina de la IMAGEN de un programa**, y el
+/// permiso lo da lo que la seccion ES, no una bandera suya (2026-09-19).
+///
+/// ```text
+///    Codigo       R + X        la seccion Code
+///    Constantes   R + NX       RoData: una cadena literal NO se puede pisar
+///    Datos        R + W + NX   Data y Bss
+/// ```
+///
+/// Ninguno es escribible y ejecutable a la vez: W^X por construccion, porque
+/// no existe la cuarta variante.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PermisoImagen {
+    Codigo,
+    Constantes,
+    Datos,
+}
+
+/// Mapea una pagina de la IMAGEN de un programa con uno de los tres estados.
+/// El marco es del espacio de direcciones (como [`map_page_propia`]).
+pub fn map_page_imagen(pml4: u64, va: u64, pa: u64, permiso: PermisoImagen) -> Result<(), ()> {
+    let (escribible, ejecutable) = match permiso {
+        PermisoImagen::Codigo => (false, true),
+        PermisoImagen::Constantes => (false, false),
+        PermisoImagen::Datos => (true, false),
+    };
+    map_page_tipo(pml4, va, pa, true, escribible, ejecutable, false, true)
+}
+
 /// collision (which would mean the VA overlaps the kernel identity map).
 pub fn map_page(pml4: u64, va: u64, pa: u64, user: bool, writable: bool) -> Result<(), ()> {
-    map_page_tipo(pml4, va, pa, user, writable, false, false)
+    map_page_tipo(pml4, va, pa, user, writable, !writable, false, false)
 }
 
 /// Igual, pero declarando que **el marco es de este espacio de direcciones** y
@@ -134,7 +165,7 @@ pub fn map_page(pml4: u64, va: u64, pa: u64, user: bool, writable: bool) -> Resu
 ///   si estan prestados**. Marcarlos aqui seria liberarlos dos veces y saltarse
 ///   esa pregunta.
 pub fn map_page_propia(pml4: u64, va: u64, pa: u64, user: bool, writable: bool) -> Result<(), ()> {
-    map_page_tipo(pml4, va, pa, user, writable, false, true)
+    map_page_tipo(pml4, va, pa, user, writable, !writable, false, true)
 }
 
 /// Igual, pero eligiendo **Write-Combining** para esta pagina.
@@ -144,7 +175,7 @@ pub fn map_page_propia(pml4: u64, va: u64, pa: u64, user: bool, writable: bool) 
 /// Para memoria normal seria lo contrario de lo que se quiere -- WC no garantiza
 /// el orden de las escrituras, y eso en una estructura de datos es un bug.
 pub fn map_page_wc(pml4: u64, va: u64, pa: u64, user: bool, writable: bool) -> Result<(), ()> {
-    map_page_tipo(pml4, va, pa, user, writable, true, false)
+    map_page_tipo(pml4, va, pa, user, writable, !writable, true, false)
 }
 
 /// **Se puede usar el bit NX?** Se lee `EFER.NXE` una vez y se recuerda.
@@ -191,6 +222,10 @@ pub(super) fn map_page_tipo(
     pa: u64,
     user: bool,
     writable: bool,
+    // ** Explicito desde el 2026-09-19. Antes se DEDUCIA (`NX si writable`),
+    // y esa deduccion es la trampa de `PTE_NX`: no hay forma de pedir
+    // "ni escribible ni ejecutable".
+    ejecutable: bool,
     combinar_escrituras: bool,
     nuestra: bool,
 ) -> Result<(), ()> {
@@ -235,7 +270,8 @@ pub(super) fn map_page_tipo(
     // tendria que ser siempre cierto -- razon de mas para preguntarlo, porque
     // lo que "tendria que ser siempre cierto" es lo que nadie mira el dia que
     // deja de serlo. Si no esta, `nx_disponible()` lo GRITA por CABINA.
-    if writable && nx_disponible() {
+    debug_assert!(!(writable && ejecutable), "W^X: escribible y ejecutable a la vez");
+    if !ejecutable && nx_disponible() {
         entry |= PTE_NX;
     }
     let old = pt[i1];

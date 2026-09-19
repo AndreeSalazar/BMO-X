@@ -1,14 +1,14 @@
 <!-- GENERADO por toolchain/tools/planes. No se edita a mano. -->
 
-# LO QUE FALTA -- las casillas abiertas de los 38 planes
+# LO QUE FALTA -- las casillas abiertas de los 39 planes
 
 > Generado por `toolchain/tools/planes`. **El build comprueba que
 > este fichero y los planes dicen lo mismo**, asi que no puede
 > envejecer sin que algo se ponga rojo.
 
 ```text
-   303 casillas ABIERTAS en 35 planes
-   221 hechas
+   308 casillas ABIERTAS en 36 planes
+   223 hechas
      3 planes CUMPLIDOS (ni una casilla pendiente)
      0 en plan/ SIN NI UNA CASILLA -- ver el final
 ```
@@ -232,6 +232,15 @@
 - [ ] S-FIRMA-5 -- exige_firma() = true. Lo ultimo, y **no antes de que
 - [ ] C8e -- EL METAL. Los hallazgos 1, 2, 4, 5 y 6 tocan codigo que corre en
 - ... y 3 mas
+
+## [`PLAN_BEF_NATIVO.md`](PLAN_BEF_NATIVO.md) -- 5 abiertas, 2 hechas
+
+*PLAN: BEF nativo -- un formato de BMO-X x86-64, no un ELF con otro nombre*
+
+- [ ] B2 -- BEF2 en bmo-abi: cabecera, writer, validator y sus
+- [ ] **B3 -- bmo-bex-gate y el cargador del kernel (task/bex.rs,
+- [ ] B4 -- bmo-enlazar, bmo-pack, bmo-firma, bmo-verify en BEF2.
+- ... y 2 mas
 
 ## [`PLAN_CODEGEN.md`](PLAN_CODEGEN.md) -- 5 abiertas, 4 hechas
 

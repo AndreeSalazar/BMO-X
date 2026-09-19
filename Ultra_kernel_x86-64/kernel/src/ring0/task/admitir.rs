@@ -603,7 +603,14 @@ pub(crate) fn admit_payload_desde(
         let s = plan.sections[i];
         let va_start = va_de[i];
         let pages = (s.mem_size + mm::PAGE - 1) / mm::PAGE;
-        let writable = s.flags & bex::SECTION_FLAG_EXEC == 0;
+        // ** EL PERMISO LO DA LO QUE LA SECCION ES (2026-09-19). Antes era
+        // `writable = !EXEC`, y con dos estados `RoData` salia ESCRIBIBLE: una
+        // cadena literal se podia pisar. Ver `vmm::PermisoImagen`.
+        let permiso = match s.kind {
+            bex::SECTION_CODE => vmm::PermisoImagen::Codigo,
+            bex::SECTION_RODATA => vmm::PermisoImagen::Constantes,
+            _ => vmm::PermisoImagen::Datos,
+        };
         // ** EL CIERRE DE ESTA SECCION, abierto antes de su primer byte.
         //
         // Se busca su digest por `s.indice` --el indice en la tabla del
@@ -818,7 +825,7 @@ pub(crate) fn admit_payload_desde(
             // y no lo conoce nadie mas, asi que su vida acaba con este espacio
             // de direcciones. Sin el bit, la imagen entera --unas 210 paginas en
             // DOOM-- se quedaba puesta para siempre al morir el programa.
-            if vmm::map_page_propia(aspace, pagina_va, frame, true, writable).is_err() {
+            if vmm::map_page_imagen(aspace, pagina_va, frame, permiso).is_err() {
                 log("[proc] FATAL: section map failed\n");
                 crate::ring0::cabina::fault(
                     "proc",

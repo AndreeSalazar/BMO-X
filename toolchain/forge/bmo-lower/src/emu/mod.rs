@@ -119,6 +119,7 @@ mod sistema;
 mod vex;
 /// Un `.bex` entero montado como lo monta el cargador (el metro lo usa).
 mod cargar;
+mod paginas;
 pub use cargar::cargar_bex;
 /// A donde se va cada instruccion: el desglose que el metro pinta.
 pub mod clases;
@@ -393,6 +394,15 @@ pub struct Machine {
     /// kernel embebe.
     mi_paquete: Option<String>,
     mem: HashMap<u64, u8>,
+    /// ** LAS PAGINAS DE SOLO LECTURA, `[desde, hasta)` (2026-09-19).
+    ///
+    /// El kernel mapea el codigo RX y las constantes R+NX: escribir ahi es un
+    /// `#PF` en el Ryzen. Hasta hoy el emulador tenia TODA la imagen en `code`
+    /// y las escrituras en una capa encima que no preguntaba donde caian, asi
+    /// que un programa que pisara sus constantes pasaba el banco entero. Lo
+    /// pone quien carga la imagen (el arnes, `cargar_bex`), igual que el
+    /// cargador del kernel.
+    pub solo_lectura: Vec<(u64, u64)>,
     /// -- `KIND_AUDIO`, modelada ------------------------------------------
     ///
     /// Se modelan las tres cosas que un programa puede NOTAR, que son las
@@ -479,6 +489,7 @@ impl Machine {
             buzon_pendiente: std::collections::VecDeque::new(),
             mi_paquete: None,
             mem: HashMap::new(),
+            solo_lectura: Vec::new(),
             audio_dueno: false,
             audio_volumen: 50,
             audio_volumenes: Vec::new(),
@@ -522,11 +533,6 @@ impl Machine {
         v
     }
 
-    fn write_u64(&mut self, addr: u64, value: u64) {
-        for i in 0..8 {
-            self.mem.insert(addr + i, ((value >> (i * 8)) & 0xFF) as u8);
-        }
-    }
 
     /// Lee un byte de memoria.
     ///
@@ -742,9 +748,7 @@ impl Machine {
     fn store_u8(&mut self, op: Operand, value: u64) {
         match op {
             Operand::Reg(r) => self.regs[r] = (self.regs[r] & !0xFF) | (value & 0xFF),
-            Operand::Mem(a) => {
-                self.mem.insert(a, (value & 0xFF) as u8);
-            }
+            Operand::Mem(a) => self.escribe(a, (value & 0xFF) as u8),
         }
     }
 
@@ -768,7 +772,7 @@ impl Machine {
             Operand::Reg(r) => self.write_reg(r, value, bytes == 8),
             Operand::Mem(a) => {
                 for i in 0..bytes as u64 {
-                    self.mem.insert(a + i, ((value >> (i * 8)) & 0xFF) as u8);
+                    self.escribe(a + i, ((value >> (i * 8)) & 0xFF) as u8);
                 }
             }
         }
@@ -1189,7 +1193,7 @@ impl Machine {
                 let veces = if f3 { self.regs[RCX] } else { 1 };
                 for _ in 0..veces {
                     let b = self.read_u8_mem(self.regs[RSI]);
-                    self.mem.insert(self.regs[RDI], b);
+                    self.escribe(self.regs[RDI], b);
                     self.regs[RSI] = self.regs[RSI].wrapping_add(paso);
                     self.regs[RDI] = self.regs[RDI].wrapping_add(paso);
                 }
@@ -1203,7 +1207,7 @@ impl Machine {
                 let veces = if f3 { self.regs[RCX] } else { 1 };
                 let v = (self.regs[RAX] & 0xFF) as u8;
                 for _ in 0..veces {
-                    self.mem.insert(self.regs[RDI], v);
+                    self.escribe(self.regs[RDI], v);
                     self.regs[RDI] = self.regs[RDI].wrapping_add(paso);
                 }
                 if f3 {
